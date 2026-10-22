@@ -1,0 +1,271 @@
+{
+  "asyncapi": "3.0.0",
+  "info": {
+    "title": "Crane Edge MQTT",
+    "version": "1.0.0"
+  },
+  "servers": {
+    "dev": {
+      "host": "mosquitto:8883",
+      "protocol": "mqtts",
+      "protocolVersion": "5",
+      "security": [
+        {
+          "deviceCertificate": []
+        }
+      ]
+    }
+  },
+  "channels": {
+    "channel0": {
+      "address": "crane/v1/{tenantId}/{projectId}/{deviceId}/heartbeat",
+      "parameters": {
+        "tenantId": {},
+        "projectId": {},
+        "deviceId": {}
+      },
+      "messages": {
+        "message": {
+          "$ref": "#/components/messages/Message"
+        }
+      },
+      "x-direction": "edge-to-cloud"
+    },
+    "channel1": {
+      "address": "crane/v1/{tenantId}/{projectId}/{deviceId}/shadow/reported",
+      "parameters": {
+        "tenantId": {},
+        "projectId": {},
+        "deviceId": {}
+      },
+      "messages": {
+        "message": {
+          "$ref": "#/components/messages/Message"
+        }
+      },
+      "x-direction": "edge-to-cloud"
+    },
+    "channel2": {
+      "address": "crane/v1/{tenantId}/{projectId}/{deviceId}/telemetry/live",
+      "parameters": {
+        "tenantId": {},
+        "projectId": {},
+        "deviceId": {}
+      },
+      "messages": {
+        "message": {
+          "$ref": "#/components/messages/Message"
+        }
+      },
+      "x-direction": "edge-to-cloud"
+    },
+    "channel3": {
+      "address": "crane/v1/{tenantId}/{projectId}/{deviceId}/alarm",
+      "parameters": {
+        "tenantId": {},
+        "projectId": {},
+        "deviceId": {}
+      },
+      "messages": {
+        "message": {
+          "$ref": "#/components/messages/Message"
+        }
+      },
+      "x-direction": "edge-to-cloud"
+    },
+    "channel4": {
+      "address": "crane/v1/{tenantId}/{projectId}/{deviceId}/event",
+      "parameters": {
+        "tenantId": {},
+        "projectId": {},
+        "deviceId": {}
+      },
+      "messages": {
+        "message": {
+          "$ref": "#/components/messages/Message"
+        }
+      },
+      "x-direction": "edge-to-cloud"
+    },
+    "channel5": {
+      "address": "crane/v1/{tenantId}/{projectId}/{deviceId}/command/watch/start",
+      "parameters": {
+        "tenantId": {},
+        "projectId": {},
+        "deviceId": {}
+      },
+      "messages": {
+        "message": {
+          "$ref": "#/components/messages/Message"
+        }
+      },
+      "x-direction": "cloud-to-edge"
+    },
+    "channel6": {
+      "address": "crane/v1/{tenantId}/{projectId}/{deviceId}/command/watch/renew",
+      "parameters": {
+        "tenantId": {},
+        "projectId": {},
+        "deviceId": {}
+      },
+      "messages": {
+        "message": {
+          "$ref": "#/components/messages/Message"
+        }
+      },
+      "x-direction": "cloud-to-edge"
+    },
+    "channel7": {
+      "address": "crane/v1/{tenantId}/{projectId}/{deviceId}/command/watch/stop",
+      "parameters": {
+        "tenantId": {},
+        "projectId": {},
+        "deviceId": {}
+      },
+      "messages": {
+        "message": {
+          "$ref": "#/components/messages/Message"
+        }
+      },
+      "x-direction": "cloud-to-edge"
+    },
+    "channel8": {
+      "address": "crane/v1/{tenantId}/{projectId}/{deviceId}/command/ack",
+      "parameters": {
+        "tenantId": {},
+        "projectId": {},
+        "deviceId": {}
+      },
+      "messages": {
+        "message": {
+          "$ref": "#/components/messages/Message"
+        }
+      },
+      "x-direction": "edge-to-cloud"
+    }
+  },
+  "operations": {
+    "channel0": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/channel0"
+      },
+      "bindings": {
+        "mqtt": {
+          "qos": 0,
+          "bindingVersion": "0.2.0"
+        }
+      }
+    },
+    "channel1": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/channel1"
+      },
+      "bindings": {
+        "mqtt": {
+          "qos": 1,
+          "bindingVersion": "0.2.0"
+        }
+      }
+    },
+    "channel2": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/channel2"
+      },
+      "bindings": {
+        "mqtt": {
+          "qos": 0,
+          "bindingVersion": "0.2.0"
+        }
+      }
+    },
+    "channel3": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/channel3"
+      },
+      "bindings": {
+        "mqtt": {
+          "qos": 1,
+          "bindingVersion": "0.2.0"
+        }
+      }
+    },
+    "channel4": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/channel4"
+      },
+      "bindings": {
+        "mqtt": {
+          "qos": 1,
+          "bindingVersion": "0.2.0"
+        }
+      }
+    },
+    "channel5": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/channel5"
+      },
+      "bindings": {
+        "mqtt": {
+          "qos": 1,
+          "bindingVersion": "0.2.0"
+        }
+      }
+    },
+    "channel6": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/channel6"
+      },
+      "bindings": {
+        "mqtt": {
+          "qos": 1,
+          "bindingVersion": "0.2.0"
+        }
+      }
+    },
+    "channel7": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/channel7"
+      },
+      "bindings": {
+        "mqtt": {
+          "qos": 1,
+          "bindingVersion": "0.2.0"
+        }
+      }
+    },
+    "channel8": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/channel8"
+      },
+      "bindings": {
+        "mqtt": {
+          "qos": 1,
+          "bindingVersion": "0.2.0"
+        }
+      }
+    }
+  },
+  "components": {
+    "messages": {
+      "Message": {
+        "payload": {
+          "$ref": "../schemas/v1/message.json"
+        }
+      }
+    },
+    "securitySchemes": {
+      "deviceCertificate": {
+        "type": "X509"
+      }
+    }
+  }
+}

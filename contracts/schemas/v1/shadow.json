@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/shadow.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "deviceId",
+    "tenantId",
+    "projectId",
+    "reported",
+    "updatedAt",
+    "version"
+  ],
+  "properties": {
+    "deviceId": {
+      "type": "string"
+    },
+    "tenantId": {
+      "type": "string"
+    },
+    "projectId": {
+      "type": "string"
+    },
+    "reported": {
+      "$ref": "message.json"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "version": {
+      "type": "integer"
+    }
+  }
+}

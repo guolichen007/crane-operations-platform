@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "namespace": "crane/v1",
+  "topics": {
+    "heartbeat": {"qos": 0, "direction": "edge-to-cloud"},
+    "shadow/reported": {"qos": 1, "direction": "edge-to-cloud"},
+    "telemetry/live": {"qos": 0, "direction": "edge-to-cloud"},
+    "alarm": {"qos": 1, "direction": "edge-to-cloud"},
+    "event": {"qos": 1, "direction": "edge-to-cloud"},
+    "command/watch/start": {"qos": 1, "direction": "cloud-to-edge"},
+    "command/watch/renew": {"qos": 1, "direction": "cloud-to-edge"},
+    "command/watch/stop": {"qos": 1, "direction": "cloud-to-edge"},
+    "command/ack": {"qos": 1, "direction": "edge-to-cloud"}
+  },
+  "types": {
+    "Message": {
+      "schemaVersion": "int", "messageId": "string", "tenantId": "string", "projectId": "string", "deviceId": "string",
+      "bootId": "string", "sequence": "int64", "timestamp": "time", "kind": "string",
+      "connectivity": "string", "edgeHealth": "string", "controllerHealth": "string", "sensorHealth": "string",
+      "operatingState": "string", "mode": "string", "alarmState": "string", "softwareVersion": "string", "runtimeTotal": "float64",
+      "x": "float64", "y": "float64", "z": "float64", "load": "float64", "sessionId": "string", "ttlSeconds": "int", "telemetryHz": "int",
+      "code": "string", "text": "string"
+    },
+    "Shadow": {
+      "deviceId": "string", "tenantId": "string", "projectId": "string", "reported": "Message", "updatedAt": "time", "version": "int64"
+    },
+    "LiveSession": {
+      "sessionId": "string", "deviceId": "string", "userId": "string", "expiresAt": "time", "ttlSeconds": "int", "telemetryHz": "int"
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/livesession.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "sessionId",
+    "deviceId",
+    "userId",
+    "expiresAt",
+    "ttlSeconds",
+    "telemetryHz"
+  ],
+  "properties": {
+    "sessionId": {
+      "type": "string"
+    },
+    "deviceId": {
+      "type": "string"
+    },
+    "userId": {
+      "type": "string"
+    },
+    "expiresAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ttlSeconds": {
+      "type": "integer"
+    },
+    "telemetryHz": {
+      "type": "integer"
+    }
+  }
+}
