@@ -1,0 +1,17 @@
+local-private/
+tools/.cache/
+node_modules/
+release/
+**/dist/
+**/dist-offline/
+test-results*/
+playwright-report/
+.env
+.env.*
+!.env.example
+*.log
+*.pem
+*.key
+*.crt
+deploy/compose/runtime/
+
