@@ -5,16 +5,17 @@ import (
 	"encoding/json"
 	"errors"
 	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
+	"github.com/guolichen007/crane-operations-platform/internal/platform/atomicfile"
 	"os"
-	"path/filepath"
 	"sync"
 )
 
 type Queue struct {
-	mu    sync.Mutex
-	path  string
-	items []contract.Message
-	limit int
+	mu      sync.Mutex
+	path    string
+	items   []contract.Envelope
+	limit   int
+	retries int64
 }
 
 func Open(path string, limit int) (*Queue, error) {
@@ -33,20 +34,18 @@ func Open(path string, limit int) (*Queue, error) {
 	}
 	return q, nil
 }
-func (q *Queue) save() error {
-	if e := os.MkdirAll(filepath.Dir(q.path), 0700); e != nil {
-		return e
-	}
-	b, e := json.Marshal(q.items)
+func (q *Queue) save(items []contract.Envelope) error {
+	b, e := json.Marshal(items)
 	if e != nil {
 		return e
 	}
-	if e = os.WriteFile(q.path+".tmp", b, 0600); e != nil {
+	if e = atomicfile.Write(q.path, b); e != nil {
 		return e
 	}
-	return os.Rename(q.path+".tmp", q.path)
+	q.items = items
+	return nil
 }
-func (q *Queue) Push(m contract.Message) error {
+func (q *Queue) Push(m contract.Envelope) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if m.Kind != "ALARM" && m.Kind != "EVENT" {
@@ -60,14 +59,14 @@ func (q *Queue) Push(m contract.Message) error {
 	if len(q.items) >= q.limit {
 		return errors.New("critical spool full: operator action required")
 	}
-	q.items = append(q.items, m)
-	return q.save()
+	items := append(append([]contract.Envelope{}, q.items...), m)
+	return q.save(items)
 }
-func (q *Queue) Peek() (contract.Message, bool) {
+func (q *Queue) Peek() (contract.Envelope, bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if len(q.items) == 0 {
-		return contract.Message{}, false
+		return contract.Envelope{}, false
 	}
 	return q.items[0], true
 }
@@ -75,7 +74,17 @@ func (q *Queue) Ack(id string) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if len(q.items) > 0 && q.items[0].MessageId == id {
-		q.items = q.items[1:]
+		return q.save(append([]contract.Envelope{}, q.items[1:]...))
 	}
-	return q.save()
+	return nil
+}
+func (q *Queue) Retry() { q.mu.Lock(); defer q.mu.Unlock(); q.retries++ }
+func (q *Queue) Metrics() (depth, full int, retries int64) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	depth = len(q.items)
+	if depth >= q.limit {
+		full = 1
+	}
+	return depth, full, q.retries
 }

@@ -6,6 +6,7 @@ pattern write crane/v1/demo/Project-A/%u/alarm
 pattern write crane/v1/demo/Project-A/%u/event
 pattern write crane/v1/demo/Project-A/%u/command/ack
 pattern read crane/v1/demo/Project-A/%u/command/watch/+
+pattern read crane/v1/demo/Project-A/%u/event/ack
 user cloud-api
 topic read crane/v1/demo/Project-A/+/heartbeat
 topic read crane/v1/demo/Project-A/+/shadow/reported
@@ -14,3 +15,4 @@ topic read crane/v1/demo/Project-A/+/alarm
 topic read crane/v1/demo/Project-A/+/event
 topic read crane/v1/demo/Project-A/+/command/ack
 topic write crane/v1/demo/Project-A/+/command/watch/+
+topic write crane/v1/demo/Project-A/+/event/ack

@@ -53,54 +53,47 @@ func (s *Store) List() []contract.Shadow {
 	}
 	return v
 }
-func (s *Store) Apply(ctx context.Context, m contract.Message) error {
+func (s *Store) Apply(ctx context.Context, m contract.Envelope) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	old := s.cache[m.DeviceId]
-	if !shadoworder.Accept(old.Reported, m) {
-		return nil
+	next, accepted := shadoworder.Merge(old, m, time.Now().UTC())
+	if !accepted {
+		return false, nil
 	}
-	if m.Kind == "LWT" {
-		next := old.Reported
-		next.Connectivity = "OFFLINE"
-		next.EdgeHealth = "UNKNOWN"
-		next.ControllerHealth = "UNKNOWN"
-		m = next
-	}
-	next := contract.Shadow{DeviceId: m.DeviceId, TenantId: m.TenantId, ProjectId: m.ProjectId, Reported: m, UpdatedAt: time.Now().UTC(), Version: old.Version + 1}
 	b, e := json.Marshal(next)
 	if e != nil {
-		return e
+		return false, e
 	}
 	tx, e := s.DB.BeginTx(ctx, nil)
 	if e != nil {
-		return e
+		return false, e
 	}
 	defer tx.Rollback()
 	if _, e = tx.ExecContext(ctx, "INSERT INTO devices(id,project_id) VALUES($1,$2) ON CONFLICT DO NOTHING", m.DeviceId, m.ProjectId); e != nil {
-		return e
+		return false, e
 	}
 	if _, e = tx.ExecContext(ctx, "INSERT INTO device_shadow(device_id,payload_json,updated_at,version) VALUES($1,$2,$3,$4) ON CONFLICT(device_id) DO UPDATE SET payload_json=excluded.payload_json,updated_at=excluded.updated_at,version=excluded.version", m.DeviceId, b, next.UpdatedAt, next.Version); e != nil {
-		return e
+		return false, e
 	}
 	if m.Kind == "HEARTBEAT" {
 		_, e = tx.ExecContext(ctx, "INSERT INTO device_heartbeats VALUES($1,$2) ON CONFLICT(device_id) DO UPDATE SET observed_at=excluded.observed_at", m.DeviceId, next.UpdatedAt)
 		if e != nil {
-			return e
+			return false, e
 		}
 	}
 	if m.Kind == "LIVE" && time.Since(s.sample[m.DeviceId]) >= telemetry.SampleInterval {
 		payload, _ := json.Marshal(m)
 		if _, e = tx.ExecContext(ctx, "INSERT INTO telemetry_samples(device_id,sampled_at,payload_json) VALUES($1,$2,$3)", m.DeviceId, next.UpdatedAt, payload); e != nil {
-			return e
+			return false, e
 		}
 	}
 	if e = tx.Commit(); e != nil {
-		return e
+		return false, e
 	}
 	if m.Kind == "LIVE" && time.Since(s.sample[m.DeviceId]) >= telemetry.SampleInterval {
 		s.sample[m.DeviceId] = time.Now()
 	}
 	s.cache[m.DeviceId] = next
-	return nil
+	return true, nil
 }

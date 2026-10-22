@@ -70,7 +70,7 @@ async function start() {
         await stop();
         error.value = '续租失败，已停止实时查看';
       }
-    }, 60000);
+    }, Math.min(60000, Math.max(1000, session.value.ttlSeconds * 1000 / 3)));
   } catch (e) {
     error.value = (e as Error).message;
   } finally {
@@ -102,20 +102,20 @@ onUnmounted(() => {
     <template v-if="detail">
       <router-link to="/devices">← 返回台账</router-link>
       <section v-if="current" class="shadow-card" data-testid="device-shadow">
-        <h2>{{ session ? 'LIVE 租约已申请' : 'Last Known State · 最近状态' }}</h2>
+        <h2>{{ session ? `LIVE 上游：${current.upstreamStatus}` : 'Last Known State · 最近状态' }}</h2>
         <p>
           最后更新时间：<time>{{ current.updatedAt }}</time> · 版本 {{ current.version }}
         </p>
         <p>
-          {{ current.reported.connectivity }} / {{ current.reported.edgeHealth }} /
-          {{ current.reported.controllerHealth }}
+          {{ current.presence.connectivity }} / {{ current.presence.edgeHealth }} /
+          {{ current.presence.controllerHealth }}
         </p>
-        <p>采集状态 {{ current.reported.operatingState }} · 最近消息 {{ current.reported.kind }}</p>
+        <p>采集状态 {{ current.reported.operatingState }} · 下线原因 {{ current.presence.disconnectReason }}</p>
         <dl>
           <dt>X / Y / Z</dt>
           <dd>
-            {{ current.reported.x.toFixed(2) }} / {{ current.reported.y.toFixed(2) }} /
-            {{ current.reported.z.toFixed(2) }} m
+            {{ current.reported.position.x.toFixed(2) }} / {{ current.reported.position.y.toFixed(2) }} /
+            {{ current.reported.position.z.toFixed(2) }} m
           </dd>
           <dt>负载</dt>
           <dd>{{ current.reported.load }} t</dd>
@@ -123,7 +123,7 @@ onUnmounted(() => {
         <button :disabled="busy" @click="session ? stop() : start()">
           {{ session ? '停止实时查看' : '申请 LIVE · 1 Hz' }}
         </button>
-        <p v-if="session">租约到期：{{ session.expiresAt }}。只有近期 LIVE 消息才代表实时采样。</p>
+        <p v-if="session">租约到期：{{ session.expiresAt }}。上游仅在设备应用回执确认后显示 LIVE。</p>
         <p>Point Cloud / Remote Local Web：Phase 2 未启用。</p>
         <router-link to="/alarms">Alarm · 告警记录 →</router-link>
       </section>
@@ -138,7 +138,7 @@ onUnmounted(() => {
       >
         <h2>{{ device.deviceId }}</h2>
         <p>{{ device.projectId }}</p>
-        <p>{{ device.reported.connectivity }} · {{ device.reported.operatingState }}</p>
+        <p>{{ device.presence.connectivity }} · {{ device.reported.operatingState }}</p>
         <small>最近状态 {{ device.updatedAt }}</small>
       </router-link>
     </div>

@@ -16,6 +16,7 @@ const env = {
   GOCACHE: resolve('tools/.cache/gobuild'),
   GOMODCACHE: resolve('tools/.cache/gomod'),
   GOPATH: resolve('tools/.cache/gopath'),
+  STATICCHECK_CACHE: resolve('tools/.cache/staticcheck'),
 };
 export function run(cmd, args, options = {}) {
   const r = spawnSync(cmd, args, { stdio: 'inherit', env, ...options });
@@ -54,6 +55,8 @@ const tasks = {
       );
     if (!existsSync('deploy/compose/runtime/certs/cloud/cloud-api.key'))
       run(go, ['run', './tools/certs']);
+    else if (!existsSync('deploy/compose/runtime/certs/devices/TEST-001.key'))
+      run(go, ['run', './tools/certs', '--fixture']);
   },
   'dev-up'() {
     if (win) {

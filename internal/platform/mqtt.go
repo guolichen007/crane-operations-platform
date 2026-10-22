@@ -3,17 +3,23 @@ package platform
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/eclipse/paho.golang/autopaho"
 	"github.com/eclipse/paho.golang/paho"
 	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
+	"math"
 	"net/url"
+	"sync/atomic"
 	"time"
 )
 
 type Broker struct{ CM *autopaho.ConnectionManager }
 
-func Connect(ctx context.Context, c Config, id string, subscriptions []string, will *contract.Message, receive func(string, []byte) error, up func(), down func()) (*Broker, error) {
+var MQTTReconnects atomic.Int64
+var ErrMessageExpired = errors.New("message expired before publish")
+
+func Connect(ctx context.Context, c Config, id string, subscriptions []string, will func() contract.Envelope, receive func(string, []byte) error, up func(), down func()) (*Broker, error) {
 	u, e := url.Parse(c.MQTTURL)
 	if e != nil || u.Scheme != "tls" {
 		return nil, fmt.Errorf("MQTT requires tls URL")
@@ -22,7 +28,7 @@ func Connect(ctx context.Context, c Config, id string, subscriptions []string, w
 	if e != nil {
 		return nil, e
 	}
-	cfg := autopaho.ClientConfig{ServerUrls: []*url.URL{u}, TlsCfg: tlsCfg, KeepAlive: 300, CleanStartOnInitialConnection: true, SessionExpiryInterval: 3600, ConnectTimeout: Timeout(), ReconnectBackoff: func(n int) time.Duration {
+	cfg := autopaho.ClientConfig{ServerUrls: []*url.URL{u}, TlsCfg: tlsCfg, KeepAlive: 10, CleanStartOnInitialConnection: false, SessionExpiryInterval: 3600, ConnectTimeout: Timeout(), ReconnectBackoff: func(n int) time.Duration {
 		if n > 6 {
 			n = 6
 		}
@@ -35,9 +41,19 @@ func Connect(ctx context.Context, c Config, id string, subscriptions []string, w
 		return true, err
 	}}}}
 	if will != nil {
-		payload, _ := json.Marshal(will)
-		topic, _ := contract.Topic(will.TenantId, will.ProjectId, will.DeviceId, "shadow/reported")
-		cfg.WillMessage = &paho.WillMessage{Topic: topic, QoS: 1, Retain: true, Payload: payload}
+		delay := uint32(c.WillDelay)
+		cfg.WillProperties = &paho.WillProperties{WillDelayInterval: &delay}
+		cfg.ConnectPacketBuilder = func(packet *paho.Connect, _ *url.URL) (*paho.Connect, error) {
+			m := will()
+			if err := contract.Validate(m); err != nil {
+				return nil, err
+			}
+			payload, _ := json.Marshal(m)
+			topic, _ := contract.Topic(m.TenantId, m.ProjectId, m.DeviceId, "shadow/reported")
+			packet.WillMessage = &paho.WillMessage{Topic: topic, QoS: 1, Retain: true, Payload: payload}
+			packet.WillProperties = &paho.WillProperties{WillDelayInterval: &delay}
+			return packet, nil
+		}
 	}
 	cfg.OnConnectionDown = func() bool {
 		if down != nil {
@@ -45,7 +61,11 @@ func Connect(ctx context.Context, c Config, id string, subscriptions []string, w
 		}
 		return true
 	}
+	var connections atomic.Int64
 	cfg.OnConnectionUp = func(cm *autopaho.ConnectionManager, _ *paho.Connack) {
+		if connections.Add(1) > 1 {
+			MQTTReconnects.Add(1)
+		}
 		go func() {
 			timeout, cancel := context.WithTimeout(ctx, Timeout())
 			defer cancel()
@@ -75,7 +95,7 @@ func Connect(ctx context.Context, c Config, id string, subscriptions []string, w
 	}
 	return &Broker{CM: cm}, nil
 }
-func (b *Broker) Publish(ctx context.Context, m contract.Message, suffix string) error {
+func (b *Broker) Publish(ctx context.Context, m contract.Envelope, suffix string) error {
 	topic, e := contract.Topic(m.TenantId, m.ProjectId, m.DeviceId, suffix)
 	if e != nil {
 		return e
@@ -84,8 +104,30 @@ func (b *Broker) Publish(ctx context.Context, m contract.Message, suffix string)
 	if e != nil {
 		return e
 	}
+	if _, e = contract.Decode(topic, payload); e != nil {
+		return e
+	}
+	properties, e := PublishProperties(m, time.Now())
+	if e != nil {
+		return e
+	}
 	ctx, cancel := context.WithTimeout(ctx, Timeout())
 	defer cancel()
-	_, e = b.CM.Publish(ctx, &paho.Publish{Topic: topic, QoS: contract.Topics[suffix], Retain: suffix == "shadow/reported", Payload: payload})
+	_, e = b.CM.Publish(ctx, &paho.Publish{Topic: topic, QoS: contract.Topics[suffix], Retain: suffix == "shadow/reported", Payload: payload, Properties: properties})
 	return e
+}
+func PublishProperties(m contract.Envelope, now time.Time) (*paho.PublishProperties, error) {
+	if m.Kind != "WATCH_START" && m.Kind != "WATCH_RENEW" && m.Kind != "WATCH_STOP" {
+		return nil, nil
+	}
+	v := contract.Payload[contract.WatchCommandPayload](m)
+	remaining := v.ExpiresAt.Sub(now).Seconds()
+	if remaining <= 0 {
+		return nil, ErrMessageExpired
+	}
+	expiry := uint32(math.Ceil(remaining))
+	if expiry > uint32(v.TtlSeconds) {
+		expiry = uint32(v.TtlSeconds)
+	}
+	return &paho.PublishProperties{MessageExpiry: &expiry}, nil
 }

@@ -59,7 +59,7 @@ func run() error {
 		if e != nil {
 			return e
 		}
-		var m contract.Message
+		var m contract.Envelope
 		if e = json.Unmarshal(b, &m); e != nil {
 			return e
 		}

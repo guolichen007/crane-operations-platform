@@ -2,114 +2,192 @@ package runner
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
 	"github.com/guolichen007/crane-operations-platform/edge/agent/adapters/mock"
+	"github.com/guolichen007/crane-operations-platform/edge/agent/internal/boot"
 	"github.com/guolichen007/crane-operations-platform/edge/agent/internal/domain"
+	"github.com/guolichen007/crane-operations-platform/edge/agent/internal/mapper"
+	"github.com/guolichen007/crane-operations-platform/edge/agent/internal/watch"
 	"github.com/guolichen007/crane-operations-platform/edge/agent/spool"
 	"github.com/guolichen007/crane-operations-platform/internal/platform"
+	"net/http"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"time"
 )
 
+var queues sync.Map
+var eventACKs atomic.Int64
+
+// MetricsServer is loopback-only and has no management routes or host port mapping.
+func MetricsServer(ctx context.Context) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, _ *http.Request) {
+		depth, full := 0, 0
+		var retries int64
+		queues.Range(func(_, value any) bool {
+			d, f, r := value.(*spool.Queue).Metrics()
+			depth += d
+			full += f
+			retries += r
+			return true
+		})
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		fmt.Fprintf(w, "critical_spool_depth %d\ncritical_spool_full %d\ncritical_spool_retries_total %d\nevent_application_acks_total %d\nmqtt_reconnects_total %d\n", depth, full, retries, eventACKs.Load(), platform.MQTTReconnects.Load())
+	})
+	srv := &http.Server{Addr: "127.0.0.1:8083", Handler: mux, ReadHeaderTimeout: 3 * time.Second, IdleTimeout: 30 * time.Second}
+	go func() {
+		<-ctx.Done()
+		done, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = srv.Shutdown(done)
+	}()
+	if e := srv.ListenAndServe(); e != nil && !errors.Is(e, http.ErrServerClosed) {
+		platform.Logger("edge-agent").Error("metrics unavailable", "event", "metrics_failed")
+	}
+}
+
 func Run(ctx context.Context, c platform.Config, id string) error {
 	logger := platform.Logger("edge-agent").With("deviceId", id)
-	machine := &domain.Machine{}
-	boot := platform.ID()
-	var seq atomic.Int64
-	adapter := mock.Telemetry{}
-	envelope := func(kind string) contract.Message {
-		m, _ := adapter.Read(ctx)
-		m.SchemaVersion = 1
-		m.MessageId = platform.ID()
-		m.TenantId = "demo"
-		m.ProjectId = "Project-A"
-		m.DeviceId = id
-		m.BootId = boot
-		m.Sequence = seq.Add(1)
-		m.Timestamp = time.Now().UTC()
-		m.Kind = kind
-		m.OperatingState = string(machine.State(time.Now()))
-		return m
+	identity, e := boot.Start(filepath.Join(c.DataDir, id, "boot.json"))
+	if e != nil {
+		return e
+	}
+	factory := &mapper.Factory{Device: id, Boot: identity}
+	controller, e := watch.Open(filepath.Join(c.DataDir, id, "watch.json"))
+	if e != nil {
+		return e
 	}
 	q, e := spool.Open(filepath.Join(c.DataDir, id+".json"), 256)
 	if e != nil {
 		return e
 	}
-	commands := make(chan contract.Message, 32)
+	queues.Store(id, q)
+	defer queues.Delete(id)
+	machine := &domain.Machine{}
+	adapter := mock.Telemetry{}
+	inbox := make(chan contract.Envelope, 32)
 	born := make(chan struct{}, 1)
-	sub, _ := contract.Topic("demo", "Project-A", id, "command/watch/start")
-	prefix := sub[:len(sub)-len("start")]
-	will := envelope("LWT")
-	will.Connectivity = "OFFLINE"
-	will.EdgeHealth = "UNKNOWN"
-	will.ControllerHealth = "UNKNOWN"
-	broker, e := platform.Connect(ctx, c, id, []string{prefix + "+"}, &will, func(topic string, b []byte) error {
-		var m contract.Message
-		if json.Unmarshal(b, &m) != nil || contract.Validate(m) != nil || m.DeviceId != id {
-			return nil
-		}
-		_, _, _, s, err := contract.ParseTopic(topic)
+	start, _ := contract.Topic("demo", "Project-A", id, "command/watch/start")
+	ackTopic, _ := contract.Topic("demo", "Project-A", id, "event/ack")
+	mqttCtx, mqttCancel := context.WithCancel(context.Background())
+	defer mqttCancel()
+	broker, e := platform.Connect(mqttCtx, c, id, []string{start[:len(start)-len("start")] + "+", ackTopic}, factory.ConnectionWill, func(topic string, b []byte) error {
+		m, err := contract.Decode(topic, b)
 		if err != nil {
+			logger.Warn("invalid message", "event", "message_rejected")
 			return nil
 		}
-		if (s == "command/watch/start" && m.Kind != "WATCH_START") || (s == "command/watch/renew" && m.Kind != "WATCH_RENEW") || (s == "command/watch/stop" && m.Kind != "WATCH_STOP") {
+		if m.Kind == "EVENT_STORED_ACK" {
+			ack := contract.Payload[contract.EventStoredAckPayload](m)
+			head, ok := q.Peek()
+			if ok && head.MessageId == ack.SourceMessageId {
+				if err = q.Ack(ack.SourceMessageId); err != nil {
+					return err
+				}
+				eventACKs.Add(1)
+				logger.Info("critical event stored", "event", "event_application_ack", "messageId", ack.SourceMessageId)
+			}
 			return nil
 		}
 		select {
-		case commands <- m:
+		case inbox <- m:
+			return nil
 		default:
-			logger.Error("command inbox full", "event", "command_rejected")
+			return errors.New("command inbox full")
 		}
-		return nil
 	}, func() {
 		select {
 		case born <- struct{}{}:
 		default:
 		}
-	}, machine.Disconnect)
+	}, func() {
+		machine.Disconnect()
+	})
 	if e != nil {
 		return e
 	}
-	defer broker.CM.Disconnect(context.Background())
-	tick := time.NewTicker(time.Second)
-	defer tick.Stop()
+	defer func() {
+		done, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = broker.CM.Disconnect(done)
+	}()
+	send := func(kind, suffix string) error {
+		snapshot, err := adapter.Read(ctx)
+		if err != nil {
+			return err
+		}
+		var payload any
+		switch kind {
+		case "BIRTH":
+			payload = mapper.Birth(snapshot, machine.State(time.Now()))
+		case "SNAPSHOT":
+			payload = mapper.Snapshot(snapshot, machine.State(time.Now()))
+		case "HEARTBEAT":
+			payload = contract.HeartbeatPayload{EdgeHealth: snapshot.Health.Edge, ControllerHealth: snapshot.Health.Controller, SensorHealth: snapshot.Health.Sensor}
+		case "LIVE":
+			payload = contract.LiveTelemetryPayload{LeaseId: controller.LeaseID(), Generation: controller.Generation(), Reported: mapper.Reported(snapshot, machine.State(time.Now()))}
+		}
+		return broker.Publish(ctx, factory.New(kind, payload), suffix)
+	}
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
 	lastState := domain.Silent
-	lastBeat, lastSnapshot, lastAlarm := time.Time{}, time.Time{}, time.Time{}
-	seen := map[string]bool{}
-	send := func(kind, suffix string) error { return broker.Publish(ctx, envelope(kind), suffix) }
+	lastBeat, lastSnapshot, lastAlarm, lastRetry := time.Time{}, time.Time{}, time.Time{}, time.Time{}
+	lastEvent := ""
+	birthPending := false
 	for {
 		select {
 		case <-ctx.Done():
+			done, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			err := broker.Publish(done, factory.New("DEATH", contract.DeathPayload{Reason: "GRACEFUL"}), "shadow/reported")
+			cancel()
+			if err != nil {
+				logger.Warn("graceful death unavailable", "event", "death_unsent")
+			}
 			return nil
 		case <-born:
+			controller.Disconnect()
 			machine.Connect()
-			if e = send("BIRTH", "shadow/reported"); e != nil {
-				logger.Warn("birth retry pending", "event", "birth_retry")
+			birthPending = true
+			if send("BIRTH", "shadow/reported") == nil {
+				birthPending = false
+				lastSnapshot = time.Now()
 			}
-			lastSnapshot = time.Now()
-		case m := <-commands:
-			if !seen[m.MessageId] {
-				if len(seen) > 1024 {
-					seen = map[string]bool{}
-				}
-				seen[m.MessageId] = true
-				switch m.Kind {
-				case "WATCH_START", "WATCH_RENEW":
-					if time.Since(m.Timestamp) < time.Duration(m.TtlSeconds)*time.Second {
-						machine.Watch(time.Now(), m.TtlSeconds)
-					}
-				case "WATCH_STOP":
+		case m := <-inbox:
+			ack, err := controller.Apply(m, time.Now())
+			if err != nil {
+				return err
+			}
+			// The domain timer is updated only on an applied transition, never duplicates.
+			if ack.Result == "APPLIED" {
+				if controller.Active(time.Now()) {
+					remaining := int(time.Until(controller.Until).Seconds()) + 1
+					machine.Watch(time.Now(), remaining)
+				} else {
 					machine.Stop()
 				}
 			}
-			ack := envelope("WATCH_ACK")
-			ack.SessionId = m.SessionId
-			ack.Code = m.MessageId
-			_ = broker.Publish(ctx, ack, "command/ack")
-		case now := <-tick.C:
+			message := factory.New("WATCH_ACK", ack)
+			message.CorrelationId = m.MessageId
+			if err = broker.Publish(ctx, message, "command/ack"); err != nil {
+				logger.Warn("watch ACK pending retry", "event", "watch_ack_unsent", "commandId", m.MessageId, "generation", ack.Generation)
+			}
+			logger.Info("watch processed", "event", "watch_ack", "commandId", m.MessageId, "generation", ack.Generation, "result", ack.Result)
+		case now := <-ticker.C:
+			if birthPending {
+				if send("BIRTH", "shadow/reported") == nil {
+					birthPending = false
+					lastSnapshot = now
+				}
+				continue
+			}
+			if !controller.Active(now) {
+				machine.Stop()
+			}
 			state := machine.State(now)
 			if lastState == domain.Live && state == domain.Silent {
 				_ = send("SNAPSHOT", "shadow/reported")
@@ -125,57 +203,64 @@ func Run(ctx context.Context, c platform.Config, id string) error {
 					lastSnapshot = now
 				}
 			}
-			if machine.State(now) == domain.Live {
+			if state == domain.Live {
 				_ = send("LIVE", "telemetry/live")
 			}
 			if c.Scenario == "alarm-storm" && now.Sub(lastAlarm) >= 2*time.Second {
-				m := envelope("ALARM")
-				m.Code = "MOCK_OVERLOAD"
-				m.Text = "Simulated alarm"
-				if e = q.Push(m); e != nil {
-					logger.Error("critical spool capacity reached", "event", "spool_full")
+				m := factory.New("ALARM", contract.AlarmPayload{Code: "MOCK_OVERLOAD", Text: "Simulated alarm"})
+				if err := q.Push(m); err != nil {
+					logger.Error("critical spool capacity reached", "event", "spool_full", "messageId", m.MessageId)
 				}
 				lastAlarm = now
 			}
-			if m, ok := q.Peek(); ok {
+			if m, ok := q.Peek(); ok && now.Sub(lastRetry) >= 2*time.Second {
+				if lastEvent == m.MessageId {
+					q.Retry()
+				}
+				lastEvent = m.MessageId
+				lastRetry = now
 				machine.BeginEvent()
 				suffix := "event"
 				if m.Kind == "ALARM" {
 					suffix = "alarm"
 				}
-				if broker.Publish(ctx, m, suffix) == nil {
-					if e = q.Ack(m.MessageId); e != nil {
-						return e
-					}
+				// Broker PUBACK deliberately does not remove the critical record.
+				if err := broker.Publish(ctx, m, suffix); err != nil {
+					logger.Warn("critical event retry", "event", "event_retry", "messageId", m.MessageId)
 				}
 				machine.AckEvent()
 			}
 		}
 	}
 }
+
 func RunFleet(ctx context.Context, c platform.Config) error {
+	go MetricsServer(ctx)
 	if c.Scenario == "offline" {
 		<-ctx.Done()
 		return nil
 	}
+	fleetCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	errs := make(chan error, c.Count)
 	for i := 1; i <= c.Count; i++ {
 		id := fmt.Sprintf("SIM-%03d", i)
 		go func() {
 			if c.Scenario != "intermittent" {
-				errs <- Run(ctx, c, id)
+				errs <- Run(fleetCtx, c, id)
 				return
 			}
+			// This scenario models process restarts, distinct from MQTT-only fault tests.
 			for {
-				child, cancel := context.WithTimeout(ctx, 20*time.Second)
+				child, stop := context.WithTimeout(fleetCtx, 20*time.Second)
 				e := Run(child, c, id)
-				cancel()
+				stop()
 				if e != nil {
 					errs <- e
 					return
 				}
 				select {
-				case <-ctx.Done():
+				case <-fleetCtx.Done():
 					errs <- nil
 					return
 				case <-time.After(5 * time.Second):
@@ -183,10 +268,12 @@ func RunFleet(ctx context.Context, c platform.Config) error {
 			}
 		}()
 	}
+	var first error
 	for i := 0; i < c.Count; i++ {
-		if e := <-errs; e != nil {
-			return e
+		if e := <-errs; e != nil && first == nil {
+			first = e
+			cancel()
 		}
 	}
-	return nil
+	return first
 }

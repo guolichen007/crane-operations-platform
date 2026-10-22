@@ -64,57 +64,83 @@ func Run(args []string) error {
 	if e != nil {
 		return e
 	}
-	leases := session.New(time.Duration(c.TTL)*time.Second, time.Duration(c.Grace)*time.Second)
-	var mqttMessages, dbErrors, wsClients atomic.Int64
+	leases := session.New(db, time.Duration(c.TTL)*time.Second, time.Duration(c.Grace)*time.Second)
+	var mqttMessages, dbErrors, wsClients, eventAcks atomic.Int64
 	var mqttUp atomic.Bool
+	ackQueue := make(chan contract.Envelope, 256)
+	reconcileAll := make(chan struct{}, 1)
+	cloudBoot := platform.ID()
+	var cloudSequence atomic.Int64
 	broker, e := platform.Connect(ctx, c, "cloud-api", []string{"crane/v1/demo/Project-A/+/heartbeat", "crane/v1/demo/Project-A/+/shadow/reported", "crane/v1/demo/Project-A/+/telemetry/live", "crane/v1/demo/Project-A/+/alarm", "crane/v1/demo/Project-A/+/event", "crane/v1/demo/Project-A/+/command/ack"}, nil, func(topic string, b []byte) error {
 		mqttMessages.Add(1)
-		var m contract.Message
-		t, p, d, suffix, err := contract.ParseTopic(topic)
-		if err != nil || json.Unmarshal(b, &m) != nil || contract.Validate(m) != nil || m.TenantId != t || m.ProjectId != p || m.DeviceId != d {
+		m, err := contract.Decode(topic, b)
+		if err != nil {
 			logger.Warn("invalid MQTT envelope", "event", "message_rejected")
 			return nil
 		}
-		valid := map[string]map[string]bool{"shadow/reported": {"BIRTH": true, "SNAPSHOT": true, "LWT": true}, "heartbeat": {"HEARTBEAT": true}, "telemetry/live": {"LIVE": true}, "alarm": {"ALARM": true}, "event": {"EVENT": true}, "command/ack": {"WATCH_ACK": true}}
-		if !valid[suffix][m.Kind] {
-			return nil
-		}
 		for {
+			err = nil
 			callCtx, done := context.WithTimeout(ctx, 5*time.Second)
-			if m.Kind == "ALARM" || m.Kind == "EVENT" {
+			switch m.Kind {
+			case "ALARM", "EVENT":
 				err = alarm.Record(callCtx, db, m)
-			} else if m.Kind != "WATCH_ACK" {
-				err = store.Apply(callCtx, m)
+				if err == nil {
+					ack := contract.WithPayload(contract.Envelope{SchemaVersion: 1, MessageId: platform.ID(), TenantId: m.TenantId, ProjectId: m.ProjectId, DeviceId: m.DeviceId, BootId: cloudBoot, BootSeq: 1, Sequence: cloudSequence.Add(1), SentAt: time.Now().UTC(), Kind: "EVENT_STORED_ACK", CorrelationId: m.MessageId}, contract.EventStoredAckPayload{SourceMessageId: m.MessageId, Result: "STORED"})
+					select {
+					case ackQueue <- ack:
+					default:
+						err = errors.New("application ACK queue full")
+					}
+				}
+			case "WATCH_ACK":
+				current, ok := store.Get(m.DeviceId)
+				if ok && m.BootSeq == current.Presence.BootSeq && m.BootId == current.Presence.BootId {
+					a := contract.Payload[contract.WatchAckPayload](m)
+					err = leases.Ack(callCtx, m.DeviceId, a, time.Now())
+					if err == nil {
+						logger.Info("watch application ACK", "event", "watch_ack", "deviceId", m.DeviceId, "commandId", a.CommandId, "generation", a.Generation, "result", a.Result)
+					}
+				}
+			default:
+				allowed := true
+				if m.Kind == "LIVE" {
+					p := contract.Payload[contract.LiveTelemetryPayload](m)
+					allowed, err = leases.AcceptLive(callCtx, m.DeviceId, p.LeaseId, p.Generation)
+				}
+				if err == nil && allowed {
+					var accepted bool
+					accepted, err = store.Apply(callCtx, m)
+					if err == nil && accepted && m.Kind == "BIRTH" {
+						err = leases.Reconcile(callCtx, m.DeviceId, time.Now())
+					}
+					if err == nil && accepted && (m.Kind == "DEATH" || m.Kind == "LWT") {
+						err = leases.Offline(callCtx, m.DeviceId)
+					}
+				}
 			}
 			done()
 			if err == nil {
 				return nil
 			}
 			dbErrors.Add(1)
-			logger.Error("message persistence failed; acknowledgment withheld", "event", "db_write_failed", "deviceId", d)
+			logger.Error("message persistence failed; acknowledgment withheld", "event", "db_write_failed", "deviceId", m.DeviceId, "messageId", m.MessageId)
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
 			case <-time.After(time.Second):
 			}
 		}
-	}, func() { mqttUp.Store(true) }, func() { mqttUp.Store(false) })
+	}, func() {
+		mqttUp.Store(true)
+		select {
+		case reconcileAll <- struct{}{}:
+		default:
+		}
+	}, func() { mqttUp.Store(false) })
 	if e != nil {
 		return e
 	}
 	defer broker.CM.Disconnect(context.Background())
-	command := func(deviceID, kind, sid string) error {
-		v, ok := store.Get(deviceID)
-		if !ok {
-			return errors.New("unknown device")
-		}
-		suffix := map[string]string{"WATCH_START": "command/watch/start", "WATCH_RENEW": "command/watch/renew", "WATCH_STOP": "command/watch/stop"}[kind]
-		m := contract.Message{SchemaVersion: 1, MessageId: platform.ID(), TenantId: v.TenantId, ProjectId: v.ProjectId, DeviceId: deviceID, BootId: "cloud", Sequence: time.Now().UnixMilli(), Timestamp: time.Now().UTC(), Kind: kind, SessionId: sid, TtlSeconds: c.TTL + c.Grace, TelemetryHz: 1}
-		if m.TtlSeconds > 300 {
-			m.TtlSeconds = 300
-		}
-		return broker.Publish(ctx, m, suffix)
-	}
 	go func() {
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
@@ -122,11 +148,44 @@ func Run(args []string) error {
 			select {
 			case <-ctx.Done():
 				return
-			case now := <-ticker.C:
-				for _, d := range leases.Sweep(now) {
-					if err := command(d, "WATCH_STOP", ""); err != nil {
-						logger.Warn("watch stop failed; edge TTL remains authoritative", "event", "watch_stop_failed")
+			case ack := <-ackQueue:
+				if err := broker.Publish(ctx, ack, "event/ack"); err == nil {
+					eventAcks.Add(1)
+				} else {
+					logger.Warn("event ACK unsent; Edge retains spool", "event", "event_ack_unsent", "deviceId", ack.DeviceId, "messageId", ack.CorrelationId)
+				}
+			case <-reconcileAll:
+				ids, err := leases.Devices(ctx)
+				if err == nil {
+					for _, id := range ids {
+						if err = leases.Reconcile(ctx, id, time.Now()); err != nil {
+							break
+						}
 					}
+				}
+				if err != nil {
+					dbErrors.Add(1)
+					logger.Error("desired-state reconciliation failed", "event", "reconcile_failed")
+				}
+			case now := <-ticker.C:
+				if err := leases.Tick(ctx, now); err != nil {
+					dbErrors.Add(1)
+					continue
+				}
+				pending, err := leases.Pending(ctx, now)
+				if err != nil {
+					dbErrors.Add(1)
+					continue
+				}
+				for _, m := range pending {
+					suffix := map[string]string{"WATCH_START": "command/watch/start", "WATCH_RENEW": "command/watch/renew", "WATCH_STOP": "command/watch/stop"}[m.Kind]
+					if err = broker.Publish(ctx, m, suffix); err != nil {
+						continue
+					}
+					if err = leases.Published(ctx, m.MessageId, time.Now()); err != nil {
+						dbErrors.Add(1)
+					}
+					logger.Info("watch command published; application ACK pending", "event", "watch_sent", "deviceId", m.DeviceId, "commandId", m.MessageId, "generation", contract.Payload[contract.WatchCommandPayload](m).Generation)
 				}
 			}
 		}
@@ -157,7 +216,7 @@ func Run(args []string) error {
 	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, r *http.Request) {
 		connected := 0
 		for _, v := range store.List() {
-			if v.Reported.Connectivity == "MQTT_CONNECTED" {
+			if v.Presence.Connectivity == "MQTT_CONNECTED" {
 				connected++
 			}
 		}
@@ -166,7 +225,9 @@ func Run(args []string) error {
 			dbErrors.Add(1)
 		}
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-		fmt.Fprintf(w, "mqtt_connected_devices %d\ndevice_live_sessions %d\nremote_sessions 0\nmqtt_messages_total %d\nalarms_total %d\npointcloud_frames_total 0\npointcloud_frames_dropped_total 0\nwebsocket_clients %d\ndb_query_errors_total %d\n", connected, leases.Count(), mqttMessages.Load(), len(alarms), wsClients.Load(), dbErrors.Load())
+		fmt.Fprintf(w, "mqtt_connected_devices %d\nremote_sessions 0\nmqtt_messages_total %d\nalarms_total %d\npointcloud_frames_total 0\npointcloud_frames_dropped_total 0\nwebsocket_clients %d\ndb_query_errors_total %d\n", connected, mqttMessages.Load(), len(alarms), wsClients.Load(), dbErrors.Load())
+		fmt.Fprint(w, leases.Metrics(r.Context()))
+		fmt.Fprintf(w, "event_application_acks_total %d\nmqtt_reconnects_total %d\n", eventAcks.Load(), platform.MQTTReconnects.Load())
 	})
 	mux.HandleFunc("POST /api/v1/auth/dev-session", func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := auth.Authenticate(r, c.Token); !ok {
@@ -177,13 +238,30 @@ func Run(args []string) error {
 		respond(w, 200, map[string]string{"mode": "development-only"})
 	})
 	api := http.NewServeMux()
-	api.HandleFunc("GET /api/v1/devices", func(w http.ResponseWriter, r *http.Request) { respond(w, 200, store.List()) })
+	api.HandleFunc("GET /api/v1/devices", func(w http.ResponseWriter, r *http.Request) {
+		values := store.List()
+		for i := range values {
+			status, err := leases.Status(r.Context(), values[i].DeviceId)
+			if err != nil {
+				respond(w, 503, map[string]string{"error": "database unavailable"})
+				return
+			}
+			values[i].UpstreamStatus = status
+		}
+		respond(w, 200, values)
+	})
 	detail := func(w http.ResponseWriter, r *http.Request) {
 		v, ok := store.Get(r.PathValue("id"))
 		if !ok {
 			respond(w, 404, map[string]string{"error": "not found"})
 			return
 		}
+		status, err := leases.Status(r.Context(), v.DeviceId)
+		if err != nil {
+			respond(w, 503, map[string]string{"error": "database unavailable"})
+			return
+		}
+		v.UpstreamStatus = status
 		respond(w, 200, v)
 	}
 	api.HandleFunc("GET /api/v1/devices/{id}", detail)
@@ -203,35 +281,36 @@ func Run(args []string) error {
 			respond(w, 404, map[string]string{"error": "not found"})
 			return
 		}
-		s, first := leases.Open(platform.ID(), id, identity.ID, time.Now())
-		kind := "WATCH_RENEW"
-		if first {
-			kind = "WATCH_START"
-		}
-		if e := command(id, kind, s.SessionId); e != nil {
-			leases.Close(s.SessionId, identity.ID, time.Now())
-			respond(w, 503, map[string]string{"error": "edge unavailable"})
+		s, err := leases.Open(r.Context(), platform.ID(), id, identity.ID, time.Now())
+		if err != nil {
+			respond(w, 503, map[string]string{"error": "database unavailable"})
 			return
 		}
+		logger.Info("viewer lease created", "event", "viewer_opened", "deviceId", id, "sessionId", s.SessionId)
 		respond(w, 201, s)
 	})
 	api.HandleFunc("POST /api/v1/live-sessions/{sessionId}/renew", func(w http.ResponseWriter, r *http.Request) {
 		identity, _ := auth.Authenticate(r, c.Token)
-		s, ok := leases.Renew(r.PathValue("sessionId"), identity.ID, time.Now())
-		if !ok {
+		s, err := leases.Renew(r.Context(), r.PathValue("sessionId"), identity.ID, time.Now())
+		if errors.Is(err, session.ErrNotFound) {
 			respond(w, 404, map[string]string{"error": "expired session"})
 			return
 		}
-		if e := command(s.DeviceId, "WATCH_RENEW", s.SessionId); e != nil {
-			respond(w, 503, map[string]string{"error": "edge unavailable"})
+		if err != nil {
+			respond(w, 503, map[string]string{"error": "database unavailable"})
 			return
 		}
 		respond(w, 200, s)
 	})
 	api.HandleFunc("DELETE /api/v1/live-sessions/{sessionId}", func(w http.ResponseWriter, r *http.Request) {
 		identity, _ := auth.Authenticate(r, c.Token)
-		if !leases.Close(r.PathValue("sessionId"), identity.ID, time.Now()) {
+		err := leases.Close(r.Context(), r.PathValue("sessionId"), identity.ID, time.Now())
+		if errors.Is(err, session.ErrNotFound) {
 			respond(w, 404, map[string]string{"error": "not found"})
+			return
+		}
+		if err != nil {
+			respond(w, 503, map[string]string{"error": "database unavailable"})
 			return
 		}
 		w.WriteHeader(204)
@@ -256,9 +335,14 @@ func Run(args []string) error {
 		defer ticker.Stop()
 		for {
 			v, _ := store.Get(id)
+			status, err := leases.Status(clientCtx, id)
+			if err != nil {
+				return
+			}
+			v.UpstreamStatus = status
 			b, _ := json.Marshal(v)
 			writeCtx, done := context.WithTimeout(clientCtx, 2*time.Second)
-			err := conn.Write(writeCtx, websocket.MessageText, b)
+			err = conn.Write(writeCtx, websocket.MessageText, b)
 			done()
 			if err != nil {
 				return

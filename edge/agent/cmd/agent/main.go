@@ -18,6 +18,7 @@ func main() {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	go runner.MetricsServer(ctx)
 	if e = runner.Run(ctx, c, "SIM-001"); e != nil {
 		logger.Error("agent stopped", "event", "agent_failed")
 		os.Exit(1)
