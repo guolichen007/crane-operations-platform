@@ -1,0 +1,2 @@
+device_id,project,software_version,os,local_web_version,controller_type,plc_type,ros_version,mqtt_available,http_api,websocket_api,pointcloud_source,pointcloud_topic,network_type,internet_available,remote_access_requirement,notes
+SIM-001,Project-A,mock-0.1.0,simulated,unavailable,mock,none,none,true,false,false,none,,simulated,true,none,匿名样例；不要填写真实IP或Secret
