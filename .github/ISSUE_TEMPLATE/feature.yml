@@ -1,0 +1,13 @@
+name: 功能建议
+description: 请勿包含客户资料或凭据
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题、预期行为与复现步骤
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: 验证证据与安全影响

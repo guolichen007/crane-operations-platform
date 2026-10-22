@@ -1,0 +1,9 @@
+**/node_modules
+**/dist*
+.git
+local-private
+tools/.cache
+release
+deploy/compose/runtime
+test-results*
+playwright-report
