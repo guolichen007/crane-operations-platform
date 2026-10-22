@@ -21,3 +21,7 @@ Used for a preprogrammed scene entrance sequence, driven from the scene clock. N
 
 Vue, Pinia, Vue Router, Three.js, camera-controls, postprocessing, d3-geo, ECharts and lucide-vue-next remain npm runtime dependencies. Available package license texts are retained under licenses/. Exact resolved versions are recorded in package-lock.json. Map source and internal-prototype limitations remain documented in apps/web-console/public/geo/source.json and docs/04-前端与可视化/地图数据合规说明.md.
 
+
+## Go runtime dependencies
+
+The cloud/edge services use Eclipse Paho Go (EPL-2.0 and EDL-1.0), pgx (MIT), Goose (MIT), and coder/websocket (ISC). Exact versions and transitive modules are locked in go.mod/go.sum. Upstream license files are available in the Go module distribution; packaging for production must retain the applicable notices. No root license for this commercial project is selected.

@@ -1,0 +1,38 @@
+{
+  "codeSha": "7564d38e6218da663cd6f6bcc21c981d904a8036",
+  "runId": 39722512861,
+  "url": "https://github.com/guolichen007/crane-operations-platform/actions/runs/39722512861",
+  "status": "PASS",
+  "jobs": [
+    {
+      "name": "backend",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "edge",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "integration",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "security",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "frontend",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "repository-contract",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ]
+}

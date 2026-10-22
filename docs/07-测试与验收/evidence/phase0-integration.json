@@ -1,0 +1,70 @@
+{
+  "status": "PASS",
+  "proof": [
+    {
+      "check": "unauthorized API rejected",
+      "status": "PASS",
+      "at": "2026-10-22T04:00:28.122Z"
+    },
+    {
+      "check": "one device Edge → MQTT TLS → Cloud → PostgreSQL",
+      "status": "PASS",
+      "at": "2026-10-22T04:00:28.130Z"
+    },
+    {
+      "check": "20 independent MQTT certificate identities",
+      "status": "PASS",
+      "at": "2026-10-22T04:00:33.118Z"
+    },
+    {
+      "check": "watch and live",
+      "status": "PASS",
+      "at": "2026-10-22T04:00:34.232Z"
+    },
+    {
+      "check": "five viewers share manager upstream",
+      "status": "PASS",
+      "at": "2026-10-22T04:00:35.321Z"
+    },
+    {
+      "check": "grace after final viewer",
+      "status": "PASS",
+      "at": "2026-10-22T04:00:38.466Z"
+    },
+    {
+      "check": "unrenewed TTL returns SILENT",
+      "status": "PASS",
+      "at": "2026-10-22T04:00:46.718Z"
+    },
+    {
+      "check": "TLS ACL deny cross-device and command; immediate alarm; dedup",
+      "status": "PASS",
+      "at": "2026-10-22T04:00:47.694Z"
+    },
+    {
+      "check": "out-of-order rejection",
+      "status": "PASS",
+      "at": "2026-10-22T04:00:49.105Z"
+    },
+    {
+      "check": "browser displays PostgreSQL-backed Shadow",
+      "status": "PASS",
+      "at": "2026-10-22T04:00:50.449Z"
+    },
+    {
+      "check": "LWT distinguishes offline and unknown health",
+      "status": "PASS",
+      "at": "2026-10-22T04:00:51.430Z"
+    },
+    {
+      "check": "reconnect new boot",
+      "status": "PASS",
+      "at": "2026-10-22T04:00:53.163Z"
+    },
+    {
+      "check": "Cloud restart restores persisted Shadow cache",
+      "status": "PASS",
+      "at": "2026-10-22T04:00:55.820Z"
+    }
+  ]
+}
