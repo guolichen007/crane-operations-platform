@@ -1,95 +1,86 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, shallowRef } from 'vue';
 import { useRoute } from 'vue-router';
-import type { Shadow, LiveSession } from '../../../../contracts/typescript/types.gen';
+import type { Shadow } from '../../../../contracts/typescript/types.gen';
+import { listDevices, getDevice } from '../cloud/api';
+import { formatCloudTime, deviceState, silentExplanation } from '../cloud/format';
+import { LiveViewer, type ViewerSnapshot } from '../cloud/LiveViewer';
 const route = useRoute();
 const devices = ref<Shadow[]>([]),
   current = ref<Shadow>(),
-  session = ref<LiveSession>(),
-  error = ref(''),
-  busy = ref(false);
+  error = ref('');
+const viewer = shallowRef<ViewerSnapshot>({ state: 'STOPPED', error: '' });
 const detail = computed(() => (typeof route.params.id === 'string' ? route.params.id : ''));
-let poll: ReturnType<typeof setInterval>,
-  renew: ReturnType<typeof setInterval> | undefined,
-  socket: WebSocket | undefined;
-async function api<T>(path: string, method = 'GET'): Promise<T> {
-  const response = await fetch('/api/v1/' + path, { method, credentials: 'same-origin' });
-  if (!response.ok)
-    throw Error(
-      response.status === 401 ? '请先使用底部开发凭据连接云端' : `云端请求失败 (${response.status})`
-    );
-  return response.status === 204 ? (undefined as T) : response.json();
-}
+let disposed = false,
+  revision = 0,
+  poll: ReturnType<typeof setInterval>;
+// Storage may be disabled by browser policy. TTL still limits the lease in that case.
+const storage = {
+  getItem: (key: string) => window.sessionStorage.getItem(key),
+  setItem: (key: string, value: string) => window.sessionStorage.setItem(key, value),
+  removeItem: (key: string) => window.sessionStorage.removeItem(key),
+};
+const live = new LiveViewer({
+  storage,
+  target: window,
+  onChange: (value) => {
+    viewer.value = value;
+  },
+  onShadow: (shadow) => {
+    current.value = shadow;
+  },
+});
 async function refresh() {
+  const request = ++revision,
+    id = detail.value;
   try {
-    devices.value = (await api<Shadow[]>('devices')).sort((a, b) =>
-      a.deviceId.localeCompare(b.deviceId)
-    );
-    current.value = devices.value.find((d) => d.deviceId === detail.value);
+    if (id) {
+      const shadow = await getDevice(id);
+      if (disposed || request !== revision || id !== detail.value) return;
+      // A slower poll must not replace a more recent stream frame.
+      if (!current.value || shadow.version >= current.value.version) current.value = shadow;
+      live.pollingAvailable();
+    } else {
+      const result = await listDevices();
+      if (disposed || request !== revision) return;
+      devices.value = result.sort((a, b) => a.deviceId.localeCompare(b.deviceId));
+    }
     error.value = '';
   } catch (e) {
-    error.value = (e as Error).message;
+    if (!disposed && request === revision) error.value = (e as Error).message;
   }
 }
-async function stop() {
-  socket?.close();
-  socket = undefined;
-  if (renew) clearInterval(renew);
-  const id = session.value?.sessionId;
-  session.value = undefined;
-  if (id) {
-    try {
-      await api(`live-sessions/${id}`, 'DELETE');
-    } catch {
-      /* edge lease is bounded even after network loss */
-    }
-  }
-}
-async function start() {
-  busy.value = true;
-  try {
-    await stop();
-    session.value = await api<LiveSession>(`devices/${detail.value}/live-sessions`, 'POST');
-    socket = new WebSocket(
-      `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/api/v1/devices/${detail.value}/stream`
-    );
-    socket.onmessage = (event) => {
-      current.value = JSON.parse(event.data) as Shadow;
-    };
-    socket.onclose = () => {
-      if (session.value) error.value = '连接中断，展示最近状态；租约会自动到期';
-    };
-    renew = setInterval(async () => {
-      if (!session.value) return;
-      try {
-        session.value = await api<LiveSession>(
-          `live-sessions/${session.value.sessionId}/renew`,
-          'POST'
-        );
-      } catch {
-        await stop();
-        error.value = '续租失败，已停止实时查看';
-      }
-    }, Math.min(60000, Math.max(1000, session.value.ttlSeconds * 1000 / 3)));
-  } catch (e) {
-    error.value = (e as Error).message;
-  } finally {
-    busy.value = false;
-  }
-}
-watch(detail, async () => {
-  await stop();
-  await refresh();
-});
-onMounted(() => {
+watch(detail, () => {
+  ++revision;
+  current.value = undefined;
+  void live.stop();
   void refresh();
-  poll = setInterval(refresh, 15000);
+});
+onMounted(async () => {
+  try {
+    await live.initialize();
+  } catch {
+    /* The next LIVE attempt retries stale cleanup. */
+  }
+  if (disposed) return;
+  void refresh();
+  poll = setInterval(() => void refresh(), 15000);
   window.addEventListener('cloud-authenticated', refresh);
 });
 onUnmounted(() => {
+  disposed = true;
+  ++revision;
   clearInterval(poll);
   window.removeEventListener('cloud-authenticated', refresh);
-  void stop();
+  void live.dispose();
+});
+const active = computed(() => viewer.value.state !== 'STOPPED');
+const streamHeading = computed(() => {
+  if (viewer.value.state === 'STOPPED') return 'Last Known State · 最近状态';
+  if (viewer.value.state === 'RECONNECTING') return '实时流中断 · 正在重连';
+  if (viewer.value.state === 'POLLING_FALLBACK') return '最近状态可用 · 实时流正在恢复';
+  if (viewer.value.state === 'CONNECTING') return '正在连接实时流';
+  return `LIVE 上游：${current.value?.upstreamStatus}`;
 });
 </script>
 <template>
@@ -97,33 +88,63 @@ onUnmounted(() => {
     <p class="eyebrow">CLOUD SHADOW / MQTT 5 · TLS</p>
     <h1>{{ detail ? `设备 ${detail}` : '云端设备台账' }}</h1>
     <p role="status">
-      {{ error || `已接收 ${devices.length} 台模拟设备；读取云端缓存，不唤醒现场` }}
+      {{
+        error ||
+        viewer.error ||
+        (detail
+          ? 'Cloud API · SIM 为模拟设备'
+          : `已接收 ${devices.length} 台云端设备；SIM 为模拟设备，读取缓存不唤醒现场`)
+      }}
     </p>
+    <p class="silent-note">{{ silentExplanation }}</p>
     <template v-if="detail">
       <router-link to="/devices">← 返回台账</router-link>
       <section v-if="current" class="shadow-card" data-testid="device-shadow">
-        <h2>{{ session ? `LIVE 上游：${current.upstreamStatus}` : 'Last Known State · 最近状态' }}</h2>
+        <h2 :data-stream-state="viewer.state">{{ streamHeading }}</h2>
         <p>
-          最后更新时间：<time>{{ current.updatedAt }}</time> · 版本 {{ current.version }}
+          最后更新时间：<time :title="current.updatedAt" :datetime="current.updatedAt">{{
+            formatCloudTime(current.updatedAt)
+          }}</time
+          >（Asia/Shanghai） · 版本 {{ current.version }}
         </p>
         <p>
-          {{ current.presence.connectivity }} / {{ current.presence.edgeHealth }} /
+          {{ deviceState(current) }} / {{ current.presence.edgeHealth }} /
           {{ current.presence.controllerHealth }}
         </p>
-        <p>采集状态 {{ current.reported.operatingState }} · 下线原因 {{ current.presence.disconnectReason }}</p>
+        <p>
+          最后心跳：<time
+            :title="current.presence.lastSeenAt"
+            :datetime="current.presence.lastSeenAt"
+            >{{ formatCloudTime(current.presence.lastSeenAt) }}</time
+          >
+        </p>
+        <p>
+          采集状态 {{ current.reported.operatingState }} · 下线原因
+          {{ current.presence.disconnectReason }}
+        </p>
         <dl>
           <dt>X / Y / Z</dt>
           <dd>
-            {{ current.reported.position.x.toFixed(2) }} / {{ current.reported.position.y.toFixed(2) }} /
+            {{ current.reported.position.x.toFixed(2) }} /
+            {{ current.reported.position.y.toFixed(2) }} /
             {{ current.reported.position.z.toFixed(2) }} m
           </dd>
           <dt>负载</dt>
           <dd>{{ current.reported.load }} t</dd>
         </dl>
-        <button :disabled="busy" @click="session ? stop() : start()">
-          {{ session ? '停止实时查看' : '申请 LIVE · 1 Hz' }}
+        <button @click="active ? live.stop() : live.start(detail)">
+          {{ active ? '停止实时查看' : '申请 LIVE · 1 Hz' }}
         </button>
-        <p v-if="session">租约到期：{{ session.expiresAt }}。上游仅在设备应用回执确认后显示 LIVE。</p>
+        <p v-if="viewer.session">
+          租约到期：<time :title="viewer.session.expiresAt" :datetime="viewer.session.expiresAt">{{
+            formatCloudTime(viewer.session.expiresAt)
+          }}</time
+          >。上游仅在设备应用回执确认后显示 LIVE。
+        </p>
+        <p>
+          离开/刷新会尽力关闭 Viewer；浏览器异常或断网时由云端 TTL + Grace
+          兜底。刷新后回到最近状态。
+        </p>
         <p>Point Cloud / Remote Local Web：Phase 2 未启用。</p>
         <router-link to="/alarms">Alarm · 告警记录 →</router-link>
       </section>
@@ -138,8 +159,16 @@ onUnmounted(() => {
       >
         <h2>{{ device.deviceId }}</h2>
         <p>{{ device.projectId }}</p>
-        <p>{{ device.presence.connectivity }} · {{ device.reported.operatingState }}</p>
-        <small>最近状态 {{ device.updatedAt }}</small>
+        <p :title="`${device.presence.connectivity} · ${device.reported.operatingState}`">
+          {{ deviceState(device) }}
+        </p>
+        <small
+          >最近状态
+          <time :title="device.updatedAt" :datetime="device.updatedAt">{{
+            formatCloudTime(device.updatedAt)
+          }}</time>
+          · 上海</small
+        >
       </router-link>
     </div>
   </main>
@@ -148,9 +177,11 @@ onUnmounted(() => {
 .cloud-devices {
   padding: 42px;
   color: #cce6ed;
-  max-height: calc(100vh - 70px);
+  flex: 1;
+  min-height: 0;
   overflow: auto;
-  padding-bottom: 130px;
+  padding-bottom: calc(160px + env(safe-area-inset-bottom, 0px));
+  scroll-padding-bottom: 160px;
 }
 .eyebrow {
   font-size: 11px;
