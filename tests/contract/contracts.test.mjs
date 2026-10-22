@@ -4,7 +4,25 @@ import { readFile } from 'node:fs/promises';
 import Ajv from 'ajv/dist/2020.js';
 import formats from 'ajv-formats';
 import YAML from 'yaml';
+import SwaggerParser from '@apidevtools/swagger-parser';
+import { Parser } from '@asyncapi/parser';
+import { resolve } from 'node:path';
 const read = async (p) => JSON.parse(await readFile(p, 'utf8'));
+test('REST and MQTT documents pass standards parsers; legacy security shape is rejected', async () => {
+  await SwaggerParser.validate(resolve('contracts/openapi/cloud-api.yaml'));
+  const spec = await read('contracts/asyncapi/edge-mqtt.yaml');
+  const parser = new Parser();
+  const result = await parser.parse(spec);
+  assert.deepEqual(
+    result.diagnostics.filter((d) => d.severity === 0),
+    []
+  );
+  assert.ok(result.document);
+  const invalid = structuredClone(spec);
+  invalid.servers.dev.security = [{ deviceCertificate: [] }];
+  const rejected = await parser.parse(invalid);
+  assert.ok(rejected.diagnostics.some((d) => d.severity === 0));
+});
 test('all generated envelopes validate; malformed topic identity rejected', async () => {
   const ajv = new Ajv({ strict: true });
   formats(ajv);

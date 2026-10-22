@@ -1,4 +1,4 @@
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 const paths = {};
 function add(path, method, operationId, response, status = '200') {
   const params = [...path.matchAll(/\{([^}]+)\}/g)].map((m) => ({
@@ -41,6 +41,15 @@ add('/api/v1/auth/dev-session', 'post', 'developmentSession', {
   properties: { mode: { const: 'development-only' } },
 });
 add('/api/v1/devices/{id}/stream', 'get', 'streamShadow', null, '101');
+const schemas = {};
+for (const name of ['Message', 'Shadow', 'LiveSession']) {
+  const schema = JSON.parse(
+    await readFile(`contracts/schemas/v1/${name.toLowerCase()}.json`, 'utf8')
+  );
+  delete schema.$id;
+  if (name === 'Shadow') schema.properties.reported = { $ref: '#/components/schemas/Message' };
+  schemas[name] = schema;
+}
 const spec = {
   openapi: '3.1.0',
   info: {
@@ -61,11 +70,7 @@ const spec = {
       },
       devCookie: { type: 'apiKey', in: 'cookie', name: 'crane_dev' },
     },
-    schemas: {
-      Shadow: { $ref: '../schemas/v1/shadow.json' },
-      Message: { $ref: '../schemas/v1/message.json' },
-      LiveSession: { $ref: '../schemas/v1/livesession.json' },
-    },
+    schemas,
   },
 };
 const text = JSON.stringify(spec, null, 2) + '\n';

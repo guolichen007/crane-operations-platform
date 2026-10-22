@@ -11,7 +11,7 @@
       "protocolVersion": "5",
       "security": [
         {
-          "deviceCertificate": []
+          "$ref": "#/components/securitySchemes/deviceCertificate"
         }
       ]
     }
@@ -258,7 +258,143 @@
     "messages": {
       "Message": {
         "payload": {
-          "$ref": "../schemas/v1/message.json"
+          "schemaFormat": "application/schema+json;version=draft-07",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "schemaVersion",
+              "messageId",
+              "tenantId",
+              "projectId",
+              "deviceId",
+              "bootId",
+              "sequence",
+              "timestamp",
+              "kind",
+              "connectivity",
+              "edgeHealth",
+              "controllerHealth",
+              "sensorHealth",
+              "operatingState",
+              "mode",
+              "alarmState",
+              "softwareVersion",
+              "runtimeTotal",
+              "x",
+              "y",
+              "z",
+              "load",
+              "sessionId",
+              "ttlSeconds",
+              "telemetryHz",
+              "code",
+              "text"
+            ],
+            "properties": {
+              "schemaVersion": {
+                "const": 1
+              },
+              "messageId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "tenantId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "projectId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "deviceId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "bootId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "timestamp": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "BIRTH",
+                  "LWT",
+                  "HEARTBEAT",
+                  "SNAPSHOT",
+                  "LIVE",
+                  "ALARM",
+                  "EVENT",
+                  "WATCH_START",
+                  "WATCH_RENEW",
+                  "WATCH_STOP",
+                  "WATCH_ACK"
+                ]
+              },
+              "connectivity": {
+                "type": "string"
+              },
+              "edgeHealth": {
+                "type": "string"
+              },
+              "controllerHealth": {
+                "type": "string"
+              },
+              "sensorHealth": {
+                "type": "string"
+              },
+              "operatingState": {
+                "type": "string"
+              },
+              "mode": {
+                "type": "string"
+              },
+              "alarmState": {
+                "type": "string"
+              },
+              "softwareVersion": {
+                "type": "string"
+              },
+              "runtimeTotal": {
+                "type": "number"
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "z": {
+                "type": "number"
+              },
+              "load": {
+                "type": "number"
+              },
+              "sessionId": {
+                "type": "string"
+              },
+              "ttlSeconds": {
+                "type": "integer"
+              },
+              "telemetryHz": {
+                "type": "integer"
+              },
+              "code": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          }
         }
       }
     },
