@@ -1,0 +1,8 @@
+{
+  "source": "DataV.GeoAtlas",
+  "url": "https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json",
+  "retrieved": "2026-10-19",
+  "use": "内部开发原型，未经审图；正式公开展示前须替换为合规地图并标注来源/审图号",
+  "files": 364,
+  "regions": 3238
+}

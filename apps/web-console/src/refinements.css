@@ -1,0 +1,206 @@
+/* Keep navigation reachable on office displays without covering the map. */
+.map-project.real::before {
+  content: 'REAL';
+  display: inline-block;
+  font:
+    6px Consolas,
+    monospace;
+  letter-spacing: 0.6px;
+  padding: 1px 3px;
+  margin-right: 4px;
+  border: 1px solid #af8c5155;
+  color: #bca578;
+  vertical-align: 1px;
+}
+.device-panel {
+  display: flex;
+  flex-direction: column;
+}
+.device-panel > .panel-title {
+  order: 0;
+}
+.device-panel > .detail-heading {
+  order: 1;
+}
+.device-panel > .detail-model {
+  order: 2;
+}
+.device-panel > .spec-grid {
+  order: 3;
+}
+.device-panel > .detail-section {
+  order: 5;
+}
+.device-panel > .detail-section:has(.planned-state) {
+  order: 4;
+}
+.device-panel > .coordinate-note {
+  order: 7;
+}
+.device-panel > .detail-link {
+  order: 8;
+}
+.right-context .detail-heading {
+  margin-top: 14px;
+}
+.right-context .detail-heading h2 {
+  font-size: 20px;
+  margin: 10px 0 8px;
+}
+.right-context .detail-model {
+  margin-top: 16px;
+  font-size: 14px;
+}
+.right-context .spec-grid {
+  gap: 14px;
+  margin-top: 18px;
+  padding-bottom: 17px;
+}
+.right-context .spec-grid strong {
+  font-size: 21px;
+}
+.right-context .detail-section {
+  padding-top: 14px;
+}
+.right-context .planned-state {
+  margin-bottom: 13px;
+  padding: 8px;
+  font-size: 9px;
+}
+.right-context .detail-section h4 {
+  margin-bottom: 8px;
+}
+.right-context .milestone {
+  margin-top: 12px;
+}
+.right-context .planned-note {
+  padding: 10px 0;
+}
+.right-context .coordinate-note {
+  margin: 18px 0 13px;
+}
+.left-context {
+  gap: 17px;
+  bottom: 45px;
+}
+.asset-grid {
+  margin-top: 13px;
+  gap: 12px;
+}
+.asset-grid span {
+  font-size: 9px;
+  margin-top: 4px;
+}
+.asset-grid b {
+  font-size: 23px;
+}
+.stacked-bar {
+  margin: 14px 0 13px;
+}
+.status-legend {
+  gap: 9px 15px;
+}
+.source-filter {
+  margin-top: 11px;
+}
+.status-filters {
+  gap: 4px;
+  margin-top: 8px;
+}
+.status-filters button {
+  font-size: 8px;
+  padding: 4px 5px;
+}
+.region-chips {
+  min-height: 70px;
+}
+.region-navigation {
+  overflow: hidden;
+}
+.map-attribution {
+  max-width: 205px;
+  font-size: 7px;
+}
+.right-context {
+  background: linear-gradient(90deg, #0a1215b3, #0b141ad9);
+}
+@media (min-width: 1700px) {
+  .left-context {
+    gap: 25px;
+  }
+  .asset-grid {
+    gap: 22px;
+  }
+  .asset-grid b {
+    font-size: 27px;
+  }
+  .status-legend {
+    gap: 16px;
+  }
+  .map-attribution {
+    max-width: 350px;
+    font-size: 8px;
+  }
+  .plan-item {
+    padding-top: 12px;
+    padding-bottom: 10px;
+  }
+  .plan-content strong {
+    font-size: 12px;
+  }
+  .plan-content > small {
+    font-size: 9px;
+  }
+  .plan-date {
+    margin-top: 8px;
+  }
+}
+@media (max-height: 820px) {
+  .left-context {
+    gap: 12px;
+  }
+  .asset-grid {
+    gap: 9px;
+    margin-top: 10px;
+  }
+  .asset-grid b {
+    font-size: 20px;
+  }
+  .status-legend {
+    gap: 7px;
+  }
+  .stacked-bar {
+    margin: 10px 0;
+  }
+  .source-filter {
+    margin-top: 8px;
+  }
+  .status-filters {
+    margin-top: 6px;
+  }
+  .region-search {
+    padding: 4px 6px;
+    margin-top: 7px;
+  }
+  .region-chips {
+    margin-top: 7px;
+    min-height: 55px;
+  }
+  .region-chips button {
+    padding: 4px 5px;
+    font-size: 8px;
+  }
+  .left-context .panel-title h3 {
+    font-size: 11px;
+  }
+  .left-context .panel-title > span {
+    font-size: 7px;
+  }
+}
+.map-project.instance::before {
+  display: none;
+}
+.map-project.instance {
+  padding: 2px 5px;
+  font-size: 9px;
+}

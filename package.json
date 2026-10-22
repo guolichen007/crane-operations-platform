@@ -1,0 +1,31 @@
+{
+  "name": "crane-operations-platform",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/web-console"
+  ],
+  "engines": {
+    "node": "24.19.x",
+    "npm": "11.17.x"
+  },
+  "scripts": {
+    "dev": "npm run dev --workspace @crane/web-console",
+    "preview": "npm run preview --workspace @crane/web-console",
+    "typecheck": "npm run typecheck --workspace @crane/web-console",
+    "lint": "npm run lint --workspace @crane/web-console",
+    "test": "npm run test --workspace @crane/web-console",
+    "build": "npm run build --workspace @crane/web-console",
+    "build:html": "npm run build:html --workspace @crane/web-console",
+    "test:e2e": "playwright test",
+    "contract": "node tools/codegen/contracts.mjs --check",
+    "bootstrap": "node tools/task.mjs bootstrap",
+    "integration-test": "node tests/integration/run.mjs"
+  },
+  "devDependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "yaml": "2.9.1"
+  }
+}
