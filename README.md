@@ -1,6 +1,6 @@
 # Crane Operations Platform
 
-全国行车综合管理平台：Vue 3 沙盘 + Go 云端模块化单体 + 出站 Edge + MQTT 5/TLS + PostgreSQL。目标 20 台，大多时间 SILENT。当前 Phase 0，远程 Web 与点云完整功能留待 Phase 2，真实控制未实现。
+全国行车综合管理平台：Vue 3 沙盘 + Go 云端模块化单体 + 出站 Edge + MQTT 5/TLS + PostgreSQL。目标 20 台，大多时间 SILENT。当前 T0.5 协议与运行时加固；真实设备、生产身份、远程 Web 和点云未启用。
 
 ## 快速开始
 
@@ -28,8 +28,8 @@ node tools/task.mjs build
 npm run test:e2e
 ```
 
-同名 Makefile 与 scripts/*.ps1 是等价入口。详见 [文档索引](docs/README.md)、[验收报告](docs/07-测试与验收/Phase0验收报告.md)、[贡献规范](CONTRIBUTING.md)。
+同名 Makefile 与 scripts/*.ps1 是等价入口。详见 [文档索引](docs/README.md)、[T0.5 工程说明](docs/01-系统架构/T0.5协议与运行时加固说明.md)、[Phase0 验收证据](docs/07-测试与验收/Phase0验收报告.md)、[贡献规范](CONTRIBUTING.md)。
 
 现场自治；云端不直连 PLC；不开放 Edge 入站公网端口。开发身份仅用于本机验证。Secret/证书/生成物不入库，公开数据匿名。旧客户版和完整历史保存在本地忽略的 local-private 与旧分支，公共历史不包含旧客户提交。根开源许可证由所有者决定；第三方条款见 THIRD_PARTY_NOTICES.md。
 
-本次首次正式提交不创建 PR，保持 feature/phase0-enterprise-bootstrap 并等待人工审查；main 未合并功能代码。
+T0.5 从已验收 bb059256149a99f8e1482b5e77af9403a70bbe80 建立 feature/phase0-5-protocol-hardening。完成后保持功能分支，等待人工审查；不创建 PR、Tag，不合并 main。
