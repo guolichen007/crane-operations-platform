@@ -1,0 +1,91 @@
+name: Phase 0 quality and security
+on:
+  push:
+    branches: [main, 'feature/**', 'fix/**']
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: phase0-${{ github.ref }}
+  cancel-in-progress: true
+defaults:
+  run:
+    shell: bash
+jobs:
+  repository-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: {node-version: '24.19.0', cache: npm}
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with: {go-version: '1.27.3', cache: true}
+      - run: npm ci
+      - run: node tools/diagnostics/repository.mjs
+      - run: node tools/codegen/contracts.mjs --check && node tools/codegen/openapi.mjs --check
+      - run: node --test tests/contract/contracts.test.mjs
+      - run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
+        with: {go-version: '1.27.3', cache: true}
+      - run: go test -race ./services/... ./internal/... ./contracts/... ./deploy/postgres/...
+      - run: go vet ./...
+      - run: test -z "$(gofmt -l contracts internal services edge simulators tools/certs tools/diagnostics/mqtt-probe deploy/postgres)"
+      - run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
+      - run: go build ./...
+  edge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
+        with: {go-version: '1.27.3', cache: true}
+      - run: go test -race ./edge/... ./simulators/...
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with: {node-version: '24.19.0', cache: npm}
+      - run: npm ci
+      - run: npm run typecheck && npm run lint && npm test && npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SIM_COUNT: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
+        with: {go-version: '1.27.3', cache: true}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with: {node-version: '24.19.0', cache: npm}
+      - run: node tools/task.mjs bootstrap
+      - run: npx playwright install --with-deps chromium
+      - run: node tools/task.mjs dev-up
+      - run: node tools/task.mjs integration-test
+      - if: failure()
+        run: node tools/task.mjs dev-logs
+      - if: always()
+        run: node tools/task.mjs dev-down
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {fetch-depth: 0}
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
+        with: {go-version: '1.27.3', cache: true}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with: {node-version: '24.19.0', cache: npm}
+      - run: go run github.com/zricethezav/gitleaks/v8@v8.30.1 git . --redact
+      - run: npm ci && npm audit --audit-level=high
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+      - run: docker run --rm -v "$PWD:/repo:ro" aquasec/trivy:0.74.0 fs --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --skip-dirs /repo/node_modules /repo
+      - run: docker build -f deploy/Dockerfile.backend -t crane-cloud:ci .
+      - run: docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.74.0 image --severity HIGH,CRITICAL --exit-code 1 crane-cloud:ci

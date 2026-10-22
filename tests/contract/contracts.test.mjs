@@ -7,10 +7,8 @@ import YAML from 'yaml';
 const read=async p=>JSON.parse(await readFile(p,'utf8'));
 test('all generated envelopes validate; malformed topic identity rejected',async()=>{
  const ajv=new Ajv({strict:true});formats(ajv);
- const model=await read('contracts/model.json');
  for(const name of ['message','shadow','livesession'])ajv.addSchema(await read(`contracts/schemas/v1/${name}.json`));
- const sample=Object.fromEntries(Object.entries(model.types.Message).map(([k,t])=>[k,t==='time'?new Date().toISOString():t==='string'?'':0]));
- Object.assign(sample,{schemaVersion:1,messageId:'test-1',tenantId:'demo',projectId:'Project-A',deviceId:'SIM-001',bootId:'boot-1',kind:'BIRTH'});
+ const sample=await read('tests/fixtures/birth.json');
  const validate=ajv.getSchema('https://contracts.invalid/crane/v1/message.json');
  assert.ok(validate(sample),JSON.stringify(validate.errors));
  assert.equal(validate({...sample,deviceId:'+/unauthorized'}),false);

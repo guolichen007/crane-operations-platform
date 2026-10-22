@@ -1,0 +1,5 @@
+[extend]
+useDefault = true
+[[allowlists]]
+description = "Local dependencies, private archives and generated development material are never public source"
+paths = ['''(^|/)(node_modules|local-private|runtime|release|dist|dist-offline|\.cache|playwright-report|test-results[^/]*)(/|$)''']
