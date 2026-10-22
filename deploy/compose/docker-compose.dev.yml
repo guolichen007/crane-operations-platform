@@ -1,0 +1,82 @@
+name: crane-phase0
+services:
+  postgres:
+    image: postgres:17.8-alpine
+    environment:
+      POSTGRES_USER: crane
+      POSTGRES_DB: crane
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run bootstrap}
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U crane -d crane]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  mosquitto:
+    image: eclipse-mosquitto:2.0.22
+    user: "0:0" # dev bind-mounted keys are 0600; production uses provisioned broker-owned keys
+    command: [mosquitto, -c, /mosquitto/config/mosquitto.conf]
+    ports: ["127.0.0.1:8883:8883"]
+    volumes:
+      - ../mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ../mosquitto/acl:/mosquitto/config/acl:ro
+      - ./runtime/certs/broker:/mosquitto/certs:ro
+      - mqtt-data:/mosquitto/data
+  cloud-api:
+    build:
+      context: ../..
+      dockerfile: deploy/Dockerfile.backend
+    command: [--migrate]
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgres://crane:${POSTGRES_PASSWORD}@postgres:5432/crane?sslmode=disable
+      MQTT_URL: tls://mosquitto:8883
+      CERT_DIR: /certs
+      DEV_API_TOKEN: ${DEV_API_TOKEN:?run bootstrap}
+      LIVE_TTL_SECONDS: ${LIVE_TTL_SECONDS:-300}
+      LIVE_GRACE_SECONDS: ${LIVE_GRACE_SECONDS:-45}
+    user: "0:0" # dev keys only; see production provisioning requirements
+    volumes: [./runtime/certs/cloud:/certs:ro]
+    ports: ["127.0.0.1:8081:8081"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      mosquitto: {condition: service_started}
+    restart: on-failure:3
+  remote-gateway:
+    build:
+      context: ../..
+      dockerfile: deploy/Dockerfile.backend
+      args: {TARGET: services/remote-gateway}
+    expose: [8082]
+  web-console:
+    build:
+      context: ../..
+      dockerfile: deploy/Dockerfile.web
+    ports: ["127.0.0.1:8080:8080"]
+    depends_on: [cloud-api]
+  device-simulator:
+    build:
+      context: ../..
+      dockerfile: deploy/Dockerfile.backend
+      args: {TARGET: simulators/device-simulator}
+    command: [--count, "${SIM_COUNT:-20}", --scenario, "${SIM_SCENARIO:-normal}"]
+    user: "0:0" # dev fleet fixture holds 20 distinct device certificates
+    environment:
+      MQTT_URL: tls://mosquitto:8883
+      CERT_DIR: /certs
+      DATA_DIR: /spool
+    volumes:
+      - ./runtime/certs/devices:/certs:ro
+      - simulator-spool:/spool
+    depends_on: [mosquitto, cloud-api]
+  pointcloud-bridge:
+    profiles: [pointcloud]
+    build:
+      context: ../..
+      dockerfile: deploy/Dockerfile.backend
+      args: {TARGET: edge/pointcloud-bridge}
+volumes:
+  postgres-data:
+  mqtt-data:
+  simulator-spool:
+

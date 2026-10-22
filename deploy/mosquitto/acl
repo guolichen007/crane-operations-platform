@@ -1,0 +1,16 @@
+# Device certificate CN becomes username. No cross-device subscription or command publishing.
+pattern write crane/v1/demo/Project-A/%u/heartbeat
+pattern write crane/v1/demo/Project-A/%u/shadow/reported
+pattern write crane/v1/demo/Project-A/%u/telemetry/live
+pattern write crane/v1/demo/Project-A/%u/alarm
+pattern write crane/v1/demo/Project-A/%u/event
+pattern write crane/v1/demo/Project-A/%u/command/ack
+pattern read crane/v1/demo/Project-A/%u/command/watch/+
+user cloud-api
+topic read crane/v1/demo/Project-A/+/heartbeat
+topic read crane/v1/demo/Project-A/+/shadow/reported
+topic read crane/v1/demo/Project-A/+/telemetry/live
+topic read crane/v1/demo/Project-A/+/alarm
+topic read crane/v1/demo/Project-A/+/event
+topic read crane/v1/demo/Project-A/+/command/ack
+topic write crane/v1/demo/Project-A/+/command/watch/+
