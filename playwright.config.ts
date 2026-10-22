@@ -9,7 +9,8 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:5173',
     viewport: { width: 1440, height: 900 },
-    channel: process.env.CI ? undefined : 'chrome',
+    channel: process.env.PLAYWRIGHT_CHANNEL || (process.env.CI ? undefined : 'chrome'),
+    deviceScaleFactor: process.env.CI ? 0.25 : 1,
     launchOptions: { args: ['--enable-webgl', '--ignore-gpu-blocklist', '--enable-unsafe-swiftshader'] },
     trace: 'retain-on-failure',
   },
