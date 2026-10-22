@@ -8,6 +8,6 @@ ARG TARGET=services/cloud-api/cmd/cloud-api
 RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/service ./${TARGET}
 FROM alpine:3.23
 RUN apk add --no-cache ca-certificates && addgroup -g 10001 app && adduser -D -u 10001 -G app app
-COPY --from=build /out/service /usr/local/bin/service
+COPY --from=build --chmod=0755 /out/service /usr/local/bin/service
 USER 10001:10001
 ENTRYPOINT ["service"]

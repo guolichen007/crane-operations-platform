@@ -23,8 +23,9 @@ try {
   assert.equal(first.reported.edgeHealth,'EDGE_HEALTHY');record('one device Edge → MQTT TLS → Cloud → PostgreSQL');
   compose(['up','-d','--force-recreate','cloud-api'],{LIVE_TTL_SECONDS:'5',LIVE_GRACE_SECONDS:'2'});
   await until('short test lease configuration',async()=> (await fetch(base+'/health/ready')).ok);
-  compose(['up','-d','--force-recreate','device-simulator'],{SIM_COUNT:'20'});
-  await until('20 connected devices',async()=>{const list=await api('devices');return list.filter(d=>d.reported.connectivity==='MQTT_CONNECTED').length===20;});record('20 independent MQTT certificate identities');
+  const fleetRestart=Date.now();
+  compose(['up','-d','--force-recreate','--no-deps','device-simulator'],{SIM_COUNT:'20'});
+  await until('20 connected devices',async()=>{const list=await api('devices');return list.filter(d=>d.reported.connectivity==='MQTT_CONNECTED' && Date.parse(d.updatedAt)>=fleetRestart).length===20;});record('20 independent MQTT certificate identities');
   const sessions=[];for(let i=0;i<5;i++)sessions.push(await api('devices/SIM-001/live-sessions','POST',201));
   const live=await until('WATCH → 1 Hz LIVE',async()=>{const d=await api('devices/SIM-001/shadow');return d.reported.kind==='LIVE'&&d;});record('watch and live');
   assert.equal(sessions[0].telemetryHz,1);
@@ -34,6 +35,7 @@ try {
   for(const s of sessions)await api(`live-sessions/${s.sessionId}`,'DELETE',204);
   await until('grace → SILENT',async()=> (await api('devices/SIM-001/shadow')).reported.operatingState==='SILENT',20000);record('grace after final viewer');
   await api('devices/SIM-001/live-sessions','POST',201);
+  await until('unrenewed lease enters LIVE',async()=> (await api('devices/SIM-001/shadow')).reported.kind==='LIVE');
   await until('unrenewed TTL expires',async()=> (await api('devices/SIM-001/shadow')).reported.operatingState==='SILENT',20000);record('unrenewed TTL returns SILENT');
   compose(['exec','-T','web-console','nginx','-s','reload']);
   const current=await api('devices/SIM-001/shadow');
@@ -44,11 +46,14 @@ try {
   writeFileSync(fixture,JSON.stringify({...current.reported,kind:'SNAPSHOT',x:999,sequence:0}));run(go,['run','./tools/diagnostics/mqtt-probe','--message',fixture]);
   await pause(1000);assert.notEqual((await api('devices/SIM-001/shadow')).reported.x,999);record('out-of-order rejection');
   const {chromium}=await import('@playwright/test');const browser=await chromium.launch(win?{channel:'chrome'}:{headless:true});
-  try{const page=await browser.newPage();await page.goto('http://127.0.0.1:8080/#/devices');await page.getByLabel('本地开发凭据',{exact:true}).fill(token);await page.getByRole('button',{name:'连接云端',exact:true}).click();await page.getByTestId('cloud-device').first().waitFor();assert.equal(await page.getByTestId('cloud-device').count(),20);await page.getByTestId('cloud-device').first().click();await page.getByTestId('device-shadow').waitFor();assert.ok((await page.getByTestId('device-shadow').textContent()).includes('Last Known State'));await page.screenshot({path:'local-private/validation/cloud-shadow.png',fullPage:true});record('browser displays PostgreSQL-backed Shadow');}finally{await browser.close();}
+  try{const page=await browser.newPage();await page.goto((process.env.PHASE0_WEB_URL||`http://127.0.0.1:${config.WEB_PORT||18080}`)+'/#/devices');await page.getByLabel('本地开发凭据',{exact:true}).fill(token);await page.getByRole('button',{name:'连接云端',exact:true}).click();await page.getByTestId('cloud-device').first().waitFor();assert.equal(await page.getByTestId('cloud-device').count(),20);await page.getByTestId('cloud-device').first().click();await page.getByTestId('device-shadow').waitFor();assert.ok((await page.getByTestId('device-shadow').textContent()).includes('Last Known State'));await page.screenshot({path:'local-private/validation/cloud-shadow.png',fullPage:true});record('browser displays PostgreSQL-backed Shadow');}finally{await browser.close();}
   compose(['kill','-s','SIGKILL','device-simulator']);
-  await until('LWT OFFLINE',async()=> (await api('devices')).every(d=>d.reported.connectivity==='OFFLINE'),30000);record('LWT distinguishes offline and unknown health');
-  compose(['up','-d','device-simulator'],{SIM_COUNT:'20'});
+  await until('LWT OFFLINE',async()=> (await api('devices')).filter(d=>d.reported.connectivity==='OFFLINE').length===20,30000);record('LWT distinguishes offline and unknown health');
+  compose(['up','-d','--no-deps','device-simulator'],{SIM_COUNT:'20'});
   await until('reconnect restores 20 shadows',async()=> (await api('devices')).filter(d=>d.reported.connectivity==='MQTT_CONNECTED').length===20);record('reconnect new boot');
   compose(['exec','-T','postgres','psql','-U','crane','-d','crane','-v','ON_ERROR_STOP=1','-c',"SELECT count(*) AS persisted_shadows FROM device_shadow; SELECT count(*) AS migrations FROM goose_db_version WHERE is_applied; SELECT count(*) AS alarms FROM alarms;"]);
+  const durable=await api('devices/SIM-001/shadow');
+  compose(['restart','cloud-api']);
+  await until('restart restores persisted Shadow',async()=> (await fetch(base+'/health/ready')).ok && (await api('devices/SIM-001/shadow')).version>=durable.version);record('Cloud restart restores persisted Shadow cache');
   writeFileSync('local-private/validation/integration.json',JSON.stringify({status:'PASS',proof},null,2));console.log('PHASE0_INTEGRATION=PASS');
 }catch(error){writeFileSync('local-private/validation/integration.json',JSON.stringify({status:'FAIL',error:error.message,proof},null,2));throw error;}

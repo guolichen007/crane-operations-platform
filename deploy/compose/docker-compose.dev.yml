@@ -15,7 +15,7 @@ services:
   mosquitto:
     image: eclipse-mosquitto:2.0.22
     user: "0:0" # dev bind-mounted keys are 0600; production uses provisioned broker-owned keys
-    command: [sh, -c, 'mkdir -p /run/crane-certs && cp /cert-source/* /run/crane-certs/ && chown -R mosquitto:mosquitto /run/crane-certs && chmod 700 /run/crane-certs && chmod 600 /run/crane-certs/* && exec mosquitto -c /mosquitto/config/mosquitto.conf']
+    command: [sh, -c, 'mkdir -p /run/crane-certs && cp /cert-source/* /run/crane-certs/ && cp /mosquitto/config/acl /run/crane-certs/acl && chown -R mosquitto:mosquitto /run/crane-certs && chmod 700 /run/crane-certs && chmod 600 /run/crane-certs/* && exec mosquitto -c /mosquitto/config/mosquitto.conf']
     ports: ["127.0.0.1:8883:8883"]
     volumes:
       - ../mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
@@ -52,7 +52,7 @@ services:
     build:
       context: ../..
       dockerfile: deploy/Dockerfile.web
-    ports: ["127.0.0.1:8080:8080"]
+    ports: ["127.0.0.1:${WEB_PORT:-18080}:8080"]
     depends_on: [cloud-api]
   device-simulator:
     build:
