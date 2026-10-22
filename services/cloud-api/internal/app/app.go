@@ -71,7 +71,7 @@ func Run(args []string) error {
 	reconcileAll := make(chan struct{}, 1)
 	cloudBoot := platform.ID()
 	var cloudSequence atomic.Int64
-	broker, e := platform.Connect(ctx, c, "cloud-api", []string{"crane/v1/demo/Project-A/+/heartbeat", "crane/v1/demo/Project-A/+/shadow/reported", "crane/v1/demo/Project-A/+/telemetry/live", "crane/v1/demo/Project-A/+/alarm", "crane/v1/demo/Project-A/+/event", "crane/v1/demo/Project-A/+/command/ack"}, nil, func(topic string, b []byte) error {
+	broker, e := platform.Connect(ctx, c, "cloud-api", []string{"crane/v1/demo/Project-A/+/heartbeat", "crane/v1/demo/Project-A/+/shadow/reported", "crane/v1/demo/Project-A/+/telemetry/live", "crane/v1/demo/Project-A/+/alarm", "crane/v1/demo/Project-A/+/event", "crane/v1/demo/Project-A/+/command/ack"}, nil, func(topic string, b []byte, _ time.Duration) error {
 		mqttMessages.Add(1)
 		m, err := contract.Decode(topic, b)
 		if err != nil {

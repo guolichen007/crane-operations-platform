@@ -23,13 +23,13 @@ UPDATE alarms SET payload_json = jsonb_build_object(
  'schemaVersion',1,'messageId',message_id,'tenantId',payload_json->>'tenantId','projectId',payload_json->>'projectId',
  'deviceId',device_id,'bootId',payload_json->>'bootId','bootSeq',1,'sequence',GREATEST(COALESCE((payload_json->>'sequence')::bigint,1),1),
  'sentAt',observed_at,'kind','ALARM','correlationId','',
- 'payload',jsonb_build_object('code',payload_json->>'code','text',payload_json->>'text)
+ 'payload',jsonb_build_object('code',payload_json->>'code','text',payload_json->>'text')
 ) WHERE NOT payload_json ? 'payload';
 UPDATE events SET payload_json = jsonb_build_object(
  'schemaVersion',1,'messageId',message_id,'tenantId',payload_json->>'tenantId','projectId',payload_json->>'projectId',
  'deviceId',device_id,'bootId',payload_json->>'bootId','bootSeq',1,'sequence',GREATEST(COALESCE((payload_json->>'sequence')::bigint,1),1),
  'sentAt',observed_at,'kind','EVENT','correlationId','',
- 'payload',jsonb_build_object('code',payload_json->>'code','text',payload_json->>'text)
+ 'payload',jsonb_build_object('code',payload_json->>'code','text',payload_json->>'text')
 ) WHERE NOT payload_json ? 'payload';
 
 CREATE INDEX live_sessions_device_expiry ON live_sessions(device_id,expires_at);

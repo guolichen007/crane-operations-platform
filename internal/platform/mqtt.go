@@ -19,7 +19,7 @@ type Broker struct{ CM *autopaho.ConnectionManager }
 var MQTTReconnects atomic.Int64
 var ErrMessageExpired = errors.New("message expired before publish")
 
-func Connect(ctx context.Context, c Config, id string, subscriptions []string, will func() contract.Envelope, receive func(string, []byte) error, up func(), down func()) (*Broker, error) {
+func Connect(ctx context.Context, c Config, id string, subscriptions []string, will func() contract.Envelope, receive func(string, []byte, time.Duration) error, up func(), down func()) (*Broker, error) {
 	u, e := url.Parse(c.MQTTURL)
 	if e != nil || u.Scheme != "tls" {
 		return nil, fmt.Errorf("MQTT requires tls URL")
@@ -34,7 +34,11 @@ func Connect(ctx context.Context, c Config, id string, subscriptions []string, w
 		}
 		return time.Duration(1<<n) * time.Second
 	}, ClientConfig: paho.ClientConfig{ClientID: id, EnableManualAcknowledgment: true, OnPublishReceived: []func(paho.PublishReceived) (bool, error){func(p paho.PublishReceived) (bool, error) {
-		err := receive(p.Packet.Topic, p.Packet.Payload)
+		remaining := time.Duration(-1)
+		if p.Packet.Properties != nil && p.Packet.Properties.MessageExpiry != nil {
+			remaining = time.Duration(*p.Packet.Properties.MessageExpiry) * time.Second
+		}
+		err := receive(p.Packet.Topic, p.Packet.Payload, remaining)
 		if err == nil {
 			err = p.Client.Ack(p.Packet)
 		}

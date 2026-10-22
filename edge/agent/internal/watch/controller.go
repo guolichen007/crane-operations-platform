@@ -44,7 +44,10 @@ func (c *Controller) Generation() int64         { return c.state.Generation }
 func (c *Controller) LeaseID() string           { return c.state.LeaseID }
 func (c *Controller) Active(now time.Time) bool { return now.Before(c.Until) }
 func (c *Controller) Disconnect()               { c.Until = time.Time{} }
-func (c *Controller) Apply(m contract.Envelope, now time.Time) (contract.WatchAckPayload, error) {
+
+// deadline is derived from the broker's remaining Message Expiry on receipt,
+// retaining Go's monotonic clock. Device UTC / payload expiresAt is not authoritative.
+func (c *Controller) Apply(m contract.Envelope, now, deadline time.Time) (contract.WatchAckPayload, error) {
 	p := contract.Payload[contract.WatchCommandPayload](m)
 	ack := contract.WatchAckPayload{CommandId: m.MessageId, LeaseId: p.LeaseId, Generation: p.Generation, Action: m.Kind, Result: "APPLIED", Reason: "", EdgeState: "SILENT", AppliedAt: now.UTC()}
 	if c.Active(now) {
@@ -66,7 +69,7 @@ func (c *Controller) Apply(m contract.Envelope, now time.Time) (contract.WatchAc
 	case p.Generation < c.state.Generation:
 		ack.Result = "STALE"
 		ack.Reason = "older generation"
-	case !now.Before(p.ExpiresAt):
+	case !now.Before(deadline):
 		ack.Result = "EXPIRED"
 		ack.Reason = "command deadline elapsed"
 	case m.Kind == "WATCH_START" && p.Generation > c.state.Generation:

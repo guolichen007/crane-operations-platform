@@ -23,9 +23,16 @@ func Start(path string) (Identity, error) {
 	if err != nil && !os.IsNotExist(err) {
 		return Identity{}, err
 	}
-	if len(b) > 0 {
+	if err == nil {
+		var stored map[string]json.RawMessage
+		if json.Unmarshal(b, &stored) != nil || stored["bootSeq"] == nil {
+			return Identity{}, errors.New("missing durable boot counter")
+		}
 		if err = json.Unmarshal(b, &state); err != nil {
 			return Identity{}, err
+		}
+		if state.BootSeq < 1 {
+			return Identity{}, errors.New("invalid durable boot counter")
 		}
 	}
 	if state.BootSeq < 0 || state.BootSeq >= 9007199254740991 {

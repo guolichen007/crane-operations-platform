@@ -22,6 +22,11 @@ import (
 var queues sync.Map
 var eventACKs atomic.Int64
 
+type pendingCommand struct {
+	Message  contract.Envelope
+	Deadline time.Time
+}
+
 // MetricsServer is loopback-only and has no management routes or host port mapping.
 func MetricsServer(ctx context.Context) {
 	mux := http.NewServeMux()
@@ -69,13 +74,13 @@ func Run(ctx context.Context, c platform.Config, id string) error {
 	defer queues.Delete(id)
 	machine := &domain.Machine{}
 	adapter := mock.Telemetry{}
-	inbox := make(chan contract.Envelope, 32)
+	inbox := make(chan pendingCommand, 32)
 	born := make(chan struct{}, 1)
 	start, _ := contract.Topic("demo", "Project-A", id, "command/watch/start")
 	ackTopic, _ := contract.Topic("demo", "Project-A", id, "event/ack")
 	mqttCtx, mqttCancel := context.WithCancel(context.Background())
 	defer mqttCancel()
-	broker, e := platform.Connect(mqttCtx, c, id, []string{start[:len(start)-len("start")] + "+", ackTopic}, factory.ConnectionWill, func(topic string, b []byte) error {
+	broker, e := platform.Connect(mqttCtx, c, id, []string{start[:len(start)-len("start")] + "+", ackTopic}, factory.ConnectionWill, func(topic string, b []byte, expiry time.Duration) error {
 		m, err := contract.Decode(topic, b)
 		if err != nil {
 			logger.Warn("invalid message", "event", "message_rejected")
@@ -93,8 +98,14 @@ func Run(ctx context.Context, c platform.Config, id string) error {
 			}
 			return nil
 		}
+		deadline := time.Time{}
+		if expiry > 0 {
+			p := contract.Payload[contract.WatchCommandPayload](m)
+			expiry = min(expiry, time.Duration(p.TtlSeconds)*time.Second)
+			deadline = time.Now().Add(expiry)
+		}
 		select {
-		case inbox <- m:
+		case inbox <- pendingCommand{Message: m, Deadline: deadline}:
 			return nil
 		default:
 			return errors.New("command inbox full")
@@ -157,8 +168,9 @@ func Run(ctx context.Context, c platform.Config, id string) error {
 				birthPending = false
 				lastSnapshot = time.Now()
 			}
-		case m := <-inbox:
-			ack, err := controller.Apply(m, time.Now())
+		case command := <-inbox:
+			m := command.Message
+			ack, err := controller.Apply(m, time.Now(), command.Deadline)
 			if err != nil {
 				return err
 			}
@@ -209,6 +221,9 @@ func Run(ctx context.Context, c platform.Config, id string) error {
 			if c.Scenario == "alarm-storm" && now.Sub(lastAlarm) >= 2*time.Second {
 				m := factory.New("ALARM", contract.AlarmPayload{Code: "MOCK_OVERLOAD", Text: "Simulated alarm"})
 				if err := q.Push(m); err != nil {
+					if !errors.Is(err, spool.ErrFull) {
+						return err
+					}
 					logger.Error("critical spool capacity reached", "event", "spool_full", "messageId", m.MessageId)
 				}
 				lastAlarm = now

@@ -18,19 +18,29 @@ type Queue struct {
 	retries int64
 }
 
+var ErrFull = errors.New("critical spool full: operator action required")
+
 func Open(path string, limit int) (*Queue, error) {
 	q := &Queue{path: path, limit: limit}
 	b, e := os.ReadFile(path)
 	if e != nil && !os.IsNotExist(e) {
 		return nil, e
 	}
-	if len(b) > 0 {
+	if e == nil {
 		if e = json.Unmarshal(b, &q.items); e != nil {
 			return nil, e
 		}
 	}
 	if len(q.items) > limit {
 		return nil, errors.New("spool over limit")
+	}
+	for _, m := range q.items {
+		if e = contract.Validate(m); e != nil {
+			return nil, e
+		}
+		if m.Kind != "ALARM" && m.Kind != "EVENT" {
+			return nil, errors.New("non-critical spool record")
+		}
 	}
 	return q, nil
 }
@@ -51,13 +61,16 @@ func (q *Queue) Push(m contract.Envelope) error {
 	if m.Kind != "ALARM" && m.Kind != "EVENT" {
 		return errors.New("only critical events may be queued")
 	}
+	if err := contract.Validate(m); err != nil {
+		return err
+	}
 	for _, v := range q.items {
 		if v.MessageId == m.MessageId {
 			return nil
 		}
 	}
 	if len(q.items) >= q.limit {
-		return errors.New("critical spool full: operator action required")
+		return ErrFull
 	}
 	items := append(append([]contract.Envelope{}, q.items...), m)
 	return q.save(items)
