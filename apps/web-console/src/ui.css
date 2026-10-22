@@ -939,3 +939,9 @@ td code {
     margin-bottom: 20px;
   }
 }
+
+/* Leave scroll room for the fixed development CloudStatus bar. */
+.cloud-workspace {
+  padding-bottom: calc(160px + env(safe-area-inset-bottom, 0px));
+  scroll-padding-bottom: 160px;
+}

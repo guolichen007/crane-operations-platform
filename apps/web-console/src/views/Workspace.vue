@@ -19,10 +19,13 @@ import { projects, devices, alarms, events, realProjects } from '../data';
 import { lifecycleText, statusText, type Device, type SourceFilter } from '../data/types';
 import DevicePanel from '../components/DevicePanel.vue';
 import ProjectPanel from '../components/ProjectPanel.vue';
+import CloudAlarms from '../components/CloudAlarms.vue';
+import { cloudMode } from '../cloud/api';
 import type { Project } from '../data/types';
 const Chart = defineAsyncComponent(() => import('../components/Chart.vue'));
 const route = useRoute();
 const page = computed(() => route.path.slice(1));
+const cloudAlarmPage = computed(() => cloudMode && page.value === 'alarms');
 const titles: Record<string, [string, string]> = {
   projects: ['项目中心', '统一管理全国项目与实施计划'],
   devices: ['设备中心', '查看设备档案、运行状态与所属项目'],
@@ -242,14 +245,14 @@ const trend = computed(() => ({
 }));
 </script>
 <template>
-  <main class="workspace-page">
+  <main class="workspace-page" :class="{ 'cloud-workspace': cloudMode }">
     <div class="page-heading">
       <div>
         <div class="eyebrow">OPERATIONS / {{ page.toUpperCase() }}</div>
         <h1>{{ titles[page]?.[0] }}</h1>
-        <p>{{ titles[page]?.[1] }}</p>
+        <p>{{ cloudAlarmPage ? 'Cloud Alarm · 云端设备告警' : titles[page]?.[1] }}</p>
       </div>
-      <span class="environment-pill"><i class="gold-dot"></i>本地演示工作区</span>
+      <span class="environment-pill"><i class="gold-dot"></i>{{ cloudAlarmPage ? 'Cloud API' : 'DEMO · 本地演示工作区' }}</span>
     </div>
     <template v-if="page === 'projects' || page === 'devices'">
       <div class="workspace-summary">
@@ -612,6 +615,7 @@ const trend = computed(() => ({
         <p v-if="notice" class="green" role="status">{{ notice }}</p>
       </section>
     </template>
+    <CloudAlarms v-else-if="cloudAlarmPage" />
     <template v-else-if="page === 'alarms'">
       <div class="alarm-summary">
         <div>

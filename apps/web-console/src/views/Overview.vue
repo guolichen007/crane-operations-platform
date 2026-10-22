@@ -22,6 +22,8 @@ import type { RegionEntry } from '../three/map/GeoJsonLoader';
 import { DemoTourController } from '../demo/DemoTourController';
 import DevicePanel from '../components/DevicePanel.vue';
 import ProjectPanel from '../components/ProjectPanel.vue';
+import CloudRuntime from '../components/CloudRuntime.vue';
+import { cloudMode } from '../cloud/api';
 const isDev = import.meta.env.DEV;
 const observation = ref<'operations' | 'cinematic'>('operations');
 async function switchObservation(mode: 'operations' | 'cinematic') {
@@ -271,7 +273,8 @@ onUnmounted(() => {
       </div>
       <div class="view-description">本地模拟数据 <span>/</span> 匿名登记项目按实施计划展示</div>
     </div>
-    <div class="kpi-strip">
+    <CloudRuntime v-if="cloudMode" />
+    <div class="kpi-strip" aria-label="匿名登记与演示空间资产">
       <div>
         <span>匿名登记项目</span><strong>6<small>项</small></strong
         ><em>覆盖 5 个省级区域</em>
