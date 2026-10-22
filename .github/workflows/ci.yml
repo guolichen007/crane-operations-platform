@@ -1,4 +1,4 @@
-name: Phase 0 quality and security
+name: T0.5 quality and security
 on:
   push:
     branches: [main, 'feature/**', 'fix/**']
@@ -33,7 +33,7 @@ jobs:
         with: { go-version: '1.27.3', cache: true }
       - run: go test -race ./services/... ./internal/... ./contracts/... ./deploy/postgres/...
       - run: go vet ./...
-      - run: test -z "$(gofmt -l contracts internal services edge simulators tools/certs tools/diagnostics/mqtt-probe deploy/postgres)"
+      - run: test -z "$(gofmt -l contracts internal services edge simulators tools/certs tools/diagnostics/mqtt-probe tests/integration/mqtt deploy/postgres)"
       - run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
       - run: go build ./...
   edge:
@@ -88,4 +88,5 @@ jobs:
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
       - run: docker run --rm -v "$PWD:/repo:ro" aquasec/trivy:0.74.0 fs --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --skip-dirs /repo/node_modules /repo
       - run: docker build -f deploy/Dockerfile.backend -t crane-cloud:ci .
-      - run: docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.74.0 image --severity HIGH,CRITICAL --exit-code 1 crane-cloud:ci
+      - run: docker save crane-cloud:ci -o "$RUNNER_TEMP/crane-cloud.tar"
+      - run: docker run --rm -v "$RUNNER_TEMP/crane-cloud.tar:/input.tar:ro" aquasec/trivy:0.74.0 image --input /input.tar --severity HIGH,CRITICAL --exit-code 1
