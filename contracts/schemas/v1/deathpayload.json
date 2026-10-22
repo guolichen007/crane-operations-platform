@@ -1,0 +1,589 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/deathpayload.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "reason"
+  ],
+  "properties": {
+    "reason": {
+      "type": "string",
+      "enum": [
+        "GRACEFUL",
+        "UNEXPECTED"
+      ]
+    }
+  },
+  "$defs": {
+    "Position": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "z": {
+          "type": "number"
+        }
+      }
+    },
+    "ReportedState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operatingState",
+        "mode",
+        "alarmState",
+        "runtimeTotal",
+        "position",
+        "load"
+      ],
+      "properties": {
+        "operatingState": {
+          "type": "string",
+          "enum": [
+            "DISCONNECTED",
+            "SILENT",
+            "LIVE",
+            "EVENT",
+            "UNKNOWN"
+          ]
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "AUTO",
+            "MANUAL",
+            "UNKNOWN"
+          ]
+        },
+        "alarmState": {
+          "type": "string",
+          "enum": [
+            "NONE",
+            "ACTIVE",
+            "UNKNOWN"
+          ]
+        },
+        "runtimeTotal": {
+          "type": "number",
+          "minimum": 0
+        },
+        "position": {
+          "$ref": "#/$defs/Position"
+        },
+        "load": {
+          "type": "number"
+        }
+      }
+    },
+    "BirthPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "edgeHealth",
+        "controllerHealth",
+        "sensorHealth",
+        "softwareVersion",
+        "reported"
+      ],
+      "properties": {
+        "edgeHealth": {
+          "type": "string",
+          "enum": [
+            "EDGE_HEALTHY",
+            "DEGRADED",
+            "UNKNOWN"
+          ]
+        },
+        "controllerHealth": {
+          "type": "string",
+          "enum": [
+            "CONTROLLER_HEALTHY",
+            "DEGRADED",
+            "UNKNOWN"
+          ]
+        },
+        "sensorHealth": {
+          "type": "string",
+          "enum": [
+            "HEALTHY",
+            "DEGRADED",
+            "UNKNOWN"
+          ]
+        },
+        "softwareVersion": {
+          "type": "string"
+        },
+        "reported": {
+          "$ref": "#/$defs/ReportedState"
+        }
+      }
+    },
+    "HeartbeatPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "edgeHealth",
+        "controllerHealth",
+        "sensorHealth"
+      ],
+      "properties": {
+        "edgeHealth": {
+          "type": "string",
+          "enum": [
+            "EDGE_HEALTHY",
+            "DEGRADED",
+            "UNKNOWN"
+          ]
+        },
+        "controllerHealth": {
+          "type": "string",
+          "enum": [
+            "CONTROLLER_HEALTHY",
+            "DEGRADED",
+            "UNKNOWN"
+          ]
+        },
+        "sensorHealth": {
+          "type": "string",
+          "enum": [
+            "HEALTHY",
+            "DEGRADED",
+            "UNKNOWN"
+          ]
+        }
+      }
+    },
+    "SnapshotPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "edgeHealth",
+        "controllerHealth",
+        "sensorHealth",
+        "reported"
+      ],
+      "properties": {
+        "edgeHealth": {
+          "type": "string",
+          "enum": [
+            "EDGE_HEALTHY",
+            "DEGRADED",
+            "UNKNOWN"
+          ]
+        },
+        "controllerHealth": {
+          "type": "string",
+          "enum": [
+            "CONTROLLER_HEALTHY",
+            "DEGRADED",
+            "UNKNOWN"
+          ]
+        },
+        "sensorHealth": {
+          "type": "string",
+          "enum": [
+            "HEALTHY",
+            "DEGRADED",
+            "UNKNOWN"
+          ]
+        },
+        "reported": {
+          "$ref": "#/$defs/ReportedState"
+        }
+      }
+    },
+    "LiveTelemetryPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "leaseId",
+        "generation",
+        "reported"
+      ],
+      "properties": {
+        "leaseId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "reported": {
+          "$ref": "#/$defs/ReportedState"
+        }
+      }
+    },
+    "DeathPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reason"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string",
+          "enum": [
+            "GRACEFUL",
+            "UNEXPECTED"
+          ]
+        }
+      }
+    },
+    "AlarmPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "text"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 1024
+        }
+      }
+    },
+    "EventPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "text"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 1024
+        }
+      }
+    },
+    "WatchCommandPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "leaseId",
+        "generation",
+        "ttlSeconds",
+        "telemetryHz",
+        "expiresAt"
+      ],
+      "properties": {
+        "leaseId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "ttlSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 300
+        },
+        "telemetryHz": {
+          "type": "integer",
+          "const": 1
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "WatchAckPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commandId",
+        "leaseId",
+        "generation",
+        "action",
+        "result",
+        "reason",
+        "edgeState",
+        "appliedAt"
+      ],
+      "properties": {
+        "commandId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        },
+        "leaseId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "WATCH_START",
+            "WATCH_RENEW",
+            "WATCH_STOP"
+          ]
+        },
+        "result": {
+          "type": "string",
+          "enum": [
+            "APPLIED",
+            "DUPLICATE",
+            "STALE",
+            "EXPIRED",
+            "REJECTED"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "edgeState": {
+          "type": "string",
+          "enum": [
+            "DISCONNECTED",
+            "SILENT",
+            "LIVE",
+            "EVENT"
+          ]
+        },
+        "appliedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "EventStoredAckPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceMessageId",
+        "result"
+      ],
+      "properties": {
+        "sourceMessageId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        },
+        "result": {
+          "type": "string",
+          "enum": [
+            "STORED"
+          ]
+        }
+      }
+    },
+    "Presence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "connectivity",
+        "edgeHealth",
+        "controllerHealth",
+        "sensorHealth",
+        "bootId",
+        "bootSeq",
+        "sequence",
+        "lastSeenAt",
+        "disconnectedAt",
+        "disconnectReason"
+      ],
+      "properties": {
+        "connectivity": {
+          "type": "string",
+          "enum": [
+            "MQTT_CONNECTED",
+            "OFFLINE",
+            "UNKNOWN"
+          ]
+        },
+        "edgeHealth": {
+          "type": "string",
+          "enum": [
+            "EDGE_HEALTHY",
+            "DEGRADED",
+            "UNKNOWN"
+          ]
+        },
+        "controllerHealth": {
+          "type": "string",
+          "enum": [
+            "CONTROLLER_HEALTHY",
+            "DEGRADED",
+            "UNKNOWN"
+          ]
+        },
+        "sensorHealth": {
+          "type": "string",
+          "enum": [
+            "HEALTHY",
+            "DEGRADED",
+            "UNKNOWN"
+          ]
+        },
+        "bootId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        },
+        "bootSeq": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "lastSeenAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "disconnectedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "disconnectReason": {
+          "type": "string",
+          "enum": [
+            "NONE",
+            "GRACEFUL",
+            "UNEXPECTED",
+            "MIGRATED"
+          ]
+        }
+      }
+    },
+    "Shadow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "deviceId",
+        "tenantId",
+        "projectId",
+        "presence",
+        "reported",
+        "updatedAt",
+        "version",
+        "upstreamStatus"
+      ],
+      "properties": {
+        "deviceId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        },
+        "tenantId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        },
+        "presence": {
+          "$ref": "#/$defs/Presence"
+        },
+        "reported": {
+          "$ref": "#/$defs/ReportedState"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "upstreamStatus": {
+          "type": "string",
+          "enum": [
+            "SILENT",
+            "STARTING",
+            "LIVE",
+            "STOPPING",
+            "FAILED",
+            "EXPIRED"
+          ]
+        }
+      }
+    },
+    "LiveSession": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sessionId",
+        "deviceId",
+        "userId",
+        "expiresAt",
+        "ttlSeconds",
+        "telemetryHz",
+        "upstreamStatus"
+      ],
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        },
+        "deviceId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        },
+        "userId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "ttlSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 300
+        },
+        "telemetryHz": {
+          "type": "integer",
+          "const": 1
+        },
+        "upstreamStatus": {
+          "type": "string",
+          "enum": [
+            "SILENT",
+            "STARTING",
+            "LIVE",
+            "STOPPING",
+            "FAILED",
+            "EXPIRED"
+          ]
+        }
+      }
+    }
+  }
+}

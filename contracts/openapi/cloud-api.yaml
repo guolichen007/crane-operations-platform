@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Crane Cloud API",
-    "version": "1.0.0",
-    "description": "Phase 0 development adapter. Production identity and remote/pointcloud are disabled."
+    "version": "1.0.0-rc.t0.5",
+    "description": "T0.5 development adapter. A 201 creates a viewer lease; upstreamStatus requires an Edge application ACK. Production identity and remote/pointcloud are disabled."
   },
   "servers": [
     {
@@ -328,7 +328,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/Message"
+                    "$ref": "#/components/schemas/Envelope"
                   }
                 }
               }
@@ -433,114 +433,15 @@
       }
     },
     "schemas": {
-      "Message": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "Position": {
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "schemaVersion",
-          "messageId",
-          "tenantId",
-          "projectId",
-          "deviceId",
-          "bootId",
-          "sequence",
-          "timestamp",
-          "kind",
-          "connectivity",
-          "edgeHealth",
-          "controllerHealth",
-          "sensorHealth",
-          "operatingState",
-          "mode",
-          "alarmState",
-          "softwareVersion",
-          "runtimeTotal",
           "x",
           "y",
-          "z",
-          "load",
-          "sessionId",
-          "ttlSeconds",
-          "telemetryHz",
-          "code",
-          "text"
+          "z"
         ],
         "properties": {
-          "schemaVersion": {
-            "const": 1
-          },
-          "messageId": {
-            "type": "string",
-            "pattern": "^[A-Za-z0-9_-]{1,80}$"
-          },
-          "tenantId": {
-            "type": "string",
-            "pattern": "^[A-Za-z0-9_-]{1,80}$"
-          },
-          "projectId": {
-            "type": "string",
-            "pattern": "^[A-Za-z0-9_-]{1,80}$"
-          },
-          "deviceId": {
-            "type": "string",
-            "pattern": "^[A-Za-z0-9_-]{1,80}$"
-          },
-          "bootId": {
-            "type": "string",
-            "pattern": "^[A-Za-z0-9_-]{1,80}$"
-          },
-          "sequence": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "timestamp": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "kind": {
-            "type": "string",
-            "enum": [
-              "BIRTH",
-              "LWT",
-              "HEARTBEAT",
-              "SNAPSHOT",
-              "LIVE",
-              "ALARM",
-              "EVENT",
-              "WATCH_START",
-              "WATCH_RENEW",
-              "WATCH_STOP",
-              "WATCH_ACK"
-            ]
-          },
-          "connectivity": {
-            "type": "string"
-          },
-          "edgeHealth": {
-            "type": "string"
-          },
-          "controllerHealth": {
-            "type": "string"
-          },
-          "sensorHealth": {
-            "type": "string"
-          },
-          "operatingState": {
-            "type": "string"
-          },
-          "mode": {
-            "type": "string"
-          },
-          "alarmState": {
-            "type": "string"
-          },
-          "softwareVersion": {
-            "type": "string"
-          },
-          "runtimeTotal": {
-            "type": "number"
-          },
           "x": {
             "type": "number"
           },
@@ -549,63 +450,508 @@
           },
           "z": {
             "type": "number"
+          }
+        }
+      },
+      "ReportedState": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "operatingState",
+          "mode",
+          "alarmState",
+          "runtimeTotal",
+          "position",
+          "load"
+        ],
+        "properties": {
+          "operatingState": {
+            "type": "string",
+            "enum": [
+              "DISCONNECTED",
+              "SILENT",
+              "LIVE",
+              "EVENT",
+              "UNKNOWN"
+            ]
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "AUTO",
+              "MANUAL",
+              "UNKNOWN"
+            ]
+          },
+          "alarmState": {
+            "type": "string",
+            "enum": [
+              "NONE",
+              "ACTIVE",
+              "UNKNOWN"
+            ]
+          },
+          "runtimeTotal": {
+            "type": "number",
+            "minimum": 0
+          },
+          "position": {
+            "$ref": "#/components/schemas/Position"
           },
           "load": {
             "type": "number"
+          }
+        }
+      },
+      "BirthPayload": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "edgeHealth",
+          "controllerHealth",
+          "sensorHealth",
+          "softwareVersion",
+          "reported"
+        ],
+        "properties": {
+          "edgeHealth": {
+            "type": "string",
+            "enum": [
+              "EDGE_HEALTHY",
+              "DEGRADED",
+              "UNKNOWN"
+            ]
           },
-          "sessionId": {
+          "controllerHealth": {
+            "type": "string",
+            "enum": [
+              "CONTROLLER_HEALTHY",
+              "DEGRADED",
+              "UNKNOWN"
+            ]
+          },
+          "sensorHealth": {
+            "type": "string",
+            "enum": [
+              "HEALTHY",
+              "DEGRADED",
+              "UNKNOWN"
+            ]
+          },
+          "softwareVersion": {
             "type": "string"
           },
-          "ttlSeconds": {
-            "type": "integer"
+          "reported": {
+            "$ref": "#/components/schemas/ReportedState"
+          }
+        }
+      },
+      "HeartbeatPayload": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "edgeHealth",
+          "controllerHealth",
+          "sensorHealth"
+        ],
+        "properties": {
+          "edgeHealth": {
+            "type": "string",
+            "enum": [
+              "EDGE_HEALTHY",
+              "DEGRADED",
+              "UNKNOWN"
+            ]
           },
-          "telemetryHz": {
-            "type": "integer"
+          "controllerHealth": {
+            "type": "string",
+            "enum": [
+              "CONTROLLER_HEALTHY",
+              "DEGRADED",
+              "UNKNOWN"
+            ]
           },
+          "sensorHealth": {
+            "type": "string",
+            "enum": [
+              "HEALTHY",
+              "DEGRADED",
+              "UNKNOWN"
+            ]
+          }
+        }
+      },
+      "SnapshotPayload": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "edgeHealth",
+          "controllerHealth",
+          "sensorHealth",
+          "reported"
+        ],
+        "properties": {
+          "edgeHealth": {
+            "type": "string",
+            "enum": [
+              "EDGE_HEALTHY",
+              "DEGRADED",
+              "UNKNOWN"
+            ]
+          },
+          "controllerHealth": {
+            "type": "string",
+            "enum": [
+              "CONTROLLER_HEALTHY",
+              "DEGRADED",
+              "UNKNOWN"
+            ]
+          },
+          "sensorHealth": {
+            "type": "string",
+            "enum": [
+              "HEALTHY",
+              "DEGRADED",
+              "UNKNOWN"
+            ]
+          },
+          "reported": {
+            "$ref": "#/components/schemas/ReportedState"
+          }
+        }
+      },
+      "LiveTelemetryPayload": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "leaseId",
+          "generation",
+          "reported"
+        ],
+        "properties": {
+          "leaseId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "generation": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "reported": {
+            "$ref": "#/components/schemas/ReportedState"
+          }
+        }
+      },
+      "DeathPayload": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "reason"
+        ],
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": [
+              "GRACEFUL",
+              "UNEXPECTED"
+            ]
+          }
+        }
+      },
+      "AlarmPayload": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "text"
+        ],
+        "properties": {
           "code": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
           },
           "text": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 1024
+          }
+        }
+      },
+      "EventPayload": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "text"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 1024
+          }
+        }
+      },
+      "WatchCommandPayload": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "leaseId",
+          "generation",
+          "ttlSeconds",
+          "telemetryHz",
+          "expiresAt"
+        ],
+        "properties": {
+          "leaseId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "generation": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "ttlSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 300
+          },
+          "telemetryHz": {
+            "type": "integer",
+            "const": 1
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "WatchAckPayload": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "commandId",
+          "leaseId",
+          "generation",
+          "action",
+          "result",
+          "reason",
+          "edgeState",
+          "appliedAt"
+        ],
+        "properties": {
+          "commandId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "leaseId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "generation": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "WATCH_START",
+              "WATCH_RENEW",
+              "WATCH_STOP"
+            ]
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "APPLIED",
+              "DUPLICATE",
+              "STALE",
+              "EXPIRED",
+              "REJECTED"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "edgeState": {
+            "type": "string",
+            "enum": [
+              "DISCONNECTED",
+              "SILENT",
+              "LIVE",
+              "EVENT"
+            ]
+          },
+          "appliedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "EventStoredAckPayload": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sourceMessageId",
+          "result"
+        ],
+        "properties": {
+          "sourceMessageId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "STORED"
+            ]
+          }
+        }
+      },
+      "Presence": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "connectivity",
+          "edgeHealth",
+          "controllerHealth",
+          "sensorHealth",
+          "bootId",
+          "bootSeq",
+          "sequence",
+          "lastSeenAt",
+          "disconnectedAt",
+          "disconnectReason"
+        ],
+        "properties": {
+          "connectivity": {
+            "type": "string",
+            "enum": [
+              "MQTT_CONNECTED",
+              "OFFLINE",
+              "UNKNOWN"
+            ]
+          },
+          "edgeHealth": {
+            "type": "string",
+            "enum": [
+              "EDGE_HEALTHY",
+              "DEGRADED",
+              "UNKNOWN"
+            ]
+          },
+          "controllerHealth": {
+            "type": "string",
+            "enum": [
+              "CONTROLLER_HEALTHY",
+              "DEGRADED",
+              "UNKNOWN"
+            ]
+          },
+          "sensorHealth": {
+            "type": "string",
+            "enum": [
+              "HEALTHY",
+              "DEGRADED",
+              "UNKNOWN"
+            ]
+          },
+          "bootId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "bootSeq": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "lastSeenAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "disconnectedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "disconnectReason": {
+            "type": "string",
+            "enum": [
+              "NONE",
+              "GRACEFUL",
+              "UNEXPECTED",
+              "MIGRATED"
+            ]
           }
         }
       },
       "Shadow": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
         "additionalProperties": false,
         "required": [
           "deviceId",
           "tenantId",
           "projectId",
+          "presence",
           "reported",
           "updatedAt",
-          "version"
+          "version",
+          "upstreamStatus"
         ],
         "properties": {
           "deviceId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
           },
           "tenantId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
           },
           "projectId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "presence": {
+            "$ref": "#/components/schemas/Presence"
           },
           "reported": {
-            "$ref": "#/components/schemas/Message"
+            "$ref": "#/components/schemas/ReportedState"
           },
           "updatedAt": {
             "type": "string",
             "format": "date-time"
           },
           "version": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "upstreamStatus": {
+            "type": "string",
+            "enum": [
+              "SILENT",
+              "STARTING",
+              "LIVE",
+              "STOPPING",
+              "FAILED",
+              "EXPIRED"
+            ]
           }
         }
       },
       "LiveSession": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
         "additionalProperties": false,
         "required": [
@@ -614,29 +960,935 @@
           "userId",
           "expiresAt",
           "ttlSeconds",
-          "telemetryHz"
+          "telemetryHz",
+          "upstreamStatus"
         ],
         "properties": {
           "sessionId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
           },
           "deviceId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
           },
           "userId": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
           },
           "expiresAt": {
             "type": "string",
             "format": "date-time"
           },
           "ttlSeconds": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 300
           },
           "telemetryHz": {
-            "type": "integer"
+            "type": "integer",
+            "const": 1
+          },
+          "upstreamStatus": {
+            "type": "string",
+            "enum": [
+              "SILENT",
+              "STARTING",
+              "LIVE",
+              "STOPPING",
+              "FAILED",
+              "EXPIRED"
+            ]
           }
         }
+      },
+      "Envelope": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "schemaVersion",
+              "messageId",
+              "tenantId",
+              "projectId",
+              "deviceId",
+              "bootId",
+              "bootSeq",
+              "sequence",
+              "sentAt",
+              "kind",
+              "correlationId",
+              "payload"
+            ],
+            "properties": {
+              "schemaVersion": {
+                "type": "integer",
+                "const": 1
+              },
+              "messageId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "tenantId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "projectId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "deviceId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "bootId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "bootSeq": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "sentAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "kind": {
+                "const": "BIRTH"
+              },
+              "correlationId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{0,80}$"
+              },
+              "payload": {
+                "$ref": "#/components/schemas/BirthPayload"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "schemaVersion",
+              "messageId",
+              "tenantId",
+              "projectId",
+              "deviceId",
+              "bootId",
+              "bootSeq",
+              "sequence",
+              "sentAt",
+              "kind",
+              "correlationId",
+              "payload"
+            ],
+            "properties": {
+              "schemaVersion": {
+                "type": "integer",
+                "const": 1
+              },
+              "messageId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "tenantId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "projectId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "deviceId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "bootId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "bootSeq": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "sentAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "kind": {
+                "const": "HEARTBEAT"
+              },
+              "correlationId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{0,80}$"
+              },
+              "payload": {
+                "$ref": "#/components/schemas/HeartbeatPayload"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "schemaVersion",
+              "messageId",
+              "tenantId",
+              "projectId",
+              "deviceId",
+              "bootId",
+              "bootSeq",
+              "sequence",
+              "sentAt",
+              "kind",
+              "correlationId",
+              "payload"
+            ],
+            "properties": {
+              "schemaVersion": {
+                "type": "integer",
+                "const": 1
+              },
+              "messageId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "tenantId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "projectId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "deviceId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "bootId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "bootSeq": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "sentAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "kind": {
+                "const": "SNAPSHOT"
+              },
+              "correlationId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{0,80}$"
+              },
+              "payload": {
+                "$ref": "#/components/schemas/SnapshotPayload"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "schemaVersion",
+              "messageId",
+              "tenantId",
+              "projectId",
+              "deviceId",
+              "bootId",
+              "bootSeq",
+              "sequence",
+              "sentAt",
+              "kind",
+              "correlationId",
+              "payload"
+            ],
+            "properties": {
+              "schemaVersion": {
+                "type": "integer",
+                "const": 1
+              },
+              "messageId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "tenantId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "projectId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "deviceId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "bootId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "bootSeq": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "sentAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "kind": {
+                "const": "LIVE"
+              },
+              "correlationId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{0,80}$"
+              },
+              "payload": {
+                "$ref": "#/components/schemas/LiveTelemetryPayload"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "schemaVersion",
+              "messageId",
+              "tenantId",
+              "projectId",
+              "deviceId",
+              "bootId",
+              "bootSeq",
+              "sequence",
+              "sentAt",
+              "kind",
+              "correlationId",
+              "payload"
+            ],
+            "properties": {
+              "schemaVersion": {
+                "type": "integer",
+                "const": 1
+              },
+              "messageId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "tenantId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "projectId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "deviceId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "bootId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "bootSeq": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "sentAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "kind": {
+                "const": "LWT"
+              },
+              "correlationId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{0,80}$"
+              },
+              "payload": {
+                "$ref": "#/components/schemas/DeathPayload"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "schemaVersion",
+              "messageId",
+              "tenantId",
+              "projectId",
+              "deviceId",
+              "bootId",
+              "bootSeq",
+              "sequence",
+              "sentAt",
+              "kind",
+              "correlationId",
+              "payload"
+            ],
+            "properties": {
+              "schemaVersion": {
+                "type": "integer",
+                "const": 1
+              },
+              "messageId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "tenantId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "projectId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "deviceId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "bootId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "bootSeq": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "sentAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "kind": {
+                "const": "DEATH"
+              },
+              "correlationId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{0,80}$"
+              },
+              "payload": {
+                "$ref": "#/components/schemas/DeathPayload"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "schemaVersion",
+              "messageId",
+              "tenantId",
+              "projectId",
+              "deviceId",
+              "bootId",
+              "bootSeq",
+              "sequence",
+              "sentAt",
+              "kind",
+              "correlationId",
+              "payload"
+            ],
+            "properties": {
+              "schemaVersion": {
+                "type": "integer",
+                "const": 1
+              },
+              "messageId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "tenantId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "projectId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "deviceId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "bootId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "bootSeq": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "sentAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "kind": {
+                "const": "ALARM"
+              },
+              "correlationId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{0,80}$"
+              },
+              "payload": {
+                "$ref": "#/components/schemas/AlarmPayload"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "schemaVersion",
+              "messageId",
+              "tenantId",
+              "projectId",
+              "deviceId",
+              "bootId",
+              "bootSeq",
+              "sequence",
+              "sentAt",
+              "kind",
+              "correlationId",
+              "payload"
+            ],
+            "properties": {
+              "schemaVersion": {
+                "type": "integer",
+                "const": 1
+              },
+              "messageId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "tenantId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "projectId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "deviceId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "bootId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "bootSeq": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "sentAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "kind": {
+                "const": "EVENT"
+              },
+              "correlationId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{0,80}$"
+              },
+              "payload": {
+                "$ref": "#/components/schemas/EventPayload"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "schemaVersion",
+              "messageId",
+              "tenantId",
+              "projectId",
+              "deviceId",
+              "bootId",
+              "bootSeq",
+              "sequence",
+              "sentAt",
+              "kind",
+              "correlationId",
+              "payload"
+            ],
+            "properties": {
+              "schemaVersion": {
+                "type": "integer",
+                "const": 1
+              },
+              "messageId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "tenantId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "projectId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "deviceId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "bootId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "bootSeq": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "sentAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "kind": {
+                "const": "WATCH_START"
+              },
+              "correlationId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{0,80}$"
+              },
+              "payload": {
+                "$ref": "#/components/schemas/WatchCommandPayload"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "schemaVersion",
+              "messageId",
+              "tenantId",
+              "projectId",
+              "deviceId",
+              "bootId",
+              "bootSeq",
+              "sequence",
+              "sentAt",
+              "kind",
+              "correlationId",
+              "payload"
+            ],
+            "properties": {
+              "schemaVersion": {
+                "type": "integer",
+                "const": 1
+              },
+              "messageId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "tenantId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "projectId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "deviceId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "bootId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "bootSeq": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "sentAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "kind": {
+                "const": "WATCH_RENEW"
+              },
+              "correlationId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{0,80}$"
+              },
+              "payload": {
+                "$ref": "#/components/schemas/WatchCommandPayload"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "schemaVersion",
+              "messageId",
+              "tenantId",
+              "projectId",
+              "deviceId",
+              "bootId",
+              "bootSeq",
+              "sequence",
+              "sentAt",
+              "kind",
+              "correlationId",
+              "payload"
+            ],
+            "properties": {
+              "schemaVersion": {
+                "type": "integer",
+                "const": 1
+              },
+              "messageId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "tenantId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "projectId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "deviceId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "bootId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "bootSeq": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "sentAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "kind": {
+                "const": "WATCH_STOP"
+              },
+              "correlationId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{0,80}$"
+              },
+              "payload": {
+                "$ref": "#/components/schemas/WatchCommandPayload"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "schemaVersion",
+              "messageId",
+              "tenantId",
+              "projectId",
+              "deviceId",
+              "bootId",
+              "bootSeq",
+              "sequence",
+              "sentAt",
+              "kind",
+              "correlationId",
+              "payload"
+            ],
+            "properties": {
+              "schemaVersion": {
+                "type": "integer",
+                "const": 1
+              },
+              "messageId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "tenantId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "projectId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "deviceId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "bootId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "bootSeq": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "sentAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "kind": {
+                "const": "WATCH_ACK"
+              },
+              "correlationId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{0,80}$"
+              },
+              "payload": {
+                "$ref": "#/components/schemas/WatchAckPayload"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "schemaVersion",
+              "messageId",
+              "tenantId",
+              "projectId",
+              "deviceId",
+              "bootId",
+              "bootSeq",
+              "sequence",
+              "sentAt",
+              "kind",
+              "correlationId",
+              "payload"
+            ],
+            "properties": {
+              "schemaVersion": {
+                "type": "integer",
+                "const": 1
+              },
+              "messageId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "tenantId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "projectId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "deviceId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "bootId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              "bootSeq": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "sentAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "kind": {
+                "const": "EVENT_STORED_ACK"
+              },
+              "correlationId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{0,80}$"
+              },
+              "payload": {
+                "$ref": "#/components/schemas/EventStoredAckPayload"
+              }
+            }
+          }
+        ]
       }
     }
   }

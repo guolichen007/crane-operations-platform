@@ -1,29 +1,31 @@
 {
   "schemaVersion": 1,
-  "messageId": "fixture-001",
+  "messageId": "birth-1",
   "tenantId": "demo",
   "projectId": "Project-A",
   "deviceId": "SIM-001",
-  "bootId": "boot-001",
+  "bootId": "boot-1",
+  "bootSeq": 1,
   "sequence": 1,
-  "timestamp": "2026-10-22T00:00:00Z",
+  "sentAt": "2026-10-22T00:00:00Z",
   "kind": "BIRTH",
-  "connectivity": "MQTT_CONNECTED",
-  "edgeHealth": "EDGE_HEALTHY",
-  "controllerHealth": "CONTROLLER_HEALTHY",
-  "sensorHealth": "",
-  "operatingState": "SILENT",
-  "mode": "",
-  "alarmState": "",
-  "softwareVersion": "",
-  "runtimeTotal": 0,
-  "x": 0,
-  "y": 0,
-  "z": 0,
-  "load": 0,
-  "sessionId": "",
-  "ttlSeconds": 0,
-  "telemetryHz": 0,
-  "code": "",
-  "text": ""
+  "correlationId": "",
+  "payload": {
+    "edgeHealth": "EDGE_HEALTHY",
+    "controllerHealth": "CONTROLLER_HEALTHY",
+    "sensorHealth": "HEALTHY",
+    "softwareVersion": "mock-0.5.0",
+    "reported": {
+      "operatingState": "SILENT",
+      "mode": "AUTO",
+      "alarmState": "NONE",
+      "runtimeTotal": 0,
+      "position": {
+        "x": 1,
+        "y": 2,
+        "z": 3
+      },
+      "load": 2.5
+    }
+  }
 }

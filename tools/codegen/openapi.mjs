@@ -26,7 +26,7 @@ function add(path, method, operationId, response, status = '200') {
 }
 const shadow = { $ref: '#/components/schemas/Shadow' },
   live = { $ref: '#/components/schemas/LiveSession' },
-  message = { $ref: '#/components/schemas/Message' };
+  message = { $ref: '#/components/schemas/Envelope' };
 add('/api/v1/devices', 'get', 'listDevices', { type: 'array', items: shadow });
 add('/api/v1/devices/{id}', 'get', 'getDevice', shadow);
 add('/api/v1/devices/{id}/shadow', 'get', 'getShadow', shadow);
@@ -42,21 +42,23 @@ add('/api/v1/auth/dev-session', 'post', 'developmentSession', {
 });
 add('/api/v1/devices/{id}/stream', 'get', 'streamShadow', null, '101');
 const schemas = {};
-for (const name of ['Message', 'Shadow', 'LiveSession']) {
+const model = JSON.parse(await readFile('contracts/model.json', 'utf8'));
+for (const name of [...Object.keys(model.types), 'Envelope']) {
   const schema = JSON.parse(
     await readFile(`contracts/schemas/v1/${name.toLowerCase()}.json`, 'utf8')
   );
   delete schema.$id;
-  if (name === 'Shadow') schema.properties.reported = { $ref: '#/components/schemas/Message' };
-  schemas[name] = schema;
+  delete schema.$schema;
+  delete schema.$defs;
+  schemas[name] = JSON.parse(JSON.stringify(schema).replaceAll('#/$defs/', '#/components/schemas/'));
 }
 const spec = {
   openapi: '3.1.0',
   info: {
     title: 'Crane Cloud API',
-    version: '1.0.0',
+    version: '1.0.0-rc.t0.5',
     description:
-      'Phase 0 development adapter. Production identity and remote/pointcloud are disabled.',
+      'T0.5 development adapter. A 201 creates a viewer lease; upstreamStatus requires an Edge application ACK. Production identity and remote/pointcloud are disabled.',
   },
   servers: [{ url: '/' }],
   security: [{ devBearer: [] }, { devCookie: [] }],

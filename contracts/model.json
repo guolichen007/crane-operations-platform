@@ -2,30 +2,552 @@
   "version": 1,
   "namespace": "crane/v1",
   "topics": {
-    "heartbeat": {"qos": 0, "direction": "edge-to-cloud"},
-    "shadow/reported": {"qos": 1, "direction": "edge-to-cloud"},
-    "telemetry/live": {"qos": 0, "direction": "edge-to-cloud"},
-    "alarm": {"qos": 1, "direction": "edge-to-cloud"},
-    "event": {"qos": 1, "direction": "edge-to-cloud"},
-    "command/watch/start": {"qos": 1, "direction": "cloud-to-edge"},
-    "command/watch/renew": {"qos": 1, "direction": "cloud-to-edge"},
-    "command/watch/stop": {"qos": 1, "direction": "cloud-to-edge"},
-    "command/ack": {"qos": 1, "direction": "edge-to-cloud"}
+    "heartbeat": {
+      "qos": 0,
+      "direction": "edge-to-cloud",
+      "kinds": [
+        "HEARTBEAT"
+      ]
+    },
+    "shadow/reported": {
+      "qos": 1,
+      "direction": "edge-to-cloud",
+      "kinds": [
+        "BIRTH",
+        "SNAPSHOT",
+        "LWT",
+        "DEATH"
+      ]
+    },
+    "telemetry/live": {
+      "qos": 0,
+      "direction": "edge-to-cloud",
+      "kinds": [
+        "LIVE"
+      ]
+    },
+    "alarm": {
+      "qos": 1,
+      "direction": "edge-to-cloud",
+      "kinds": [
+        "ALARM"
+      ]
+    },
+    "event": {
+      "qos": 1,
+      "direction": "edge-to-cloud",
+      "kinds": [
+        "EVENT"
+      ]
+    },
+    "command/watch/start": {
+      "qos": 1,
+      "direction": "cloud-to-edge",
+      "kinds": [
+        "WATCH_START"
+      ]
+    },
+    "command/watch/renew": {
+      "qos": 1,
+      "direction": "cloud-to-edge",
+      "kinds": [
+        "WATCH_RENEW"
+      ]
+    },
+    "command/watch/stop": {
+      "qos": 1,
+      "direction": "cloud-to-edge",
+      "kinds": [
+        "WATCH_STOP"
+      ]
+    },
+    "command/ack": {
+      "qos": 1,
+      "direction": "edge-to-cloud",
+      "kinds": [
+        "WATCH_ACK"
+      ]
+    },
+    "event/ack": {
+      "qos": 1,
+      "direction": "cloud-to-edge",
+      "kinds": [
+        "EVENT_STORED_ACK"
+      ]
+    }
+  },
+  "envelope": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "messageId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "tenantId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "projectId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "deviceId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "bootId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "bootSeq": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "sentAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "kind": {
+      "type": "string"
+    },
+    "correlationId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{0,80}$"
+    }
+  },
+  "kinds": {
+    "BIRTH": "BirthPayload",
+    "HEARTBEAT": "HeartbeatPayload",
+    "SNAPSHOT": "SnapshotPayload",
+    "LIVE": "LiveTelemetryPayload",
+    "LWT": "DeathPayload",
+    "DEATH": "DeathPayload",
+    "ALARM": "AlarmPayload",
+    "EVENT": "EventPayload",
+    "WATCH_START": "WatchCommandPayload",
+    "WATCH_RENEW": "WatchCommandPayload",
+    "WATCH_STOP": "WatchCommandPayload",
+    "WATCH_ACK": "WatchAckPayload",
+    "EVENT_STORED_ACK": "EventStoredAckPayload"
   },
   "types": {
-    "Message": {
-      "schemaVersion": "int", "messageId": "string", "tenantId": "string", "projectId": "string", "deviceId": "string",
-      "bootId": "string", "sequence": "int64", "timestamp": "time", "kind": "string",
-      "connectivity": "string", "edgeHealth": "string", "controllerHealth": "string", "sensorHealth": "string",
-      "operatingState": "string", "mode": "string", "alarmState": "string", "softwareVersion": "string", "runtimeTotal": "float64",
-      "x": "float64", "y": "float64", "z": "float64", "load": "float64", "sessionId": "string", "ttlSeconds": "int", "telemetryHz": "int",
-      "code": "string", "text": "string"
+    "Position": {
+      "x": {
+        "type": "number"
+      },
+      "y": {
+        "type": "number"
+      },
+      "z": {
+        "type": "number"
+      }
+    },
+    "ReportedState": {
+      "operatingState": {
+        "type": "string",
+        "enum": [
+          "DISCONNECTED",
+          "SILENT",
+          "LIVE",
+          "EVENT",
+          "UNKNOWN"
+        ]
+      },
+      "mode": {
+        "type": "string",
+        "enum": [
+          "AUTO",
+          "MANUAL",
+          "UNKNOWN"
+        ]
+      },
+      "alarmState": {
+        "type": "string",
+        "enum": [
+          "NONE",
+          "ACTIVE",
+          "UNKNOWN"
+        ]
+      },
+      "runtimeTotal": {
+        "type": "number",
+        "minimum": 0
+      },
+      "position": {
+        "ref": "Position"
+      },
+      "load": {
+        "type": "number"
+      }
+    },
+    "BirthPayload": {
+      "edgeHealth": {
+        "type": "string",
+        "enum": [
+          "EDGE_HEALTHY",
+          "DEGRADED",
+          "UNKNOWN"
+        ]
+      },
+      "controllerHealth": {
+        "type": "string",
+        "enum": [
+          "CONTROLLER_HEALTHY",
+          "DEGRADED",
+          "UNKNOWN"
+        ]
+      },
+      "sensorHealth": {
+        "type": "string",
+        "enum": [
+          "HEALTHY",
+          "DEGRADED",
+          "UNKNOWN"
+        ]
+      },
+      "softwareVersion": {
+        "type": "string"
+      },
+      "reported": {
+        "ref": "ReportedState"
+      }
+    },
+    "HeartbeatPayload": {
+      "edgeHealth": {
+        "type": "string",
+        "enum": [
+          "EDGE_HEALTHY",
+          "DEGRADED",
+          "UNKNOWN"
+        ]
+      },
+      "controllerHealth": {
+        "type": "string",
+        "enum": [
+          "CONTROLLER_HEALTHY",
+          "DEGRADED",
+          "UNKNOWN"
+        ]
+      },
+      "sensorHealth": {
+        "type": "string",
+        "enum": [
+          "HEALTHY",
+          "DEGRADED",
+          "UNKNOWN"
+        ]
+      }
+    },
+    "SnapshotPayload": {
+      "edgeHealth": {
+        "type": "string",
+        "enum": [
+          "EDGE_HEALTHY",
+          "DEGRADED",
+          "UNKNOWN"
+        ]
+      },
+      "controllerHealth": {
+        "type": "string",
+        "enum": [
+          "CONTROLLER_HEALTHY",
+          "DEGRADED",
+          "UNKNOWN"
+        ]
+      },
+      "sensorHealth": {
+        "type": "string",
+        "enum": [
+          "HEALTHY",
+          "DEGRADED",
+          "UNKNOWN"
+        ]
+      },
+      "reported": {
+        "ref": "ReportedState"
+      }
+    },
+    "LiveTelemetryPayload": {
+      "leaseId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "generation": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991
+      },
+      "reported": {
+        "ref": "ReportedState"
+      }
+    },
+    "DeathPayload": {
+      "reason": {
+        "type": "string",
+        "enum": [
+          "GRACEFUL",
+          "UNEXPECTED"
+        ]
+      }
+    },
+    "AlarmPayload": {
+      "code": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 80
+      },
+      "text": {
+        "type": "string",
+        "maxLength": 1024
+      }
+    },
+    "EventPayload": {
+      "code": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 80
+      },
+      "text": {
+        "type": "string",
+        "maxLength": 1024
+      }
+    },
+    "WatchCommandPayload": {
+      "leaseId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "generation": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991
+      },
+      "ttlSeconds": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 300
+      },
+      "telemetryHz": {
+        "type": "integer",
+        "const": 1
+      },
+      "expiresAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "WatchAckPayload": {
+      "commandId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "leaseId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "generation": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991
+      },
+      "action": {
+        "type": "string",
+        "enum": [
+          "WATCH_START",
+          "WATCH_RENEW",
+          "WATCH_STOP"
+        ]
+      },
+      "result": {
+        "type": "string",
+        "enum": [
+          "APPLIED",
+          "DUPLICATE",
+          "STALE",
+          "EXPIRED",
+          "REJECTED"
+        ]
+      },
+      "reason": {
+        "type": "string",
+        "maxLength": 256
+      },
+      "edgeState": {
+        "type": "string",
+        "enum": [
+          "DISCONNECTED",
+          "SILENT",
+          "LIVE",
+          "EVENT"
+        ]
+      },
+      "appliedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
+    },
+    "EventStoredAckPayload": {
+      "sourceMessageId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "result": {
+        "type": "string",
+        "enum": [
+          "STORED"
+        ]
+      }
+    },
+    "Presence": {
+      "connectivity": {
+        "type": "string",
+        "enum": [
+          "MQTT_CONNECTED",
+          "OFFLINE",
+          "UNKNOWN"
+        ]
+      },
+      "edgeHealth": {
+        "type": "string",
+        "enum": [
+          "EDGE_HEALTHY",
+          "DEGRADED",
+          "UNKNOWN"
+        ]
+      },
+      "controllerHealth": {
+        "type": "string",
+        "enum": [
+          "CONTROLLER_HEALTHY",
+          "DEGRADED",
+          "UNKNOWN"
+        ]
+      },
+      "sensorHealth": {
+        "type": "string",
+        "enum": [
+          "HEALTHY",
+          "DEGRADED",
+          "UNKNOWN"
+        ]
+      },
+      "bootId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "bootSeq": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+      },
+      "sequence": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+      },
+      "lastSeenAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "disconnectedAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "disconnectReason": {
+        "type": "string",
+        "enum": [
+          "NONE",
+          "GRACEFUL",
+          "UNEXPECTED",
+          "MIGRATED"
+        ]
+      }
     },
     "Shadow": {
-      "deviceId": "string", "tenantId": "string", "projectId": "string", "reported": "Message", "updatedAt": "time", "version": "int64"
+      "deviceId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "tenantId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "projectId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "presence": {
+        "ref": "Presence"
+      },
+      "reported": {
+        "ref": "ReportedState"
+      },
+      "updatedAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "version": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991
+      },
+      "upstreamStatus": {
+        "type": "string",
+        "enum": [
+          "SILENT",
+          "STARTING",
+          "LIVE",
+          "STOPPING",
+          "FAILED",
+          "EXPIRED"
+        ]
+      }
     },
     "LiveSession": {
-      "sessionId": "string", "deviceId": "string", "userId": "string", "expiresAt": "time", "ttlSeconds": "int", "telemetryHz": "int"
+      "sessionId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "deviceId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "userId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "expiresAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "ttlSeconds": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 300
+      },
+      "telemetryHz": {
+        "type": "integer",
+        "const": 1
+      },
+      "upstreamStatus": {
+        "type": "string",
+        "enum": [
+          "SILENT",
+          "STARTING",
+          "LIVE",
+          "STOPPING",
+          "FAILED",
+          "EXPIRED"
+        ]
+      }
     }
   }
 }
