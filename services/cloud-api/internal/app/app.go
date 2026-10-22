@@ -51,6 +51,7 @@ func Run(args []string) error {
 		return e
 	}
 	if c.Migrate {
+		goose.SetLogger(goose.NopLogger())
 		goose.SetBaseFS(migrations.Files)
 		if e = goose.SetDialect("postgres"); e != nil {
 			return e

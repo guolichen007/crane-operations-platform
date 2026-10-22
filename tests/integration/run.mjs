@@ -32,7 +32,10 @@ try {
   await api(`live-sessions/${sessions[0].sessionId}/renew`,'POST');
   const metrics=await (await fetch(base+'/metrics')).text();assert.match(metrics,/device_live_sessions 5\b/);record('five viewers share manager upstream');
   for(const s of sessions)await api(`live-sessions/${s.sessionId}`,'DELETE',204);
-  await until('grace → SILENT',async()=> (await api('devices/SIM-001/shadow')).reported.operatingState==='SILENT',20000);record('lease expiry and grace');
+  await until('grace → SILENT',async()=> (await api('devices/SIM-001/shadow')).reported.operatingState==='SILENT',20000);record('grace after final viewer');
+  await api('devices/SIM-001/live-sessions','POST',201);
+  await until('unrenewed TTL expires',async()=> (await api('devices/SIM-001/shadow')).reported.operatingState==='SILENT',20000);record('unrenewed TTL returns SILENT');
+  compose(['exec','-T','web-console','nginx','-s','reload']);
   const current=await api('devices/SIM-001/shadow');
   const alarm={...current.reported,kind:'ALARM',messageId:'phase0-alarm-'+Date.now(),code:'SIMULATED_OVERLOAD',text:'Anonymous integration alarm',timestamp:new Date().toISOString()};
   const fixture='local-private/validation/mqtt-message.json';writeFileSync(fixture,JSON.stringify(alarm));
