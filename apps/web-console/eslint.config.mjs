@@ -18,6 +18,8 @@ export default ts.config(
     files: ['**/*.vue'],
     languageOptions: { parserOptions: { parser: ts.parser } },
     rules: {
+      // Prettier owns whitespace formatting.
+      'vue/multiline-html-element-content-newline': 'off',
       'vue/multi-word-component-names': 'off',
       'vue/max-attributes-per-line': 'off',
       'vue/html-self-closing': 'off',

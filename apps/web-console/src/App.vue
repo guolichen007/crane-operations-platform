@@ -88,8 +88,7 @@ async function fullscreen() {
           ><span class="mode-tag"><i></i>演示模式</span
           ><button class="tour-trigger" @click="tour"><Play :size="13" />自动巡演</button
           ><button class="icon-button" title="全屏" aria-label="全屏" @click="fullscreen">
-            <Maximize :size="17" />
-</button
+            <Maximize :size="17" /></button
           ><span class="user-avatar"><UserRound :size="17" /></span>
         </div>
       </header>

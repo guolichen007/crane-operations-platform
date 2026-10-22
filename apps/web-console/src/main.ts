@@ -16,7 +16,10 @@ const routes = [
   'analytics',
   'maintenance',
   'remote',
-].map((path) => ({ path: `/${path}`, component: path === 'devices' && cloudMode ? CloudDevices : Workspace }));
+].map((path) => ({
+  path: `/${path}`,
+  component: path === 'devices' && cloudMode ? CloudDevices : Workspace,
+}));
 createApp(App)
   .use(createPinia())
   .use(

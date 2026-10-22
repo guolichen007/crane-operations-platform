@@ -1,0 +1,13 @@
+node_modules/
+local-private/
+tools/.cache/
+release/
+**/dist*/
+**/public/geo/
+**/*.gen.*
+contracts/schemas/
+contracts/openapi/
+contracts/asyncapi/
+licenses/
+playwright-report/
+test-results*/
