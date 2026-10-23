@@ -10,6 +10,7 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
+	"github.com/guolichen007/crane-operations-platform/internal/fleet"
 	"math/big"
 	"net"
 	"os"
@@ -19,13 +20,38 @@ import (
 
 func main() {
 	out := flag.String("out", "deploy/compose/runtime", "local output")
+	fleetPath := flag.String("fleet-file", "", "explicit development fleet manifest")
 	fixture := flag.Bool("fixture", false, "issue isolated TEST-001 integration certificate using the existing development CA")
 	flag.Parse()
 	var e error
-	if *fixture {
+	if *fleetPath != "" {
+		m, err := fleet.Load(*fleetPath, 20, false, true)
+		e = err
+		if e == nil {
+			ids := []string{}
+			for _, d := range m.Devices {
+				ids = append(ids, d.RuntimeDeviceId)
+			}
+			if _, err = os.Stat(filepath.Join(*out, "private", "ca.key")); os.IsNotExist(err) {
+				e = generate(*out, ids)
+			} else if err != nil {
+				e = err
+			} else {
+				for _, id := range ids {
+					if e = generateDevice(*out, id); e != nil {
+						break
+					}
+				}
+			}
+		}
+	} else if *fixture {
 		e = generateFixture(*out)
 	} else {
-		e = generate(*out)
+		ids := []string{}
+		for i := 1; i <= 20; i++ {
+			ids = append(ids, fmt.Sprintf("SIM-%03d", i))
+		}
+		e = generate(*out, ids)
 		if e == nil {
 			e = generateFixture(*out)
 		}
@@ -35,7 +61,8 @@ func main() {
 		os.Exit(1)
 	}
 }
-func generateFixture(out string) error {
+func generateFixture(out string) error { return generateDevice(out, "TEST-001") }
+func generateDevice(out, id string) error {
 	caPEM, e := os.ReadFile(filepath.Join(out, "certs", "cloud", "ca.crt"))
 	if e != nil {
 		return e
@@ -68,18 +95,18 @@ func generateFixture(out string) error {
 	if e != nil {
 		return e
 	}
-	leaf := &x509.Certificate{SerialNumber: serial, Subject: pkix.Name{CommonName: "TEST-001"}, NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(7 * 24 * time.Hour), KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}
+	leaf := &x509.Certificate{SerialNumber: serial, Subject: pkix.Name{CommonName: id}, NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(7 * 24 * time.Hour), KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}
 	der, e := x509.CreateCertificate(rand.Reader, leaf, ca, &leafKey.PublicKey, key)
 	if e != nil {
 		return e
 	}
 	dir := filepath.Join(out, "certs", "devices")
-	if e = os.WriteFile(filepath.Join(dir, "TEST-001.crt"), pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0644); e != nil {
+	if e = os.WriteFile(filepath.Join(dir, id+".crt"), pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0644); e != nil {
 		return e
 	}
-	return writeKey(filepath.Join(dir, "TEST-001.key"), leafKey)
+	return writeKey(filepath.Join(dir, id+".key"), leafKey)
 }
-func generate(out string) error {
+func generate(out string, devices []string) error {
 	caKey, e := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if e != nil {
 		return e
@@ -94,13 +121,13 @@ func generate(out string) error {
 	if e = writeKey(filepath.Join(out, "private", "ca.key"), caKey); e != nil {
 		return e
 	}
-	for i := 0; i < 22; i++ {
+	for i := 0; i < len(devices)+2; i++ {
 		id, group := "cloud-api", "cloud"
 		if i == 1 {
 			id, group = "mosquitto", "broker"
 		}
 		if i >= 2 {
-			id, group = fmt.Sprintf("SIM-%03d", i-1), "devices"
+			id, group = devices[i-2], "devices"
 		}
 		dir := filepath.Join(out, "certs", group)
 		if e = os.MkdirAll(dir, 0700); e != nil {

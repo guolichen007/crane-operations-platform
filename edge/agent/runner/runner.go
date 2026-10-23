@@ -11,6 +11,7 @@ import (
 	"github.com/guolichen007/crane-operations-platform/edge/agent/internal/mapper"
 	"github.com/guolichen007/crane-operations-platform/edge/agent/internal/watch"
 	"github.com/guolichen007/crane-operations-platform/edge/agent/spool"
+	"github.com/guolichen007/crane-operations-platform/internal/fleet"
 	"github.com/guolichen007/crane-operations-platform/internal/platform"
 	"net/http"
 	"path/filepath"
@@ -56,12 +57,16 @@ func MetricsServer(ctx context.Context) {
 }
 
 func Run(ctx context.Context, c platform.Config, id string) error {
+	return RunDevice(ctx, c, fleet.LegacyDescriptor(id))
+}
+func RunDevice(ctx context.Context, c platform.Config, descriptor fleet.Device) error {
+	id := descriptor.RuntimeDeviceId
 	logger := platform.Logger("edge-agent").With("deviceId", id)
 	identity, e := boot.Start(filepath.Join(c.DataDir, id, "boot.json"))
 	if e != nil {
 		return e
 	}
-	factory := &mapper.Factory{Device: id, Boot: identity}
+	factory := &mapper.Factory{Tenant: descriptor.TenantID, Project: descriptor.ProjectId, Device: id, Boot: identity}
 	controller, e := watch.Open(filepath.Join(c.DataDir, id, "watch.json"))
 	if e != nil {
 		return e
@@ -76,13 +81,13 @@ func Run(ctx context.Context, c platform.Config, id string) error {
 	adapter := mock.Telemetry{}
 	inbox := make(chan pendingCommand, 32)
 	born := make(chan struct{}, 1)
-	start, _ := contract.Topic("demo", "Project-A", id, "command/watch/start")
-	ackTopic, _ := contract.Topic("demo", "Project-A", id, "event/ack")
+	start, _ := contract.Topic(descriptor.TenantID, descriptor.ProjectId, id, "command/watch/start")
+	ackTopic, _ := contract.Topic(descriptor.TenantID, descriptor.ProjectId, id, "event/ack")
 	mqttCtx, mqttCancel := context.WithCancel(context.Background())
 	defer mqttCancel()
 	broker, e := platform.Connect(mqttCtx, c, id, []string{start[:len(start)-len("start")] + "+", ackTopic}, factory.ConnectionWill, func(topic string, b []byte, expiry time.Duration) error {
 		m, err := contract.Decode(topic, b)
-		if err != nil {
+		if err != nil || m.TenantId != descriptor.TenantID || m.ProjectId != descriptor.ProjectId || m.DeviceId != id {
 			logger.Warn("invalid message", "event", "message_rejected")
 			return nil
 		}
@@ -250,6 +255,11 @@ func Run(ctx context.Context, c platform.Config, id string) error {
 }
 
 func RunFleet(ctx context.Context, c platform.Config) error {
+	manifest, err := fleet.Load(c.FleetFile, c.Count, false, true)
+	if err != nil {
+		return err
+	}
+	descriptors := fleet.Devices(manifest)
 	go MetricsServer(ctx)
 	if c.Scenario == "offline" {
 		<-ctx.Done()
@@ -257,18 +267,17 @@ func RunFleet(ctx context.Context, c platform.Config) error {
 	}
 	fleetCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	errs := make(chan error, c.Count)
-	for i := 1; i <= c.Count; i++ {
-		id := fmt.Sprintf("SIM-%03d", i)
+	errs := make(chan error, len(descriptors))
+	for _, descriptor := range descriptors {
 		go func() {
 			if c.Scenario != "intermittent" {
-				errs <- Run(fleetCtx, c, id)
+				errs <- RunDevice(fleetCtx, c, descriptor)
 				return
 			}
 			// This scenario models process restarts, distinct from MQTT-only fault tests.
 			for {
 				child, stop := context.WithTimeout(fleetCtx, 20*time.Second)
-				e := Run(child, c, id)
+				e := RunDevice(child, c, descriptor)
 				stop()
 				if e != nil {
 					errs <- e
@@ -284,7 +293,7 @@ func RunFleet(ctx context.Context, c platform.Config) error {
 		}()
 	}
 	var first error
-	for i := 0; i < c.Count; i++ {
+	for i := 0; i < len(descriptors); i++ {
 		if e := <-errs; e != nil && first == nil {
 			first = e
 			cancel()

@@ -7,7 +7,7 @@ import (
 )
 
 func TestConnectionWillFencing(t *testing.T) {
-	f := Factory{Device: "SIM-001", Boot: boot.Identity{ID: "boot-1", Seq: 1}}
+	f := Factory{Tenant: "demo", Project: "Project-A", Device: "SIM-001", Boot: boot.Identity{ID: "boot-1", Seq: 1}}
 	will1 := f.ConnectionWill()
 	message := f.New("DEATH", contract.DeathPayload{Reason: "GRACEFUL"})
 	if message.Sequence >= will1.Sequence {

@@ -13,13 +13,14 @@ const connectionBlock int64 = 1 << 32
 
 type Factory struct {
 	mu                sync.Mutex
+	Tenant, Project   string
 	Device            string
 	Boot              boot.Identity
 	sequence, ceiling int64
 }
 
 func (f *Factory) envelope(kind string, seq int64) contract.Envelope {
-	return contract.Envelope{SchemaVersion: 1, MessageId: platform.ID(), TenantId: "demo", ProjectId: "Project-A", DeviceId: f.Device, BootId: f.Boot.ID, BootSeq: f.Boot.Seq, Sequence: seq, SentAt: time.Now().UTC(), Kind: kind}
+	return contract.Envelope{SchemaVersion: 1, MessageId: platform.ID(), TenantId: f.Tenant, ProjectId: f.Project, DeviceId: f.Device, BootId: f.Boot.ID, BootSeq: f.Boot.Seq, Sequence: seq, SentAt: time.Now().UTC(), Kind: kind}
 }
 
 // One sequence block per MQTT connection reserves a terminal sequence for its Will.
