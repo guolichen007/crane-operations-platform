@@ -70,7 +70,7 @@ func (s *Store) Apply(ctx context.Context, m contract.Envelope) (bool, error) {
 		return false, e
 	}
 	defer tx.Rollback()
-	if _, e = tx.ExecContext(ctx, "INSERT INTO devices(id,project_id) VALUES($1,$2) ON CONFLICT DO NOTHING", m.DeviceId, m.ProjectId); e != nil {
+	if _, e = tx.ExecContext(ctx, "INSERT INTO devices(id,project_id,source_mode) VALUES($1,$2,$3) ON CONFLICT DO NOTHING", m.DeviceId, m.ProjectId, legacySource(m.DeviceId)); e != nil {
 		return false, e
 	}
 	if _, e = tx.ExecContext(ctx, "INSERT INTO device_shadow(device_id,payload_json,updated_at,version) VALUES($1,$2,$3,$4) ON CONFLICT(device_id) DO UPDATE SET payload_json=excluded.payload_json,updated_at=excluded.updated_at,version=excluded.version", m.DeviceId, b, next.UpdatedAt, next.Version); e != nil {
@@ -96,4 +96,12 @@ func (s *Store) Apply(ctx context.Context, m contract.Envelope) (bool, error) {
 	}
 	s.cache[m.DeviceId] = next
 	return true, nil
+}
+
+// Only the retained count-mode fixture can infer simulation provenance without inventory.
+func legacySource(id string) string {
+	if len(id) == 7 && id[:4] == "SIM-" && id[4] >= '0' && id[4] <= '9' && id[5] >= '0' && id[5] <= '9' && id[6] >= '0' && id[6] <= '9' {
+		return "SIMULATION"
+	}
+	return "TEST"
 }

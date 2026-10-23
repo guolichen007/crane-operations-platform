@@ -1,0 +1,13 @@
+# Explicit asset-mode overlay. Never copies private inventory into an image.
+services:
+  cloud-api:
+    environment:
+      INVENTORY_FILE: /inventory/inventory.json
+      FLEET_FILE: /inventory/fleet.json
+    volumes:
+      - ./runtime/inventory.json:/inventory/inventory.json:ro
+      - ./runtime/fleet.json:/inventory/fleet.json:ro
+  device-simulator:
+    command: [--fleet-file, /inventory/fleet.json, --scenario, normal]
+    volumes:
+      - ./runtime/fleet.json:/inventory/fleet.json:ro

@@ -13,6 +13,8 @@ import (
 	"github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/audit"
 	"github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/remote"
 
+	"github.com/guolichen007/crane-operations-platform/internal/fleet"
+	"github.com/guolichen007/crane-operations-platform/internal/inventory"
 	"github.com/guolichen007/crane-operations-platform/internal/platform"
 	"github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/auth"
 	"github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/device"
@@ -60,9 +62,34 @@ func Run(args []string) error {
 			return e
 		}
 	}
+	if c.InventoryFile != "" {
+		document, err := inventory.Load(c.InventoryFile)
+		if err != nil {
+			return err
+		}
+		if err = inventory.Import(ctx, db, document); err != nil {
+			return err
+		}
+	}
+	manifest, e := fleet.Load(c.FleetFile, 20, c.FleetFile == "", false)
+	if e != nil {
+		return e
+	}
 	store, e := device.New(ctx, db)
 	if e != nil {
 		return e
+	}
+	activeRuntime := func(v contract.Shadow) bool {
+		return c.FleetFile == "" || fleet.Allows(manifest, contract.Envelope{TenantId: v.TenantId, ProjectId: v.ProjectId, DeviceId: v.DeviceId})
+	}
+	listRuntime := func() []contract.Shadow {
+		values := []contract.Shadow{}
+		for _, v := range store.List() {
+			if activeRuntime(v) {
+				values = append(values, v)
+			}
+		}
+		return values
 	}
 	leases := session.New(db, time.Duration(c.TTL)*time.Second, time.Duration(c.Grace)*time.Second)
 	var mqttMessages, dbErrors, wsClients, eventAcks atomic.Int64
@@ -71,10 +98,10 @@ func Run(args []string) error {
 	reconcileAll := make(chan struct{}, 1)
 	cloudBoot := platform.ID()
 	var cloudSequence atomic.Int64
-	broker, e := platform.Connect(ctx, c, "cloud-api", []string{"crane/v1/demo/Project-A/+/heartbeat", "crane/v1/demo/Project-A/+/shadow/reported", "crane/v1/demo/Project-A/+/telemetry/live", "crane/v1/demo/Project-A/+/alarm", "crane/v1/demo/Project-A/+/event", "crane/v1/demo/Project-A/+/command/ack"}, nil, func(topic string, b []byte, _ time.Duration) error {
+	broker, e := platform.Connect(ctx, c, "cloud-api", fleet.Subscriptions(manifest), nil, func(topic string, b []byte, _ time.Duration) error {
 		mqttMessages.Add(1)
 		m, err := contract.Decode(topic, b)
-		if err != nil {
+		if err != nil || !fleet.Allows(manifest, m) {
 			logger.Warn("invalid MQTT envelope", "event", "message_rejected")
 			return nil
 		}
@@ -215,7 +242,7 @@ func Run(args []string) error {
 	})
 	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, r *http.Request) {
 		connected := 0
-		for _, v := range store.List() {
+		for _, v := range listRuntime() {
 			if v.Presence.Connectivity == "MQTT_CONNECTED" {
 				connected++
 			}
@@ -238,8 +265,24 @@ func Run(args []string) error {
 		respond(w, 200, map[string]string{"mode": "development-only"})
 	})
 	api := http.NewServeMux()
+	api.HandleFunc("GET /api/v1/projects", func(w http.ResponseWriter, r *http.Request) {
+		values, err := inventory.Projects(r.Context(), db)
+		if err != nil {
+			respond(w, 503, map[string]string{"error": "inventory unavailable"})
+			return
+		}
+		respond(w, 200, values)
+	})
+	api.HandleFunc("GET /api/v1/assets/devices", func(w http.ResponseWriter, r *http.Request) {
+		values, err := inventory.Assets(r.Context(), db)
+		if err != nil {
+			respond(w, 503, map[string]string{"error": "inventory unavailable"})
+			return
+		}
+		respond(w, 200, values)
+	})
 	api.HandleFunc("GET /api/v1/devices", func(w http.ResponseWriter, r *http.Request) {
-		values := store.List()
+		values := listRuntime()
 		for i := range values {
 			status, err := leases.Status(r.Context(), values[i].DeviceId)
 			if err != nil {
@@ -252,7 +295,7 @@ func Run(args []string) error {
 	})
 	detail := func(w http.ResponseWriter, r *http.Request) {
 		v, ok := store.Get(r.PathValue("id"))
-		if !ok {
+		if !ok || !activeRuntime(v) {
 			respond(w, 404, map[string]string{"error": "not found"})
 			return
 		}
@@ -277,7 +320,7 @@ func Run(args []string) error {
 	api.HandleFunc("POST /api/v1/devices/{id}/live-sessions", func(w http.ResponseWriter, r *http.Request) {
 		identity, _ := auth.Authenticate(r, c.Token)
 		id := r.PathValue("id")
-		if _, ok := store.Get(id); !ok {
+		if value, ok := store.Get(id); !ok || !activeRuntime(value) {
 			respond(w, 404, map[string]string{"error": "not found"})
 			return
 		}
@@ -319,7 +362,7 @@ func Run(args []string) error {
 	api.HandleFunc("DELETE /api/v1/remote-sessions/{sessionId}", remote.Disabled)
 	api.HandleFunc("GET /api/v1/devices/{id}/stream", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
-		if _, ok := store.Get(id); !ok {
+		if value, ok := store.Get(id); !ok || !activeRuntime(value) {
 			http.NotFound(w, r)
 			return
 		}

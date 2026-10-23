@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
@@ -53,10 +53,20 @@ const tasks = {
         `POSTGRES_PASSWORD=${randomBytes(24).toString('hex')}\nDEV_API_TOKEN=${randomBytes(32).toString('hex')}\n`,
         { mode: 0o600 }
       );
+    run(go, ['run', './tools/fleet', '--out', 'deploy/compose/runtime/acl']);
     if (!existsSync('deploy/compose/runtime/certs/cloud/cloud-api.key'))
       run(go, ['run', './tools/certs']);
     else if (!existsSync('deploy/compose/runtime/certs/devices/TEST-001.key'))
       run(go, ['run', './tools/certs', '--fixture']);
+  },
+  'asset-up'() {
+    const input = process.env.INVENTORY_FILE || (existsSync('local-private/inventory/actual-projects.local.yaml') ? 'local-private/inventory/actual-projects.local.yaml' : 'deploy/inventory/inventory.example.yaml');
+    copyFileSync(input, 'deploy/compose/runtime/inventory.json');
+    run(go, ['run', './tools/fleet', '--inventory-file', input, '--out', 'deploy/compose/runtime/acl', '--manifest-out', 'deploy/compose/runtime/fleet.json']);
+    run(go, ['run', './tools/certs', '--fleet-file', 'deploy/compose/runtime/fleet.json']);
+    const overlay = [...composeArgs, '-f', 'deploy/compose/docker-compose.inventory.yml'];
+    if (win) { run(process.execPath, ['tools/build-images.mjs']); run(docker, [...overlay, 'up', '-d', '--no-build']); }
+    else run(docker, [...overlay, 'up', '-d', '--build']);
   },
   'dev-up'() {
     if (win) {
