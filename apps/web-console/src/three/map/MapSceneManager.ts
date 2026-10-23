@@ -37,6 +37,7 @@ import { project } from './GeoProjection';
 import { disposeObject } from '../utils/dispose';
 import { projects, devices } from '../../data';
 import type { Project, Device } from '../../data/types';
+import type { InventoryProject } from '../../../../../contracts/typescript/types.gen';
 
 type SceneCallbacks = {
   change: (stack: MapLevel[], children: RegionEntry[], state: string) => void;
@@ -73,6 +74,7 @@ export class MapSceneManager {
   private alive = true;
   private focusedProjectId: string | null = null;
   private focusedDeviceId: string | null = null;
+  private inventoryProjects: InventoryProject[] = [];
   private shownProjects = projects;
   private shownDevices = devices;
   private visibleGroups: Group[] = [];
@@ -90,8 +92,13 @@ export class MapSceneManager {
   private resizeTimer: ReturnType<typeof setTimeout> | undefined;
   constructor(
     private host: HTMLElement,
-    private callbacks: SceneCallbacks
+    private callbacks: SceneCallbacks,
+    private inventoryOnly = false
   ) {
+    if (inventoryOnly) {
+      this.shownProjects = [];
+      this.shownDevices = [];
+    }
     this.renderer = createRenderer();
     this.renderer.info.autoReset = false;
     host.append(this.renderer.domElement);
@@ -105,7 +112,7 @@ export class MapSceneManager {
     });
     addAtmosphere(this.scene);
     this.scene.add(this.background.mesh, this.country, this.detail, this.markers, this.floor.group);
-    this.network = new NetworkLayer(projects);
+    this.network = new NetworkLayer(inventoryOnly ? [] : projects);
     this.scene.add(this.network.group);
     this.post = createPostProcessing(this.renderer, this.scene, this.rig.camera);
     this.interaction = new InteractionRouter(
@@ -386,6 +393,11 @@ export class MapSceneManager {
       await this.enter(destination.adcode);
     }
   }
+  setInventoryProjects(items: InventoryProject[]) {
+    if (!this.inventoryOnly) return;
+    this.inventoryProjects = items;
+    this.refreshLabelsAndMarkers();
+  }
   setFilter(items: Project[], deviceItems: Device[]) {
     this.intro?.finish();
     this.shownProjects = items;
@@ -574,7 +586,7 @@ export class MapSceneManager {
       }
       const regionLabel = this.labels.add(
         anchor,
-        country ? `${shortName} · ${count}台` : e.name,
+        country ? (this.inventoryOnly ? shortName : `${shortName} · ${count}台`) : e.name,
         country ? 'map-region province-summary' : 'map-region',
         country ? 0.38 : 0,
         country ? 0 : 3,
@@ -596,7 +608,49 @@ export class MapSceneManager {
         if (!this.reduced) g.scale.setScalar(0.02);
       }
     }
-    if (country) {
+    if (this.inventoryOnly) {
+      for (const item of this.inventoryProjects) {
+        if (!item.adminCode) continue;
+        const region = this.loader.manifest[item.adminCode];
+        if (
+          !region ||
+          (!country &&
+            !this.loader.path(item.adminCode).some((entry) => entry.adcode === current.adcode))
+        )
+          continue;
+        const anchor = new Group();
+        const [x, z] = project(...region.center);
+        anchor.position.set(x, top + 0.3, z);
+        const state =
+          item.realConnectedCount > 0
+            ? 'connected'
+            : item.lifecycle === 'COMPLETED'
+              ? 'awaiting'
+              : 'planned';
+        const color = { connected: '#55d6a4', awaiting: '#6ecdf2', planned: '#e8b75d' }[state];
+        const dot = new Mesh(new SphereGeometry(0.16, 10, 8), new MeshBasicMaterial({ color }));
+        anchor.add(dot);
+        this.markers.add(anchor);
+        this.pickTargets.push({
+          kind: 'project',
+          id: item.id,
+          object: anchor,
+          radius: 24,
+          centerY: 0,
+        });
+        const label = this.labels.add(
+          anchor,
+          item.name,
+          `inventory-project-marker ${state}`,
+          0.36,
+          30,
+          () => this.callbacks.project(item.id)
+        );
+        label.element.dataset.projectId = item.id;
+        label.element.title = '行政区级定位 · 非现场精确坐标';
+      }
+    }
+    if (country && !this.inventoryOnly) {
       const anchor = new Group();
       anchor.position.copy(this.network.cloud);
       this.markers.add(anchor);

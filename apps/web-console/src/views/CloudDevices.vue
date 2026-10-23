@@ -2,10 +2,16 @@
 import { ref, computed, onMounted, onUnmounted, watch, shallowRef } from 'vue';
 import { useRoute } from 'vue-router';
 import type { Shadow } from '../../../../contracts/typescript/types.gen';
-import { listDevices, getDevice } from '../cloud/api';
+import { listDevices, getDevice, listAssets, listProjects } from '../cloud/api';
 import { formatCloudTime, deviceState, silentExplanation } from '../cloud/format';
+import { useCloudQuery } from '../cloud/useCloudQuery';
+import { assetSource } from '../cloud/inventory';
 import { LiveViewer, type ViewerSnapshot } from '../cloud/LiveViewer';
 const route = useRoute();
+const { data: metadata } = useCloudQuery(async () => {
+  const [assets, projects] = await Promise.all([listAssets(), listProjects()]);
+  return { assets, projects };
+});
 const devices = ref<Shadow[]>([]),
   current = ref<Shadow>(),
   error = ref('');
@@ -74,6 +80,12 @@ onUnmounted(() => {
   window.removeEventListener('cloud-authenticated', refresh);
   void live.dispose();
 });
+const asset = computed(() =>
+  metadata.value?.assets.find((a) => a.runtimeDeviceId === detail.value)
+);
+const projectName = computed(
+  () => metadata.value?.projects.find((p) => p.id === asset.value?.projectId)?.name
+);
 const active = computed(() => viewer.value.state !== 'STOPPED');
 const streamHeading = computed(() => {
   if (viewer.value.state === 'STOPPED') return 'Last Known State · 最近状态';
@@ -92,13 +104,18 @@ const streamHeading = computed(() => {
         error ||
         viewer.error ||
         (detail
-          ? 'Cloud API · SIM 为模拟设备'
-          : `已接收 ${devices.length} 台云端设备；SIM 为模拟设备，读取缓存不唤醒现场`)
+          ? 'Cloud API · 运行身份与业务资产分开管理'
+          : `已接收 ${devices.length} 个运行身份；运行源不等于现场设备，读取缓存不唤醒现场`)
       }}
     </p>
     <p class="silent-note">{{ silentExplanation }}</p>
     <template v-if="detail">
-      <router-link to="/devices">← 返回台账</router-link>
+      <router-link to="/runtime">← 返回Runtime台账</router-link>
+      <p v-if="asset">
+        {{ projectName }} · {{ asset.displayName }} · {{ asset.craneModel ?? '型号待补充' }} ·
+        数据来源：{{ assetSource(asset) }}
+      </p>
+      <p v-else>未关联业务资产 · 历史/测试运行源；不代表真实现场设备。</p>
       <section
         v-if="current"
         class="shadow-card"

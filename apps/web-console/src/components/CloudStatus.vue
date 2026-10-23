@@ -13,7 +13,7 @@ async function login() {
     });
     if (!res.ok) throw Error('登录失败');
     authenticated.value = true;
-    message.value = '已连接 Cloud API · 首页地图为匿名沙盘样例';
+    message.value = '已连接 Cloud API · 资产与运行来源分开显示';
     window.dispatchEvent(new Event('cloud-authenticated'));
   } catch {
     message.value = '登录失败，请核对本地开发凭据';
@@ -42,7 +42,7 @@ onMounted(async () => {
       /></label>
       <button type="submit">连接云端</button>
     </form>
-    <router-link to="/devices">查看云端设备 →</router-link>
+    <router-link to="/runtime">查看云端设备 →</router-link>
   </section>
 </template>
 <style scoped>

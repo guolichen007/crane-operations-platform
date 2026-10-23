@@ -945,3 +945,19 @@ td code {
   padding-bottom: calc(160px + env(safe-area-inset-bottom, 0px));
   scroll-padding-bottom: 160px;
 }
+
+.inventory-cards { display: grid; grid-template-columns: repeat(auto-fill,minmax(300px,1fr)); gap: 20px; }
+.inventory-card { background: #102730; border: 1px solid #28505b; border-radius: 6px; padding: 24px; }
+.inventory-card h2 { margin: 14px 0; font-size: 20px; }
+.inventory-card p { margin: 12px 0; line-height: 1.7; color: #92a4af; }
+.inventory-card small { color: #7bd8db; }
+.inventory-note { margin: 8px 28px; }
+.inventory-map-note { position:absolute; z-index:3; top:18px; left:24px; color:#92a4af; line-height:1.8; font-size:11px; pointer-events:none; }
+.inventory-project-list { position:absolute; z-index:4; right:16px; top:20px; bottom:80px; width:240px; overflow:auto; background:#102730d9; padding:10px; }
+.inventory-project-list button { display:block; text-align:left; width:100%; padding:12px; border-bottom:1px solid #28505b; }
+.inventory-project-list small { display:block; margin-top:8px; color:#92a4af; }
+.inventory-selection { position:absolute; z-index:5; left:24px; bottom:90px; width:320px; padding:20px; background:#102730f5; border:1px solid #28505b; }
+.inventory-selection p { margin:12px 0; }
+.inventory-project-marker { color:#e8b75d; font-size:12px; padding:4px; background:#102730dc; border:1px solid currentColor; border-radius:3px; cursor:pointer; }
+.inventory-project-marker.awaiting { color:#6ecdf2; }
+.inventory-project-marker.connected { color:#55d6a4; }

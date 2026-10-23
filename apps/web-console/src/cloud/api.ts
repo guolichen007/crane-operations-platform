@@ -1,4 +1,10 @@
-import type { Envelope, LiveSession, Shadow } from '../../../../contracts/typescript/types.gen';
+import type {
+  Envelope,
+  LiveSession,
+  Shadow,
+  InventoryProject,
+  AssetDevice,
+} from '../../../../contracts/typescript/types.gen';
 
 export type CloudAlarm = Extract<Envelope, { kind: 'ALARM' }>;
 export const cloudMode = import.meta.env.VITE_DATA_MODE === 'api';
@@ -20,6 +26,8 @@ async function request<T>(path: string, method = 'GET', keepalive = false): Prom
 }
 const segment = encodeURIComponent;
 export const listDevices = () => request<Shadow[]>('devices');
+export const listProjects = () => request<InventoryProject[]>('projects');
+export const listAssets = () => request<AssetDevice[]>('assets/devices');
 export const getDevice = (id: string) => request<Shadow>(`devices/${segment(id)}/shadow`);
 export const listAlarms = () => request<CloudAlarm[]>('alarms');
 export const openLive = (id: string) =>
