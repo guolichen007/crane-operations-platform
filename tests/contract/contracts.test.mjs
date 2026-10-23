@@ -48,10 +48,10 @@ test('all generated envelopes validate; malformed topic identity rejected', asyn
     assert.equal(message.payload.schema.properties.payload.additionalProperties, false);
   }
 });
-test('REST paths and MQTT bindings remain frozen', async () => {
+test('REST inventory extension and frozen MQTT bindings remain compatible', async () => {
   const api = YAML.parse(await readFile('contracts/openapi/cloud-api.yaml', 'utf8'));
   assert.equal(api.openapi, '3.1.0');
-  assert.equal(Object.keys(api.paths).length, 11);
+  assert.equal(Object.keys(api.paths).length, 13);
   const async = YAML.parse(await readFile('contracts/asyncapi/edge-mqtt.yaml', 'utf8'));
   const model = await read('contracts/model.json');
   assert.equal(Object.keys(async.channels).length, 10);

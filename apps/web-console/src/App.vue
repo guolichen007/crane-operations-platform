@@ -85,8 +85,10 @@ async function fullscreen() {
         </div>
         <div class="header-actions">
           <time>{{ clock }}</time
-          ><span class="mode-tag"><i></i>{{ cloudMode ? 'Cloud API / 空间沙盘 DEMO' : '演示模式' }}</span
-          ><button class="tour-trigger" @click="tour"><Play :size="13" />自动巡演</button
+          ><span class="mode-tag"
+            ><i></i>{{ cloudMode ? 'Cloud API / 资产与运行来源' : '演示模式' }}</span
+          ><button v-if="!cloudMode" class="tour-trigger" @click="tour">
+            <Play :size="13" />自动巡演</button
           ><button class="icon-button" title="全屏" aria-label="全屏" @click="fullscreen">
             <Maximize :size="17" /></button
           ><span class="user-avatar"><UserRound :size="17" /></span>

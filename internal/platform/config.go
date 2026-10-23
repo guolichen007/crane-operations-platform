@@ -77,7 +77,7 @@ func Load(args []string) (Config, error) {
 	if e := fs.Parse(args); e != nil {
 		return c, e
 	}
-	if c.Count < 1 || c.Count > 20 || c.TTL < 1 || c.TTL > 300 || c.Grace < 1 || c.Grace > 60 || c.WillDelay < 5 || c.WillDelay > 60 {
+	if (c.FleetFile == "" && (c.Count < 1 || c.Count > 20)) || c.TTL < 1 || c.TTL > 300 || c.Grace < 1 || c.Grace > 60 || c.WillDelay < 5 || c.WillDelay > 60 {
 		return c, errors.New("configuration outside supported bounds")
 	}
 	switch c.Scenario {

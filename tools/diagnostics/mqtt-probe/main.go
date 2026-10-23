@@ -24,9 +24,13 @@ func main() {
 func run() error {
 	broker := flag.String("broker", "tls://localhost:8883", "broker")
 	dir := flag.String("cert-dir", "deploy/compose/runtime/certs/devices", "certs")
+	device := flag.String("device", "SIM-001", "runtime identity")
+	project := flag.String("project", "Project-A", "own project")
+	forbiddenProject := flag.String("forbidden-project", "Project-A", "denied target project")
+	forbiddenDevice := flag.String("forbidden-device", "SIM-002", "denied target device")
 	messageFile := flag.String("message", "", "optional anonymous test envelope")
 	flag.Parse()
-	tlsCfg, e := platform.TLS(*dir, "SIM-001")
+	tlsCfg, e := platform.TLS(*dir, *device)
 	if e != nil {
 		return e
 	}
@@ -44,15 +48,20 @@ func run() error {
 	if e = cm.AwaitConnection(ctx); e != nil {
 		return e
 	}
-	forbidden, _ := contract.Topic("demo", "Project-A", "SIM-002", "alarm")
+	forbidden, _ := contract.Topic("demo", *forbiddenProject, *forbiddenDevice, "alarm")
 	resp, err := cm.Publish(ctx, &paho.Publish{Topic: forbidden, QoS: 1, Payload: []byte(`{}`)})
 	if err == nil && (resp == nil || resp.ReasonCode < 128) {
 		return fmt.Errorf("ACL allowed cross-device publication")
 	}
-	command, _ := contract.Topic("demo", "Project-A", "SIM-001", "command/watch/start")
+	command, _ := contract.Topic("demo", *project, *device, "command/watch/start")
 	resp, err = cm.Publish(ctx, &paho.Publish{Topic: command, QoS: 1, Payload: []byte(`{}`)})
 	if err == nil && (resp == nil || resp.ReasonCode < 128) {
 		return fmt.Errorf("ACL allowed device command publication")
+	}
+	own, _ := contract.Topic("demo", *project, *device, "alarm")
+	ownResponse, ownErr := cm.Publish(ctx, &paho.Publish{Topic: own, QoS: 1, Payload: []byte(`{}`)})
+	if ownErr != nil || ownResponse == nil || ownResponse.ReasonCode >= 128 {
+		return fmt.Errorf("ACL rejected own project scope")
 	}
 	if *messageFile != "" {
 		b, e := os.ReadFile(*messageFile)

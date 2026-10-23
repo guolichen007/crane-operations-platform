@@ -25,3 +25,13 @@ func TestConfigurationPrecedence(t *testing.T) {
 		t.Fatal("unknown scenario accepted")
 	}
 }
+
+func TestFleetFileTakesPriorityOverLegacyCountBounds(t *testing.T) {
+	c, e := Load([]string{"--fleet-file", "explicit-fleet.yaml", "--count", "0"})
+	if e != nil || c.FleetFile != "explicit-fleet.yaml" {
+		t.Fatal("manifest did not take priority", e)
+	}
+	if _, e = Load([]string{"--count", "0"}); e == nil {
+		t.Fatal("legacy count bounds removed")
+	}
+}

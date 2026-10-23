@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, copyFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -36,7 +36,7 @@ async function until(label, fn, timeout = 45000) {
 }
 const proof = [];
 const record = (check) => { proof.push({ check, status: 'PASS', at: new Date().toISOString() }); console.log('PASS ' + check); };
-const root = 'local-private/validation/s35';
+const root = 'local-private/validation/phase1-a0';
 mkdirSync(root, { recursive: true });
 const shadow = () => api('devices/SIM-001/shadow');
 const simulated = async () => (await api('devices')).filter((d) => d.deviceId.startsWith('SIM-'));
@@ -47,7 +47,7 @@ async function browserCheck() {
   const browser = await chromium.launch(win ? { channel: 'chrome' } : { headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
-    await page.goto((process.env.PHASE0_WEB_URL || `http://127.0.0.1:${config.WEB_PORT || 18080}`) + '/#/devices');
+    await page.goto((process.env.PHASE0_WEB_URL || `http://127.0.0.1:${config.WEB_PORT || 18080}`) + '/#/runtime');
     await page.getByLabel('本地开发凭据', { exact: true }).fill(token);
     await page.getByRole('button', { name: '连接云端', exact: true }).click();
     await page.getByTestId('cloud-device').first().waitFor();
@@ -64,7 +64,7 @@ async function browserCheck() {
     await page.getByRole('link', { name: '态势沙盘', exact: true }).click();
     const runtime = page.getByTestId('cloud-runtime');
     await expect(runtime.locator('.runtime-metrics b').first()).toHaveText(String((await api('devices')).length));
-    await expect(runtime).toContainText('位置元数据未配置');
+    await expect(runtime).toContainText('未配置时不生成地图点');
     await expect(runtime).toContainText('SIM 为模拟设备');
     record('S3.5 real Cloud runtime summary and 1920x1080 grid safe area');
     await page.getByRole('link', { name: '告警中心', exact: true }).click();
@@ -73,7 +73,7 @@ async function browserCheck() {
     if (alarms.length) await expect(page.getByTestId('cloud-alarm').first()).toContainText(alarms[0].payload.code);
     await expect(page.getByRole('button', { name: '确认告警' })).toHaveCount(0);
     record('S3.5 Cloud Alarm page matches actual Alarm API without Demo ACK');
-    await page.getByRole('link', { name: '设备中心', exact: true }).click();
+    await page.getByRole('link', { name: '查看云端设备 →', exact: true }).click();
     await page.getByTestId('cloud-device').filter({ hasText: 'SIM-001' }).click();
     await page.getByTestId('device-shadow').waitFor();
     assert.match(await page.getByTestId('device-shadow').textContent(), /Last Known State/);
@@ -107,12 +107,16 @@ try {
   compose(['run', '--rm', '--no-deps', '--entrypoint', 'sh', '-v', `${binary}:/tmp/session.test:ro`, 'cloud-api', '-c', 'T05_TEST_DATABASE_URL="$DATABASE_URL" /tmp/session.test -test.v']);
   record('empty DB and Phase0 DB upgrade; original migration immutable');
   record('five viewer reference, authorization, expiry and durable generation repository');
+  const inventoryBinary = resolve('tools/.cache/inventory.test');
+  run(go, ['test', '-c', '-o', inventoryBinary, './internal/inventory'], { GOOS: 'linux', GOARCH: 'amd64', CGO_ENABLED: '0' });
+  compose(['run', '--rm', '--no-deps', '--entrypoint', 'sh', '-v', `${inventoryBinary}:/tmp/inventory.test:ro`, '-v', `${resolve('deploy/inventory/inventory.example.yaml')}:/fixtures/example.yaml:ro`, 'cloud-api', '-c', 'A0_TEST_DATABASE_URL="$DATABASE_URL" A0_INVENTORY_EXAMPLE=/fixtures/example.yaml /tmp/inventory.test -test.v']);
+  record('A0 empty/v2 migration, idempotent atomic import, provenance and guarded legacy reset');
   compose(['up', '-d', '--force-recreate', '--no-deps', 'cloud-api']);
   await ready();
   const restart = Date.now();
   compose(['up', '-d', '--force-recreate', '--no-deps', 'device-simulator']);
   await until('20 independent online device identities', async () => (await simulated()).filter((d) => d.presence.connectivity === 'MQTT_CONNECTED' && Date.parse(d.updatedAt) >= restart).length === 20);
-  assert.equal(db('SELECT max(version_id) FROM goose_db_version'), '2');
+  assert.equal(db('SELECT max(version_id) FROM goose_db_version'), '3');
   record('20 simulated devices Edge → MQTT5 TLS → PostgreSQL typed Shadow');
   await browserCheck();
   await until('browser lease closes with grace', async () => (await shadow()).upstreamStatus === 'SILENT');
@@ -219,9 +223,74 @@ try {
   await until('unrenewed lease LIVE', async () => (await shadow()).upstreamStatus === 'LIVE');
   await until('unrenewed lease expires to SILENT', async () => (await shadow()).upstreamStatus === 'SILENT' && (await shadow()).reported.operatingState === 'SILENT', 20000);
   record('unrenewed Viewer TTL expires and stops upstream after grace');
+  await assetModeCheck();
   writeFileSync(root + '/integration.json', JSON.stringify({ status: 'PASS', proof }, null, 2));
-  console.log(`T0_5_INTEGRATION=PASS checks=${proof.length}`);
+  console.log(`PHASE1_A0_INTEGRATION=PASS checks=${proof.length}`);
 } catch (error) {
   writeFileSync(root + '/integration.json', JSON.stringify({ status: 'FAIL', error: error.message, proof }, null, 2));
   throw error;
+}
+
+async function assetModeCheck() {
+  const name = `crane_a0_${Date.now()}`;
+  assert.match(name, /^crane_a0_[0-9]+$/);
+  db(`CREATE DATABASE ${name}`);
+  const assetEnv = { POSTGRES_DATABASE: name, LIVE_TTL_SECONDS: '30', LIVE_GRACE_SECONDS: '2', MQTT_WILL_DELAY_SECONDS: '5' };
+  const assetCompose = (args, capture = false) => run(docker, [...composeArgs, '-f', 'deploy/compose/docker-compose.inventory.yml', ...args], assetEnv, capture);
+  const assetDB = sql => assetCompose(['exec', '-T', 'postgres', 'psql', '-U', 'crane', '-d', name, '-v', 'ON_ERROR_STOP=1', '-At', '-c', sql], true);
+  let browser;
+  try {
+    compose(['stop', 'device-simulator', 'cloud-api', 'mosquitto']);
+    copyFileSync('deploy/inventory/inventory.example.yaml', 'deploy/compose/runtime/inventory.json');
+    run(go, ['run', './tools/fleet', '--inventory-file', 'deploy/inventory/inventory.example.yaml', '--out', 'deploy/compose/runtime/acl', '--manifest-out', 'deploy/compose/runtime/fleet.json']);
+    run(go, ['run', './tools/certs', '--fleet-file', 'deploy/compose/runtime/fleet.json']);
+    assetCompose(['up', '-d', '--force-recreate', '--no-deps', 'mosquitto', 'cloud-api', 'device-simulator', 'web-console']);
+    await ready();
+    const expected = JSON.parse(readFileSync('deploy/compose/runtime/fleet.json', 'utf8')).devices.map(d => d.runtimeDeviceId).sort();
+    await until('A0 exact10 online manifest identities', async () => {
+      const devices = await api('devices');
+      return JSON.stringify(devices.map(d => d.deviceId).sort()) === JSON.stringify(expected) && devices.every(d => d.presence.connectivity === 'MQTT_CONNECTED');
+    });
+    assert.equal(expected.length, 10);
+    assert.equal(assetDB('SELECT count(*) FROM projects'), '9');
+    assert.equal(assetDB('SELECT count(*) FROM asset_devices'), '10');
+    assert.equal(assetDB("SELECT count(*) FROM devices WHERE source_mode='SIMULATION'"), '10');
+    assert.equal(assetDB("SELECT count(*) FROM devices WHERE source_mode='REAL'"), '0');
+    const projects = await api('projects'), assets = await api('assets/devices');
+    assert.equal(projects.length, 9); assert.equal(assets.length, 10);
+    assert.equal(projects.filter(p => p.lifecycle === 'PLANNED').length, 5);
+    assert.equal(projects.filter(p => p.lifecycle === 'PRE_DEVELOPMENT').length, 1);
+    assert.equal(projects.filter(p => p.lifecycle === 'COMPLETED' && p.assetDeviceCount === 0 && p.runtimeDeviceCount === 0).length, 3);
+    assert.ok(assets.every(a => a.runtimeSource === 'SIMULATION' && a.connectivity === 'MQTT_CONNECTED'));
+    record('A0 real PostgreSQL/API: 9 projects,10 assets,10 simulation,0 real; completed projects have no fake devices');
+    run(go, ['run', './tools/diagnostics/mqtt-probe', '--device', 'SIM-P001-01', '--project', 'P001', '--forbidden-project', 'P004', '--forbidden-device', 'SIM-P001-01']);
+    record('A0 TLS ACL permits own P001 scope and rejects same identity publishing into P004');
+    const lease = await api('devices/SIM-P004-02/live-sessions', 'POST', 201);
+    await until('A0 P004 WATCH and LIVE use descriptor identity', async () => (await api('devices/SIM-P004-02/shadow')).upstreamStatus === 'LIVE');
+    await api(`live-sessions/${lease.sessionId}`, 'DELETE', 204);
+    record('A0 cross-project descriptor controls correct WATCH/LIVE without Project-A fallback');
+    const { chromium, expect } = await import('@playwright/test');
+    browser = await chromium.launch(win ? { channel: 'chrome' } : { headless: true });
+    const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+    await page.goto((process.env.PHASE0_WEB_URL || `http://127.0.0.1:${config.WEB_PORT || 18080}`) + '/#/overview');
+    await page.getByLabel('本地开发凭据', { exact: true }).fill(token);
+    await page.getByRole('button', { name: '连接云端', exact: true }).click();
+    await expect(page.getByTestId('inventory-summary').locator('strong')).toHaveText(['9','6','3','10','10','0']);
+    await page.getByRole('link', { name: '项目中心', exact: true }).click();
+    await expect(page.getByTestId('inventory-project')).toHaveCount(9);
+    const completed = page.getByTestId('inventory-project').filter({ hasText: '已完成' });
+    await expect(completed).toHaveCount(3);
+    for (const card of await completed.all()) { await expect(card).toContainText('待接入Cloud'); await expect(card).not.toContainText('OFFLINE'); }
+    await page.getByRole('link', { name: '设备中心', exact: true }).click();
+    await expect(page.getByTestId('inventory-asset')).toHaveCount(10);
+    await expect(page.getByTestId('inventory-asset').first()).toContainText('规划模拟 · 模拟在线');
+    await page.screenshot({ path: root + '/asset-mode.png', fullPage: true });
+    record('A0 real browser inventory summary, planned simulation labels and completed-awaiting semantics');
+  } finally {
+    await browser?.close();
+    assetCompose(['stop', 'cloud-api', 'device-simulator']);
+    db(`DROP DATABASE ${name} WITH (FORCE)`);
+    // Restore retained legacy fixture ACL for the next CI run; do not delete any source DB.
+    run(go, ['run', './tools/fleet', '--out', 'deploy/compose/runtime/acl']);
+  }
 }

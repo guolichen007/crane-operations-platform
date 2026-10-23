@@ -20,7 +20,8 @@ async function cloud(page: Page) {
       await route.fulfill({ status: 204 });
       return;
     }
-    if (path === '/api/v1/devices') result = fleet;
+    if (path === '/api/v1/projects' || path === '/api/v1/assets/devices') result = [];
+    else if (path === '/api/v1/devices') result = fleet;
     else if (path === '/api/v1/alarms') result = alarms;
     else if (path.endsWith('/shadow')) result = fleet.find((d) => path.includes(d.deviceId));
     else if (path.endsWith('/live-sessions') || path.endsWith('/renew')) result = viewerLease();
@@ -69,7 +70,7 @@ test('Overview reports 20 Cloud devices separately; missing site metadata create
   await page.goto('/#/overview');
   const summary = page.getByTestId('cloud-runtime');
   await expect(summary.locator('.runtime-metrics b')).toHaveText(['20', '20', '1', '1']);
-  await expect(summary).toContainText('20台云设备已接入，位置元数据未配置');
+  await expect(summary).toContainText('未配置时不生成地图点');
   await expect(summary).toContainText('SIM 为模拟设备');
   expect(h.calls.some((r) => r.path === '/api/v1/alarms')).toBe(true);
   expect(h.calls.some((r) => r.path === '/api/v1/devices')).toBe(true);
@@ -86,7 +87,7 @@ test('1920x1080 bottom cards clear CloudStatus, with readable SILENT and localiz
   page,
 }) => {
   await cloud(page);
-  await page.goto('/#/devices');
+  await page.goto('/#/runtime');
   await expect(page.getByTestId('cloud-device')).toHaveCount(20);
   await expect(page.getByTestId('cloud-device').first()).toContainText('在线 · 静默监测');
   await expect(page.getByTestId('cloud-device').first().locator('time')).toHaveText(

@@ -142,6 +142,20 @@ func TestLegacyResetHasEnvironmentAndExactIdentityProtection(t *testing.T) {
 	if _, e := db.Exec(`INSERT INTO devices(id,project_id,source_mode) SELECT 'SIM-'||lpad(i::text,3,'0'),'Project-A','SIMULATION' FROM generate_series(1,21) i; INSERT INTO devices(id,project_id,source_mode) VALUES('TEST-001','Project-A','TEST')`); e != nil {
 		t.Fatal(e)
 	}
+	if _, e := db.Exec(`
+INSERT INTO device_shadow(device_id,payload_json,updated_at,version) VALUES('SIM-001','{}',now(),1),('SIM-021','{}',now(),1);
+INSERT INTO device_heartbeats VALUES('SIM-001',now());
+INSERT INTO telemetry_samples(device_id,sampled_at,payload_json) VALUES('SIM-001',now(),'{}');
+INSERT INTO alarms VALUES('legacy-alarm','SIM-001',now(),'{}');
+INSERT INTO events VALUES('legacy-event','SIM-001',now(),'{}');
+INSERT INTO live_sessions VALUES('legacy-viewer','SIM-001','dev-admin',now()+interval '1 minute');
+INSERT INTO remote_sessions(session_id,device_id,user_id,expires_at,idle_seconds,audit_id) VALUES('legacy-disabled-remote','SIM-001','dev-admin',now(),0,'audit-retained');
+INSERT INTO device_live_state(device_id,lease_id,generation,status,desired_until,updated_at) VALUES('SIM-001','legacy-upstream',1,'SILENT',now(),now());
+INSERT INTO device_commands(command_id,device_id,kind,generation,status,created_at,expires_at,payload_json) VALUES('legacy-command','SIM-001','WATCH_START',1,'EXPIRED',now(),now(),'{}');
+INSERT INTO audit_logs(user_id,device_id,action,result) VALUES('dev-admin','SIM-001','legacy-fixture','retained');
+`); e != nil {
+		t.Fatal(e)
+	}
 	if ResetLegacy(ctx, db, "production") == nil {
 		t.Fatal("production reset accepted")
 	}
@@ -150,6 +164,14 @@ func TestLegacyResetHasEnvironmentAndExactIdentityProtection(t *testing.T) {
 	}
 	if e := ResetLegacy(ctx, db, "development"); e != nil {
 		t.Fatal(e)
+	}
+	for _, table := range []string{"device_commands", "device_live_state", "live_sessions", "remote_sessions", "alarms", "events", "telemetry_samples", "device_heartbeats"} {
+		if count(t, db, "SELECT count(*) FROM "+table) != 0 {
+			t.Fatal("legacy child rows retained", table)
+		}
+	}
+	if count(t, db, `SELECT count(*) FROM device_shadow WHERE device_id='SIM-021'`) != 1 || count(t, db, `SELECT count(*) FROM audit_logs`) != 1 {
+		t.Fatal("nonlegacy shadow or audit was deleted")
 	}
 	if count(t, db, `SELECT count(*) FROM devices`) != 2 || count(t, db, `SELECT count(*) FROM devices WHERE id IN ('SIM-021','TEST-001')`) != 2 {
 		t.Fatal("reset exceeded original20")

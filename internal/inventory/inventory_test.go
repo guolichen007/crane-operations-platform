@@ -5,6 +5,7 @@ import (
 	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -26,6 +27,14 @@ func TestInventoryExampleNoFabricatedCompletedAssets(t *testing.T) {
 	d := example(t)
 	if len(d.Projects) != 9 || len(d.AssetDevices) != 10 || len(Fleet(d).Devices) != 10 {
 		t.Fatal("inventory counts")
+	}
+	expected := []string{"SIM-P001-01", "SIM-P002-01", "SIM-P003-01", "SIM-P004-01", "SIM-P004-02", "SIM-P005-01", "SIM-P005-02", "SIM-P006-01", "SIM-P006-02", "SIM-P006-03"}
+	actual := []string{}
+	for _, r := range Fleet(d).Devices {
+		actual = append(actual, r.RuntimeDeviceId)
+	}
+	if !slices.Equal(actual, expected) {
+		t.Fatal("fleet identities differ from approved ten")
 	}
 	counts := map[string]int{}
 	for _, p := range d.Projects {
