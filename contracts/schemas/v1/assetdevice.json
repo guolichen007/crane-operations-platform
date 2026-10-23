@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/assetdevice.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "assetDeviceId",
+    "projectId",
+    "displayName",
+    "craneModel",
+    "ratedCapacityT",
+    "spanM",
+    "workClass",
+    "grabType",
+    "lifecycle",
+    "runtimeSource",
+    "runtimeDeviceId",
+    "connectivity"
+  ],
+  "properties": {
+    "assetDeviceId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "projectId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "craneModel": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 160
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "ratedCapacityT": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "spanM": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "workClass": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 80
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "grabType": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 160
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "lifecycle": {
+      "type": "string",
+      "enum": [
+        "PLANNED",
+        "PRE_DEVELOPMENT",
+        "COMPLETED"
+      ]
+    },
+    "runtimeSource": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "SIMULATION",
+            "REAL",
+            "TEST"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "runtimeDeviceId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "connectivity": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "MQTT_CONNECTED",
+            "OFFLINE",
+            "UNKNOWN"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "$defs": {}
+}

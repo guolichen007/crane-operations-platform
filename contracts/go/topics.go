@@ -41,16 +41,18 @@ func Payload[T any](m Envelope) T                  { var v T; _ = json.Unmarshal
 func WithPayload(m Envelope, payload any) Envelope { m.Payload, _ = json.Marshal(payload); return m }
 
 type fieldSchema struct {
-	Type      string   `json:"type"`
-	Ref       string   `json:"$ref"`
-	Format    string   `json:"format"`
-	Pattern   string   `json:"pattern"`
-	Enum      []string `json:"enum"`
-	Const     *float64 `json:"const"`
-	Minimum   *float64 `json:"minimum"`
-	Maximum   *float64 `json:"maximum"`
-	MinLength int      `json:"minLength"`
-	MaxLength *int     `json:"maxLength"`
+	AnyOf     []fieldSchema `json:"anyOf"`
+	Items     *fieldSchema  `json:"items"`
+	Type      string        `json:"type"`
+	Ref       string        `json:"$ref"`
+	Format    string        `json:"format"`
+	Pattern   string        `json:"pattern"`
+	Enum      []string      `json:"enum"`
+	Const     *float64      `json:"const"`
+	Minimum   *float64      `json:"minimum"`
+	Maximum   *float64      `json:"maximum"`
+	MinLength int           `json:"minLength"`
+	MaxLength *int          `json:"maxLength"`
 }
 type objectSchema struct {
 	Properties map[string]fieldSchema `json:"properties"`
@@ -77,8 +79,29 @@ func validateObject(name string, raw []byte) error {
 	}
 	for key, rule := range schema.Properties {
 		b, ok := fields[key]
-		if !ok || bytes.Equal(b, []byte("null")) {
+		if !ok {
 			return fmt.Errorf("required %s.%s", name, key)
+		}
+		if len(rule.AnyOf) > 0 {
+			if bytes.Equal(b, []byte("null")) {
+				continue
+			}
+			rule = rule.AnyOf[0]
+		}
+		if bytes.Equal(b, []byte("null")) {
+			return fmt.Errorf("required %s.%s", name, key)
+		}
+		if rule.Type == "array" {
+			var values []json.RawMessage
+			if json.Unmarshal(b, &values) != nil || rule.Items == nil || rule.Items.Ref == "" {
+				return fmt.Errorf("array required: %s", key)
+			}
+			for _, value := range values {
+				if err := validateObject(strings.TrimPrefix(rule.Items.Ref, "#/$defs/"), value); err != nil {
+					return err
+				}
+			}
+			continue
 		}
 		if rule.Ref != "" {
 			if err := validateObject(strings.TrimPrefix(rule.Ref, "#/$defs/"), b); err != nil {
@@ -114,6 +137,18 @@ func validateObject(name string, raw []byte) error {
 		}
 	}
 	return nil
+}
+
+// ValidateDocument applies the same generated closed contract to Inventory/Fleet data.
+func ValidateDocument(name string, value any) error {
+	if _, ok := wireSchemas[name]; !ok {
+		return errors.New("unknown contract")
+	}
+	b, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	return validateObject(name, b)
 }
 func Validate(m Envelope) error {
 	b, err := json.Marshal(m)

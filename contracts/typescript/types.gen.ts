@@ -98,6 +98,75 @@ export interface LiveSession {
   telemetryHz: 1;
   upstreamStatus: "SILENT" | "STARTING" | "LIVE" | "STOPPING" | "FAILED" | "EXPIRED";
 }
+export interface InventoryProjectInput {
+  id: string;
+  name: string;
+  lifecycle: "PLANNED" | "PRE_DEVELOPMENT" | "COMPLETED";
+  province: string;
+  city: string;
+  county: string;
+  locationLabel: string;
+  adminCode: number | null;
+  scheduleText: string;
+  notes: string;
+}
+export interface InventoryAssetInput {
+  assetDeviceId: string;
+  projectId: string;
+  displayName: string;
+  craneModel: string | null;
+  ratedCapacityT: number | null;
+  spanM: number | null;
+  workClass: string | null;
+  grabType: string | null;
+  lifecycle: "PLANNED" | "PRE_DEVELOPMENT" | "COMPLETED";
+}
+export interface RuntimeDescriptor {
+  runtimeDeviceId: string;
+  projectId: string;
+  assetDeviceId: string | null;
+  sourceMode: "SIMULATION" | "REAL" | "TEST";
+}
+export interface InventoryDocument {
+  tenantId: string;
+  projects: (InventoryProjectInput)[];
+  assetDevices: (InventoryAssetInput)[];
+  runtimeDevices: (RuntimeDescriptor)[];
+}
+export interface FleetManifest {
+  tenantId: string;
+  devices: (RuntimeDescriptor)[];
+}
+export interface InventoryProject {
+  id: string;
+  name: string;
+  lifecycle: "PLANNED" | "PRE_DEVELOPMENT" | "COMPLETED";
+  province: string;
+  city: string;
+  county: string;
+  locationLabel: string;
+  adminCode: number | null;
+  scheduleText: string;
+  notes: string;
+  assetDeviceCount: number;
+  runtimeDeviceCount: number;
+  realConnectedCount: number;
+  simulatedCount: number;
+}
+export interface AssetDevice {
+  assetDeviceId: string;
+  projectId: string;
+  displayName: string;
+  craneModel: string | null;
+  ratedCapacityT: number | null;
+  spanM: number | null;
+  workClass: string | null;
+  grabType: string | null;
+  lifecycle: "PLANNED" | "PRE_DEVELOPMENT" | "COMPLETED";
+  runtimeSource: "SIMULATION" | "REAL" | "TEST" | null;
+  runtimeDeviceId: string | null;
+  connectivity: "MQTT_CONNECTED" | "OFFLINE" | "UNKNOWN" | null;
+}
 export type Envelope = {
   schemaVersion: 1;
   messageId: string;

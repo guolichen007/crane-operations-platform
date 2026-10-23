@@ -1,0 +1,287 @@
+{
+  "tenantId": "demo",
+  "projects": [
+    {
+      "id": "P001",
+      "name": "Project-A",
+      "lifecycle": "PLANNED",
+      "province": "",
+      "city": "",
+      "county": "",
+      "locationLabel": "",
+      "adminCode": null,
+      "scheduleText": "",
+      "notes": "Anonymous example; location and technical metadata intentionally unconfigured."
+    },
+    {
+      "id": "P002",
+      "name": "Project-B",
+      "lifecycle": "PLANNED",
+      "province": "",
+      "city": "",
+      "county": "",
+      "locationLabel": "",
+      "adminCode": null,
+      "scheduleText": "",
+      "notes": "Anonymous example; location and technical metadata intentionally unconfigured."
+    },
+    {
+      "id": "P003",
+      "name": "Project-C",
+      "lifecycle": "PLANNED",
+      "province": "",
+      "city": "",
+      "county": "",
+      "locationLabel": "",
+      "adminCode": null,
+      "scheduleText": "",
+      "notes": "Anonymous example; location and technical metadata intentionally unconfigured."
+    },
+    {
+      "id": "P004",
+      "name": "Project-D",
+      "lifecycle": "PLANNED",
+      "province": "",
+      "city": "",
+      "county": "",
+      "locationLabel": "",
+      "adminCode": null,
+      "scheduleText": "",
+      "notes": "Anonymous example; location and technical metadata intentionally unconfigured."
+    },
+    {
+      "id": "P005",
+      "name": "Project-E",
+      "lifecycle": "PLANNED",
+      "province": "",
+      "city": "",
+      "county": "",
+      "locationLabel": "",
+      "adminCode": null,
+      "scheduleText": "",
+      "notes": "Anonymous example; location and technical metadata intentionally unconfigured."
+    },
+    {
+      "id": "P006",
+      "name": "Project-F",
+      "lifecycle": "PRE_DEVELOPMENT",
+      "province": "",
+      "city": "",
+      "county": "",
+      "locationLabel": "",
+      "adminCode": null,
+      "scheduleText": "",
+      "notes": "Anonymous example; location and technical metadata intentionally unconfigured."
+    },
+    {
+      "id": "P007",
+      "name": "Project-G",
+      "lifecycle": "COMPLETED",
+      "province": "",
+      "city": "",
+      "county": "",
+      "locationLabel": "",
+      "adminCode": null,
+      "scheduleText": "",
+      "notes": "Anonymous example; location and technical metadata intentionally unconfigured."
+    },
+    {
+      "id": "P008",
+      "name": "Project-H",
+      "lifecycle": "COMPLETED",
+      "province": "",
+      "city": "",
+      "county": "",
+      "locationLabel": "",
+      "adminCode": null,
+      "scheduleText": "",
+      "notes": "Anonymous example; location and technical metadata intentionally unconfigured."
+    },
+    {
+      "id": "P009",
+      "name": "Project-I",
+      "lifecycle": "COMPLETED",
+      "province": "",
+      "city": "",
+      "county": "",
+      "locationLabel": "",
+      "adminCode": null,
+      "scheduleText": "",
+      "notes": "Anonymous example; location and technical metadata intentionally unconfigured."
+    }
+  ],
+  "assetDevices": [
+    {
+      "assetDeviceId": "ASSET-P001-01",
+      "projectId": "P001",
+      "displayName": "Crane 1",
+      "craneModel": null,
+      "ratedCapacityT": null,
+      "spanM": null,
+      "workClass": null,
+      "grabType": null,
+      "lifecycle": "PLANNED"
+    },
+    {
+      "assetDeviceId": "ASSET-P002-01",
+      "projectId": "P002",
+      "displayName": "Crane 1",
+      "craneModel": null,
+      "ratedCapacityT": null,
+      "spanM": null,
+      "workClass": null,
+      "grabType": null,
+      "lifecycle": "PLANNED"
+    },
+    {
+      "assetDeviceId": "ASSET-P003-01",
+      "projectId": "P003",
+      "displayName": "Crane 1",
+      "craneModel": null,
+      "ratedCapacityT": null,
+      "spanM": null,
+      "workClass": null,
+      "grabType": null,
+      "lifecycle": "PLANNED"
+    },
+    {
+      "assetDeviceId": "ASSET-P004-01",
+      "projectId": "P004",
+      "displayName": "Crane 1",
+      "craneModel": null,
+      "ratedCapacityT": null,
+      "spanM": null,
+      "workClass": null,
+      "grabType": null,
+      "lifecycle": "PLANNED"
+    },
+    {
+      "assetDeviceId": "ASSET-P004-02",
+      "projectId": "P004",
+      "displayName": "Crane 2",
+      "craneModel": null,
+      "ratedCapacityT": null,
+      "spanM": null,
+      "workClass": null,
+      "grabType": null,
+      "lifecycle": "PLANNED"
+    },
+    {
+      "assetDeviceId": "ASSET-P005-01",
+      "projectId": "P005",
+      "displayName": "Crane 1",
+      "craneModel": null,
+      "ratedCapacityT": null,
+      "spanM": null,
+      "workClass": null,
+      "grabType": null,
+      "lifecycle": "PLANNED"
+    },
+    {
+      "assetDeviceId": "ASSET-P005-02",
+      "projectId": "P005",
+      "displayName": "Crane 2",
+      "craneModel": null,
+      "ratedCapacityT": null,
+      "spanM": null,
+      "workClass": null,
+      "grabType": null,
+      "lifecycle": "PLANNED"
+    },
+    {
+      "assetDeviceId": "ASSET-P006-01",
+      "projectId": "P006",
+      "displayName": "Crane 1",
+      "craneModel": null,
+      "ratedCapacityT": null,
+      "spanM": null,
+      "workClass": null,
+      "grabType": null,
+      "lifecycle": "PRE_DEVELOPMENT"
+    },
+    {
+      "assetDeviceId": "ASSET-P006-02",
+      "projectId": "P006",
+      "displayName": "Crane 2",
+      "craneModel": null,
+      "ratedCapacityT": null,
+      "spanM": null,
+      "workClass": null,
+      "grabType": null,
+      "lifecycle": "PRE_DEVELOPMENT"
+    },
+    {
+      "assetDeviceId": "ASSET-P006-03",
+      "projectId": "P006",
+      "displayName": "Crane 3",
+      "craneModel": null,
+      "ratedCapacityT": null,
+      "spanM": null,
+      "workClass": null,
+      "grabType": null,
+      "lifecycle": "PRE_DEVELOPMENT"
+    }
+  ],
+  "runtimeDevices": [
+    {
+      "runtimeDeviceId": "SIM-P001-01",
+      "projectId": "P001",
+      "assetDeviceId": "ASSET-P001-01",
+      "sourceMode": "SIMULATION"
+    },
+    {
+      "runtimeDeviceId": "SIM-P002-01",
+      "projectId": "P002",
+      "assetDeviceId": "ASSET-P002-01",
+      "sourceMode": "SIMULATION"
+    },
+    {
+      "runtimeDeviceId": "SIM-P003-01",
+      "projectId": "P003",
+      "assetDeviceId": "ASSET-P003-01",
+      "sourceMode": "SIMULATION"
+    },
+    {
+      "runtimeDeviceId": "SIM-P004-01",
+      "projectId": "P004",
+      "assetDeviceId": "ASSET-P004-01",
+      "sourceMode": "SIMULATION"
+    },
+    {
+      "runtimeDeviceId": "SIM-P004-02",
+      "projectId": "P004",
+      "assetDeviceId": "ASSET-P004-02",
+      "sourceMode": "SIMULATION"
+    },
+    {
+      "runtimeDeviceId": "SIM-P005-01",
+      "projectId": "P005",
+      "assetDeviceId": "ASSET-P005-01",
+      "sourceMode": "SIMULATION"
+    },
+    {
+      "runtimeDeviceId": "SIM-P005-02",
+      "projectId": "P005",
+      "assetDeviceId": "ASSET-P005-02",
+      "sourceMode": "SIMULATION"
+    },
+    {
+      "runtimeDeviceId": "SIM-P006-01",
+      "projectId": "P006",
+      "assetDeviceId": "ASSET-P006-01",
+      "sourceMode": "SIMULATION"
+    },
+    {
+      "runtimeDeviceId": "SIM-P006-02",
+      "projectId": "P006",
+      "assetDeviceId": "ASSET-P006-02",
+      "sourceMode": "SIMULATION"
+    },
+    {
+      "runtimeDeviceId": "SIM-P006-03",
+      "projectId": "P006",
+      "assetDeviceId": "ASSET-P006-03",
+      "sourceMode": "SIMULATION"
+    }
+  ]
+}

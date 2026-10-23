@@ -7,117 +7,186 @@ import (
 )
 
 type Position struct {
-	X float64 `json:"x"`
-	Y float64 `json:"y"`
-	Z float64 `json:"z"`
+	X float64 `json:"x" yaml:"x"`
+	Y float64 `json:"y" yaml:"y"`
+	Z float64 `json:"z" yaml:"z"`
 }
 type ReportedState struct {
-	OperatingState string   `json:"operatingState"`
-	Mode           string   `json:"mode"`
-	AlarmState     string   `json:"alarmState"`
-	RuntimeTotal   float64  `json:"runtimeTotal"`
-	Position       Position `json:"position"`
-	Load           float64  `json:"load"`
+	OperatingState string   `json:"operatingState" yaml:"operatingState"`
+	Mode           string   `json:"mode" yaml:"mode"`
+	AlarmState     string   `json:"alarmState" yaml:"alarmState"`
+	RuntimeTotal   float64  `json:"runtimeTotal" yaml:"runtimeTotal"`
+	Position       Position `json:"position" yaml:"position"`
+	Load           float64  `json:"load" yaml:"load"`
 }
 type BirthPayload struct {
-	EdgeHealth       string        `json:"edgeHealth"`
-	ControllerHealth string        `json:"controllerHealth"`
-	SensorHealth     string        `json:"sensorHealth"`
-	SoftwareVersion  string        `json:"softwareVersion"`
-	Reported         ReportedState `json:"reported"`
+	EdgeHealth       string        `json:"edgeHealth" yaml:"edgeHealth"`
+	ControllerHealth string        `json:"controllerHealth" yaml:"controllerHealth"`
+	SensorHealth     string        `json:"sensorHealth" yaml:"sensorHealth"`
+	SoftwareVersion  string        `json:"softwareVersion" yaml:"softwareVersion"`
+	Reported         ReportedState `json:"reported" yaml:"reported"`
 }
 type HeartbeatPayload struct {
-	EdgeHealth       string `json:"edgeHealth"`
-	ControllerHealth string `json:"controllerHealth"`
-	SensorHealth     string `json:"sensorHealth"`
+	EdgeHealth       string `json:"edgeHealth" yaml:"edgeHealth"`
+	ControllerHealth string `json:"controllerHealth" yaml:"controllerHealth"`
+	SensorHealth     string `json:"sensorHealth" yaml:"sensorHealth"`
 }
 type SnapshotPayload struct {
-	EdgeHealth       string        `json:"edgeHealth"`
-	ControllerHealth string        `json:"controllerHealth"`
-	SensorHealth     string        `json:"sensorHealth"`
-	Reported         ReportedState `json:"reported"`
+	EdgeHealth       string        `json:"edgeHealth" yaml:"edgeHealth"`
+	ControllerHealth string        `json:"controllerHealth" yaml:"controllerHealth"`
+	SensorHealth     string        `json:"sensorHealth" yaml:"sensorHealth"`
+	Reported         ReportedState `json:"reported" yaml:"reported"`
 }
 type LiveTelemetryPayload struct {
-	LeaseId    string        `json:"leaseId"`
-	Generation int64         `json:"generation"`
-	Reported   ReportedState `json:"reported"`
+	LeaseId    string        `json:"leaseId" yaml:"leaseId"`
+	Generation int64         `json:"generation" yaml:"generation"`
+	Reported   ReportedState `json:"reported" yaml:"reported"`
 }
 type DeathPayload struct {
-	Reason string `json:"reason"`
+	Reason string `json:"reason" yaml:"reason"`
 }
 type AlarmPayload struct {
-	Code string `json:"code"`
-	Text string `json:"text"`
+	Code string `json:"code" yaml:"code"`
+	Text string `json:"text" yaml:"text"`
 }
 type EventPayload struct {
-	Code string `json:"code"`
-	Text string `json:"text"`
+	Code string `json:"code" yaml:"code"`
+	Text string `json:"text" yaml:"text"`
 }
 type WatchCommandPayload struct {
-	LeaseId     string    `json:"leaseId"`
-	Generation  int64     `json:"generation"`
-	TtlSeconds  int       `json:"ttlSeconds"`
-	TelemetryHz int       `json:"telemetryHz"`
-	ExpiresAt   time.Time `json:"expiresAt"`
+	LeaseId     string    `json:"leaseId" yaml:"leaseId"`
+	Generation  int64     `json:"generation" yaml:"generation"`
+	TtlSeconds  int       `json:"ttlSeconds" yaml:"ttlSeconds"`
+	TelemetryHz int       `json:"telemetryHz" yaml:"telemetryHz"`
+	ExpiresAt   time.Time `json:"expiresAt" yaml:"expiresAt"`
 }
 type WatchAckPayload struct {
-	CommandId  string    `json:"commandId"`
-	LeaseId    string    `json:"leaseId"`
-	Generation int64     `json:"generation"`
-	Action     string    `json:"action"`
-	Result     string    `json:"result"`
-	Reason     string    `json:"reason"`
-	EdgeState  string    `json:"edgeState"`
-	AppliedAt  time.Time `json:"appliedAt"`
+	CommandId  string    `json:"commandId" yaml:"commandId"`
+	LeaseId    string    `json:"leaseId" yaml:"leaseId"`
+	Generation int64     `json:"generation" yaml:"generation"`
+	Action     string    `json:"action" yaml:"action"`
+	Result     string    `json:"result" yaml:"result"`
+	Reason     string    `json:"reason" yaml:"reason"`
+	EdgeState  string    `json:"edgeState" yaml:"edgeState"`
+	AppliedAt  time.Time `json:"appliedAt" yaml:"appliedAt"`
 }
 type EventStoredAckPayload struct {
-	SourceMessageId string `json:"sourceMessageId"`
-	Result          string `json:"result"`
+	SourceMessageId string `json:"sourceMessageId" yaml:"sourceMessageId"`
+	Result          string `json:"result" yaml:"result"`
 }
 type Presence struct {
-	Connectivity     string    `json:"connectivity"`
-	EdgeHealth       string    `json:"edgeHealth"`
-	ControllerHealth string    `json:"controllerHealth"`
-	SensorHealth     string    `json:"sensorHealth"`
-	BootId           string    `json:"bootId"`
-	BootSeq          int64     `json:"bootSeq"`
-	Sequence         int64     `json:"sequence"`
-	LastSeenAt       time.Time `json:"lastSeenAt"`
-	DisconnectedAt   time.Time `json:"disconnectedAt"`
-	DisconnectReason string    `json:"disconnectReason"`
+	Connectivity     string    `json:"connectivity" yaml:"connectivity"`
+	EdgeHealth       string    `json:"edgeHealth" yaml:"edgeHealth"`
+	ControllerHealth string    `json:"controllerHealth" yaml:"controllerHealth"`
+	SensorHealth     string    `json:"sensorHealth" yaml:"sensorHealth"`
+	BootId           string    `json:"bootId" yaml:"bootId"`
+	BootSeq          int64     `json:"bootSeq" yaml:"bootSeq"`
+	Sequence         int64     `json:"sequence" yaml:"sequence"`
+	LastSeenAt       time.Time `json:"lastSeenAt" yaml:"lastSeenAt"`
+	DisconnectedAt   time.Time `json:"disconnectedAt" yaml:"disconnectedAt"`
+	DisconnectReason string    `json:"disconnectReason" yaml:"disconnectReason"`
 }
 type Shadow struct {
-	DeviceId       string        `json:"deviceId"`
-	TenantId       string        `json:"tenantId"`
-	ProjectId      string        `json:"projectId"`
-	Presence       Presence      `json:"presence"`
-	Reported       ReportedState `json:"reported"`
-	UpdatedAt      time.Time     `json:"updatedAt"`
-	Version        int64         `json:"version"`
-	UpstreamStatus string        `json:"upstreamStatus"`
+	DeviceId       string        `json:"deviceId" yaml:"deviceId"`
+	TenantId       string        `json:"tenantId" yaml:"tenantId"`
+	ProjectId      string        `json:"projectId" yaml:"projectId"`
+	Presence       Presence      `json:"presence" yaml:"presence"`
+	Reported       ReportedState `json:"reported" yaml:"reported"`
+	UpdatedAt      time.Time     `json:"updatedAt" yaml:"updatedAt"`
+	Version        int64         `json:"version" yaml:"version"`
+	UpstreamStatus string        `json:"upstreamStatus" yaml:"upstreamStatus"`
 }
 type LiveSession struct {
-	SessionId      string    `json:"sessionId"`
-	DeviceId       string    `json:"deviceId"`
-	UserId         string    `json:"userId"`
-	ExpiresAt      time.Time `json:"expiresAt"`
-	TtlSeconds     int       `json:"ttlSeconds"`
-	TelemetryHz    int       `json:"telemetryHz"`
-	UpstreamStatus string    `json:"upstreamStatus"`
+	SessionId      string    `json:"sessionId" yaml:"sessionId"`
+	DeviceId       string    `json:"deviceId" yaml:"deviceId"`
+	UserId         string    `json:"userId" yaml:"userId"`
+	ExpiresAt      time.Time `json:"expiresAt" yaml:"expiresAt"`
+	TtlSeconds     int       `json:"ttlSeconds" yaml:"ttlSeconds"`
+	TelemetryHz    int       `json:"telemetryHz" yaml:"telemetryHz"`
+	UpstreamStatus string    `json:"upstreamStatus" yaml:"upstreamStatus"`
+}
+type InventoryProjectInput struct {
+	Id            string `json:"id" yaml:"id"`
+	Name          string `json:"name" yaml:"name"`
+	Lifecycle     string `json:"lifecycle" yaml:"lifecycle"`
+	Province      string `json:"province" yaml:"province"`
+	City          string `json:"city" yaml:"city"`
+	County        string `json:"county" yaml:"county"`
+	LocationLabel string `json:"locationLabel" yaml:"locationLabel"`
+	AdminCode     *int   `json:"adminCode" yaml:"adminCode"`
+	ScheduleText  string `json:"scheduleText" yaml:"scheduleText"`
+	Notes         string `json:"notes" yaml:"notes"`
+}
+type InventoryAssetInput struct {
+	AssetDeviceId  string   `json:"assetDeviceId" yaml:"assetDeviceId"`
+	ProjectId      string   `json:"projectId" yaml:"projectId"`
+	DisplayName    string   `json:"displayName" yaml:"displayName"`
+	CraneModel     *string  `json:"craneModel" yaml:"craneModel"`
+	RatedCapacityT *float64 `json:"ratedCapacityT" yaml:"ratedCapacityT"`
+	SpanM          *float64 `json:"spanM" yaml:"spanM"`
+	WorkClass      *string  `json:"workClass" yaml:"workClass"`
+	GrabType       *string  `json:"grabType" yaml:"grabType"`
+	Lifecycle      string   `json:"lifecycle" yaml:"lifecycle"`
+}
+type RuntimeDescriptor struct {
+	RuntimeDeviceId string  `json:"runtimeDeviceId" yaml:"runtimeDeviceId"`
+	ProjectId       string  `json:"projectId" yaml:"projectId"`
+	AssetDeviceId   *string `json:"assetDeviceId" yaml:"assetDeviceId"`
+	SourceMode      string  `json:"sourceMode" yaml:"sourceMode"`
+}
+type InventoryDocument struct {
+	TenantId       string                  `json:"tenantId" yaml:"tenantId"`
+	Projects       []InventoryProjectInput `json:"projects" yaml:"projects"`
+	AssetDevices   []InventoryAssetInput   `json:"assetDevices" yaml:"assetDevices"`
+	RuntimeDevices []RuntimeDescriptor     `json:"runtimeDevices" yaml:"runtimeDevices"`
+}
+type FleetManifest struct {
+	TenantId string              `json:"tenantId" yaml:"tenantId"`
+	Devices  []RuntimeDescriptor `json:"devices" yaml:"devices"`
+}
+type InventoryProject struct {
+	Id                 string `json:"id" yaml:"id"`
+	Name               string `json:"name" yaml:"name"`
+	Lifecycle          string `json:"lifecycle" yaml:"lifecycle"`
+	Province           string `json:"province" yaml:"province"`
+	City               string `json:"city" yaml:"city"`
+	County             string `json:"county" yaml:"county"`
+	LocationLabel      string `json:"locationLabel" yaml:"locationLabel"`
+	AdminCode          *int   `json:"adminCode" yaml:"adminCode"`
+	ScheduleText       string `json:"scheduleText" yaml:"scheduleText"`
+	Notes              string `json:"notes" yaml:"notes"`
+	AssetDeviceCount   int    `json:"assetDeviceCount" yaml:"assetDeviceCount"`
+	RuntimeDeviceCount int    `json:"runtimeDeviceCount" yaml:"runtimeDeviceCount"`
+	RealConnectedCount int    `json:"realConnectedCount" yaml:"realConnectedCount"`
+	SimulatedCount     int    `json:"simulatedCount" yaml:"simulatedCount"`
+}
+type AssetDevice struct {
+	AssetDeviceId   string   `json:"assetDeviceId" yaml:"assetDeviceId"`
+	ProjectId       string   `json:"projectId" yaml:"projectId"`
+	DisplayName     string   `json:"displayName" yaml:"displayName"`
+	CraneModel      *string  `json:"craneModel" yaml:"craneModel"`
+	RatedCapacityT  *float64 `json:"ratedCapacityT" yaml:"ratedCapacityT"`
+	SpanM           *float64 `json:"spanM" yaml:"spanM"`
+	WorkClass       *string  `json:"workClass" yaml:"workClass"`
+	GrabType        *string  `json:"grabType" yaml:"grabType"`
+	Lifecycle       string   `json:"lifecycle" yaml:"lifecycle"`
+	RuntimeSource   *string  `json:"runtimeSource" yaml:"runtimeSource"`
+	RuntimeDeviceId *string  `json:"runtimeDeviceId" yaml:"runtimeDeviceId"`
+	Connectivity    *string  `json:"connectivity" yaml:"connectivity"`
 }
 type Envelope struct {
-	SchemaVersion int             `json:"schemaVersion"`
-	MessageId     string          `json:"messageId"`
-	TenantId      string          `json:"tenantId"`
-	ProjectId     string          `json:"projectId"`
-	DeviceId      string          `json:"deviceId"`
-	BootId        string          `json:"bootId"`
-	BootSeq       int64           `json:"bootSeq"`
-	Sequence      int64           `json:"sequence"`
-	SentAt        time.Time       `json:"sentAt"`
-	Kind          string          `json:"kind"`
-	CorrelationId string          `json:"correlationId"`
-	Payload       json.RawMessage `json:"payload"`
+	SchemaVersion int             `json:"schemaVersion" yaml:"schemaVersion"`
+	MessageId     string          `json:"messageId" yaml:"messageId"`
+	TenantId      string          `json:"tenantId" yaml:"tenantId"`
+	ProjectId     string          `json:"projectId" yaml:"projectId"`
+	DeviceId      string          `json:"deviceId" yaml:"deviceId"`
+	BootId        string          `json:"bootId" yaml:"bootId"`
+	BootSeq       int64           `json:"bootSeq" yaml:"bootSeq"`
+	Sequence      int64           `json:"sequence" yaml:"sequence"`
+	SentAt        time.Time       `json:"sentAt" yaml:"sentAt"`
+	Kind          string          `json:"kind" yaml:"kind"`
+	CorrelationId string          `json:"correlationId" yaml:"correlationId"`
+	Payload       json.RawMessage `json:"payload" yaml:"payload"`
 }
 
-const schemaJSON = `{"Position":{"type":"object","additionalProperties":false,"required":["x","y","z"],"properties":{"x":{"type":"number"},"y":{"type":"number"},"z":{"type":"number"}}},"ReportedState":{"type":"object","additionalProperties":false,"required":["operatingState","mode","alarmState","runtimeTotal","position","load"],"properties":{"operatingState":{"type":"string","enum":["DISCONNECTED","SILENT","LIVE","EVENT","UNKNOWN"]},"mode":{"type":"string","enum":["AUTO","MANUAL","UNKNOWN"]},"alarmState":{"type":"string","enum":["NONE","ACTIVE","UNKNOWN"]},"runtimeTotal":{"type":"number","minimum":0},"position":{"$ref":"#/$defs/Position"},"load":{"type":"number"}}},"BirthPayload":{"type":"object","additionalProperties":false,"required":["edgeHealth","controllerHealth","sensorHealth","softwareVersion","reported"],"properties":{"edgeHealth":{"type":"string","enum":["EDGE_HEALTHY","DEGRADED","UNKNOWN"]},"controllerHealth":{"type":"string","enum":["CONTROLLER_HEALTHY","DEGRADED","UNKNOWN"]},"sensorHealth":{"type":"string","enum":["HEALTHY","DEGRADED","UNKNOWN"]},"softwareVersion":{"type":"string"},"reported":{"$ref":"#/$defs/ReportedState"}}},"HeartbeatPayload":{"type":"object","additionalProperties":false,"required":["edgeHealth","controllerHealth","sensorHealth"],"properties":{"edgeHealth":{"type":"string","enum":["EDGE_HEALTHY","DEGRADED","UNKNOWN"]},"controllerHealth":{"type":"string","enum":["CONTROLLER_HEALTHY","DEGRADED","UNKNOWN"]},"sensorHealth":{"type":"string","enum":["HEALTHY","DEGRADED","UNKNOWN"]}}},"SnapshotPayload":{"type":"object","additionalProperties":false,"required":["edgeHealth","controllerHealth","sensorHealth","reported"],"properties":{"edgeHealth":{"type":"string","enum":["EDGE_HEALTHY","DEGRADED","UNKNOWN"]},"controllerHealth":{"type":"string","enum":["CONTROLLER_HEALTHY","DEGRADED","UNKNOWN"]},"sensorHealth":{"type":"string","enum":["HEALTHY","DEGRADED","UNKNOWN"]},"reported":{"$ref":"#/$defs/ReportedState"}}},"LiveTelemetryPayload":{"type":"object","additionalProperties":false,"required":["leaseId","generation","reported"],"properties":{"leaseId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"generation":{"type":"integer","minimum":1,"maximum":9007199254740991},"reported":{"$ref":"#/$defs/ReportedState"}}},"DeathPayload":{"type":"object","additionalProperties":false,"required":["reason"],"properties":{"reason":{"type":"string","enum":["GRACEFUL","UNEXPECTED"]}}},"AlarmPayload":{"type":"object","additionalProperties":false,"required":["code","text"],"properties":{"code":{"type":"string","minLength":1,"maxLength":80},"text":{"type":"string","maxLength":1024}}},"EventPayload":{"type":"object","additionalProperties":false,"required":["code","text"],"properties":{"code":{"type":"string","minLength":1,"maxLength":80},"text":{"type":"string","maxLength":1024}}},"WatchCommandPayload":{"type":"object","additionalProperties":false,"required":["leaseId","generation","ttlSeconds","telemetryHz","expiresAt"],"properties":{"leaseId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"generation":{"type":"integer","minimum":1,"maximum":9007199254740991},"ttlSeconds":{"type":"integer","minimum":1,"maximum":300},"telemetryHz":{"type":"integer","const":1},"expiresAt":{"type":"string","format":"date-time"}}},"WatchAckPayload":{"type":"object","additionalProperties":false,"required":["commandId","leaseId","generation","action","result","reason","edgeState","appliedAt"],"properties":{"commandId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"leaseId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"generation":{"type":"integer","minimum":1,"maximum":9007199254740991},"action":{"type":"string","enum":["WATCH_START","WATCH_RENEW","WATCH_STOP"]},"result":{"type":"string","enum":["APPLIED","DUPLICATE","STALE","EXPIRED","REJECTED"]},"reason":{"type":"string","maxLength":256},"edgeState":{"type":"string","enum":["DISCONNECTED","SILENT","LIVE","EVENT"]},"appliedAt":{"type":"string","format":"date-time"}}},"EventStoredAckPayload":{"type":"object","additionalProperties":false,"required":["sourceMessageId","result"],"properties":{"sourceMessageId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"result":{"type":"string","enum":["STORED"]}}},"Presence":{"type":"object","additionalProperties":false,"required":["connectivity","edgeHealth","controllerHealth","sensorHealth","bootId","bootSeq","sequence","lastSeenAt","disconnectedAt","disconnectReason"],"properties":{"connectivity":{"type":"string","enum":["MQTT_CONNECTED","OFFLINE","UNKNOWN"]},"edgeHealth":{"type":"string","enum":["EDGE_HEALTHY","DEGRADED","UNKNOWN"]},"controllerHealth":{"type":"string","enum":["CONTROLLER_HEALTHY","DEGRADED","UNKNOWN"]},"sensorHealth":{"type":"string","enum":["HEALTHY","DEGRADED","UNKNOWN"]},"bootId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"bootSeq":{"type":"integer","minimum":0,"maximum":9007199254740991},"sequence":{"type":"integer","minimum":0,"maximum":9007199254740991},"lastSeenAt":{"type":"string","format":"date-time"},"disconnectedAt":{"type":"string","format":"date-time"},"disconnectReason":{"type":"string","enum":["NONE","GRACEFUL","UNEXPECTED","MIGRATED"]}}},"Shadow":{"type":"object","additionalProperties":false,"required":["deviceId","tenantId","projectId","presence","reported","updatedAt","version","upstreamStatus"],"properties":{"deviceId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"tenantId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"projectId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"presence":{"$ref":"#/$defs/Presence"},"reported":{"$ref":"#/$defs/ReportedState"},"updatedAt":{"type":"string","format":"date-time"},"version":{"type":"integer","minimum":1,"maximum":9007199254740991},"upstreamStatus":{"type":"string","enum":["SILENT","STARTING","LIVE","STOPPING","FAILED","EXPIRED"]}}},"LiveSession":{"type":"object","additionalProperties":false,"required":["sessionId","deviceId","userId","expiresAt","ttlSeconds","telemetryHz","upstreamStatus"],"properties":{"sessionId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"deviceId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"userId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"expiresAt":{"type":"string","format":"date-time"},"ttlSeconds":{"type":"integer","minimum":1,"maximum":300},"telemetryHz":{"type":"integer","const":1},"upstreamStatus":{"type":"string","enum":["SILENT","STARTING","LIVE","STOPPING","FAILED","EXPIRED"]}}},"Envelope":{"type":"object","additionalProperties":false,"required":["schemaVersion","messageId","tenantId","projectId","deviceId","bootId","bootSeq","sequence","sentAt","kind","correlationId"],"properties":{"schemaVersion":{"type":"integer","const":1},"messageId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"tenantId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"projectId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"deviceId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"bootId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"bootSeq":{"type":"integer","minimum":1,"maximum":9007199254740991},"sequence":{"type":"integer","minimum":1,"maximum":9007199254740991},"sentAt":{"type":"string","format":"date-time"},"kind":{"type":"string"},"correlationId":{"type":"string","pattern":"^[A-Za-z0-9_-]{0,80}$"}}}}`
+const schemaJSON = `{"Position":{"type":"object","additionalProperties":false,"required":["x","y","z"],"properties":{"x":{"type":"number"},"y":{"type":"number"},"z":{"type":"number"}}},"ReportedState":{"type":"object","additionalProperties":false,"required":["operatingState","mode","alarmState","runtimeTotal","position","load"],"properties":{"operatingState":{"type":"string","enum":["DISCONNECTED","SILENT","LIVE","EVENT","UNKNOWN"]},"mode":{"type":"string","enum":["AUTO","MANUAL","UNKNOWN"]},"alarmState":{"type":"string","enum":["NONE","ACTIVE","UNKNOWN"]},"runtimeTotal":{"type":"number","minimum":0},"position":{"$ref":"#/$defs/Position"},"load":{"type":"number"}}},"BirthPayload":{"type":"object","additionalProperties":false,"required":["edgeHealth","controllerHealth","sensorHealth","softwareVersion","reported"],"properties":{"edgeHealth":{"type":"string","enum":["EDGE_HEALTHY","DEGRADED","UNKNOWN"]},"controllerHealth":{"type":"string","enum":["CONTROLLER_HEALTHY","DEGRADED","UNKNOWN"]},"sensorHealth":{"type":"string","enum":["HEALTHY","DEGRADED","UNKNOWN"]},"softwareVersion":{"type":"string"},"reported":{"$ref":"#/$defs/ReportedState"}}},"HeartbeatPayload":{"type":"object","additionalProperties":false,"required":["edgeHealth","controllerHealth","sensorHealth"],"properties":{"edgeHealth":{"type":"string","enum":["EDGE_HEALTHY","DEGRADED","UNKNOWN"]},"controllerHealth":{"type":"string","enum":["CONTROLLER_HEALTHY","DEGRADED","UNKNOWN"]},"sensorHealth":{"type":"string","enum":["HEALTHY","DEGRADED","UNKNOWN"]}}},"SnapshotPayload":{"type":"object","additionalProperties":false,"required":["edgeHealth","controllerHealth","sensorHealth","reported"],"properties":{"edgeHealth":{"type":"string","enum":["EDGE_HEALTHY","DEGRADED","UNKNOWN"]},"controllerHealth":{"type":"string","enum":["CONTROLLER_HEALTHY","DEGRADED","UNKNOWN"]},"sensorHealth":{"type":"string","enum":["HEALTHY","DEGRADED","UNKNOWN"]},"reported":{"$ref":"#/$defs/ReportedState"}}},"LiveTelemetryPayload":{"type":"object","additionalProperties":false,"required":["leaseId","generation","reported"],"properties":{"leaseId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"generation":{"type":"integer","minimum":1,"maximum":9007199254740991},"reported":{"$ref":"#/$defs/ReportedState"}}},"DeathPayload":{"type":"object","additionalProperties":false,"required":["reason"],"properties":{"reason":{"type":"string","enum":["GRACEFUL","UNEXPECTED"]}}},"AlarmPayload":{"type":"object","additionalProperties":false,"required":["code","text"],"properties":{"code":{"type":"string","minLength":1,"maxLength":80},"text":{"type":"string","maxLength":1024}}},"EventPayload":{"type":"object","additionalProperties":false,"required":["code","text"],"properties":{"code":{"type":"string","minLength":1,"maxLength":80},"text":{"type":"string","maxLength":1024}}},"WatchCommandPayload":{"type":"object","additionalProperties":false,"required":["leaseId","generation","ttlSeconds","telemetryHz","expiresAt"],"properties":{"leaseId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"generation":{"type":"integer","minimum":1,"maximum":9007199254740991},"ttlSeconds":{"type":"integer","minimum":1,"maximum":300},"telemetryHz":{"type":"integer","const":1},"expiresAt":{"type":"string","format":"date-time"}}},"WatchAckPayload":{"type":"object","additionalProperties":false,"required":["commandId","leaseId","generation","action","result","reason","edgeState","appliedAt"],"properties":{"commandId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"leaseId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"generation":{"type":"integer","minimum":1,"maximum":9007199254740991},"action":{"type":"string","enum":["WATCH_START","WATCH_RENEW","WATCH_STOP"]},"result":{"type":"string","enum":["APPLIED","DUPLICATE","STALE","EXPIRED","REJECTED"]},"reason":{"type":"string","maxLength":256},"edgeState":{"type":"string","enum":["DISCONNECTED","SILENT","LIVE","EVENT"]},"appliedAt":{"type":"string","format":"date-time"}}},"EventStoredAckPayload":{"type":"object","additionalProperties":false,"required":["sourceMessageId","result"],"properties":{"sourceMessageId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"result":{"type":"string","enum":["STORED"]}}},"Presence":{"type":"object","additionalProperties":false,"required":["connectivity","edgeHealth","controllerHealth","sensorHealth","bootId","bootSeq","sequence","lastSeenAt","disconnectedAt","disconnectReason"],"properties":{"connectivity":{"type":"string","enum":["MQTT_CONNECTED","OFFLINE","UNKNOWN"]},"edgeHealth":{"type":"string","enum":["EDGE_HEALTHY","DEGRADED","UNKNOWN"]},"controllerHealth":{"type":"string","enum":["CONTROLLER_HEALTHY","DEGRADED","UNKNOWN"]},"sensorHealth":{"type":"string","enum":["HEALTHY","DEGRADED","UNKNOWN"]},"bootId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"bootSeq":{"type":"integer","minimum":0,"maximum":9007199254740991},"sequence":{"type":"integer","minimum":0,"maximum":9007199254740991},"lastSeenAt":{"type":"string","format":"date-time"},"disconnectedAt":{"type":"string","format":"date-time"},"disconnectReason":{"type":"string","enum":["NONE","GRACEFUL","UNEXPECTED","MIGRATED"]}}},"Shadow":{"type":"object","additionalProperties":false,"required":["deviceId","tenantId","projectId","presence","reported","updatedAt","version","upstreamStatus"],"properties":{"deviceId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"tenantId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"projectId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"presence":{"$ref":"#/$defs/Presence"},"reported":{"$ref":"#/$defs/ReportedState"},"updatedAt":{"type":"string","format":"date-time"},"version":{"type":"integer","minimum":1,"maximum":9007199254740991},"upstreamStatus":{"type":"string","enum":["SILENT","STARTING","LIVE","STOPPING","FAILED","EXPIRED"]}}},"LiveSession":{"type":"object","additionalProperties":false,"required":["sessionId","deviceId","userId","expiresAt","ttlSeconds","telemetryHz","upstreamStatus"],"properties":{"sessionId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"deviceId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"userId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"expiresAt":{"type":"string","format":"date-time"},"ttlSeconds":{"type":"integer","minimum":1,"maximum":300},"telemetryHz":{"type":"integer","const":1},"upstreamStatus":{"type":"string","enum":["SILENT","STARTING","LIVE","STOPPING","FAILED","EXPIRED"]}}},"InventoryProjectInput":{"type":"object","additionalProperties":false,"required":["id","name","lifecycle","province","city","county","locationLabel","adminCode","scheduleText","notes"],"properties":{"id":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"name":{"type":"string","minLength":1,"maxLength":160},"lifecycle":{"type":"string","enum":["PLANNED","PRE_DEVELOPMENT","COMPLETED"]},"province":{"type":"string","maxLength":80},"city":{"type":"string","maxLength":80},"county":{"type":"string","maxLength":80},"locationLabel":{"type":"string","maxLength":240},"adminCode":{"anyOf":[{"type":"integer","minimum":100000,"maximum":999999},{"type":"null"}]},"scheduleText":{"type":"string","maxLength":400},"notes":{"type":"string","maxLength":1000}}},"InventoryAssetInput":{"type":"object","additionalProperties":false,"required":["assetDeviceId","projectId","displayName","craneModel","ratedCapacityT","spanM","workClass","grabType","lifecycle"],"properties":{"assetDeviceId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"projectId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"displayName":{"type":"string","minLength":1,"maxLength":160},"craneModel":{"anyOf":[{"type":"string","maxLength":160},{"type":"null"}]},"ratedCapacityT":{"anyOf":[{"type":"number","minimum":0},{"type":"null"}]},"spanM":{"anyOf":[{"type":"number","minimum":0},{"type":"null"}]},"workClass":{"anyOf":[{"type":"string","maxLength":80},{"type":"null"}]},"grabType":{"anyOf":[{"type":"string","maxLength":160},{"type":"null"}]},"lifecycle":{"type":"string","enum":["PLANNED","PRE_DEVELOPMENT","COMPLETED"]}}},"RuntimeDescriptor":{"type":"object","additionalProperties":false,"required":["runtimeDeviceId","projectId","assetDeviceId","sourceMode"],"properties":{"runtimeDeviceId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"projectId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"assetDeviceId":{"anyOf":[{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},{"type":"null"}]},"sourceMode":{"type":"string","enum":["SIMULATION","REAL","TEST"]}}},"InventoryDocument":{"type":"object","additionalProperties":false,"required":["tenantId","projects","assetDevices","runtimeDevices"],"properties":{"tenantId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"projects":{"type":"array","items":{"$ref":"#/$defs/InventoryProjectInput"}},"assetDevices":{"type":"array","items":{"$ref":"#/$defs/InventoryAssetInput"}},"runtimeDevices":{"type":"array","items":{"$ref":"#/$defs/RuntimeDescriptor"}}}},"FleetManifest":{"type":"object","additionalProperties":false,"required":["tenantId","devices"],"properties":{"tenantId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"devices":{"type":"array","items":{"$ref":"#/$defs/RuntimeDescriptor"}}}},"InventoryProject":{"type":"object","additionalProperties":false,"required":["id","name","lifecycle","province","city","county","locationLabel","adminCode","scheduleText","notes","assetDeviceCount","runtimeDeviceCount","realConnectedCount","simulatedCount"],"properties":{"id":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"name":{"type":"string","minLength":1,"maxLength":160},"lifecycle":{"type":"string","enum":["PLANNED","PRE_DEVELOPMENT","COMPLETED"]},"province":{"type":"string","maxLength":80},"city":{"type":"string","maxLength":80},"county":{"type":"string","maxLength":80},"locationLabel":{"type":"string","maxLength":240},"adminCode":{"anyOf":[{"type":"integer","minimum":100000,"maximum":999999},{"type":"null"}]},"scheduleText":{"type":"string","maxLength":400},"notes":{"type":"string","maxLength":1000},"assetDeviceCount":{"type":"integer","minimum":0},"runtimeDeviceCount":{"type":"integer","minimum":0},"realConnectedCount":{"type":"integer","minimum":0},"simulatedCount":{"type":"integer","minimum":0}}},"AssetDevice":{"type":"object","additionalProperties":false,"required":["assetDeviceId","projectId","displayName","craneModel","ratedCapacityT","spanM","workClass","grabType","lifecycle","runtimeSource","runtimeDeviceId","connectivity"],"properties":{"assetDeviceId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"projectId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"displayName":{"type":"string","minLength":1,"maxLength":160},"craneModel":{"anyOf":[{"type":"string","maxLength":160},{"type":"null"}]},"ratedCapacityT":{"anyOf":[{"type":"number","minimum":0},{"type":"null"}]},"spanM":{"anyOf":[{"type":"number","minimum":0},{"type":"null"}]},"workClass":{"anyOf":[{"type":"string","maxLength":80},{"type":"null"}]},"grabType":{"anyOf":[{"type":"string","maxLength":160},{"type":"null"}]},"lifecycle":{"type":"string","enum":["PLANNED","PRE_DEVELOPMENT","COMPLETED"]},"runtimeSource":{"anyOf":[{"type":"string","enum":["SIMULATION","REAL","TEST"]},{"type":"null"}]},"runtimeDeviceId":{"anyOf":[{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},{"type":"null"}]},"connectivity":{"anyOf":[{"type":"string","enum":["MQTT_CONNECTED","OFFLINE","UNKNOWN"]},{"type":"null"}]}}},"Envelope":{"type":"object","additionalProperties":false,"required":["schemaVersion","messageId","tenantId","projectId","deviceId","bootId","bootSeq","sequence","sentAt","kind","correlationId"],"properties":{"schemaVersion":{"type":"integer","const":1},"messageId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"tenantId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"projectId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"deviceId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"bootId":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,80}$"},"bootSeq":{"type":"integer","minimum":1,"maximum":9007199254740991},"sequence":{"type":"integer","minimum":1,"maximum":9007199254740991},"sentAt":{"type":"string","format":"date-time"},"kind":{"type":"string"},"correlationId":{"type":"string","pattern":"^[A-Za-z0-9_-]{0,80}$"}}}}`

@@ -19,6 +19,72 @@
     }
   ],
   "paths": {
+    "/api/v1/projects": {
+      "get": {
+        "operationId": "listProjects",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InventoryProject"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        }
+      }
+    },
+    "/api/v1/assets/devices": {
+      "get": {
+        "operationId": "listAssets",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AssetDevice"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        }
+      }
+    },
     "/api/v1/devices": {
       "get": {
         "operationId": "listDevices",
@@ -998,6 +1064,491 @@
               "STOPPING",
               "FAILED",
               "EXPIRED"
+            ]
+          }
+        }
+      },
+      "InventoryProjectInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "lifecycle",
+          "province",
+          "city",
+          "county",
+          "locationLabel",
+          "adminCode",
+          "scheduleText",
+          "notes"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "lifecycle": {
+            "type": "string",
+            "enum": [
+              "PLANNED",
+              "PRE_DEVELOPMENT",
+              "COMPLETED"
+            ]
+          },
+          "province": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "city": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "county": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "locationLabel": {
+            "type": "string",
+            "maxLength": 240
+          },
+          "adminCode": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 100000,
+                "maximum": 999999
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scheduleText": {
+            "type": "string",
+            "maxLength": 400
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        }
+      },
+      "InventoryAssetInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "assetDeviceId",
+          "projectId",
+          "displayName",
+          "craneModel",
+          "ratedCapacityT",
+          "spanM",
+          "workClass",
+          "grabType",
+          "lifecycle"
+        ],
+        "properties": {
+          "assetDeviceId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "projectId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "craneModel": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ratedCapacityT": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "spanM": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "workClass": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "grabType": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lifecycle": {
+            "type": "string",
+            "enum": [
+              "PLANNED",
+              "PRE_DEVELOPMENT",
+              "COMPLETED"
+            ]
+          }
+        }
+      },
+      "RuntimeDescriptor": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "runtimeDeviceId",
+          "projectId",
+          "assetDeviceId",
+          "sourceMode"
+        ],
+        "properties": {
+          "runtimeDeviceId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "projectId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "assetDeviceId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sourceMode": {
+            "type": "string",
+            "enum": [
+              "SIMULATION",
+              "REAL",
+              "TEST"
+            ]
+          }
+        }
+      },
+      "InventoryDocument": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "tenantId",
+          "projects",
+          "assetDevices",
+          "runtimeDevices"
+        ],
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InventoryProjectInput"
+            }
+          },
+          "assetDevices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InventoryAssetInput"
+            }
+          },
+          "runtimeDevices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeDescriptor"
+            }
+          }
+        }
+      },
+      "FleetManifest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "tenantId",
+          "devices"
+        ],
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeDescriptor"
+            }
+          }
+        }
+      },
+      "InventoryProject": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "lifecycle",
+          "province",
+          "city",
+          "county",
+          "locationLabel",
+          "adminCode",
+          "scheduleText",
+          "notes",
+          "assetDeviceCount",
+          "runtimeDeviceCount",
+          "realConnectedCount",
+          "simulatedCount"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "lifecycle": {
+            "type": "string",
+            "enum": [
+              "PLANNED",
+              "PRE_DEVELOPMENT",
+              "COMPLETED"
+            ]
+          },
+          "province": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "city": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "county": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "locationLabel": {
+            "type": "string",
+            "maxLength": 240
+          },
+          "adminCode": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 100000,
+                "maximum": 999999
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scheduleText": {
+            "type": "string",
+            "maxLength": 400
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "assetDeviceCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "runtimeDeviceCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "realConnectedCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "simulatedCount": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "AssetDevice": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "assetDeviceId",
+          "projectId",
+          "displayName",
+          "craneModel",
+          "ratedCapacityT",
+          "spanM",
+          "workClass",
+          "grabType",
+          "lifecycle",
+          "runtimeSource",
+          "runtimeDeviceId",
+          "connectivity"
+        ],
+        "properties": {
+          "assetDeviceId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "projectId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "craneModel": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ratedCapacityT": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "spanM": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "workClass": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "grabType": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lifecycle": {
+            "type": "string",
+            "enum": [
+              "PLANNED",
+              "PRE_DEVELOPMENT",
+              "COMPLETED"
+            ]
+          },
+          "runtimeSource": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "SIMULATION",
+                  "REAL",
+                  "TEST"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "runtimeDeviceId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "connectivity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "MQTT_CONNECTED",
+                  "OFFLINE",
+                  "UNKNOWN"
+                ]
+              },
+              {
+                "type": "null"
+              }
             ]
           }
         }

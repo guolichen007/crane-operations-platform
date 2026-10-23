@@ -548,6 +548,307 @@
           "EXPIRED"
         ]
       }
+    },
+    "InventoryProjectInput": {
+      "id": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 160
+      },
+      "lifecycle": {
+        "type": "string",
+        "enum": [
+          "PLANNED",
+          "PRE_DEVELOPMENT",
+          "COMPLETED"
+        ]
+      },
+      "province": {
+        "type": "string",
+        "maxLength": 80
+      },
+      "city": {
+        "type": "string",
+        "maxLength": 80
+      },
+      "county": {
+        "type": "string",
+        "maxLength": 80
+      },
+      "locationLabel": {
+        "type": "string",
+        "maxLength": 240
+      },
+      "adminCode": {
+        "type": "integer",
+        "minimum": 100000,
+        "maximum": 999999,
+        "nullable": true
+      },
+      "scheduleText": {
+        "type": "string",
+        "maxLength": 400
+      },
+      "notes": {
+        "type": "string",
+        "maxLength": 1000
+      }
+    },
+    "InventoryAssetInput": {
+      "assetDeviceId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "projectId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "displayName": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 160
+      },
+      "craneModel": {
+        "type": "string",
+        "nullable": true,
+        "maxLength": 160
+      },
+      "ratedCapacityT": {
+        "type": "number",
+        "minimum": 0,
+        "nullable": true
+      },
+      "spanM": {
+        "type": "number",
+        "minimum": 0,
+        "nullable": true
+      },
+      "workClass": {
+        "type": "string",
+        "nullable": true,
+        "maxLength": 80
+      },
+      "grabType": {
+        "type": "string",
+        "nullable": true,
+        "maxLength": 160
+      },
+      "lifecycle": {
+        "type": "string",
+        "enum": [
+          "PLANNED",
+          "PRE_DEVELOPMENT",
+          "COMPLETED"
+        ]
+      }
+    },
+    "RuntimeDescriptor": {
+      "runtimeDeviceId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "projectId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "assetDeviceId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$",
+        "nullable": true
+      },
+      "sourceMode": {
+        "type": "string",
+        "enum": [
+          "SIMULATION",
+          "REAL",
+          "TEST"
+        ]
+      }
+    },
+    "InventoryDocument": {
+      "tenantId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "projects": {
+        "type": "array",
+        "items": {
+          "ref": "InventoryProjectInput"
+        }
+      },
+      "assetDevices": {
+        "type": "array",
+        "items": {
+          "ref": "InventoryAssetInput"
+        }
+      },
+      "runtimeDevices": {
+        "type": "array",
+        "items": {
+          "ref": "RuntimeDescriptor"
+        }
+      }
+    },
+    "FleetManifest": {
+      "tenantId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "devices": {
+        "type": "array",
+        "items": {
+          "ref": "RuntimeDescriptor"
+        }
+      }
+    },
+    "InventoryProject": {
+      "id": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 160
+      },
+      "lifecycle": {
+        "type": "string",
+        "enum": [
+          "PLANNED",
+          "PRE_DEVELOPMENT",
+          "COMPLETED"
+        ]
+      },
+      "province": {
+        "type": "string",
+        "maxLength": 80
+      },
+      "city": {
+        "type": "string",
+        "maxLength": 80
+      },
+      "county": {
+        "type": "string",
+        "maxLength": 80
+      },
+      "locationLabel": {
+        "type": "string",
+        "maxLength": 240
+      },
+      "adminCode": {
+        "type": "integer",
+        "minimum": 100000,
+        "maximum": 999999,
+        "nullable": true
+      },
+      "scheduleText": {
+        "type": "string",
+        "maxLength": 400
+      },
+      "notes": {
+        "type": "string",
+        "maxLength": 1000
+      },
+      "assetDeviceCount": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "runtimeDeviceCount": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "realConnectedCount": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "simulatedCount": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "AssetDevice": {
+      "assetDeviceId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "projectId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "displayName": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 160
+      },
+      "craneModel": {
+        "type": "string",
+        "nullable": true,
+        "maxLength": 160
+      },
+      "ratedCapacityT": {
+        "type": "number",
+        "minimum": 0,
+        "nullable": true
+      },
+      "spanM": {
+        "type": "number",
+        "minimum": 0,
+        "nullable": true
+      },
+      "workClass": {
+        "type": "string",
+        "nullable": true,
+        "maxLength": 80
+      },
+      "grabType": {
+        "type": "string",
+        "nullable": true,
+        "maxLength": 160
+      },
+      "lifecycle": {
+        "type": "string",
+        "enum": [
+          "PLANNED",
+          "PRE_DEVELOPMENT",
+          "COMPLETED"
+        ]
+      },
+      "runtimeSource": {
+        "type": "string",
+        "nullable": true,
+        "enum": [
+          "SIMULATION",
+          "REAL",
+          "TEST"
+        ]
+      },
+      "runtimeDeviceId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$",
+        "nullable": true
+      },
+      "connectivity": {
+        "type": "string",
+        "nullable": true,
+        "enum": [
+          "MQTT_CONNECTED",
+          "OFFLINE",
+          "UNKNOWN"
+        ]
+      }
     }
-  }
+  },
+  "restTypes": [
+    "InventoryProjectInput",
+    "InventoryAssetInput",
+    "RuntimeDescriptor",
+    "InventoryDocument",
+    "FleetManifest",
+    "InventoryProject",
+    "AssetDevice"
+  ]
 }

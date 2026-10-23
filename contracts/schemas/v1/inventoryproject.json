@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/inventoryproject.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "name",
+    "lifecycle",
+    "province",
+    "city",
+    "county",
+    "locationLabel",
+    "adminCode",
+    "scheduleText",
+    "notes",
+    "assetDeviceCount",
+    "runtimeDeviceCount",
+    "realConnectedCount",
+    "simulatedCount"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "lifecycle": {
+      "type": "string",
+      "enum": [
+        "PLANNED",
+        "PRE_DEVELOPMENT",
+        "COMPLETED"
+      ]
+    },
+    "province": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "city": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "county": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "locationLabel": {
+      "type": "string",
+      "maxLength": 240
+    },
+    "adminCode": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 100000,
+          "maximum": 999999
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "scheduleText": {
+      "type": "string",
+      "maxLength": 400
+    },
+    "notes": {
+      "type": "string",
+      "maxLength": 1000
+    },
+    "assetDeviceCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "runtimeDeviceCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "realConnectedCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "simulatedCount": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "$defs": {}
+}

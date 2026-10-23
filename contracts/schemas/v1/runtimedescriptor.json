@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/runtimedescriptor.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "runtimeDeviceId",
+    "projectId",
+    "assetDeviceId",
+    "sourceMode"
+  ],
+  "properties": {
+    "runtimeDeviceId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "projectId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "assetDeviceId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "sourceMode": {
+      "type": "string",
+      "enum": [
+        "SIMULATION",
+        "REAL",
+        "TEST"
+      ]
+    }
+  },
+  "$defs": {}
+}

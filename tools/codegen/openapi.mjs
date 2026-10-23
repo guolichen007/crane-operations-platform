@@ -27,6 +27,8 @@ function add(path, method, operationId, response, status = '200') {
 const shadow = { $ref: '#/components/schemas/Shadow' },
   live = { $ref: '#/components/schemas/LiveSession' },
   message = { $ref: '#/components/schemas/Envelope' };
+add('/api/v1/projects', 'get', 'listProjects', { type: 'array', items: { $ref: '#/components/schemas/InventoryProject' } });
+add('/api/v1/assets/devices', 'get', 'listAssets', { type: 'array', items: { $ref: '#/components/schemas/AssetDevice' } });
 add('/api/v1/devices', 'get', 'listDevices', { type: 'array', items: shadow });
 add('/api/v1/devices/{id}', 'get', 'getDevice', shadow);
 add('/api/v1/devices/{id}/shadow', 'get', 'getShadow', shadow);
