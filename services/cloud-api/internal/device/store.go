@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
 	shadoworder "github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/shadow"
 	"github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/telemetry"
@@ -70,8 +71,21 @@ func (s *Store) Apply(ctx context.Context, m contract.Envelope) (bool, error) {
 		return false, e
 	}
 	defer tx.Rollback()
-	if _, e = tx.ExecContext(ctx, "INSERT INTO devices(id,project_id,source_mode) VALUES($1,$2,$3) ON CONFLICT DO NOTHING", m.DeviceId, m.ProjectId, legacySource(m.DeviceId)); e != nil {
+	if source, legacy := legacySource(m.DeviceId); legacy {
+		if _, e = tx.ExecContext(ctx, "INSERT INTO devices(id,project_id,source_mode) VALUES($1,$2,$3) ON CONFLICT DO NOTHING", m.DeviceId, m.ProjectId, source); e != nil {
+			return false, e
+		}
+	}
+	// MQTT may update a registered runtime, but cannot provision a Fleet identity.
+	var project string
+	if e = tx.QueryRowContext(ctx, "SELECT project_id FROM devices WHERE id=$1 FOR SHARE", m.DeviceId).Scan(&project); e != nil {
+		if errors.Is(e, sql.ErrNoRows) {
+			return false, ErrRuntimeNotRegistered
+		}
 		return false, e
+	}
+	if project != m.ProjectId {
+		return false, ErrRuntimeProvenanceMismatch
 	}
 	if _, e = tx.ExecContext(ctx, "INSERT INTO device_shadow(device_id,payload_json,updated_at,version) VALUES($1,$2,$3,$4) ON CONFLICT(device_id) DO UPDATE SET payload_json=excluded.payload_json,updated_at=excluded.updated_at,version=excluded.version", m.DeviceId, b, next.UpdatedAt, next.Version); e != nil {
 		return false, e
@@ -99,9 +113,12 @@ func (s *Store) Apply(ctx context.Context, m contract.Envelope) (bool, error) {
 }
 
 // Only the retained count-mode fixture can infer simulation provenance without inventory.
-func legacySource(id string) string {
-	if len(id) == 7 && id[:4] == "SIM-" && id[4] >= '0' && id[4] <= '9' && id[5] >= '0' && id[5] <= '9' && id[6] >= '0' && id[6] <= '9' {
-		return "SIMULATION"
+func legacySource(id string) (string, bool) {
+	if id == "TEST-001" {
+		return "TEST", true
 	}
-	return "TEST"
+	if len(id) == 7 && id[:4] == "SIM-" && id[4] == '0' && id[5] >= '0' && id[5] <= '2' && id[6] >= '0' && id[6] <= '9' && id >= "SIM-001" && id <= "SIM-020" {
+		return "SIMULATION", true
+	}
+	return "", false
 }

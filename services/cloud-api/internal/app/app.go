@@ -75,6 +75,11 @@ func Run(args []string) error {
 	if e != nil {
 		return e
 	}
+	if c.FleetFile != "" {
+		if e = device.ValidateFleet(startup, db, manifest); e != nil {
+			return e
+		}
+	}
 	store, e := device.New(ctx, db)
 	if e != nil {
 		return e
