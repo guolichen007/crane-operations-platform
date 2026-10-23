@@ -25,3 +25,5 @@ Vue, Pinia, Vue Router, Three.js, camera-controls, postprocessing, d3-geo, EChar
 ## Go runtime dependencies
 
 The cloud/edge services use Eclipse Paho Go (EPL-2.0 and EDL-1.0), pgx (MIT), Goose (MIT), and coder/websocket (ISC). Exact versions and transitive modules are locked in go.mod/go.sum. Upstream license files are available in the Go module distribution; packaging for production must retain the applicable notices. No root license for this commercial project is selected.
+
+Inventory and Fleet use go.yaml.in/yaml/v3 v3.0.5 with strict known-field decoding. Its original MIT / Apache notices are retained verbatim in licenses/go-yaml-v3-LICENSE.txt. Package documentation: https://pkg.go.dev/go.yaml.in/yaml/v3 . This dependency does not change the project's root licensing decision.
