@@ -36,17 +36,17 @@ async function until(label, fn, timeout = 45000) {
 }
 const proof = [];
 const record = (check) => { proof.push({ check, status: 'PASS', at: new Date().toISOString() }); console.log('PASS ' + check); };
-const root = 'local-private/validation/t05';
+const root = 'local-private/validation/s35';
 mkdirSync(root, { recursive: true });
 const shadow = () => api('devices/SIM-001/shadow');
 const simulated = async () => (await api('devices')).filter((d) => d.deviceId.startsWith('SIM-'));
 const ready = () => until('cloud readiness', async () => (await fetch(base + '/health/ready')).ok);
 async function browserCheck() {
   compose(['exec', '-T', 'web-console', 'nginx', '-s', 'reload']);
-  const { chromium } = await import('@playwright/test');
+  const { chromium, expect } = await import('@playwright/test');
   const browser = await chromium.launch(win ? { channel: 'chrome' } : { headless: true });
   try {
-    const page = await browser.newPage();
+    const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
     await page.goto((process.env.PHASE0_WEB_URL || `http://127.0.0.1:${config.WEB_PORT || 18080}`) + '/#/devices');
     await page.getByLabel('本地开发凭据', { exact: true }).fill(token);
     await page.getByRole('button', { name: '连接云端', exact: true }).click();
@@ -54,14 +54,46 @@ async function browserCheck() {
     const fleetCards = page.getByTestId('cloud-device').filter({ hasText: /SIM-\d{3}/ });
     assert.equal(await fleetCards.count(), 20);
     assert.equal(await page.getByTestId('cloud-device').count(), (await api('devices')).length);
-    await fleetCards.first().click();
+    await expect(fleetCards.first()).toContainText('在线 · 静默监测');
+    await page.locator('.cloud-devices').evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    const bar = await page.locator('.cloud-status').boundingBox();
+    for (const id of ['SIM-019', 'SIM-020']) {
+      const box = await fleetCards.filter({ hasText: id }).boundingBox();
+      assert.ok(box && bar && box.y >= 60 && box.y + box.height <= bar.y, `${id} clears CloudStatus`);
+    }
+    await page.getByRole('link', { name: '态势沙盘', exact: true }).click();
+    const runtime = page.getByTestId('cloud-runtime');
+    await expect(runtime.locator('.runtime-metrics b').first()).toHaveText(String((await api('devices')).length));
+    await expect(runtime).toContainText('位置元数据未配置');
+    await expect(runtime).toContainText('SIM 为模拟设备');
+    record('S3.5 real Cloud runtime summary and 1920x1080 grid safe area');
+    await page.getByRole('link', { name: '告警中心', exact: true }).click();
+    const alarms = await api('alarms');
+    await expect(page.getByTestId('cloud-alarm')).toHaveCount(alarms.length);
+    if (alarms.length) await expect(page.getByTestId('cloud-alarm').first()).toContainText(alarms[0].payload.code);
+    await expect(page.getByRole('button', { name: '确认告警' })).toHaveCount(0);
+    record('S3.5 Cloud Alarm page matches actual Alarm API without Demo ACK');
+    await page.getByRole('link', { name: '设备中心', exact: true }).click();
+    await page.getByTestId('cloud-device').filter({ hasText: 'SIM-001' }).click();
     await page.getByTestId('device-shadow').waitFor();
     assert.match(await page.getByTestId('device-shadow').textContent(), /Last Known State/);
     await page.getByRole('button', { name: '申请 LIVE · 1 Hz', exact: true }).click();
     await page.getByRole('heading', { name: 'LIVE 上游：LIVE', exact: true }).waitFor();
+    const versionBefore = await page.getByTestId('device-shadow').getAttribute('data-shadow-version');
+    await expect(page.getByTestId('device-shadow')).not.toHaveAttribute('data-shadow-version', versionBefore);
+    await expect(page.getByTestId('device-shadow').locator('time').first()).toHaveText(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/);
     await page.screenshot({ path: root + '/cloud-shadow.png', fullPage: true });
     await page.getByRole('button', { name: '停止实时查看', exact: true }).click();
-    record('browser PostgreSQL Shadow and application-ACK LIVE status');
+    record('browser PostgreSQL Shadow, 1Hz updates and application-ACK LIVE status');
+    await page.getByRole('button', { name: '申请 LIVE · 1 Hz', exact: true }).click();
+    await page.getByRole('heading', { name: 'LIVE 上游：LIVE', exact: true }).waitFor();
+    const leaseId = await page.evaluate(() => sessionStorage.getItem('crane.cloud.viewer'));
+    assert.ok(leaseId);
+    await page.reload();
+    await page.getByRole('heading', { name: /Last Known State/ }).waitFor();
+    await until('reload closes actual persisted Viewer Lease', () => Number(db(`SELECT count(*) FROM live_sessions WHERE session_id='${leaseId}'`)) === 0);
+    assert.equal(await page.evaluate(() => sessionStorage.getItem('crane.cloud.viewer')), null);
+    record('S3.5 refresh cleans persisted Viewer and returns Last Known State without automatic LIVE');
   } finally { await browser.close(); }
 }
 try {

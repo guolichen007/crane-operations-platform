@@ -99,7 +99,12 @@ const streamHeading = computed(() => {
     <p class="silent-note">{{ silentExplanation }}</p>
     <template v-if="detail">
       <router-link to="/devices">← 返回台账</router-link>
-      <section v-if="current" class="shadow-card" data-testid="device-shadow">
+      <section
+        v-if="current"
+        class="shadow-card"
+        data-testid="device-shadow"
+        :data-shadow-version="current.version"
+      >
         <h2 :data-stream-state="viewer.state">{{ streamHeading }}</h2>
         <p>
           最后更新时间：<time :title="current.updatedAt" :datetime="current.updatedAt">{{

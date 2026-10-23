@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 process.chdir(root);
 process.env.STANDALONE_HTML = '1';
+process.env.VITE_DATA_MODE = 'demo';
 const { build } = await import('vite');
 await build();
 const output = join(root, 'dist-offline');
