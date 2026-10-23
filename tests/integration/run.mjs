@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, copyFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { assetServices, assertAssetServiceScope } from '../../tools/asset-runtime.mjs';
 const win = process.platform === 'win32';
 const go = existsSync('tools/.cache/go/bin/go.exe') ? resolve('tools/.cache/go/bin/go.exe') : 'go';
 const docker = win ? 'C:/Program Files/Docker/Docker/resources/bin/docker.exe' : 'docker';
@@ -36,7 +37,7 @@ async function until(label, fn, timeout = 45000) {
 }
 const proof = [];
 const record = (check) => { proof.push({ check, status: 'PASS', at: new Date().toISOString() }); console.log('PASS ' + check); };
-const root = 'local-private/validation/phase1-a0';
+const root = 'local-private/validation/phase1-a0-hardening';
 mkdirSync(root, { recursive: true });
 const shadow = () => api('devices/SIM-001/shadow');
 const simulated = async () => (await api('devices')).filter((d) => d.deviceId.startsWith('SIM-'));
@@ -111,6 +112,11 @@ try {
   run(go, ['test', '-c', '-o', inventoryBinary, './internal/inventory'], { GOOS: 'linux', GOARCH: 'amd64', CGO_ENABLED: '0' });
   compose(['run', '--rm', '--no-deps', '--entrypoint', 'sh', '-v', `${inventoryBinary}:/tmp/inventory.test:ro`, '-v', `${resolve('deploy/inventory/inventory.example.yaml')}:/fixtures/example.yaml:ro`, 'cloud-api', '-c', 'A0_TEST_DATABASE_URL="$DATABASE_URL" A0_INVENTORY_EXAMPLE=/fixtures/example.yaml /tmp/inventory.test -test.v']);
   record('A0 empty/v2 migration, idempotent atomic import, provenance and guarded legacy reset');
+  const provenanceBinary = resolve('tools/.cache/provenance.test');
+  run(go, ['test', '-c', '-o', provenanceBinary, './services/cloud-api/internal/app'], { GOOS: 'linux', GOARCH: 'amd64', CGO_ENABLED: '0' });
+  compose(['run', '--rm', '--no-deps', '--entrypoint', 'sh', '-v', `${provenanceBinary}:/tmp/provenance.test:ro`, '-v', `${resolve('deploy/inventory/inventory.example.yaml')}:/fixtures/example.yaml:ro`, 'cloud-api', '-c', 'A0_TEST_DATABASE_URL="$DATABASE_URL" A0_INVENTORY_EXAMPLE=/fixtures/example.yaml /tmp/provenance.test -test.v']);
+  record('Hardening real Cloud startup rejects missing first/last runtime and project/source/asset/tenant mismatch before MQTT or HTTP');
+  record('Hardening correct Inventory -> Fleet passes; Store rejects unregistered SIM/EDGE first packet and retains SIM-001..020 plus TEST-001');
   compose(['up', '-d', '--force-recreate', '--no-deps', 'cloud-api']);
   await ready();
   const restart = Date.now();
@@ -225,7 +231,7 @@ try {
   record('unrenewed Viewer TTL expires and stops upstream after grace');
   await assetModeCheck();
   writeFileSync(root + '/integration.json', JSON.stringify({ status: 'PASS', proof }, null, 2));
-  console.log(`PHASE1_A0_INTEGRATION=PASS checks=${proof.length}`);
+  console.log(`PHASE1_A0_HARDENING_INTEGRATION=PASS checks=${proof.length}`);
 } catch (error) {
   writeFileSync(root + '/integration.json', JSON.stringify({ status: 'FAIL', error: error.message, proof }, null, 2));
   throw error;
@@ -241,10 +247,20 @@ async function assetModeCheck() {
   let browser;
   try {
     compose(['stop', 'device-simulator', 'cloud-api', 'mosquitto']);
-    copyFileSync('deploy/inventory/inventory.example.yaml', 'deploy/compose/runtime/inventory.json');
-    run(go, ['run', './tools/fleet', '--inventory-file', 'deploy/inventory/inventory.example.yaml', '--out', 'deploy/compose/runtime/acl', '--manifest-out', 'deploy/compose/runtime/fleet.json']);
-    run(go, ['run', './tools/certs', '--fleet-file', 'deploy/compose/runtime/fleet.json']);
-    assetCompose(['up', '-d', '--force-recreate', '--no-deps', 'mosquitto', 'cloud-api', 'device-simulator', 'web-console']);
+    // Start from a fresh web/gateway fixture, as the old --force-recreate path
+    // did: nginx must not retain the old Cloud container's upstream address.
+    // Exercise actual asset-up so an unqualified `up` is observable.
+    compose(['rm', '--stop', '--force', 'web-console', 'remote-gateway']);
+    const resolved = JSON.parse(assetCompose(['config', '--format', 'json'], true));
+    assert.deepEqual(assertAssetServiceScope(resolved), [...assetServices].sort());
+    run(process.execPath, ['tools/task.mjs', 'asset-up'], { ...assetEnv, INVENTORY_FILE: resolve('deploy/inventory/inventory.example.yaml') });
+    assert.deepEqual(assetCompose(['ps', '--services', '--status', 'running'], true).split(/\r?\n/).filter(Boolean).sort(), [...assetServices].sort());
+    record('Hardening actual asset-up resolved dependency set and running service set are exactly the five permitted services; no Remote Gateway or PointCloud');
+    if (!win) {
+      assert.equal(statSync('deploy/compose/runtime').mode & 0o777, 0o700);
+      for (const name of ['.env', 'inventory.json', 'fleet.json', 'acl']) assert.equal(statSync(`deploy/compose/runtime/${name}`).mode & 0o777, 0o600, name);
+      record('Hardening Unix actual generated runtime directory=0700; inventory/fleet/ACL/env=0600');
+    }
     await ready();
     const expected = JSON.parse(readFileSync('deploy/compose/runtime/fleet.json', 'utf8')).devices.map(d => d.runtimeDeviceId).sort();
     await until('A0 exact10 online manifest identities', async () => {

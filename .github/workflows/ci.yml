@@ -1,4 +1,4 @@
-name: T0.5 quality and security
+name: Crane Platform CI
 on:
   push:
     branches: [main, 'feature/**', 'fix/**']
@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: phase0-${{ github.ref }}
+  group: crane-ci-${{ github.ref }}
   cancel-in-progress: true
 defaults:
   run:
@@ -23,7 +23,7 @@ jobs:
       - run: npm ci
       - run: node tools/diagnostics/repository.mjs
       - run: node tools/codegen/contracts.mjs --check && node tools/codegen/openapi.mjs --check
-      - run: node --test tests/contract/contracts.test.mjs
+      - run: node --test tests/contract/contracts.test.mjs tests/contract/asset-runtime.test.mjs
       - run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
   backend:
     runs-on: ubuntu-latest

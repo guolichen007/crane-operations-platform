@@ -1,8 +1,9 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
+import { assetUpArgs, assertAssetServiceScope, prepareAssetInventory, secureRuntime } from './asset-runtime.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 process.chdir(root);
 const win = process.platform === 'win32';
@@ -46,7 +47,7 @@ const tasks = {
     mkdirSync('tools/.cache', { recursive: true });
     npm('ci');
     run(go, ['mod', 'download']);
-    mkdirSync('deploy/compose/runtime', { recursive: true });
+    secureRuntime();
     if (!existsSync('deploy/compose/runtime/.env'))
       writeFileSync(
         'deploy/compose/runtime/.env',
@@ -61,12 +62,16 @@ const tasks = {
   },
   'asset-up'() {
     const input = process.env.INVENTORY_FILE || (existsSync('local-private/inventory/actual-projects.local.yaml') ? 'local-private/inventory/actual-projects.local.yaml' : 'deploy/inventory/inventory.example.yaml');
-    copyFileSync(input, 'deploy/compose/runtime/inventory.json');
+    prepareAssetInventory(input);
     run(go, ['run', './tools/fleet', '--inventory-file', input, '--out', 'deploy/compose/runtime/acl', '--manifest-out', 'deploy/compose/runtime/fleet.json']);
     run(go, ['run', './tools/certs', '--fleet-file', 'deploy/compose/runtime/fleet.json']);
+    secureRuntime();
     const overlay = [...composeArgs, '-f', 'deploy/compose/docker-compose.inventory.yml'];
-    if (win) { run(process.execPath, ['tools/build-images.mjs']); run(docker, [...overlay, 'up', '-d', '--no-build']); }
-    else run(docker, [...overlay, 'up', '-d', '--build']);
+    const resolved = spawnSync(docker, [...overlay, 'config', '--format', 'json'], { encoding: 'utf8', env });
+    if (resolved.error || resolved.status !== 0) throw Error('Cannot resolve asset-up Compose configuration');
+    assertAssetServiceScope(JSON.parse(resolved.stdout));
+    if (win) run(process.execPath, ['tools/build-images.mjs']);
+    run(docker, [...overlay, ...assetUpArgs(!win)]);
   },
   'dev-up'() {
     if (win) {
@@ -95,7 +100,7 @@ const tasks = {
   test() {
     run(go, ['test', './...']);
     npm('test');
-    run(process.execPath, ['--test', 'tests/contract/contracts.test.mjs']);
+    run(process.execPath, ['--test', 'tests/contract/contracts.test.mjs', 'tests/contract/asset-runtime.test.mjs']);
   },
   build() {
     run(go, ['build', './...']);
