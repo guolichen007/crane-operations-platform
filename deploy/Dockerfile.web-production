@@ -7,7 +7,10 @@ COPY apps/web-console apps/web-console
 COPY contracts contracts
 ENV VITE_DATA_MODE=api VITE_AUTH_MODE=oidc
 RUN npm run build
-FROM nginx:1.28-alpine
+FROM alpine:3.23
+# Alpine maintains security backports for nginx and its small runtime dependency set.
+# Avoid the older upstream image's bundled curl/image/XML modules.
+RUN apk upgrade --no-cache && addgroup -S -g 101 nginx && adduser -S -D -H -u 101 -G nginx nginx && apk add --no-cache nginx ca-certificates
 ARG SOURCE_SHA
 LABEL org.opencontainers.image.revision=$SOURCE_SHA org.opencontainers.image.source="https://github.com/guolichen007/crane-operations-platform"
 COPY deploy/nginx/production.conf /etc/nginx/nginx.conf
