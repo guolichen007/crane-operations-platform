@@ -15,7 +15,7 @@ export class PremiumSceneBackground {
       vec2 p=vUv;
       vec2 q=(p-vec2(.52,.46))*vec2(1.6,1.4);
       float center=exp(-dot(q,q)*2.8);
-      vec3 c=mix(vec3(.0314,.0784,.1059),vec3(.0667,.1686,.2039),center);
+      vec3 c=mix(vec3(.018,.035,.075),vec3(.028,.075,.17),center);
       c=mix(c,vec3(.0431,.1137,.149),smoothstep(.68,1.,p.y)*.45);
       vec2 e=(p-vec2(.68,.52))*vec2(3.,2.3),s=(p-vec2(.38,.3))*vec2(3.5,3.);
       c=mix(c,vec3(.251,.557,.604),exp(-dot(e,e))*.10);
@@ -23,7 +23,8 @@ export class PremiumSceneBackground {
       float band=exp(-pow((p.x*.65+p.y-.7-.18*sin(uSceneTime*6.283185/29.))/.32,2.));
       float band2=exp(-pow((p.x-p.y*.55-.2-.15*sin(uSceneTime*6.283185/35.+2.))/.36,2.));
       c*=1.+.025*band+.012*band2;
-      gl_FragColor=vec4(c,1.);
+      float noise=fract(sin(dot(gl_FragCoord.xy,vec2(12.9898,78.233)))*43758.5453)-.5;
+      gl_FragColor=vec4(c+noise/255.,1.);
     }`,
     })
   );

@@ -27,11 +27,13 @@ export class SpatialFloor {
       void main(){
         vec2 cell=abs(fract((vGround+1.5)/3.0)-0.5)/fwidth(vGround/3.0);
         float grid=1.0-min(min(cell.x,cell.y),1.0);
+        vec2 major=abs(fract((vGround+6.0)/12.0)-0.5)/fwidth(vGround/12.0);
+        float mainGrid=1.0-min(min(major.x,major.y),1.0);
         float fade=1.0-smoothstep(35.0,72.0,length(vGround*vec2(0.8,1.0)));
         float dist=length(vGround-uFocus),radius=mod(uSceneTime/11.0,1.0)*78.0;
         float sweep=(1.0-smoothstep(0.0,0.7,abs(dist-radius)))*(1.0-radius/78.0);
         float periphery=smoothstep(25.0,46.0,length(vGround*vec2(0.8,1.0)));
-        float alpha=fade*periphery*(grid*0.022+sweep*0.035);
+        float alpha=fade*periphery*(grid*0.014+mainGrid*0.022+sweep*0.012);
         gl_FragColor=vec4(0.20,0.52,0.60,alpha);
       }`,
     });

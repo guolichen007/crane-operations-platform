@@ -12,6 +12,7 @@ import {
   type WebGLRenderer,
 } from 'three';
 import { createRenderer } from '../core/Renderer';
+import { QualityManager } from '../core/QualityManager';
 import { CameraRig } from '../core/CameraRig';
 import { SceneLoop } from '../core/SceneLoop';
 import { GeoJsonLoader, type RegionEntry } from './GeoJsonLoader';
@@ -83,6 +84,7 @@ export class MapSceneManager {
   private countryBox = new Box3();
   private countrySamples: Vector3[] = [];
   private post: ReturnType<typeof createPostProcessing>;
+  private quality: QualityManager;
   private revision = 0;
   readonly reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   private selectedAsset: string | null = null;
@@ -100,6 +102,8 @@ export class MapSceneManager {
       this.shownDevices = [];
     }
     this.renderer = createRenderer();
+    this.quality = new QualityManager(devicePixelRatio, this.reduced, this.renderer.capabilities.maxTextureSize);
+    this.renderer.setPixelRatio(this.quality.pixelRatio);
     this.renderer.info.autoReset = false;
     host.append(this.renderer.domElement);
     this.rig = new CameraRig(this.renderer.domElement);
@@ -115,6 +119,7 @@ export class MapSceneManager {
     this.network = new NetworkLayer(inventoryOnly ? [] : projects);
     this.scene.add(this.network.group);
     this.post = createPostProcessing(this.renderer, this.scene, this.rig.camera);
+    this.post.setQuality(this.quality.tier);
     this.interaction = new InteractionRouter(
       this.renderer.domElement,
       this.rig.camera,
@@ -878,6 +883,10 @@ export class MapSceneManager {
       minY = Math.min(...points.map((p) => p.y)),
       maxY = Math.max(...points.map((p) => p.y));
     return {
+      quality: this.quality.tier,
+      memory: { ...this.renderer.info.memory },
+      drawCalls: this.renderer.info.render.calls,
+      triangles: this.renderer.info.render.triangles,
       camera: {
         fov: this.rig.camera.fov,
         elevation: this.rig.elevation,
@@ -1015,6 +1024,19 @@ export class MapSceneManager {
     this.currentTime = t;
     sceneTime.value = this.reduced ? 0 : t;
     this.renderer.info.reset();
+    if (this.quality.sample(dt)) {
+      this.renderer.setPixelRatio(this.quality.pixelRatio);
+      this.renderer.shadowMap.enabled = this.quality.profile.shadows;
+      this.post.setQuality(this.quality.tier);
+      this.resize();
+    }
+    const bright: import('three').Object3D[] = [], selected: import('three').Object3D[] = [], alarms: import('three').Object3D[] = [];
+    this.markers.traverse(object => {
+      if (object.name.includes('beacon') || object.userData.bloom) bright.push(object);
+      if (object instanceof Mesh && object.parent?.userData.device?.deviceId === this.selectedAsset) selected.push(object);
+      if (object instanceof Mesh && object.parent?.userData.displayStatus === 'ALARM') alarms.push(object);
+    });
+    this.post.setHighlights({ bloom: bright, selected, hover: this.hovered?.children.filter(o => o instanceof Mesh) ?? [], alarm: alarms });
     this.post.render(dt);
     this.labels.render(this.scene, this.rig.camera, this.width, this.height);
     this.frames++;
