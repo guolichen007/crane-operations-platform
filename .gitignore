@@ -14,4 +14,7 @@ playwright-report/
 *.key
 *.crt
 deploy/compose/runtime/
+deploy/compose/production.env
+__pycache__/
+*.pyc
 

@@ -6,8 +6,14 @@ RUN GOPROXY=${GOPROXY} go mod download
 COPY . .
 ARG TARGET=services/cloud-api/cmd/cloud-api
 RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/service ./${TARGET}
+RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/identity ./tools/identity && CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/provision-keycloak ./tools/provision-keycloak
 FROM alpine:3.23
 RUN apk add --no-cache ca-certificates && addgroup -g 10001 app && adduser -D -u 10001 -G app app
 COPY --from=build --chmod=0755 /out/service /usr/local/bin/service
+COPY --from=build --chmod=0755 /out/identity /out/provision-keycloak /usr/local/bin/
+COPY licenses /usr/share/licenses/crane/
+COPY THIRD_PARTY_NOTICES.md /usr/share/licenses/crane/THIRD_PARTY_NOTICES.md
+ARG SOURCE_SHA=development
+LABEL org.opencontainers.image.revision=$SOURCE_SHA org.opencontainers.image.source="https://github.com/guolichen007/crane-operations-platform"
 USER 10001:10001
 ENTRYPOINT ["service"]

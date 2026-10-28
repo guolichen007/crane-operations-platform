@@ -1,0 +1,18 @@
+FROM node:24.19.0-alpine AS build
+WORKDIR /src
+COPY package.json package-lock.json ./
+COPY apps/web-console/package.json apps/web-console/package.json
+RUN npm ci
+COPY apps/web-console apps/web-console
+COPY contracts contracts
+ENV VITE_DATA_MODE=api VITE_AUTH_MODE=oidc
+RUN npm run build
+FROM nginx:1.28-alpine
+ARG SOURCE_SHA
+LABEL org.opencontainers.image.revision=$SOURCE_SHA org.opencontainers.image.source="https://github.com/guolichen007/crane-operations-platform"
+COPY deploy/nginx/production.conf /etc/nginx/nginx.conf
+COPY --from=build /src/apps/web-console/dist /usr/share/nginx/html
+COPY licenses /usr/share/licenses/crane/
+COPY THIRD_PARTY_NOTICES.md /usr/share/licenses/crane/THIRD_PARTY_NOTICES.md
+USER 101:101
+ENTRYPOINT ["nginx", "-g", "daemon off;"]

@@ -1,0 +1,21 @@
+# Additional explicit opt-in only; the base production file has exactly five services.
+services:
+  device-simulator:
+    image: ${CRANE_SIMULATOR_IMAGE:?explicit verified simulator image@sha256 required}
+    profiles: [simulation]
+    user: "10001:10001"
+    command: [--fleet-file, /inventory/fleet.json, --scenario, normal]
+    environment:
+      MQTT_URL: tls://mosquitto:8883
+      CERT_DIR: /certs
+      DATA_DIR: /spool
+    volumes:
+      - ${CRANE_FLEET_FILE:?explicit provisioned Fleet required}:/inventory/fleet.json:ro
+      - ${CRANE_SIMULATOR_CERT_DIR:?explicit isolated simulator certificates required}:/certs:ro
+      - crane-simulation-spool:/spool
+    networks: [backend]
+    logging: {driver: json-file, options: {max-size: "10m", max-file: "5"}}
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+volumes:
+  crane-simulation-spool:

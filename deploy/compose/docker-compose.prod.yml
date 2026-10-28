@@ -1,0 +1,139 @@
+name: crane-ops
+x-logging: &crane-logging
+  driver: json-file
+  options: {max-size: "10m", max-file: "5"}
+x-security: &crane-security
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  restart: unless-stopped
+  logging: *crane-logging
+services:
+  postgres:
+    image: postgres:17.8-alpine@sha256:3430fe182f5065a6ea505c3d432d2c7fff18fbab954df8f277c1dbf4c70124af
+    entrypoint: [/bin/sh, /opt/crane/postgres-entrypoint.sh]
+    command: [postgres, -c, log_statement=none, -c, log_min_error_statement=panic, -c, log_error_verbosity=terse, -c, log_parameter_max_length_on_error=0]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_admin_password
+    secrets: [postgres_admin_password, app_db_password, keycloak_db_password]
+    volumes:
+      - crane-postgres:/var/lib/postgresql/data
+      - ../production/postgres-entrypoint.sh:/opt/crane/postgres-entrypoint.sh:ro
+      - ../production/postgres-init.sh:/docker-entrypoint-initdb.d/10-crane-roles.sh:ro
+    networks: [backend]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U postgres -d postgres]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    logging: *crane-logging
+    restart: unless-stopped
+    # Official PostgreSQL root entrypoint drops to postgres after preparing its data directory.
+  keycloak:
+    <<: *crane-security
+    image: quay.io/keycloak/keycloak:26.8.1@sha256:a78d6b79572168cb25886b80a8b5b8d4ed4390743e3eecb810538683e209dd6b
+    user: "1000:1000"
+    entrypoint: [/bin/bash, /opt/crane/keycloak-entrypoint.sh]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/crane_keycloak
+      KC_DB_USERNAME: crane_keycloak
+      KC_HOSTNAME: ${CRANE_AUTH_URL:-https://auth.crane.youdaozd.com}
+      KC_HOSTNAME_STRICT: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_PROXY_TRUSTED_ADDRESSES: ${CRANE_PROXY_CIDRS:?explicit trusted ingress CIDRs required}
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+      KC_HTTP_ACCESS_LOG_ENABLED: "false"
+      KC_CACHE: local
+      KC_BOOTSTRAP_ADMIN_USERNAME: bootstrap-crane
+    secrets: [keycloak_db_password, keycloak_bootstrap_password]
+    volumes: [../production/keycloak-entrypoint.sh:/opt/crane/keycloak-entrypoint.sh:ro]
+    ports: ["127.0.0.1:${CRANE_AUTH_PORT:-18082}:8080"]
+    expose: [9000]
+    networks: [backend, frontend]
+    depends_on:
+      postgres: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, /bin/bash, -ec, "exec 3<>/dev/tcp/127.0.0.1/9000; printf 'GET /health/ready HTTP/1.0\r\n\r\n' >&3; read -r status <&3; [[ $$status == *' 200 '* ]]"]
+      interval: 10s
+      timeout: 5s
+      start_period: 90s
+      retries: 30
+  mosquitto:
+    <<: *crane-security
+    image: eclipse-mosquitto:2.0.22@sha256:199ea8ef2e35ec2b1b37e59cfd1dbae538ed4dfa4a2251a121a52215a6248a21
+    user: "1883:1883"
+    volumes:
+      - ../mosquitto/mosquitto.prod.conf:/mosquitto/config/mosquitto.conf:ro
+      - ${CRANE_MQTT_DIR:?provisioned private MQTT directory required}/broker:/mosquitto/certs:ro
+      - ${CRANE_MQTT_ACL:?explicit Fleet ACL required}:/mosquitto/acl:ro
+      - crane-mqtt:/mosquitto/data
+    networks: [backend]
+    # A2 has not authorized any host/public device listener.
+  cloud-api:
+    <<: *crane-security
+    image: ${CRANE_CLOUD_IMAGE:?verified release image@sha256 required}
+    user: "10001:10001"
+    command: [--migrate]
+    environment:
+      APP_ENV: production
+      PUBLIC_URL: ${CRANE_PUBLIC_URL:-https://crane.youdaozd.com}
+      OIDC_ISSUER: ${CRANE_AUTH_URL:-https://auth.crane.youdaozd.com}/realms/crane
+      OIDC_CLIENT_ID: crane-bff
+      OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
+      SESSION_SECRET_FILE: /run/secrets/session_server_secret
+      DATABASE_PASSWORD_FILE: /run/secrets/app_db_password
+      DATABASE_URL: postgres://crane_app@postgres:5432/crane_app?sslmode=disable
+      TRUSTED_PROXY_CIDRS: ${CRANE_PROXY_CIDRS:?explicit trusted ingress CIDRs required}
+      SESSION_ABSOLUTE_SECONDS: ${CRANE_SESSION_ABSOLUTE_SECONDS:-28800}
+      SESSION_IDLE_SECONDS: ${CRANE_SESSION_IDLE_SECONDS:-1800}
+      INVENTORY_FILE: /inventory/inventory.json
+      FLEET_FILE: /inventory/fleet.json
+      MQTT_URL: tls://mosquitto:8883
+      CERT_DIR: /certs
+    secrets: [app_db_password, oidc_client_secret, session_server_secret]
+    volumes:
+      - ${CRANE_INVENTORY_FILE:?explicit private Inventory required}:/inventory/inventory.json:ro
+      - ${CRANE_FLEET_FILE:?explicit provisioned Fleet required}:/inventory/fleet.json:ro
+      - ${CRANE_MQTT_DIR:?provisioned private MQTT directory required}/cloud:/certs:ro
+    expose: [8081]
+    networks: [backend, frontend]
+    read_only: true
+    tmpfs: [/tmp]
+    depends_on:
+      postgres: {condition: service_healthy}
+      keycloak: {condition: service_healthy}
+      mosquitto: {condition: service_started}
+    healthcheck:
+      test: [CMD, wget, -qO-, http://127.0.0.1:8081/health/ready]
+      interval: 10s
+      timeout: 3s
+      retries: 30
+  web-console:
+    <<: *crane-security
+    image: ${CRANE_WEB_IMAGE:?verified release image@sha256 required}
+    user: "101:101"
+    ports: ["127.0.0.1:${CRANE_WEB_PORT:-18081}:8080"]
+    networks: [frontend]
+    read_only: true
+    tmpfs:
+      - /tmp:uid=101,gid=101,mode=0700
+      - /var/cache/nginx:uid=101,gid=101,mode=0700
+    depends_on:
+      cloud-api: {condition: service_healthy}
+secrets:
+  postgres_admin_password: {file: '${CRANE_SECRET_DIR:-/srv/u-dao/secrets/crane-ops}/postgres_admin_password'}
+  app_db_password: {file: '${CRANE_SECRET_DIR:-/srv/u-dao/secrets/crane-ops}/app_db_password'}
+  keycloak_db_password: {file: '${CRANE_SECRET_DIR:-/srv/u-dao/secrets/crane-ops}/keycloak_db_password'}
+  keycloak_bootstrap_password: {file: '${CRANE_SECRET_DIR:-/srv/u-dao/secrets/crane-ops}/keycloak_bootstrap_password'}
+  oidc_client_secret: {file: '${CRANE_SECRET_DIR:-/srv/u-dao/secrets/crane-ops}/oidc_client_secret'}
+  session_server_secret: {file: '${CRANE_SECRET_DIR:-/srv/u-dao/secrets/crane-ops}/session_server_secret'}
+volumes:
+  crane-postgres:
+  crane-mqtt:
+networks:
+  backend: {internal: true}
+  frontend:

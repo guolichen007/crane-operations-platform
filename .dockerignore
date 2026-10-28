@@ -5,5 +5,8 @@ local-private
 tools/.cache
 release
 deploy/compose/runtime
+deploy/compose/production.env
 test-results*
 playwright-report
+**/__pycache__
+**/*.pyc

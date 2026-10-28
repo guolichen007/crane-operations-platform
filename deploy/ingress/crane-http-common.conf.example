@@ -1,0 +1,3 @@
+# Include once in the shared u-dao-ingress http context after human review.
+map $http_upgrade $crane_upgrade { default upgrade; '' close; }
+log_format crane_safe '$remote_addr $request_method $uri $status $body_bytes_sent';
