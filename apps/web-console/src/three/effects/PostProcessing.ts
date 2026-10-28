@@ -23,6 +23,7 @@ import type { QualityTier } from '../core/QualityManager';
 export function createPostProcessing(renderer: WebGLRenderer, scene: Scene, camera: Camera) {
   // Only the final pass tone maps. Avoid renderer + effect double mapping.
   renderer.toneMapping = NoToneMapping;
+  renderer.toneMappingExposure = 0.9;
   const composer = new EffectComposer(renderer, {
     frameBufferType: HalfFloatType,
     multisampling: 0,
@@ -63,7 +64,8 @@ export function createPostProcessing(renderer: WebGLRenderer, scene: Scene, came
     new EffectPass(
       camera,
       new SMAAEffect({ preset: SMAAPreset.MEDIUM }),
-      new VignetteEffect({ offset: 0.25, darkness: 0.035, blendFunction: BlendFunction.MULTIPLY })
+      // The effect already multiplies inputColor internally; MULTIPLY would square dark tones.
+      new VignetteEffect({ offset: 0.25, darkness: 0.035, blendFunction: BlendFunction.NORMAL })
     )
   );
   composer.addPass(

@@ -17,6 +17,7 @@ import { SceneLoop } from '../core/SceneLoop';
 import { QualityManager } from '../core/QualityManager';
 import { createPostProcessing } from '../effects/PostProcessing';
 import { addAtmosphere } from '../effects/SceneAtmosphere';
+import { PremiumSceneBackground } from '../effects/PremiumSceneBackground';
 import { disposeObject } from '../utils/dispose';
 import { CraneTwinFactory, type TwinAxes } from './CraneTwinFactory';
 export class CraneTwinScene {
@@ -37,6 +38,7 @@ export class CraneTwinScene {
     private demo = false
   ) {
     host.append(this.renderer.domElement);
+    this.renderer.info.autoReset = false;
     this.renderer.setClearColor(0x06152d);
     this.renderer.setPixelRatio(this.quality.pixelRatio);
     this.rig = new CameraRig(this.renderer.domElement);
@@ -46,12 +48,13 @@ export class CraneTwinScene {
     this.scene.fog = new FogExp2(0x06152d, 0.012);
     addAtmosphere(this.scene);
     this.scene.add(this.twin.root);
-    this.scene.add(new HemisphereLight(0xdceeff, 0x25416a, 2.2));
-    const studio = new DirectionalLight(0xffedca, 4.5);
+    this.scene.add(new PremiumSceneBackground().mesh);
+    this.scene.add(new HemisphereLight(0xdceeff, 0x25416a, 1.3));
+    const studio = new DirectionalLight(0xffedca, 2);
     studio.position.set(10, 18, 12);
     this.scene.add(studio);
     const floor = new Mesh(
-      new PlaneGeometry(120, 120),
+      new PlaneGeometry(500, 500),
       new MeshBasicMaterial({ color: '#102a45' })
     );
     floor.rotation.x = -Math.PI / 2;

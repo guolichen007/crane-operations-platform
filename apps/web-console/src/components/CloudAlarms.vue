@@ -14,7 +14,7 @@ const filtered = computed(() =>
   (data.value ?? []).filter(
     (a) =>
       (!device.value || a.deviceId === device.value) &&
-      (!date.value || a.sentAt.startsWith(date.value)) &&
+      (!date.value || formatCloudTime(a.sentAt).startsWith(date.value)) &&
       `${a.deviceId} ${a.payload.code} ${a.payload.text}`
         .toLowerCase()
         .includes(search.value.toLowerCase())

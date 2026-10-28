@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { cloudDevice, cloudAlarm } from '../../../apps/web-console/tests/cloud-fixtures';
 const example = JSON.parse(readFileSync('deploy/inventory/inventory.example.yaml', 'utf8'));
 const session = {
@@ -58,6 +58,20 @@ async function screenshot(page: Page, name: string) {
     .info()
     .attach(name, { path: test.info().outputPath(name + '.png'), contentType: 'image/png' });
 }
+test('告警日期筛选使用上海日期并与显示一致', async ({ page }) => {
+  await fixture(page);
+  await page.route('**/api/v1/alarms', (route) =>
+    route.fulfill({ json: [{ ...cloudAlarm(), sentAt: '2026-10-21T18:00:00Z' }] })
+  );
+  await page.goto('/#/alarms');
+  await page.getByLabel('告警日期', { exact: true }).fill('2026-10-22');
+  await expect(page.getByTestId('cloud-alarm')).toHaveCount(1);
+  await expect(page.getByTestId('cloud-alarm').locator('time')).toContainText(
+    '2026-10-22 02:00:00'
+  );
+  await page.getByLabel('告警日期', { exact: true }).fill('2026-10-21');
+  await expect(page.getByTestId('cloud-alarm')).toHaveCount(0);
+});
 for (const width of [1920, 1366]) {
   test('未认证封面与无业务请求 ' + width, async ({ page }) => {
     await page.setViewportSize({ width, height: width === 1920 ? 1080 : 768 });
@@ -157,7 +171,10 @@ test('路由往返释放 canvas 且孪生 draw calls / triangles 受预算限制
     ).__twinDiagnostics()
   );
   expect(stats.drawCalls).toBeLessThan(350);
+  expect(stats.drawCalls).toBeGreaterThan(20);
   expect(stats.triangles).toBeLessThan(700000);
+  expect(stats.triangles).toBeGreaterThan(200);
+  writeFileSync(test.info().outputPath('twin-budget.json'), JSON.stringify(stats, null, 2));
   await screenshot(page, 'device-twin');
   for (let i = 0; i < 3; i++) {
     await page.goto('/#/projects');
@@ -193,10 +210,9 @@ test('20 次行政区下钻往返不持续增长 GPU 资源', async ({ page }) =
     );
   }
   expect(Math.max(...counts.slice(-5))).toBeLessThanOrEqual(Math.max(...counts.slice(0, 5)) + 3);
-  await test
-    .info()
-    .attach('gpu-resource-counts', {
-      body: JSON.stringify(counts),
-      contentType: 'application/json',
-    });
+  writeFileSync(test.info().outputPath('gpu-resource-counts.json'), JSON.stringify(counts));
+  await test.info().attach('gpu-resource-counts', {
+    body: JSON.stringify(counts),
+    contentType: 'application/json',
+  });
 });

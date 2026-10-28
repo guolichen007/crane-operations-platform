@@ -64,6 +64,13 @@ const projects = computed(() =>
 );
 let scene: MapSceneManager | undefined,
   disposed = false;
+let requestedProjectHandled = false;
+watch([data, mapLoading], ([value, pending]) => {
+  if (pending || !value || requestedProjectHandled || !route.query.project) return;
+  requestedProjectHandled = true;
+  const project = value.projects.find((p) => p.id === route.query.project);
+  if (project) selectProject(project);
+});
 watch(data, (value) => {
   scene?.setInventoryProjects(value?.projects ?? []);
   if (!value) selected.value = undefined;
@@ -114,8 +121,6 @@ onMounted(async () => {
     await scene.init();
     if (!disposed) {
       scene.setInventoryProjects(data.value?.projects ?? []);
-      const p = data.value?.projects.find((p) => p.id === route.query.project);
-      if (p) selectProject(p);
     }
   } catch {
     if (!disposed) mapError.value = '当前环境未启用 WebGL · 已切换二维资产视图';

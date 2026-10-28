@@ -6,13 +6,13 @@ export function mapSurfaceMaterial() {
     roughness: 0.82,
     metalness: 0.22,
     emissive: 0x153958,
-    emissiveIntensity: 1.1,
+    emissiveIntensity: 0.35,
     transparent: true,
     side: DoubleSide,
   });
   material.onBeforeCompile = (shader) => {
-    shader.uniforms.uMapEdge = { value: new Color('#234d71') };
-    shader.uniforms.uMapCenter = { value: new Color('#386e96') };
+    shader.uniforms.uMapEdge = { value: new Color('#173d63') };
+    shader.uniforms.uMapCenter = { value: new Color('#225583') };
     shader.vertexShader = 'varying vec3 vMapWorld;\n' + shader.vertexShader;
     shader.vertexShader = shader.vertexShader.replace(
       '#include <begin_vertex>',
