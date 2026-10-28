@@ -130,8 +130,9 @@ jobs:
       - name: 使用发布的实际digest执行生产身份与备份恢复演练
         if: github.event_name == 'push'
         run: |
-          export A1_CLOUD_IMAGE=$(node -e "const m=require('./release/phase1-a1/release-manifest.json');const i=m.images.find(i=>i.image_name.endsWith('/cloud-api'));process.stdout.write(i.image_name+'@'+i.image_digest)")
-          export A1_WEB_IMAGE=$(node -e "const m=require('./release/phase1-a1/release-manifest.json');const i=m.images.find(i=>i.image_name.endsWith('/web-console'));process.stdout.write(i.image_name+'@'+i.image_digest)")
+          A1_CLOUD_IMAGE=$(node -e "const m=require('./release/phase1-a1/release-manifest.json');const i=m.images.find(i=>i.image_name.endsWith('/cloud-api'));process.stdout.write(i.image_name+'@'+i.image_digest)")
+          A1_WEB_IMAGE=$(node -e "const m=require('./release/phase1-a1/release-manifest.json');const i=m.images.find(i=>i.image_name.endsWith('/web-console'));process.stdout.write(i.image_name+'@'+i.image_digest)")
+          export A1_CLOUD_IMAGE A1_WEB_IMAGE
           node tools/task.mjs a1-production-test
       - name: PR验证本地生产候选镜像
         if: github.event_name == 'pull_request'
