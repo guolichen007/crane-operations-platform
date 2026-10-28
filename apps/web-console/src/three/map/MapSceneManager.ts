@@ -398,6 +398,10 @@ export class MapSceneManager {
     this.inventoryProjects = items;
     this.refreshLabelsAndMarkers();
   }
+  setInspectorWidth(width: number) {
+    this.rig.setViewPadding(width);
+    void this.reframeCurrentView(!this.reduced);
+  }
   setFilter(items: Project[], deviceItems: Device[]) {
     this.intro?.finish();
     this.shownProjects = items;

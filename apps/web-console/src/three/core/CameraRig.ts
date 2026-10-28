@@ -10,6 +10,11 @@ export class CameraRig {
   observation: 'operations' | 'cinematic' = 'operations';
   private width = 1;
   private height = 1;
+  private inspectorWidth = 0;
+  setViewPadding(width: number) {
+    this.inspectorWidth = width;
+    this.resize(this.width, this.height);
+  }
   constructor(element: HTMLElement) {
     this.controls = new CameraControls(this.camera, element);
     this.controls.smoothTime = 0.18;
@@ -26,6 +31,9 @@ export class CameraRig {
     this.height = height;
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
+    if (this.inspectorWidth && width > 1000)
+      this.camera.setViewOffset(width, height, this.inspectorWidth / 2, 0, width, height);
+    else this.camera.clearViewOffset();
   }
   async frame(
     box: THREE.Box3,
