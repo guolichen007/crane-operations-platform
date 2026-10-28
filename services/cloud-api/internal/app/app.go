@@ -6,17 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/coder/websocket"
 	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
 	"github.com/guolichen007/crane-operations-platform/deploy/postgres/migrations"
 	"github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/alarm"
-	"github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/audit"
-	"github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/remote"
 
 	"github.com/guolichen007/crane-operations-platform/internal/fleet"
 	"github.com/guolichen007/crane-operations-platform/internal/inventory"
 	"github.com/guolichen007/crane-operations-platform/internal/platform"
-	"github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/auth"
+	"github.com/guolichen007/crane-operations-platform/internal/webauth"
 	"github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/device"
 	"github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/session"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -24,7 +21,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -35,8 +31,8 @@ func Run(args []string) error {
 	if e != nil {
 		return e
 	}
-	if c.Env != "development" || len(c.Token) < 32 {
-		return errors.New("phase 0 requires development mode and random development token")
+	if e = c.ValidateCloud(); e != nil {
+		return e
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -261,181 +257,28 @@ func Run(args []string) error {
 		fmt.Fprint(w, leases.Metrics(r.Context()))
 		fmt.Fprintf(w, "event_application_acks_total %d\nmqtt_reconnects_total %d\n", eventAcks.Load(), platform.MQTTReconnects.Load())
 	})
-	mux.HandleFunc("POST /api/v1/auth/dev-session", func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := auth.Authenticate(r, c.Token); !ok {
-			respond(w, 401, map[string]string{"error": "unauthorized"})
-			return
-		}
-		http.SetCookie(w, &http.Cookie{Name: "crane_dev", Value: c.Token, Path: "/api/", HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil, MaxAge: 3600})
-		respond(w, 200, map[string]string{"mode": "development-only"})
-	})
-	api := http.NewServeMux()
-	api.HandleFunc("GET /api/v1/projects", func(w http.ResponseWriter, r *http.Request) {
-		values, err := inventory.Projects(r.Context(), db)
+	handlers := &apiHandler{config: c, db: db, store: store, leases: leases, active: activeRuntime, list: listRuntime,
+		logger: logger, wsClients: &wsClients, dbErrors: &dbErrors}
+	if c.Env == "production" {
+		clientSecret, err := platform.PrivateSecret(c.Production.ClientSecretFile, 32)
 		if err != nil {
-			respond(w, 503, map[string]string{"error": "inventory unavailable"})
-			return
+			return err
 		}
-		respond(w, 200, values)
-	})
-	api.HandleFunc("GET /api/v1/assets/devices", func(w http.ResponseWriter, r *http.Request) {
-		values, err := inventory.Assets(r.Context(), db)
+		serverSecret, err := platform.PrivateSecret(c.Production.SessionSecretFile, 32)
 		if err != nil {
-			respond(w, 503, map[string]string{"error": "inventory unavailable"})
-			return
+			return err
 		}
-		respond(w, 200, values)
-	})
-	api.HandleFunc("GET /api/v1/devices", func(w http.ResponseWriter, r *http.Request) {
-		values := listRuntime()
-		for i := range values {
-			status, err := leases.Status(r.Context(), values[i].DeviceId)
-			if err != nil {
-				respond(w, 503, map[string]string{"error": "database unavailable"})
-				return
-			}
-			values[i].UpstreamStatus = status
-		}
-		respond(w, 200, values)
-	})
-	detail := func(w http.ResponseWriter, r *http.Request) {
-		v, ok := store.Get(r.PathValue("id"))
-		if !ok || !activeRuntime(v) {
-			respond(w, 404, map[string]string{"error": "not found"})
-			return
-		}
-		status, err := leases.Status(r.Context(), v.DeviceId)
+		handlers.web, err = webauth.New(startup, db, webauth.Config{PublicURL: c.Production.PublicURL, Issuer: c.Production.Issuer,
+			ClientID: c.Production.ClientID, ClientSecret: clientSecret, ServerSecret: serverSecret,
+			AbsoluteTTL: time.Duration(c.Production.AbsoluteSeconds) * time.Second, IdleTTL: time.Duration(c.Production.IdleSeconds) * time.Second,
+			TrustedProxies: c.Production.TrustedProxyCIDRs})
 		if err != nil {
-			respond(w, 503, map[string]string{"error": "database unavailable"})
-			return
+			return err
 		}
-		v.UpstreamStatus = status
-		respond(w, 200, v)
 	}
-	api.HandleFunc("GET /api/v1/devices/{id}", detail)
-	api.HandleFunc("GET /api/v1/devices/{id}/shadow", detail)
-	api.HandleFunc("GET /api/v1/alarms", func(w http.ResponseWriter, r *http.Request) {
-		a, e := alarm.List(r.Context(), db)
-		if e != nil {
-			respond(w, 503, map[string]string{"error": "database unavailable"})
-			return
-		}
-		respond(w, 200, a)
-	})
-	api.HandleFunc("POST /api/v1/devices/{id}/live-sessions", func(w http.ResponseWriter, r *http.Request) {
-		identity, _ := auth.Authenticate(r, c.Token)
-		id := r.PathValue("id")
-		if value, ok := store.Get(id); !ok || !activeRuntime(value) {
-			respond(w, 404, map[string]string{"error": "not found"})
-			return
-		}
-		s, err := leases.Open(r.Context(), platform.ID(), id, identity.ID, time.Now())
-		if err != nil {
-			respond(w, 503, map[string]string{"error": "database unavailable"})
-			return
-		}
-		logger.Info("viewer lease created", "event", "viewer_opened", "deviceId", id, "sessionId", s.SessionId)
-		respond(w, 201, s)
-	})
-	api.HandleFunc("POST /api/v1/live-sessions/{sessionId}/renew", func(w http.ResponseWriter, r *http.Request) {
-		identity, _ := auth.Authenticate(r, c.Token)
-		s, err := leases.Renew(r.Context(), r.PathValue("sessionId"), identity.ID, time.Now())
-		if errors.Is(err, session.ErrNotFound) {
-			respond(w, 404, map[string]string{"error": "expired session"})
-			return
-		}
-		if err != nil {
-			respond(w, 503, map[string]string{"error": "database unavailable"})
-			return
-		}
-		respond(w, 200, s)
-	})
-	api.HandleFunc("DELETE /api/v1/live-sessions/{sessionId}", func(w http.ResponseWriter, r *http.Request) {
-		identity, _ := auth.Authenticate(r, c.Token)
-		err := leases.Close(r.Context(), r.PathValue("sessionId"), identity.ID, time.Now())
-		if errors.Is(err, session.ErrNotFound) {
-			respond(w, 404, map[string]string{"error": "not found"})
-			return
-		}
-		if err != nil {
-			respond(w, 503, map[string]string{"error": "database unavailable"})
-			return
-		}
-		w.WriteHeader(204)
-	})
-	api.HandleFunc("POST /api/v1/devices/{id}/remote-sessions", remote.Disabled)
-	api.HandleFunc("DELETE /api/v1/remote-sessions/{sessionId}", remote.Disabled)
-	api.HandleFunc("GET /api/v1/devices/{id}/stream", func(w http.ResponseWriter, r *http.Request) {
-		id := r.PathValue("id")
-		if value, ok := store.Get(id); !ok || !activeRuntime(value) {
-			http.NotFound(w, r)
-			return
-		}
-		conn, e := websocket.Accept(w, r, nil)
-		if e != nil {
-			return
-		}
-		defer conn.CloseNow()
-		wsClients.Add(1)
-		defer wsClients.Add(-1)
-		clientCtx := conn.CloseRead(r.Context())
-		ticker := time.NewTicker(time.Second)
-		defer ticker.Stop()
-		for {
-			v, _ := store.Get(id)
-			status, err := leases.Status(clientCtx, id)
-			if err != nil {
-				return
-			}
-			v.UpstreamStatus = status
-			b, _ := json.Marshal(v)
-			writeCtx, done := context.WithTimeout(clientCtx, 2*time.Second)
-			err = conn.Write(writeCtx, websocket.MessageText, b)
-			done()
-			if err != nil {
-				return
-			}
-			select {
-			case <-clientCtx.Done():
-				return
-			case <-ticker.C:
-			}
-		}
-	})
-	mux.Handle("/api/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		identity, ok := auth.Authenticate(r, c.Token)
-		action := "read"
-		if r.Method != "GET" {
-			action = "watch"
-		}
-		if strings.Contains(r.URL.Path, "remote-sessions") {
-			action = "remote"
-		}
-		if !ok {
-			respond(w, 401, map[string]string{"error": "unauthorized"})
-			return
-		}
-		if !auth.Allowed(identity.Role, action) {
-			respond(w, 403, map[string]string{"error": "forbidden"})
-			return
-		}
-		if r.Method != "GET" {
-			origin := r.Header.Get("Origin")
-			if origin != "" && origin != "http://"+r.Host && origin != "https://"+r.Host {
-				respond(w, 403, map[string]string{"error": "origin rejected"})
-				return
-			}
-			r.Body = http.MaxBytesReader(w, r.Body, 16384)
-			defer func() {
-				auditCtx, done := context.WithTimeout(context.Background(), 2*time.Second)
-				defer done()
-				if err := audit.Attempt(auditCtx, db, identity.ID, r.PathValue("id"), r.Method+" "+r.URL.Path); err != nil {
-					dbErrors.Add(1)
-				}
-			}()
-		}
-		api.ServeHTTP(w, r)
-	}))
+	if err := handlers.register(mux); err != nil {
+		return err
+	}
 	srv := &http.Server{Addr: c.HTTP, Handler: mux, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
 	go func() {
 		<-ctx.Done()

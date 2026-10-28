@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
+	"github.com/guolichen007/crane-operations-platform/internal/auditlog"
+	"github.com/guolichen007/crane-operations-platform/internal/identity"
 	"github.com/guolichen007/crane-operations-platform/internal/platform"
 	"sync"
 	"sync/atomic"
@@ -97,6 +99,9 @@ func (m *Manager) Open(ctx context.Context, id, device, user string, now time.Ti
 	}
 	defer tx.Rollback()
 	result := contract.LiveSession{SessionId: id, DeviceId: device, UserId: user, ExpiresAt: now.Add(m.TTL).UTC(), TtlSeconds: int(m.TTL / time.Second), TelemetryHz: 1}
+	if e = identity.RuntimeTransaction(ctx, tx, device, user); e != nil {
+		return result, e
+	}
 	if _, e = tx.ExecContext(ctx, `INSERT INTO live_sessions(session_id,device_id,user_id,expires_at) VALUES($1,$2,$3,$4)`, id, device, user, result.ExpiresAt); e != nil {
 		return result, e
 	}
@@ -117,7 +122,7 @@ func (m *Manager) Open(ctx context.Context, id, device, user string, now time.Ti
 		return result, e
 	}
 	result.UpstreamStatus = s.Status
-	return result, tx.Commit()
+	return result, auditlog.Commit(ctx, tx)
 }
 func (m *Manager) Renew(ctx context.Context, id, user string, now time.Time) (contract.LiveSession, error) {
 	m.mu.Lock()
@@ -135,6 +140,9 @@ func (m *Manager) Renew(ctx context.Context, id, user string, now time.Time) (co
 	if e != nil {
 		return s, e
 	}
+	if e = identity.RuntimeTransaction(ctx, tx, s.DeviceId, user); e != nil {
+		return s, e
+	}
 	u, e := load(ctx, tx, s.DeviceId)
 	if e != nil {
 		return s, e
@@ -146,7 +154,7 @@ func (m *Manager) Renew(ctx context.Context, id, user string, now time.Time) (co
 		return s, e
 	}
 	s.UpstreamStatus = u.Status
-	return s, tx.Commit()
+	return s, auditlog.Commit(ctx, tx)
 }
 func (m *Manager) Close(ctx context.Context, id, user string, now time.Time) error {
 	m.mu.Lock()
@@ -164,6 +172,9 @@ func (m *Manager) Close(ctx context.Context, id, user string, now time.Time) err
 	if e != nil {
 		return e
 	}
+	if e = identity.RuntimeTransaction(ctx, tx, device, user); e != nil {
+		return e
+	}
 	s, e := load(ctx, tx, device)
 	if e != nil {
 		return e
@@ -175,7 +186,7 @@ func (m *Manager) Close(ctx context.Context, id, user string, now time.Time) err
 	if e = save(ctx, tx, s); e != nil {
 		return e
 	}
-	return tx.Commit()
+	return auditlog.Commit(ctx, tx)
 }
 
 // Reconcile runs after BIRTH and after Cloud's MQTT reconnect. PostgreSQL is the
