@@ -1,4 +1,4 @@
-FROM node:24.19.0-alpine AS build
+FROM node:24.19.0-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS build
 WORKDIR /src
 COPY package.json package-lock.json ./
 COPY apps/web-console/package.json apps/web-console/package.json
@@ -7,7 +7,7 @@ COPY apps/web-console apps/web-console
 COPY contracts contracts
 ENV VITE_DATA_MODE=api VITE_AUTH_MODE=oidc
 RUN npm run build
-FROM alpine:3.23
+FROM alpine:3.23@sha256:ff7f0c727dd796aa36787bfcd9a64bf35a6ce72a73451b3359fde849b6703d63
 # Alpine maintains security backports for nginx and its small runtime dependency set.
 # Avoid the older upstream image's bundled curl/image/XML modules.
 RUN apk upgrade --no-cache && addgroup -S -g 101 nginx && adduser -S -D -H -u 101 -G nginx nginx && apk add --no-cache nginx ca-certificates
