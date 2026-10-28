@@ -20,16 +20,24 @@ export function useCloudQuery<T>(load: () => Promise<T>) {
       if (!disposed && request === version) loading.value = false;
     }
   }
+  function invalidate() {
+    ++version;
+    data.value = undefined;
+    error.value = '请登录后访问云端';
+    loading.value = false;
+  }
   onMounted(() => {
     void refresh();
     timer = setInterval(() => void refresh(), 15000);
     window.addEventListener('cloud-authenticated', refresh);
+    window.addEventListener('cloud-session-expired', invalidate);
   });
   onUnmounted(() => {
     disposed = true;
     version++;
     clearInterval(timer);
     window.removeEventListener('cloud-authenticated', refresh);
+    window.removeEventListener('cloud-session-expired', invalidate);
   });
   return { data, error, loading, refresh };
 }

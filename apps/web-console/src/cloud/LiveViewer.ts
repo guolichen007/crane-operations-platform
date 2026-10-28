@@ -62,6 +62,7 @@ export class LiveViewer {
     if (!this.attached && !this.disposed) {
       this.options.target.addEventListener('pagehide', this.leave);
       this.options.target.addEventListener('beforeunload', this.leave);
+      this.options.target.addEventListener('cloud-session-expired', this.leave);
       this.attached = true;
     }
     // Never infer LIVE intent from sessionStorage after reload.
@@ -262,6 +263,7 @@ export class LiveViewer {
     this.disposed = true;
     this.options.target.removeEventListener('pagehide', this.leave);
     this.options.target.removeEventListener('beforeunload', this.leave);
+    this.options.target.removeEventListener('cloud-session-expired', this.leave);
     return this.stop(true);
   }
 }

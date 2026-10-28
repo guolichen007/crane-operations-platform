@@ -9,6 +9,7 @@ import InventoryOverview from './views/InventoryOverview.vue';
 import InventoryProjects from './views/InventoryProjects.vue';
 import InventoryDevices from './views/InventoryDevices.vue';
 const cloudMode = import.meta.env.VITE_DATA_MODE === 'api';
+const productionAuth = import.meta.env.VITE_AUTH_MODE === 'oidc';
 import './styles.css';
 import './refinements.css';
 const routes = [
@@ -19,7 +20,7 @@ const routes = [
   'analytics',
   'maintenance',
   'remote',
-].map((path) => ({
+].filter(path => !productionAuth || ['projects', 'devices', 'alarms'].includes(path)).map((path) => ({
   path: `/${path}`,
   component:
     cloudMode && path === 'devices'
@@ -39,7 +40,8 @@ createApp(App)
         { path: '/runtime', component: CloudDevices },
         ...routes,
         { path: '/devices/:id', component: CloudDevices },
-        { path: '/system', component: Workspace },
+        ...(productionAuth ? [] : [{ path: '/system', component: Workspace }]),
+        { path: '/:pathMatch(.*)*', redirect: '/overview' },
       ],
     })
   )

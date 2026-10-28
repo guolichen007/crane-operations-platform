@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
-import CloudStatus from './components/CloudStatus.vue';
+import { ref, onMounted, onUnmounted, defineAsyncComponent } from 'vue';
+const CloudStatus = defineAsyncComponent(() => import.meta.env.VITE_AUTH_MODE === 'oidc'
+  ? import('./components/SessionStatus.vue')
+  : import('./components/CloudStatus.vue'));
 const cloudMode = import.meta.env.VITE_DATA_MODE === 'api';
 import { useRouter, useRoute } from 'vue-router';
 import {
@@ -31,7 +33,7 @@ const nav = [
   { path: 'analytics', name: '运行分析', icon: ChartNoAxesCombined },
   { path: 'maintenance', name: '运维计划', icon: Wrench },
   { path: 'remote', name: '远程运维', icon: Radio },
-];
+].filter(item => import.meta.env.VITE_AUTH_MODE !== 'oidc' || ['overview', 'projects', 'devices', 'alarms'].includes(item.path));
 function tick() {
   clock.value = new Intl.DateTimeFormat('zh-CN', {
     timeZone: 'Asia/Shanghai',

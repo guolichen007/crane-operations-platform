@@ -7,6 +7,7 @@ import { formatCloudTime, deviceState, silentExplanation } from '../cloud/format
 import { useCloudQuery } from '../cloud/useCloudQuery';
 import { assetSource } from '../cloud/inventory';
 import { LiveViewer, type ViewerSnapshot } from '../cloud/LiveViewer';
+import { canWatchProject, productionAuth } from '../cloud/session';
 const route = useRoute();
 const { data: metadata } = useCloudQuery(async () => {
   const [assets, projects] = await Promise.all([listAssets(), listProjects()]);
@@ -56,6 +57,11 @@ async function refresh() {
     if (!disposed && request === revision) error.value = (e as Error).message;
   }
 }
+function sessionExpired() {
+  ++revision;
+  current.value = undefined;
+  devices.value = [];
+}
 watch(detail, () => {
   ++revision;
   current.value = undefined;
@@ -72,12 +78,14 @@ onMounted(async () => {
   void refresh();
   poll = setInterval(() => void refresh(), 15000);
   window.addEventListener('cloud-authenticated', refresh);
+  window.addEventListener('cloud-session-expired', sessionExpired);
 });
 onUnmounted(() => {
   disposed = true;
   ++revision;
   clearInterval(poll);
   window.removeEventListener('cloud-authenticated', refresh);
+  window.removeEventListener('cloud-session-expired', sessionExpired);
   void live.dispose();
 });
 const asset = computed(() =>
@@ -154,9 +162,10 @@ const streamHeading = computed(() => {
           <dt>负载</dt>
           <dd>{{ current.reported.load }} t</dd>
         </dl>
-        <button @click="active ? live.stop() : live.start(detail)">
+        <button :disabled="!active && !canWatchProject(current.projectId)" @click="active ? live.stop() : live.start(detail)">
           {{ active ? '停止实时查看' : '申请 LIVE · 1 Hz' }}
         </button>
+        <p v-if="productionAuth && !canWatchProject(current.projectId)">当前项目为只读权限。</p>
         <p v-if="viewer.session">
           租约到期：<time :title="viewer.session.expiresAt" :datetime="viewer.session.expiresAt">{{
             formatCloudTime(viewer.session.expiresAt)

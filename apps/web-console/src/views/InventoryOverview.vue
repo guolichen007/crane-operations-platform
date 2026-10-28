@@ -34,7 +34,8 @@ const host = ref<HTMLElement>(),
 let scene: MapSceneManager | undefined,
   disposed = false;
 watch(data, (value) => {
-  if (value) scene?.setInventoryProjects(value.projects);
+  scene?.setInventoryProjects(value?.projects ?? []);
+  if (!value) selected.value = undefined;
 });
 onMounted(async () => {
   try {
