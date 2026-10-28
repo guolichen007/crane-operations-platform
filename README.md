@@ -1,6 +1,6 @@
 # Crane Operations Platform
 
-全国行车综合管理平台：Vue 3 沙盘 + Go 云端模块化单体 + 出站 Edge + MQTT 5/TLS + PostgreSQL。当前资产模式为9项目、10规划行车与10模拟运行端，大多时间SILENT；旧20台Count模式保留给回归。当前Phase 1-A0实际资产与数据源模式切换；真实设备、生产身份、远程 Web 和点云未启用。
+全国行车综合管理平台：Vue 3 沙盘 + Go 云端模块化单体 + 出站 Edge + MQTT 5/TLS + PostgreSQL。当前资产模式为9项目、10规划行车与10模拟运行端，大多时间SILENT；旧20台Count模式保留给回归。当前 Phase1-A1 Production Web Foundation 在功能分支交付 OIDC/BFF、服务端 Session、项目权限与生产部署基础；尚未部署服务器，真实设备、远程 Web 和点云未启用。
 
 ## 快速开始
 
@@ -38,6 +38,8 @@ npm run test:e2e
 
 现场自治；云端不直连 PLC；不开放 Edge 入站公网端口。开发身份仅用于本机验证。Secret/证书/生成物不入库，公开数据匿名。旧客户版和完整历史保存在本地忽略的 local-private 的私有bundle中，公共历史不包含旧客户提交。根开源许可证由所有者决定；第三方条款见 THIRD_PARTY_NOTICES.md。
 
-Phase 1-A0从已验收S3.5基线3b7d4369f2d25800ca4f34f93b645ab3b68b6189建立feature/phase1-a0-asset-runtime-mode。本轮只完成代码、完整CI和推送；不部署服务器、不合并本轮功能、不创建PR、不进入生产身份或真实设备接入。
+Phase1-A0 已 fast-forward 封板 main=d827891375cd3665041936890ec21b70f52b2b9c，annotated tag baseline/phase1-a0。A1 从该封板基线建立 feature/phase1-a1-production-web；不自动合并、不部署、不修改真实 DNS/TLS 或 Firebot。如现有权限允许可创建 Draft PR。用户本轮明确跳过私有化，Public 例外不允许引入真实凭据或客户资料。
 
-已完成公开基线以baseline/phase0、baseline/t0.5、baseline/s3.5三个annotated tag保留；已被main包含的旧功能分支可清理。早期客户版历史仅保留在本地私有bundle，不能推送其tag或历史；禁止git push --all、--mirror或批量--tags。
+生产说明见[身份权限模型](docs/04-身份与权限/Phase1-A1生产身份与权限模型.md)、[生产部署手册](docs/08-部署运维与成本/Phase1-A1生产部署手册.md)、[备份恢复](docs/08-部署运维与成本/Phase1-A1备份恢复手册.md)、[安全反证](docs/07-测试与验收/Phase1-A1安全反证矩阵.md)与[威胁模型](docs/09-安全/Phase1-A1威胁模型.md)。验证入口：node tools/task.mjs production-contract、a1-test、a1-production-test；Windows 本地候选镜像使用 node tools/build-production.mjs，正式镜像仅认完整 CI 的 release-manifest.json 与 registry digest。
+
+已完成公开基线以baseline/phase0、baseline/t0.5、baseline/s3.5、baseline/phase1-a0四个annotated tag保留；已被main包含的旧功能分支可清理。早期客户版历史仅保留在本地私有bundle，不能推送其tag或历史；禁止git push --all、--mirror或批量--tags。
