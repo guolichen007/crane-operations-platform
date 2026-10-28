@@ -8,6 +8,7 @@ const CloudDevices = () => import('./views/CloudDevices.vue');
 const InventoryOverview = () => import('./views/InventoryOverview.vue');
 const InventoryProjects = () => import('./views/InventoryProjects.vue');
 const InventoryDevices = () => import('./views/InventoryDevices.vue');
+const AlarmCenter = () => import('./views/AlarmCenter.vue');
 const cloudMode = import.meta.env.VITE_DATA_MODE === 'api';
 const productionAuth = import.meta.env.VITE_AUTH_MODE === 'oidc';
 import './styles.css';
@@ -25,6 +26,8 @@ const routes = [
   component:
     cloudMode && path === 'devices'
       ? InventoryDevices
+      : cloudMode && path === 'alarms'
+        ? AlarmCenter
       : cloudMode && path === 'projects'
         ? InventoryProjects
         : Workspace,

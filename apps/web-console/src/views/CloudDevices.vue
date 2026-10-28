@@ -8,6 +8,8 @@ import { useCloudQuery } from '../cloud/useCloudQuery';
 import { assetSource } from '../cloud/inventory';
 import { LiveViewer, type ViewerSnapshot } from '../cloud/LiveViewer';
 import { canWatchProject, productionAuth } from '../cloud/session';
+import CraneTwin from '../components/CraneTwin.vue';
+import AxisGauge from '../components/AxisGauge.vue';
 const route = useRoute();
 const { data: metadata } = useCloudQuery(async () => {
   const [assets, projects] = await Promise.all([listAssets(), listProjects()]);
@@ -124,6 +126,13 @@ const streamHeading = computed(() => {
         数据来源：{{ assetSource(asset) }}
       </p>
       <p v-else>未关联业务资产 · 历史/测试运行源；不代表真实现场设备。</p>
+      <div v-if="current" class="device-detail-layout">
+      <div class="device-twin-column">
+        <CraneTwin :key="detail" :axes="current.reported.position" :alarm="current.reported.alarmState === 'ACTIVE'" :label="'设备 ' + detail + ' 结构示意 · 最近状态'" />
+        <div class="axis-gauge-grid"><AxisGauge axis="X" label="大车位置" :value="current.reported.position.x" :min="-12" :max="12" /><AxisGauge axis="Y" label="小车位置" :value="current.reported.position.y" :min="-5" :max="5" /><AxisGauge axis="Z" label="起升位置" :value="current.reported.position.z" :min="0" :max="10" /><AxisGauge axis="G" label="抓斗开度" :max="100" unit="%" /></div>
+        <p class="inspector-copy">通用结构示意，非实际几何标定。坐标超出可视范围时模型限制显示范围，右侧保留原始读数。抓斗遥测与历史趋势尚未提供。</p>
+        <section class="glass-panel"><div class="panel-heading"><h2>状态时间线</h2><small>LAST KNOWN STATE</small></div><p class="inspector-copy">最近快照 · {{ formatCloudTime(current.updatedAt) }}</p><p class="inspector-copy">最近心跳 · {{ formatCloudTime(current.presence.lastSeenAt) }}</p></section>
+      </div>
       <section
         v-if="current"
         class="shadow-card"
@@ -179,6 +188,7 @@ const streamHeading = computed(() => {
         <p>Point Cloud / Remote Local Web：Phase 2 未启用。</p>
         <router-link to="/alarms">Alarm · 告警记录 →</router-link>
       </section>
+      </div>
     </template>
     <div v-else class="device-grid">
       <router-link
