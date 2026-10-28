@@ -122,7 +122,9 @@ try {
   const restart = Date.now();
   compose(['up', '-d', '--force-recreate', '--no-deps', 'device-simulator']);
   await until('20 independent online device identities', async () => (await simulated()).filter((d) => d.presence.connectivity === 'MQTT_CONNECTED' && Date.parse(d.updatedAt) >= restart).length === 20);
-  assert.equal(db('SELECT max(version_id) FROM goose_db_version'), '3');
+  assert.equal(db('SELECT max(version_id) FROM goose_db_version'), '4');
+  assert.equal(db('SELECT count(*) FROM project_memberships'), '0');
+  record('A1 migration applied without granting projects to legacy development identities');
   record('20 simulated devices Edge → MQTT5 TLS → PostgreSQL typed Shadow');
   await browserCheck();
   await until('browser lease closes with grace', async () => (await shadow()).upstreamStatus === 'SILENT');
