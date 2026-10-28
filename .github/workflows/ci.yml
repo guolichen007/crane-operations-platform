@@ -31,9 +31,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
         with: { go-version: '1.27.3', cache: true }
-      - run: go test -race ./services/... ./internal/... ./contracts/... ./deploy/postgres/... ./tools/certs/...
+      - run: go test -race ./services/... ./internal/... ./contracts/... ./deploy/postgres/... ./tools/certs/... ./tools/identity/... ./tools/provision-keycloak/...
       - run: go vet ./...
-      - run: test -z "$(gofmt -l contracts internal services edge simulators tools/certs tools/fleet tools/inventory tools/diagnostics/mqtt-probe tests/integration/mqtt deploy/postgres)"
+      - run: test -z "$(gofmt -l contracts internal services edge simulators tools/certs tools/fleet tools/inventory tools/identity tools/provision-keycloak tools/diagnostics/mqtt-probe tests/integration deploy/postgres)"
       - run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
       - run: go build ./...
   edge:
@@ -90,3 +90,62 @@ jobs:
       - run: docker build -f deploy/Dockerfile.backend -t crane-cloud:ci .
       - run: docker save crane-cloud:ci -o "$RUNNER_TEMP/crane-cloud.tar"
       - run: docker run --rm -v "$RUNNER_TEMP/crane-cloud.tar:/input.tar:ro" aquasec/trivy:0.74.0 image --input /input.tar --severity HIGH,CRITICAL --exit-code 1
+  a1-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
+        with: { go-version: '1.27.3', cache: true }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with: { node-version: '24.19.0', cache: npm }
+      - run: npm ci
+      - run: node tools/task.mjs production-contract
+      - run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/ops
+      - run: node tools/task.mjs a1-test
+  production-release:
+    needs: [repository-contract, backend, edge, frontend, integration, security, a1-security]
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
+        with: { go-version: '1.27.3', cache: true }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with: { node-version: '24.19.0', cache: npm }
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: 登录当前仓库镜像注册表
+        if: github.event_name == 'push'
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_USER: ${{ github.actor }}
+        run: printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io -u "$REGISTRY_USER" --password-stdin
+      - name: 构建扫描并发布不可变镜像与SBOM
+        if: github.event_name == 'push'
+        run: node tools/task.mjs release
+      - name: 使用发布的实际digest执行生产身份与备份恢复演练
+        if: github.event_name == 'push'
+        run: |
+          export A1_CLOUD_IMAGE=$(node -e "const m=require('./release/phase1-a1/release-manifest.json');const i=m.images.find(i=>i.image_name.endsWith('/cloud-api'));process.stdout.write(i.image_name+'@'+i.image_digest)")
+          export A1_WEB_IMAGE=$(node -e "const m=require('./release/phase1-a1/release-manifest.json');const i=m.images.find(i=>i.image_name.endsWith('/web-console'));process.stdout.write(i.image_name+'@'+i.image_digest)")
+          node tools/task.mjs a1-production-test
+      - name: PR验证本地生产候选镜像
+        if: github.event_name == 'pull_request'
+        run: |
+          docker build --build-arg SOURCE_SHA="$GITHUB_SHA" -f deploy/Dockerfile.backend -t crane-a1-cloud:local .
+          docker build --build-arg SOURCE_SHA="$GITHUB_SHA" -f deploy/Dockerfile.web-production -t crane-a1-web:local .
+          node tools/task.mjs a1-production-test
+      - name: 仅归档清单与SBOM
+        if: success() && github.event_name == 'push'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: crane-production-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            release/phase1-a1/release-manifest.json
+            release/phase1-a1/cloud-api.cdx.json
+            release/phase1-a1/web-console.cdx.json

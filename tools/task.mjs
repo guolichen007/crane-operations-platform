@@ -109,6 +109,18 @@ const tasks = {
   'integration-test'() {
     run(process.execPath, ['tests/integration/run.mjs']);
   },
+  'a1-test'() {
+    run(process.execPath, ['tools/a1-test.mjs']);
+  },
+  'production-contract'() {
+    run(process.execPath, ['tools/production-contract.mjs']);
+  },
+  'a1-production-test'() {
+    run(process.execPath, ['tools/a1-production-test.mjs']);
+  },
+  'release'() {
+    run(process.execPath, ['tools/release.mjs']);
+  },
   security() {
     run(process.execPath, ['tools/diagnostics/repository.mjs']);
     npm('audit', '--audit-level=high');

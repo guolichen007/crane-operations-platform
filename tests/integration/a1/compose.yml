@@ -1,0 +1,27 @@
+name: crane-a1-tests
+services:
+  postgres:
+    image: postgres:17.8-alpine
+    environment:
+      POSTGRES_USER: a1test
+      POSTGRES_DB: a1test
+      POSTGRES_PASSWORD: ${A1_DB_PASSWORD:?generated anonymous test credential required}
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U a1test -d a1test]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  test-runner:
+    image: alpine:3.23
+    profiles: [tests]
+    entrypoint: [/tmp/a1.test]
+    environment:
+      A1_TEST_DATABASE_URL: postgres://a1test:${A1_DB_PASSWORD:?generated anonymous test credential required}@postgres:5432/a1test?sslmode=disable
+      A1_INVENTORY_EXAMPLE: /fixtures/inventory.example.yaml
+    volumes:
+      - ${A1_TEST_BINARY:?compiled test binary required}:/tmp/a1.test:ro
+      - ../../../deploy/inventory/inventory.example.yaml:/fixtures/inventory.example.yaml:ro
+    depends_on:
+      postgres: {condition: service_healthy}

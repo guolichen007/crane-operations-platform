@@ -10,6 +10,7 @@ const ignored = new Set([
   'dist',
   'dist-offline',
   'playwright-report',
+  '__pycache__',
 ]);
 const blocked = [
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
