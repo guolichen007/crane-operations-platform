@@ -1,6 +1,6 @@
 import { Scene, PerspectiveCamera, GridHelper, FogExp2 } from 'three';
 import { createRenderer } from '../core/Renderer';
-import { createCrane } from '../markers/CraneMarkerFactory';
+import { CraneTwinFactory } from '../twin/CraneTwinFactory';
 import { addAtmosphere } from '../effects/SceneAtmosphere';
 import { SceneLoop } from '../core/SceneLoop';
 import { disposeObject } from '../utils/dispose';
@@ -11,9 +11,10 @@ export function createCoverScene(host: HTMLElement) {
   scene.fog = new FogExp2(0x06152d, .028);
   addAtmosphere(scene);
   const grid = new GridHelper(70, 70, 0x236bb6, 0x102d52); grid.position.y = -.04; scene.add(grid);
-  for (let i = 0; i < 3; i++) {
-    const crane = createCrane('#d49e4c', 4.6 - i * .7);
-    crane.position.set(4 + i * 4, 0, -i * 8); scene.add(crane);
+  for (let i = 0; i < 2; i++) {
+    const twin = new CraneTwinFactory();
+    twin.root.scale.setScalar(.65); twin.root.position.set(7 + i * 4, 0, -i * 13);
+    scene.add(twin.root);
   }
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const resize = () => { const w = host.clientWidth, h = host.clientHeight; if (!w || !h) return; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); };
