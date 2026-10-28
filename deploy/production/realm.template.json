@@ -1,6 +1,10 @@
 {
   "realm": "crane",
   "enabled": true,
+  "loginTheme": "u-dao",
+  "internationalizationEnabled": true,
+  "supportedLocales": ["zh-CN", "en"],
+  "defaultLocale": "zh-CN",
   "sslRequired": "external",
   "registrationAllowed": false,
   "resetPasswordAllowed": false,

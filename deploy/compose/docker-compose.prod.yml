@@ -39,7 +39,7 @@ services:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/crane_keycloak
       KC_DB_USERNAME: crane_keycloak
-      KC_HOSTNAME: ${CRANE_AUTH_URL:-https://auth.crane.youdaozd.com}
+      KC_HOSTNAME: ${CRANE_AUTH_URL:-https://crane.youdaozd.com}
       KC_HOSTNAME_STRICT: "true"
       KC_HTTP_ENABLED: "true"
       KC_PROXY_HEADERS: xforwarded
@@ -50,7 +50,9 @@ services:
       KC_CACHE: local
       KC_BOOTSTRAP_ADMIN_USERNAME: bootstrap-crane
     secrets: [keycloak_db_password, keycloak_bootstrap_password]
-    volumes: [../production/keycloak-entrypoint.sh:/opt/crane/keycloak-entrypoint.sh:ro]
+    volumes:
+      - ../production/keycloak-entrypoint.sh:/opt/crane/keycloak-entrypoint.sh:ro
+      - ../keycloak/themes/u-dao:/opt/keycloak/themes/u-dao:ro
     ports: ["127.0.0.1:${CRANE_AUTH_PORT:-18082}:8080"]
     expose: [9000]
     networks: [backend, frontend]
@@ -81,7 +83,7 @@ services:
     environment:
       APP_ENV: production
       PUBLIC_URL: ${CRANE_PUBLIC_URL:-https://crane.youdaozd.com}
-      OIDC_ISSUER: ${CRANE_AUTH_URL:-https://auth.crane.youdaozd.com}/realms/crane
+      OIDC_ISSUER: ${CRANE_AUTH_URL:-https://crane.youdaozd.com}/realms/crane
       OIDC_CLIENT_ID: crane-bff
       OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
       SESSION_SECRET_FILE: /run/secrets/session_server_secret

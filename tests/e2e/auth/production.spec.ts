@@ -4,7 +4,7 @@ const origin = process.env.A1_WEB_ORIGIN!;
 const password = () => readFileSync(process.env.A1_BROWSER_PASSWORD_FILE!, 'utf8').trim();
 async function login(page: Page, user: string) {
   await page.goto('/');
-  await page.getByRole('link', { name: '登录', exact: true }).click();
+  await page.getByRole('link', { name: '账号登录', exact: true }).click();
   await page.locator('#username').fill(user);
   await page.locator('#password').fill(password());
   await page.locator('#kc-login').click();
@@ -31,7 +31,7 @@ test('真实 Keycloak Code + PKCE 建立 HttpOnly Cookie，viewer 项目隔离�
     return { projects: projects.map((item: { id: string }) => item.id), missing: missing.status, viewer: viewer.status, cross: cross.status, dev: dev.status, logout: logout.status, after: after.status };
   });
   expect(results).toEqual({ projects: ['P001'], missing: 403, viewer: 403, cross: 404, dev: 404, logout: 204, after: 401 });
-  await page.reload(); await expect(page.getByRole('link', { name: '登录', exact: true })).toBeVisible();
+  await page.reload(); await expect(page.getByRole('link', { name: '账号登录', exact: true })).toBeVisible();
 });
 
 test('operator 仅操作 P002 LIVE，管理员也不能跨项目读取', async ({ page }) => {

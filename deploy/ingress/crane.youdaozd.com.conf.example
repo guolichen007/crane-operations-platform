@@ -23,6 +23,19 @@ server {
     proxy_set_header Connection $crane_upgrade;
     proxy_read_timeout 65s;
   }
+  # Same-origin Keycloak. Do not expose administration or health endpoints.
+  location /admin/ { deny all; }
+  location /health { deny all; }
+  location /metrics { deny all; }
+  location ~ ^/(realms|resources)/ {
+    access_log off;
+    proxy_pass http://127.0.0.1:18082;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header Forwarded '';
+  }
   location = /auth/callback {
     access_log off;
     proxy_pass http://127.0.0.1:18081;
