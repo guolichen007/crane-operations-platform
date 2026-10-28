@@ -1,6 +1,6 @@
 # 工程入口
 
-当前阶段：Phase1-A1-R1 Production Preflight Hardening，基线 b8bed8e64ae9114ab49324e87ccd45cc4c32506b。仅在现有 feature/phase1-a1-production-web 收口 source/clean checkout、实际 DockerRootDir/备份磁盘、固定 Compose project u-dao-crane-ops、首次 HTTPS 启动顺序及基础镜像 digest；不重构已通过的身份权限实现。A0 main 保持 d827891375cd3665041936890ec21b70f52b2b9c；不得合并 A1。完整 8 项 CI、新 source SHA 镜像交付与推送完成后停止；不得部署服务器、修改真实 DNS/TLS 或进入 A2。用户要求保留 Public 例外，不引入真实凭据或客户资料。
+当前阶段：Phase1-A1.1 Premium Industrial Digital Twin UI，按负责人 2026-10-28 v2 任务书，基线 3525a351aa3677b15754541ff13e9f27e5e0685f，分支 feature/phase1-a1-1-premium-ui。升级现有 Vue / direct Three.js 架构，保留 OIDC/PKCE/BFF/PostgreSQL Session/CSRF/RBAC/Project Scope。baseline/phase1-a1 不得移动。按 UI0–UI8 分阶段提交；8 项 CI 与新 source SHA 镜像交付后停在负责人审查点，不自动合并 main，不部署服务器、不修改真实 DNS/TLS、不进入 A2。保留 Public 例外，不引入真实凭据或客户资料。
 不得改变现场边缘自治边界，不接真实 PLC，不实现真实远控，不公开 Edge 管理端口。
 协议先更新 contracts，Cloud 与 Edge 共用契约；数据库变更必须有序 migration。
 文档、提交、PR 优先中文，代码标识符英文。新功能应有有意义的测试。
