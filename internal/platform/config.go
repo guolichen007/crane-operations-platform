@@ -14,21 +14,22 @@ import (
 )
 
 type Config struct {
-	FleetFile     string `json:"fleetFile"`
-	InventoryFile string `json:"inventoryFile"`
-	Env           string `json:"env"`
-	HTTP          string `json:"http"`
-	DatabaseURL   string `json:"databaseUrl"`
-	MQTTURL       string `json:"mqttUrl"`
-	CertDir       string `json:"certDir"`
-	DataDir       string `json:"dataDir"`
-	Token         string `json:"token"`
-	Count         int    `json:"count"`
-	Scenario      string `json:"scenario"`
-	TTL           int    `json:"ttl"`
-	Grace         int    `json:"grace"`
-	Migrate       bool   `json:"migrate"`
-	WillDelay     int    `json:"willDelaySeconds"`
+	Production    ProductionConfig `json:"production"`
+	FleetFile     string           `json:"fleetFile"`
+	InventoryFile string           `json:"inventoryFile"`
+	Env           string           `json:"env"`
+	HTTP          string           `json:"http"`
+	DatabaseURL   string           `json:"databaseUrl"`
+	MQTTURL       string           `json:"mqttUrl"`
+	CertDir       string           `json:"certDir"`
+	DataDir       string           `json:"dataDir"`
+	Token         string           `json:"token"`
+	Count         int              `json:"count"`
+	Scenario      string           `json:"scenario"`
+	TTL           int              `json:"ttl"`
+	Grace         int              `json:"grace"`
+	Migrate       bool             `json:"migrate"`
+	WillDelay     int              `json:"willDelaySeconds"`
 }
 
 func Load(args []string) (Config, error) {
@@ -84,6 +85,10 @@ func Load(args []string) (Config, error) {
 	case "normal", "intermittent", "alarm-storm", "offline":
 	default:
 		return c, errors.New("unknown scenario")
+	}
+	loadProduction(&c.Production)
+	if c.Env == "production" && c.Token != "" {
+		return c, errors.New("production rejects DEV_API_TOKEN")
 	}
 	return c, nil
 }

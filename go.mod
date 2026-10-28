@@ -4,10 +4,13 @@ go 1.27.3
 
 require (
 	github.com/coder/websocket v1.8.15
+	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/eclipse/paho.golang v0.23.0
+	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/pressly/goose/v3 v3.29.0
 	go.yaml.in/yaml/v3 v3.0.5
+	golang.org/x/oauth2 v0.37.0
 )
 
 require (
