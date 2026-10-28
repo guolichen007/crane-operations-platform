@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 async function load(page: Page) {
   await page.goto('/');
+  await expect(page.locator('.province-summary')).toHaveCount(34);
   await expect(page.locator('.scene-loading')).toBeHidden();
   await page.waitForFunction(() => !window.__spatialDiagnostics!().intro.active);
 }
@@ -13,15 +14,13 @@ for (const viewport of [
     await page.setViewportSize(viewport);
     await load(page);
     await expect(page.locator('.map-project.real,.map-hover-card')).toHaveCount(0);
-    const labels = await page
-      .locator('.province-summary')
-      .evaluateAll((es) =>
-        es.map((e) => ({
-          text: e.textContent,
-          visible: getComputedStyle(e).visibility === 'visible',
-          count: Number((e as HTMLElement).dataset.deviceCount),
-        }))
-      );
+    const labels = await page.locator('.province-summary').evaluateAll((es) =>
+      es.map((e) => ({
+        text: e.textContent,
+        visible: getComputedStyle(e).visibility === 'visible',
+        count: Number((e as HTMLElement).dataset.deviceCount),
+      }))
+    );
     expect(labels.filter((l) => l.visible).length).toBeGreaterThanOrEqual(24);
     expect(labels.reduce((s, l) => s + l.count, 0)).toBe(54);
     for (const name of ['浙江', '江苏', '广东', '山东', '四川', '云南'])

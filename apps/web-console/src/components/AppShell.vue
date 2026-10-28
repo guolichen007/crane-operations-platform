@@ -10,6 +10,9 @@ const CloudStatus = defineAsyncComponent(() => import('./CloudStatus.vue'));
   <CloudStatus v-if="cloudMode && !productionAuth" />
   <div class="app-shell premium-shell" data-testid="app-shell">
     <TopCommandBar />
-    <div class="shell-body"><SideRail /><div class="application"><RouterView /></div></div>
+    <div class="shell-body">
+      <SideRail />
+      <div class="application"><RouterView /></div>
+    </div>
   </div>
 </template>

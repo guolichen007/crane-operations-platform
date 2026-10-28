@@ -78,7 +78,8 @@ test('Overview reports 20 Cloud devices separately; missing site metadata create
   await expect(page.locator('.scene-error')).toHaveCount(0);
   // Existing demo map remains intact; no Cloud device is injected into any label or pick target.
   await expect(page.locator('.province-summary')).toHaveCount(34);
-  await expect(page.locator('.sandbox-stage')).not.toContainText('SIM-');
+  // The scene excludes runtime identities; the new alarm HUD may name them.
+  await expect(page.locator('.map-canvas')).not.toContainText('SIM-');
   const picks = await page.evaluate(() => window.__spatialDiagnostics!().picks);
   expect(picks.every((p) => !p.id.startsWith('SIM-'))).toBe(true);
   await page.screenshot({ path: 'test-results/s35-overview.png' });

@@ -7,6 +7,15 @@ export default defineConfig({
   expect: { timeout: 20000 },
   reporter: [['list'], ['html', { open: 'never' }]],
   projects: [
+    {
+      name: 'premium',
+      testMatch: '**/premium/**/*.spec.ts',
+      use: {
+        baseURL: 'http://127.0.0.1:5175',
+        deviceScaleFactor: 1,
+        viewport: { width: 1920, height: 1080 },
+      },
+    },
     { name: 'demo', testMatch: '**/web-console/**/*.spec.ts' },
     {
       name: 'cloud',
@@ -25,6 +34,13 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   webServer: [
+    {
+      command: 'npm run dev --workspace @crane/web-console -- --port 5175 --strictPort',
+      url: 'http://127.0.0.1:5175',
+      reuseExistingServer: !process.env.CI,
+      timeout: 30000,
+      env: { VITE_DATA_MODE: 'api', VITE_AUTH_MODE: 'oidc' },
+    },
     {
       command: 'npm run dev --workspace @crane/web-console -- --port 5173 --strictPort',
       url: 'http://127.0.0.1:5173',

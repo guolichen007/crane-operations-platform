@@ -5,6 +5,9 @@ const password = () => readFileSync(process.env.A1_BROWSER_PASSWORD_FILE!, 'utf8
 async function login(page: Page, user: string) {
   await page.goto('/');
   await page.getByRole('link', { name: '账号登录', exact: true }).click();
+  expect(new URL(page.url()).origin).toBe(origin);
+  await expect(page.locator('link[href*="udao.css"]')).toHaveCount(1);
+  await expect(page.locator('#kc-header-wrapper')).toContainText('U·DAO');
   await page.locator('#username').fill(user);
   await page.locator('#password').fill(password());
   await page.locator('#kc-login').click();
@@ -53,7 +56,7 @@ test('operator 仅操作 P002 LIVE，管理员也不能跨项目读取', async (
   await expect(confirm).toBeVisible();
   await confirm.click();
   await page.waitForURL(url => url.origin === origin && url.pathname === '/');
-  await expect(page.getByRole('link', { name: '登录', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: '账号登录', exact: true })).toBeVisible();
 });
 
 test('scoped platform_admin 没有全局项目读取权', async ({ page }) => {

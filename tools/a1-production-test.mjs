@@ -13,7 +13,7 @@ async function port() { const server = createServer(); await new Promise(resolve
 const [webPort, authPort, directWebPort, directAuthPort] = await Promise.all([port(), port(), port(), port()]);
 run(go, ['run', './tests/integration/a1fixture', '--out', directory]);
 run(go, ['build', '-trimpath', '-o', join(directory, 'a1-fixture'), './tests/integration/a1fixture'], { GOOS: 'linux', GOARCH: 'amd64', CGO_ENABLED: '0' });
-const webOrigin = `https://crane.test:${webPort}`, authOrigin = `https://auth.crane.test:${authPort}`;
+const webOrigin = `https://crane.test:${webPort}`, authOrigin = webOrigin;
 const configuration = {
   CRANE_CLOUD_IMAGE: process.env.A1_CLOUD_IMAGE || 'crane-a1-cloud:local', CRANE_WEB_IMAGE: process.env.A1_WEB_IMAGE || 'crane-a1-web:local',
   CRANE_PUBLIC_URL: webOrigin, CRANE_AUTH_URL: authOrigin, CRANE_WEB_PORT: directWebPort, CRANE_AUTH_PORT: directAuthPort,
@@ -27,6 +27,8 @@ writeFileSync(join(directory, 'mosquitto.conf'), readFileSync('deploy/mosquitto/
 writeFileSync(join(directory, 'ingress.conf'), `events {}\nhttp { resolver 127.0.0.11 valid=5s; access_log off; error_log /dev/stderr warn;
 map $http_upgrade $upgrade { default upgrade; '' close; }
 server { listen ${webPort} ssl; server_name crane.test; ssl_certificate /fixture/ingress/ingress.crt; ssl_certificate_key /fixture/ingress/ingress.key;
+location /admin/ { deny all; }
+location ~ ^/(realms|resources)/ { proxy_pass http://keycloak:8080; proxy_set_header Host $http_host; proxy_set_header X-Forwarded-Host $http_host; proxy_set_header X-Forwarded-Proto https; proxy_set_header X-Forwarded-For $remote_addr; proxy_set_header Forwarded ''; }
 location / { set $web web-console:8080; proxy_pass http://$web; proxy_http_version 1.1; proxy_set_header Host $http_host; proxy_set_header X-Forwarded-Host $http_host; proxy_set_header X-Forwarded-Proto https; proxy_set_header X-Forwarded-For $remote_addr; proxy_set_header Forwarded ''; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection $upgrade; }}
 server { listen ${authPort} ssl; server_name auth.crane.test; ssl_certificate /fixture/ingress/ingress.crt; ssl_certificate_key /fixture/ingress/ingress.key;
 location / { proxy_pass http://keycloak:8080; proxy_set_header Host $http_host; proxy_set_header X-Forwarded-Host $http_host; proxy_set_header X-Forwarded-Proto https; proxy_set_header X-Forwarded-For $remote_addr; proxy_set_header Forwarded ''; }} }\n`);

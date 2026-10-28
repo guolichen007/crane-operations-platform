@@ -102,7 +102,11 @@ export class MapSceneManager {
       this.shownDevices = [];
     }
     this.renderer = createRenderer();
-    this.quality = new QualityManager(devicePixelRatio, this.reduced, this.renderer.capabilities.maxTextureSize);
+    this.quality = new QualityManager(
+      devicePixelRatio,
+      this.reduced,
+      this.renderer.capabilities.maxTextureSize
+    );
     this.renderer.setPixelRatio(this.quality.pixelRatio);
     this.renderer.info.autoReset = false;
     host.append(this.renderer.domElement);
@@ -1030,13 +1034,22 @@ export class MapSceneManager {
       this.post.setQuality(this.quality.tier);
       this.resize();
     }
-    const bright: import('three').Object3D[] = [], selected: import('three').Object3D[] = [], alarms: import('three').Object3D[] = [];
-    this.markers.traverse(object => {
+    const bright: import('three').Object3D[] = [],
+      selected: import('three').Object3D[] = [],
+      alarms: import('three').Object3D[] = [];
+    this.markers.traverse((object) => {
       if (object.name.includes('beacon') || object.userData.bloom) bright.push(object);
-      if (object instanceof Mesh && object.parent?.userData.device?.deviceId === this.selectedAsset) selected.push(object);
-      if (object instanceof Mesh && object.parent?.userData.displayStatus === 'ALARM') alarms.push(object);
+      if (object instanceof Mesh && object.parent?.userData.device?.deviceId === this.selectedAsset)
+        selected.push(object);
+      if (object instanceof Mesh && object.parent?.userData.displayStatus === 'ALARM')
+        alarms.push(object);
     });
-    this.post.setHighlights({ bloom: bright, selected, hover: this.hovered?.children.filter(o => o instanceof Mesh) ?? [], alarm: alarms });
+    this.post.setHighlights({
+      bloom: bright,
+      selected,
+      hover: this.hovered?.children.filter((o) => o instanceof Mesh) ?? [],
+      alarm: alarms,
+    });
     this.post.render(dt);
     this.labels.render(this.scene, this.rig.camera, this.width, this.height);
     this.frames++;

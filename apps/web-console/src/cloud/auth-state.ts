@@ -6,5 +6,7 @@ export function authState(loading: boolean, session: WebSession | null, error = 
   return session ? 'AUTHENTICATED' : 'UNAUTHENTICATED';
 }
 export function isViewerOnly(session: WebSession | null): boolean {
-  return !!session && session.projects.length > 0 && session.projects.every(p => p.role === 'viewer');
+  return (
+    !!session && session.projects.length > 0 && session.projects.every((p) => p.role === 'viewer')
+  );
 }

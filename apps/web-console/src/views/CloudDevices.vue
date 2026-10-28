@@ -127,67 +127,107 @@ const streamHeading = computed(() => {
       </p>
       <p v-else>未关联业务资产 · 历史/测试运行源；不代表真实现场设备。</p>
       <div v-if="current" class="device-detail-layout">
-      <div class="device-twin-column">
-        <CraneTwin :key="detail" :axes="current.reported.position" :alarm="current.reported.alarmState === 'ACTIVE'" :label="'设备 ' + detail + ' 结构示意 · 最近状态'" />
-        <div class="axis-gauge-grid"><AxisGauge axis="X" label="大车位置" :value="current.reported.position.x" :min="-12" :max="12" /><AxisGauge axis="Y" label="小车位置" :value="current.reported.position.y" :min="-5" :max="5" /><AxisGauge axis="Z" label="起升位置" :value="current.reported.position.z" :min="0" :max="10" /><AxisGauge axis="G" label="抓斗开度" :max="100" unit="%" /></div>
-        <p class="inspector-copy">通用结构示意，非实际几何标定。坐标超出可视范围时模型限制显示范围，右侧保留原始读数。抓斗遥测与历史趋势尚未提供。</p>
-        <section class="glass-panel"><div class="panel-heading"><h2>状态时间线</h2><small>LAST KNOWN STATE</small></div><p class="inspector-copy">最近快照 · {{ formatCloudTime(current.updatedAt) }}</p><p class="inspector-copy">最近心跳 · {{ formatCloudTime(current.presence.lastSeenAt) }}</p></section>
-      </div>
-      <section
-        v-if="current"
-        class="shadow-card"
-        data-testid="device-shadow"
-        :data-shadow-version="current.version"
-      >
-        <h2 :data-stream-state="viewer.state">{{ streamHeading }}</h2>
-        <p>
-          最后更新时间：<time :title="current.updatedAt" :datetime="current.updatedAt">{{
-            formatCloudTime(current.updatedAt)
-          }}</time
-          >（Asia/Shanghai） · 版本 {{ current.version }}
-        </p>
-        <p>
-          {{ deviceState(current) }} / {{ current.presence.edgeHealth }} /
-          {{ current.presence.controllerHealth }}
-        </p>
-        <p>
-          最后心跳：<time
-            :title="current.presence.lastSeenAt"
-            :datetime="current.presence.lastSeenAt"
-            >{{ formatCloudTime(current.presence.lastSeenAt) }}</time
+        <div class="device-twin-column">
+          <CraneTwin
+            :key="detail"
+            :axes="current.reported.position"
+            :alarm="current.reported.alarmState === 'ACTIVE'"
+            :label="'设备 ' + detail + ' 结构示意 · 最近状态'"
+          />
+          <div class="axis-gauge-grid">
+            <AxisGauge
+              axis="X"
+              label="大车位置"
+              :value="current.reported.position.x"
+              :min="-12"
+              :max="12"
+            /><AxisGauge
+              axis="Y"
+              label="小车位置"
+              :value="current.reported.position.y"
+              :min="-5"
+              :max="5"
+            /><AxisGauge
+              axis="Z"
+              label="起升位置"
+              :value="current.reported.position.z"
+              :min="0"
+              :max="10"
+            /><AxisGauge axis="G" label="抓斗开度" :max="100" unit="%" />
+          </div>
+          <p class="inspector-copy">
+            通用结构示意，非实际几何标定。坐标超出可视范围时模型限制显示范围，右侧保留原始读数。抓斗遥测与历史趋势尚未提供。
+          </p>
+          <section class="glass-panel">
+            <div class="panel-heading">
+              <h2>状态时间线</h2>
+              <small>LAST KNOWN STATE</small>
+            </div>
+            <p class="inspector-copy">最近快照 · {{ formatCloudTime(current.updatedAt) }}</p>
+            <p class="inspector-copy">
+              最近心跳 · {{ formatCloudTime(current.presence.lastSeenAt) }}
+            </p>
+          </section>
+        </div>
+        <section
+          v-if="current"
+          class="shadow-card"
+          data-testid="device-shadow"
+          :data-shadow-version="current.version"
+        >
+          <h2 :data-stream-state="viewer.state">{{ streamHeading }}</h2>
+          <p>
+            最后更新时间：<time :title="current.updatedAt" :datetime="current.updatedAt">{{
+              formatCloudTime(current.updatedAt)
+            }}</time
+            >（Asia/Shanghai） · 版本 {{ current.version }}
+          </p>
+          <p>
+            {{ deviceState(current) }} / {{ current.presence.edgeHealth }} /
+            {{ current.presence.controllerHealth }}
+          </p>
+          <p>
+            最后心跳：<time
+              :title="current.presence.lastSeenAt"
+              :datetime="current.presence.lastSeenAt"
+              >{{ formatCloudTime(current.presence.lastSeenAt) }}</time
+            >
+          </p>
+          <p>
+            采集状态 {{ current.reported.operatingState }} · 下线原因
+            {{ current.presence.disconnectReason }}
+          </p>
+          <dl>
+            <dt>X / Y / Z</dt>
+            <dd>
+              {{ current.reported.position.x.toFixed(2) }} /
+              {{ current.reported.position.y.toFixed(2) }} /
+              {{ current.reported.position.z.toFixed(2) }} m
+            </dd>
+            <dt>负载</dt>
+            <dd>{{ current.reported.load }} t</dd>
+          </dl>
+          <button
+            :disabled="!active && !canWatchProject(current.projectId)"
+            @click="active ? live.stop() : live.start(detail)"
           >
-        </p>
-        <p>
-          采集状态 {{ current.reported.operatingState }} · 下线原因
-          {{ current.presence.disconnectReason }}
-        </p>
-        <dl>
-          <dt>X / Y / Z</dt>
-          <dd>
-            {{ current.reported.position.x.toFixed(2) }} /
-            {{ current.reported.position.y.toFixed(2) }} /
-            {{ current.reported.position.z.toFixed(2) }} m
-          </dd>
-          <dt>负载</dt>
-          <dd>{{ current.reported.load }} t</dd>
-        </dl>
-        <button :disabled="!active && !canWatchProject(current.projectId)" @click="active ? live.stop() : live.start(detail)">
-          {{ active ? '停止实时查看' : '申请 LIVE · 1 Hz' }}
-        </button>
-        <p v-if="productionAuth && !canWatchProject(current.projectId)">当前项目为只读权限。</p>
-        <p v-if="viewer.session">
-          租约到期：<time :title="viewer.session.expiresAt" :datetime="viewer.session.expiresAt">{{
-            formatCloudTime(viewer.session.expiresAt)
-          }}</time
-          >。上游仅在设备应用回执确认后显示 LIVE。
-        </p>
-        <p>
-          离开/刷新会尽力关闭 Viewer；浏览器异常或断网时由云端 TTL + Grace
-          兜底。刷新后回到最近状态。
-        </p>
-        <p>Point Cloud / Remote Local Web：Phase 2 未启用。</p>
-        <router-link to="/alarms">Alarm · 告警记录 →</router-link>
-      </section>
+            {{ active ? '停止实时查看' : '申请 LIVE · 1 Hz' }}
+          </button>
+          <p v-if="productionAuth && !canWatchProject(current.projectId)">当前项目为只读权限。</p>
+          <p v-if="viewer.session">
+            租约到期：<time
+              :title="viewer.session.expiresAt"
+              :datetime="viewer.session.expiresAt"
+              >{{ formatCloudTime(viewer.session.expiresAt) }}</time
+            >。上游仅在设备应用回执确认后显示 LIVE。
+          </p>
+          <p>
+            离开/刷新会尽力关闭 Viewer；浏览器异常或断网时由云端 TTL + Grace
+            兜底。刷新后回到最近状态。
+          </p>
+          <p>Point Cloud / Remote Local Web：Phase 2 未启用。</p>
+          <router-link to="/alarms">Alarm · 告警记录 →</router-link>
+        </section>
       </div>
     </template>
     <div v-else class="device-grid">

@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 const read = (page: Page) => page.evaluate(() => window.__spatialDiagnostics!());
 async function load(page: Page) {
   await page.goto('/');
+  await expect(page.locator('.province-summary')).toHaveCount(34);
   await expect(page.locator('.scene-loading')).toBeHidden();
   await page.waitForFunction(() => !window.__spatialDiagnostics!().intro.active);
 }

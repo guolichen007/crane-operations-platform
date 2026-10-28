@@ -43,6 +43,10 @@ function compose(...args) {
   run(docker, [...composeArgs, ...args]);
 }
 const tasks = {
+  contract() {
+    run(process.execPath, ['tools/codegen/contracts.mjs', '--check']);
+    run(process.execPath, ['tools/codegen/openapi.mjs', '--check']);
+  },
   bootstrap() {
     mkdirSync('tools/.cache', { recursive: true });
     npm('ci');

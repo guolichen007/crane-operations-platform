@@ -7,20 +7,32 @@ import SeverityBadge from './SeverityBadge.vue';
 import StatusPill from './StatusPill.vue';
 const { data, error, loading, refresh } = useCloudQuery(listAlarms);
 const search = ref('');
-const device = ref(''), date = ref('');
-const deviceIds = computed(() => [...new Set((data.value ?? []).map(a => a.deviceId))]);
+const device = ref(''),
+  date = ref('');
+const deviceIds = computed(() => [...new Set((data.value ?? []).map((a) => a.deviceId))]);
 const filtered = computed(() =>
-  (data.value ?? []).filter((a) =>
-    (!device.value || a.deviceId === device.value) && (!date.value || a.sentAt.startsWith(date.value)) &&
-    `${a.deviceId} ${a.payload.code} ${a.payload.text}`
-      .toLowerCase()
-      .includes(search.value.toLowerCase())
+  (data.value ?? []).filter(
+    (a) =>
+      (!device.value || a.deviceId === device.value) &&
+      (!date.value || a.sentAt.startsWith(date.value)) &&
+      `${a.deviceId} ${a.payload.code} ${a.payload.text}`
+        .toLowerCase()
+        .includes(search.value.toLowerCase())
   )
 );
 </script>
 <template>
   <section data-testid="cloud-alarms">
-    <div class="alarm-summary-strip"><div><span>最近上报记录</span><b>{{ data?.length ?? '—' }}</b></div><div><span>关联设备</span><b>{{ deviceIds.length }}</b></div><div><span>处理状态</span><strong>API 尚未提供</strong></div><div><span>告警分级</span><strong>源协议尚未提供</strong></div></div>
+    <div class="alarm-summary-strip">
+      <div>
+        <span>最近上报记录</span><b>{{ data?.length ?? '—' }}</b>
+      </div>
+      <div>
+        <span>关联设备</span><b>{{ deviceIds.length }}</b>
+      </div>
+      <div><span>处理状态</span><strong>API 尚未提供</strong></div>
+      <div><span>告警分级</span><strong>源协议尚未提供</strong></div>
+    </div>
     <p class="cloud-alarm-note">
       数据来源：Cloud API · 最近最多100条已上报告警记录；API
       未提供处理状态或云端确认能力。时间：Asia/Shanghai。
@@ -32,7 +44,10 @@ const filtered = computed(() =>
           aria-label="搜索云端告警"
           placeholder="设备、告警码或描述" /></label
       ><button @click="refresh">刷新告警</button>
-      <select v-model="device" aria-label="告警设备筛选"><option value="">全部设备</option><option v-for="id in deviceIds" :key="id">{{ id }}</option></select>
+      <select v-model="device" aria-label="告警设备筛选">
+        <option value="">全部设备</option>
+        <option v-for="id in deviceIds" :key="id">{{ id }}</option>
+      </select>
       <input v-model="date" type="date" aria-label="告警日期" />
     </div>
     <p v-if="error" role="status">{{ error }}{{ data ? '；以下保留上次读取的记录' : '' }}</p>

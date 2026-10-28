@@ -13,25 +13,19 @@ const cloudMode = import.meta.env.VITE_DATA_MODE === 'api';
 const productionAuth = import.meta.env.VITE_AUTH_MODE === 'oidc';
 import './styles.css';
 import './refinements.css';
-const routes = [
-  'projects',
-  'devices',
-  'monitor',
-  'alarms',
-  'analytics',
-  'maintenance',
-  'remote',
-].filter(path => !productionAuth || ['projects', 'devices', 'alarms'].includes(path)).map((path) => ({
-  path: `/${path}`,
-  component:
-    cloudMode && path === 'devices'
-      ? InventoryDevices
-      : cloudMode && path === 'alarms'
-        ? AlarmCenter
-      : cloudMode && path === 'projects'
-        ? InventoryProjects
-        : Workspace,
-}));
+const routes = ['projects', 'devices', 'monitor', 'alarms', 'analytics', 'maintenance', 'remote']
+  .filter((path) => !productionAuth || ['projects', 'devices', 'alarms'].includes(path))
+  .map((path) => ({
+    path: `/${path}`,
+    component:
+      cloudMode && path === 'devices'
+        ? InventoryDevices
+        : cloudMode && path === 'alarms'
+          ? AlarmCenter
+          : cloudMode && path === 'projects'
+            ? InventoryProjects
+            : Workspace,
+  }));
 createApp(App)
   .use(createPinia())
   .use(
@@ -55,4 +49,3 @@ import './home-v033.css';
 import './brand.css';
 import './design/tokens.css';
 import './premium.css';
-

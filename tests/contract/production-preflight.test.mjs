@@ -41,8 +41,9 @@ function config(manifest) {
   const services = {};
   for (const name of ['postgres', 'keycloak', 'mosquitto', 'cloud-api', 'web-console']) services[name] = { image: 'example.invalid/' + name + '@sha256:' + 'a'.repeat(64), logging: { driver: 'json-file', options: { 'max-size': '10m', 'max-file': '5' } } };
   for (const image of manifest.images) services[image.image_name.split('/').at(-1)].image = image.image_name + '@' + image.image_digest;
-  services['cloud-api'].environment = { APP_ENV: 'production', OIDC_CLIENT_SECRET_FILE: '/run/secrets/oidc_client_secret' };
-  services.keycloak.environment = { KC_HOSTNAME_STRICT: 'true', KC_DB: 'postgres' };
+  services['cloud-api'].environment = { APP_ENV: 'production', OIDC_CLIENT_SECRET_FILE: '/run/secrets/oidc_client_secret', OIDC_ISSUER: 'https://anonymous.example.test/realms/crane' };
+  services.keycloak.environment = { KC_HOSTNAME_STRICT: 'true', KC_DB: 'postgres', KC_HOSTNAME: 'https://anonymous.example.test' };
+  services.keycloak.volumes = [{ target: '/opt/keycloak/themes/u-dao', source: '/anonymous/themes/u-dao', read_only: true }];
   return { name: productionProject, services, secrets: Object.fromEntries(Array.from({ length: 6 }, (_, index) => ['anonymous' + index, { file: '/anonymous/file' + index }])) };
 }
 

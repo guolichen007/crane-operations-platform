@@ -4,12 +4,12 @@
   "version": "0.3.3",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
+    "dev": "vite --host 127.0.0.1 --configLoader runner",
     "typecheck": "vue-tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run",
+    "test": "vitest run --configLoader runner",
     "test:e2e": "playwright test",
-    "build": "vite build",
+    "build": "vite build --configLoader runner",
     "preview": "vite preview --host 127.0.0.1",
     "build:html": "node scripts/build-standalone.mjs"
   },

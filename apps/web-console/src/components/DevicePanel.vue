@@ -46,7 +46,12 @@ const siblings = computed(() => devices.filter((d) => d.id === props.device.id))
       <p>运行参数仅为演示，非现场实时采集。</p>
     </div>
     <div class="telemetry-grid">
-      <CraneTwin :key="device.deviceId" :axes="{ x: device.x, y: device.y, z: device.z, grab: device.grab === '打开' ? 1 : 0 }" :demo="true" :alarm="device.status === 'ALARM'" />
+      <CraneTwin
+        :key="device.deviceId"
+        :axes="{ x: device.x, y: device.y, z: device.z, grab: device.grab === '打开' ? 1 : 0 }"
+        :demo="true"
+        :alarm="device.status === 'ALARM'"
+      />
       <div>
         <span>负载率</span><b>{{ device.load }}<small> %</small></b>
       </div>

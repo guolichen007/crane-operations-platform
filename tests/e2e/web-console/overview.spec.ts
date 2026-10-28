@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 const read = (page: Page) => page.evaluate(() => window.__spatialDiagnostics!());
 async function load(page: Page) {
   await page.goto('/');
+  await expect(page.locator('.province-summary')).toHaveCount(34);
   await expect(page.locator('.scene-loading')).toBeHidden();
   await expect(page.locator('.scene-error')).toHaveCount(0);
   await page.waitForFunction(() => !window.__spatialDiagnostics!().intro.active);
@@ -121,7 +122,14 @@ test('全部十台登记行车的项目到单机模拟', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
   await load(page);
   let count = 0;
-  for (const name of ['Project-A', 'Project-B', 'Project-C', 'Project-D', 'Project-E', 'Project-F']) {
+  for (const name of [
+    'Project-A',
+    'Project-B',
+    'Project-C',
+    'Project-D',
+    'Project-E',
+    'Project-F',
+  ]) {
     await page.locator('.plan-item').filter({ hasText: name }).click();
     const project = page.getByTestId('project-panel');
     await expect(project).toContainText('REAL PROJECT');
@@ -181,10 +189,7 @@ test('具体 C 机在 35px 邻域优先于项目与地域', async ({ page }) => 
   await settled(page, 'PROJECT_FOCUS');
   const c = (await read(page)).picks.find((p) => p.id === 'SAMPLE-006-C')!;
   await page.mouse.click(c.x, c.y - 35);
-  await expect(page.getByTestId('device-panel')).toHaveAttribute(
-    'data-device-id',
-    'SAMPLE-006-C'
-  );
+  await expect(page.getByTestId('device-panel')).toHaveAttribute('data-device-id', 'SAMPLE-006-C');
   await settled(page, 'PROJECT_FOCUS');
   expect((await read(page)).lastPick?.kind).toBe('device');
   expect((await read(page)).adcode).toBe(100000);
@@ -278,10 +283,7 @@ test('单机视图窗口变化保留 DEVICE_FOCUS，ESC 返回全国', async ({ 
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.waitForTimeout(1200);
   expect((await read(page)).preset).toBe('DEVICE_FOCUS');
-  await expect(page.getByTestId('device-panel')).toHaveAttribute(
-    'data-device-id',
-    'SAMPLE-006-C'
-  );
+  await expect(page.getByTestId('device-panel')).toHaveAttribute('data-device-id', 'SAMPLE-006-C');
   await page.keyboard.press('Escape');
   await settled(page, 'COUNTRY_IDLE');
   expect((await read(page)).preset).toBe('COUNTRY_OVERVIEW');

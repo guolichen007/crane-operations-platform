@@ -2,4 +2,6 @@
 import AuthGate from './components/AuthGate.vue';
 import AppShell from './components/AppShell.vue';
 </script>
-<template><AuthGate><AppShell /></AuthGate></template>
+<template>
+  <AuthGate><AppShell /></AuthGate>
+</template>

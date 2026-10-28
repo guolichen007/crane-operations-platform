@@ -23,6 +23,9 @@ export function validateProduction(config) {
   assert.equal(config.services['cloud-api'].environment.OIDC_CLIENT_SECRET_FILE, '/run/secrets/oidc_client_secret');
   assert.equal(config.services.keycloak.environment.KC_HOSTNAME_STRICT, 'true');
   assert.equal(config.services.keycloak.environment.KC_DB, 'postgres');
+  assert.equal(config.services['cloud-api'].environment.OIDC_ISSUER, config.services.keycloak.environment.KC_HOSTNAME + '/realms/crane');
+  const theme = config.services.keycloak.volumes.find(volume => volume.target === '/opt/keycloak/themes/u-dao');
+  assert.equal(theme?.read_only, true, 'Keycloak theme must be versioned and mounted read-only');
   assert.ok(!JSON.stringify(config.services.keycloak).includes('start-dev'));
   assert.equal(Object.keys(config.secrets).length, 6);
   for (const item of Object.values(config.secrets)) assert.equal(typeof item.file, 'string');
@@ -42,6 +45,8 @@ export async function productionContract(docker = 'docker') {
   validateProduction(JSON.parse(result.stdout));
   const realm = JSON.parse(readFileSync('deploy/production/realm.template.json', 'utf8'));
   assert.equal(realm.adminEventsDetailsEnabled, false);
+  assert.equal(realm.loginTheme, 'u-dao');
+  assert.match(readFileSync('deploy/keycloak/themes/u-dao/login/theme.properties', 'utf8'), /parent=keycloak/);
   const client = realm.clients[0];
   assert.equal(client.publicClient, false); assert.equal(client.directAccessGrantsEnabled, false); assert.equal(client.implicitFlowEnabled, false);
   assert.equal(client.attributes['pkce.code.challenge.method'], 'S256');
