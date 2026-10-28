@@ -2,7 +2,7 @@
 
 目标 RPO<=24h、RTO<=4h。双库逻辑备份覆盖 Crane application 与 Keycloak；两库分别使用 REPEATABLE READ 导出快照，pg_dump 与计数/列元数据在各自同一快照内读取，保证单库一致性。不是跨库分布式事务；当前应用的身份映射是显式配置，恢复后必须复核映射和授权。
 
-需 PostgreSQL 官方客户端（在现有 PG 容器内）、Python3、Docker Compose。脚本通过本机 `docker compose exec --user postgres`，不把 DB 密码放 argv。生产 Compose 名称来自受限 env/config，禁止指向 Firebot。
+需 PostgreSQL 官方客户端（在现有 PG 容器内）、Python3、Docker Compose。脚本通过本机 `docker compose --project-name u-dao-crane-ops exec --user postgres`，不把 DB 密码放 argv。正式 project 固定，不能因环境变量误用另一套 project；禁止指向 Firebot。只有匿名隔离 integration fixture 通过显式 --project-name 选择其临时项目。
 
 ```sh
 python3 deploy/scripts/backup.py backup --source-sha 40位已部署提交SHA
@@ -10,6 +10,8 @@ python3 deploy/scripts/backup.py drill --backup /srv/u-dao/backups/crane-ops/cra
 ```
 
 自定义 --compose/--env-file 用于明确测试或人工审查配置；默认 production.yml/production.env。默认 --root=/srv/u-dao/backups/crane-ops，--retention-days=14。根目录0700、文件0600；与 Git/runtime/artifact 分离。设置服务器受限存储访问权限，备份包含用户/会话/Keycloak 机密，不能上传 Public 仓库或普通 CI artifact。
+
+R1 升级 preflight 必须独立检查 CRANE_BACKUP_ROOT 所在文件系统 >=10GiB 且 >=15% 空闲；不能用 DockerRootDir 的检查代替。备份脚本可由环境 CRANE_BACKUP_ROOT 或显式 --root 选择相同目录；若目录与升级门禁所检查的不一致，应停止并修正配置。
 
 备份先生成 `.partial-*` 私有目录，两个 custom-format dump、metadata.json 和 metadata.sha256 完成并 fsync 后同文件系统原子 rename 为 `crane-backup-时间-随机值`。元数据含 UTC timestamp、source_sha、schema_version、各 dump SHA256、项目/资产/用户/membership/session/audit 计数、迁移版本及 session/audit 列名。Keycloak 记录 realm/user/client 计数。错误非0且不打印上游数据库错误，失败 partial 保留供受控本地诊断，不能当成功备份。
 

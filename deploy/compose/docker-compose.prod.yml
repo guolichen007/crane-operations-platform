@@ -1,4 +1,4 @@
-name: crane-ops
+name: u-dao-crane-ops
 x-logging: &crane-logging
   driver: json-file
   options: {max-size: "10m", max-file: "5"}

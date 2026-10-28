@@ -2,7 +2,9 @@ import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 
+export const productionProject = 'u-dao-crane-ops';
 export function validateProduction(config) {
+  assert.equal(config.name, productionProject, 'Production Compose project is frozen');
   assert.deepEqual(Object.keys(config.services).sort(), ['cloud-api', 'keycloak', 'mosquitto', 'postgres', 'web-console']);
   for (const [name, service] of Object.entries(config.services)) {
     assert.match(service.image, /@sha256:[a-f0-9]{64}$/, `${name} must use an immutable image`);

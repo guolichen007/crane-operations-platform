@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { createServer } from 'node:net';
 import { mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync, chmodSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
+import { productionProject } from './production-contract.mjs';
 const docker = process.platform === 'win32' ? 'C:/Program Files/Docker/Docker/resources/bin/docker.exe' : 'docker';
 const go = existsSync('tools/.cache/go/bin/go.exe') ? resolve('tools/.cache/go/bin/go.exe') : 'go';
 const directory = resolve(`deploy/compose/runtime/a1-production-${process.pid}`); mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -29,7 +30,9 @@ server { listen ${webPort} ssl; server_name crane.test; ssl_certificate /fixture
 location / { set $web web-console:8080; proxy_pass http://$web; proxy_http_version 1.1; proxy_set_header Host $http_host; proxy_set_header X-Forwarded-Host $http_host; proxy_set_header X-Forwarded-Proto https; proxy_set_header X-Forwarded-For $remote_addr; proxy_set_header Forwarded ''; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection $upgrade; }}
 server { listen ${authPort} ssl; server_name auth.crane.test; ssl_certificate /fixture/ingress/ingress.crt; ssl_certificate_key /fixture/ingress/ingress.key;
 location / { proxy_pass http://keycloak:8080; proxy_set_header Host $http_host; proxy_set_header X-Forwarded-Host $http_host; proxy_set_header X-Forwarded-Proto https; proxy_set_header X-Forwarded-For $remote_addr; proxy_set_header Forwarded ''; }} }\n`);
-const compose = ['compose', '--project-name', `crane-a1-prod-${process.pid}`, '--env-file', envFile, '-f', 'deploy/compose/docker-compose.prod.yml', '-f', 'tests/integration/a1-production/compose.yml'];
+const fixtureProject = `crane-a1-prod-${process.pid}`;
+if (fixtureProject === productionProject) throw Error('Anonymous fixture must not use the production project');
+const compose = ['compose', '--project-name', fixtureProject, '--env-file', envFile, '-f', 'deploy/compose/docker-compose.prod.yml', '-f', 'tests/integration/a1-production/compose.yml'];
 try {
   run(docker, [...compose, 'config', '--quiet']);
   run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-init']);
@@ -46,7 +49,7 @@ try {
   const resolvedFile = join(directory, 'resolved.yml'); writeFileSync(resolvedFile, run(docker, [...compose, 'config'], {}, true), { mode: 0o600 });
   const python = process.platform === 'win32' ? 'python' : 'python3';
   const backupRoot = join(directory, 'backups'), sourceSHA = run('git', ['rev-parse', 'HEAD'], {}, true).trim();
-  const backupArgs = ['deploy/scripts/backup.py', '--compose', resolvedFile, '--env-file', envFile, '--docker', docker];
+  const backupArgs = ['deploy/scripts/backup.py', '--project-name', fixtureProject, '--compose', resolvedFile, '--env-file', envFile, '--docker', docker];
   run(python, [...backupArgs, 'backup', '--root', backupRoot, '--source-sha', sourceSHA]);
   const completed = readdirSync(backupRoot).find(name => name.startsWith('crane-backup-')); if (!completed) throw Error('Missing complete backup set');
   run(python, [...backupArgs, 'drill', '--backup', join(backupRoot, completed)]);

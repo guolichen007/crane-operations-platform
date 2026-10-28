@@ -1,6 +1,6 @@
 # 工程入口
 
-当前阶段：Phase1-A1 Production Web Foundation（用户任务书授权）。A0 已按任务书 fast-forward 封板至 d827891375cd3665041936890ec21b70f52b2b9c；A1 功能分支不得合并。代码、完整 CI、镜像交付与推送完成后停止；服务器部署、真实 DNS/TLS 与后续阶段须用户另行明确授权。用户明确要求本轮跳过仓库私有化，保留 Public 并记录例外，不引入真实凭据或客户资料。
+当前阶段：Phase1-A1-R1 Production Preflight Hardening，基线 b8bed8e64ae9114ab49324e87ccd45cc4c32506b。仅在现有 feature/phase1-a1-production-web 收口 source/clean checkout、实际 DockerRootDir/备份磁盘、固定 Compose project u-dao-crane-ops、首次 HTTPS 启动顺序及基础镜像 digest；不重构已通过的身份权限实现。A0 main 保持 d827891375cd3665041936890ec21b70f52b2b9c；不得合并 A1。完整 8 项 CI、新 source SHA 镜像交付与推送完成后停止；不得部署服务器、修改真实 DNS/TLS 或进入 A2。用户要求保留 Public 例外，不引入真实凭据或客户资料。
 不得改变现场边缘自治边界，不接真实 PLC，不实现真实远控，不公开 Edge 管理端口。
 协议先更新 contracts，Cloud 与 Edge 共用契约；数据库变更必须有序 migration。
 文档、提交、PR 优先中文，代码标识符英文。新功能应有有意义的测试。

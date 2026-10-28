@@ -37,7 +37,7 @@ def sync_directory(path):
 
 
 def command(args):
-    return [args.docker, 'compose', '--env-file', str(args.env_file), '-f', str(args.compose), 'exec', '-T', '--user', 'postgres', 'postgres']
+    return [args.docker, 'compose', '--project-name', args.project_name, '--env-file', str(args.env_file), '-f', str(args.compose), 'exec', '-T', '--user', 'postgres', 'postgres']
 
 
 def checked(command_args, **kwargs):
@@ -174,7 +174,8 @@ def main():
     parser.add_argument('--compose', type=Path, default=Path('deploy/compose/docker-compose.prod.yml'))
     parser.add_argument('--env-file', type=Path, default=Path('deploy/compose/production.env'))
     parser.add_argument('--docker', default='docker')
-    parser.add_argument('--root', type=Path, default=Path('/srv/u-dao/backups/crane-ops'))
+    parser.add_argument('--root', type=Path, default=Path(os.environ.get('CRANE_BACKUP_ROOT', '/srv/u-dao/backups/crane-ops')))
+    parser.add_argument('--project-name', default='u-dao-crane-ops', help='frozen production project; override only for isolated test configurations')
     parser.add_argument('--backup', type=Path)
     parser.add_argument('--source-sha', default='')
     parser.add_argument('--retention-days', type=int, default=14)

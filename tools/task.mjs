@@ -100,7 +100,7 @@ const tasks = {
   test() {
     run(go, ['test', './...']);
     npm('test');
-    run(process.execPath, ['--test', 'tests/contract/contracts.test.mjs', 'tests/contract/asset-runtime.test.mjs']);
+    run(process.execPath, ['--test', 'tests/contract/contracts.test.mjs', 'tests/contract/asset-runtime.test.mjs', 'tests/contract/production-preflight.test.mjs']);
   },
   build() {
     run(go, ['build', './...']);
@@ -114,6 +114,9 @@ const tasks = {
   },
   'production-contract'() {
     run(process.execPath, ['tools/production-contract.mjs']);
+  },
+  'preflight-test'() {
+    run(process.execPath, ['--test', 'tests/contract/production-preflight.test.mjs']);
   },
   'a1-production-test'() {
     run(process.execPath, ['tools/a1-production-test.mjs']);
