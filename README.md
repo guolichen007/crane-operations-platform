@@ -2,6 +2,8 @@
 
 全国行车综合管理平台：Vue 3 沙盘 + Go 云端模块化单体 + 出站 Edge + MQTT 5/TLS + PostgreSQL。当前资产模式为9项目、10规划行车与10模拟运行端，大多时间SILENT；旧20台Count模式保留给回归。当前 Phase1-A1 Production Web Foundation 在功能分支交付 OIDC/BFF、服务端 Session、项目权限与生产部署基础；尚未部署服务器，真实设备、远程 Web 和点云未启用。
 
+当前 UI 工作为 A1.1 Premium，基线 `3525a351aa3677b15754541ff13e9f27e5e0685f`，分支 `feature/phase1-a1-1-premium-ui`。新增品牌登录门、单域名 Keycloak 主题、运营 HUD、四轴数字孪生与自适应画质，身份权限沿用 A1。[实施与验收状态](docs/07-测试与验收/Phase1-A1.1实施追踪.md)和[交付审查说明](docs/08-部署运维与成本/Phase1-A1.1界面交付审查.md)记录实际结果；不自动合并或部署。
+
 ## 快速开始
 
 需要 Node 24.19.0 / npm 11.17.x、Go 1.27.3、Docker Compose。Windows 无需 make。

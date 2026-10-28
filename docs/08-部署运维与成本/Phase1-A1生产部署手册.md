@@ -4,7 +4,7 @@
 
 ## 不可变交付
 
-main 已封板至 d827891375cd3665041936890ec21b70f52b2b9c，annotated tag baseline/phase1-a0 的 peeled SHA 相同。A1 位于 feature/phase1-a1-production-web，不自动合并。Actions 按 commit SHA 固定；原有六 job 保留，新增 A1 安全及 release 门禁。
+历史 A0 封板为 d827891375cd3665041936890ec21b70f52b2b9c。A1.1 开始时 main 已为 3525a351aa3677b15754541ff13e9f27e5e0685f；本轮仅在 feature/phase1-a1-1-premium-ui 交付，不移动 baseline/phase1-a1、不自动合并。Actions 按 commit SHA 固定；原有六 job 保留，新增 A1 安全及 release 门禁。
 
 获取对应 CI run 的 `crane-production-<full SHA>` artifact，仅包含 release-manifest.json、cloud-api.cdx.json、web-console.cdx.json。清单给出 source_sha、image_name、registry image_digest、sbom_sha256、build_time、schema_version。镜像带 OCI revision/source 标签。Trivy HIGH/CRITICAL 检查不忽略 unfixed 漏洞。
 
@@ -46,7 +46,7 @@ docker pull ghcr.io/guolichen007/crane-operations-platform/web-console@sha256:�
 5. 配置共享 ingress（先准备模板，不能激活引用不存在证书的配置）。
 6. DNS。
 7. TLS（证书就绪后验证并激活共享 ingress）。
-8. 验证 `https://auth.crane.youdaozd.com/realms/crane/.well-known/openid-configuration` HTTPS discovery，正常校验证书链、hostname 与精确 issuer。
+8. 验证 `https://crane.youdaozd.com/realms/crane/.well-known/openid-configuration` HTTPS discovery，正常校验证书链、hostname 与精确 issuer。
 9. Cloud API。
 10. Web Console。
 11. OIDC 登录/RBAC/LIVE/告警验收。
@@ -57,12 +57,12 @@ docker pull ghcr.io/guolichen007/crane-operations-platform/web-console@sha256:�
 
 realm.template.json 不包含客户端 secret、用户或密码。一次性运行镜像中的 provision-keycloak：KEYCLOAK_ADMIN_URL 为本机 loopback 或隔离网络的 http://keycloak:8080，或受信 HTTPS；PUBLIC_URL 为精确业务 origin；以 KEYCLOAK_BOOTSTRAP_PASSWORD_FILE/OIDC_CLIENT_SECRET_FILE/KEYCLOAK_REALM_TEMPLATE 传入只读文件路径。管理员 CLI 的临时 token 只在内存；自动创建/更新 crane realm 与精确 Code+PKCE client，不创建用户/项目授权。仅此受控一次性进程可读 bootstrap 与 OIDC 两份 secret；Cloud 容器绝不挂载 bootstrap secret。操作后收回 bootstrap 使用权限并按 Keycloak 管理流程移除临时管理员。
 
-完成业务域/auth 域在共享 ingress 的 HTTPS 并验证 discovery 后，Cloud 才能启动。不得使用 curl -k、InsecureSkipVerify、HTTP issuer 或 localhost fallback 绕过 strict HTTPS discovery。共享 ingress 保持宿主80/443所有权，Crane Web仅127.0.0.1:18081、Keycloak仅127.0.0.1:18082。模板的 REVIEW_REQUIRED 证书路径必须人工替换；本轮不签发真实域名证书。
+完成单域名 crane.youdaozd.com 在共享 ingress 的 HTTPS，并将 /realms/ 与 /resources/ 转发到 Keycloak、验证 discovery 后，Cloud 才能启动。不得使用 curl -k、InsecureSkipVerify、HTTP issuer 或 localhost fallback 绕过 strict HTTPS discovery。共享 ingress 保持宿主80/443所有权，Crane Web仅127.0.0.1:18081、Keycloak仅127.0.0.1:18082。模板的 REVIEW_REQUIRED 证书路径必须人工替换；本轮不签发真实域名证书。
 
 管理员在 Keycloak 管理界面创建实际账号并获取不可变 sub，再以业务 DB secret 文件执行镜像内 identity：
 
 ```sh
-identity bind --id 本地用户ID --issuer https://auth.crane.youdaozd.com/realms/crane --subject 已核验sub --display-name 显示名 --enable --actor 已授权管理员
+identity bind --id 本地用户ID --issuer https://crane.youdaozd.com/realms/crane --subject 已核验sub --display-name 显示名 --enable --actor 已授权管理员
 identity grant --id 本地用户ID --project 明确项目ID --role platform_admin --actor 已授权管理员
 identity list-grants --id 本地用户ID
 # 必要时 identity revoke --id 本地用户ID --project 明确项目ID --actor 已授权管理员

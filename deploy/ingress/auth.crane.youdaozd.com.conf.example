@@ -1,4 +1,5 @@
-# Template only. Restrict /admin/ to the administrator network at shared ingress.
+# Historical A1 two-origin rollback reference only; A1.1 uses crane.youdaozd.com.conf.example.
+# Do not activate a second public hostname for A1.1. No DNS/TLS provisioning here.
 server {
   listen 443 ssl;
   server_name auth.crane.youdaozd.com;
