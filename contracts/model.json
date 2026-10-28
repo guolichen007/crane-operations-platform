@@ -840,6 +840,54 @@
           "UNKNOWN"
         ]
       }
+    },
+    "ProjectGrant": {
+      "projectId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "projectName": {
+        "type": "string",
+        "maxLength": 256
+      },
+      "role": {
+        "type": "string",
+        "enum": [
+          "viewer",
+          "operator",
+          "maintainer",
+          "platform_admin"
+        ]
+      }
+    },
+    "WebSession": {
+      "userId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "displayName": {
+        "type": "string",
+        "maxLength": 256
+      },
+      "projects": {
+        "type": "array",
+        "items": {
+          "ref": "ProjectGrant"
+        }
+      },
+      "csrfToken": {
+        "type": "string",
+        "minLength": 32,
+        "maxLength": 128
+      },
+      "expiresAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "idleExpiresAt": {
+        "type": "string",
+        "format": "date-time"
+      }
     }
   },
   "restTypes": [
@@ -849,6 +897,8 @@
     "InventoryDocument",
     "FleetManifest",
     "InventoryProject",
-    "AssetDevice"
+    "AssetDevice",
+    "ProjectGrant",
+    "WebSession"
   ]
 }

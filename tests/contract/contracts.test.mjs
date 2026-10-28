@@ -51,7 +51,9 @@ test('all generated envelopes validate; malformed topic identity rejected', asyn
 test('REST inventory extension and frozen MQTT bindings remain compatible', async () => {
   const api = YAML.parse(await readFile('contracts/openapi/cloud-api.yaml', 'utf8'));
   assert.equal(api.openapi, '3.1.0');
-  assert.equal(Object.keys(api.paths).length, 13);
+  for (const path of ['/auth/login','/auth/callback','/auth/session','/auth/logout']) assert.ok(api.paths[path]);
+  assert.equal(api.components.securitySchemes.webSession.name, '__Host-crane_session');
+  assert.ok(api.paths['/auth/logout'].post.parameters.some(p => p.name === 'X-CSRF-Token' && p.required));
   const async = YAML.parse(await readFile('contracts/asyncapi/edge-mqtt.yaml', 'utf8'));
   const model = await read('contracts/model.json');
   assert.equal(Object.keys(async.channels).length, 10);

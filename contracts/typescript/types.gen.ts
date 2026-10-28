@@ -167,6 +167,19 @@ export interface AssetDevice {
   runtimeDeviceId: string | null;
   connectivity: "MQTT_CONNECTED" | "OFFLINE" | "UNKNOWN" | null;
 }
+export interface ProjectGrant {
+  projectId: string;
+  projectName: string;
+  role: "viewer" | "operator" | "maintainer" | "platform_admin";
+}
+export interface WebSession {
+  userId: string;
+  displayName: string;
+  projects: (ProjectGrant)[];
+  csrfToken: string;
+  expiresAt: string;
+  idleExpiresAt: string;
+}
 export type Envelope = {
   schemaVersion: 1;
   messageId: string;

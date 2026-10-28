@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/websession.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "userId",
+    "displayName",
+    "projects",
+    "csrfToken",
+    "expiresAt",
+    "idleExpiresAt"
+  ],
+  "properties": {
+    "userId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "displayName": {
+      "type": "string",
+      "maxLength": 256
+    },
+    "projects": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ProjectGrant"
+      }
+    },
+    "csrfToken": {
+      "type": "string",
+      "minLength": 32,
+      "maxLength": 128
+    },
+    "expiresAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "idleExpiresAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "$defs": {
+    "ProjectGrant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectId",
+        "projectName",
+        "role"
+      ],
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        },
+        "projectName": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "viewer",
+            "operator",
+            "maintainer",
+            "platform_admin"
+          ]
+        }
+      }
+    }
+  }
+}

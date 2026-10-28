@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Crane Cloud API",
-    "version": "1.0.0-rc.t0.5",
-    "description": "T0.5 development adapter. A 201 creates a viewer lease; upstreamStatus requires an Edge application ACK. Production identity and remote/pointcloud are disabled."
+    "version": "1.0.0-rc.a1",
+    "description": "A1 same-origin BFF: OIDC Authorization Code + PKCE, HttpOnly opaque server Session and session-bound CSRF. Project scope precedes role checks. A 201 creates only a Viewer Lease; LIVE requires Edge ACK. Remote control and pointcloud remain disabled."
   },
   "servers": [
     {
@@ -11,6 +11,9 @@
     }
   ],
   "security": [
+    {
+      "webSession": []
+    },
     {
       "devBearer": []
     },
@@ -210,6 +213,15 @@
               "type": "string",
               "pattern": "^[A-Za-z0-9_-]{1,80}$"
             }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 32
+            }
           }
         ],
         "responses": {
@@ -236,7 +248,8 @@
             "description": "Dependency unavailable"
           }
         },
-        "x-audit": true
+        "x-audit": true,
+        "x-project-scope-first": true
       }
     },
     "/api/v1/live-sessions/{sessionId}/renew": {
@@ -250,6 +263,15 @@
             "schema": {
               "type": "string",
               "pattern": "^[A-Za-z0-9_-]{1,80}$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 32
             }
           }
         ],
@@ -277,7 +299,8 @@
             "description": "Dependency unavailable"
           }
         },
-        "x-audit": true
+        "x-audit": true,
+        "x-project-scope-first": true
       }
     },
     "/api/v1/live-sessions/{sessionId}": {
@@ -291,6 +314,15 @@
             "schema": {
               "type": "string",
               "pattern": "^[A-Za-z0-9_-]{1,80}$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 32
             }
           }
         ],
@@ -311,7 +343,8 @@
             "description": "Dependency unavailable"
           }
         },
-        "x-audit": true
+        "x-audit": true,
+        "x-project-scope-first": true
       }
     },
     "/api/v1/devices/{id}/remote-sessions": {
@@ -326,39 +359,14 @@
               "type": "string",
               "pattern": "^[A-Za-z0-9_-]{1,80}$"
             }
-          }
-        ],
-        "responses": {
-          "401": {
-            "description": "Unauthorized"
           },
-          "403": {
-            "description": "Forbidden"
-          },
-          "404": {
-            "description": "Not found"
-          },
-          "501": {
-            "description": "Phase 2 disabled"
-          },
-          "503": {
-            "description": "Dependency unavailable"
-          }
-        },
-        "x-audit": true
-      }
-    },
-    "/api/v1/remote-sessions/{sessionId}": {
-      "delete": {
-        "operationId": "closeRemoteSession",
-        "parameters": [
           {
-            "name": "sessionId",
-            "in": "path",
+            "name": "X-CSRF-Token",
+            "in": "header",
             "required": true,
             "schema": {
               "type": "string",
-              "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              "minLength": 32
             }
           }
         ],
@@ -379,7 +387,52 @@
             "description": "Dependency unavailable"
           }
         },
-        "x-audit": true
+        "x-audit": true,
+        "x-project-scope-first": true
+      }
+    },
+    "/api/v1/remote-sessions/{sessionId}": {
+      "delete": {
+        "operationId": "closeRemoteSession",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,80}$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 32
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "501": {
+            "description": "Phase 2 disabled"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "x-audit": true,
+        "x-project-scope-first": true
       }
     },
     "/api/v1/alarms": {
@@ -448,7 +501,8 @@
             "description": "Dependency unavailable"
           }
         },
-        "x-audit": true
+        "x-audit": true,
+        "x-development-only": true
       }
     },
     "/api/v1/devices/{id}/stream": {
@@ -483,10 +537,139 @@
           }
         }
       }
+    },
+    "/auth/login": {
+      "get": {
+        "operationId": "beginOIDCLogin",
+        "parameters": [],
+        "responses": {
+          "302": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "security": [],
+        "x-security-transaction-only": true
+      }
+    },
+    "/auth/callback": {
+      "get": {
+        "operationId": "finishOIDCLogin",
+        "parameters": [],
+        "responses": {
+          "303": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "security": [],
+        "x-security-transaction-only": true
+      }
+    },
+    "/auth/session": {
+      "get": {
+        "operationId": "getWebSession",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebSession"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "operationId": "logoutWebSession",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 32
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success",
+            "headers": {
+              "Location": {
+                "description": "Optional OIDC RP-initiated logout URL with client_id and exact post_logout_redirect_uri; contains no token",
+                "schema": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "x-audit": true
+      }
     }
   },
   "components": {
     "securitySchemes": {
+      "webSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-crane_session",
+        "description": "Production: Secure, HttpOnly, SameSite=Lax, Path=/; hash-only PostgreSQL session. Development credentials are rejected in production."
+      },
       "devBearer": {
         "type": "http",
         "scheme": "bearer",
@@ -1550,6 +1733,75 @@
                 "type": "null"
               }
             ]
+          }
+        }
+      },
+      "ProjectGrant": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "projectId",
+          "projectName",
+          "role"
+        ],
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "projectName": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "viewer",
+              "operator",
+              "maintainer",
+              "platform_admin"
+            ]
+          }
+        }
+      },
+      "WebSession": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "userId",
+          "displayName",
+          "projects",
+          "csrfToken",
+          "expiresAt",
+          "idleExpiresAt"
+        ],
+        "properties": {
+          "userId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "displayName": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectGrant"
+            }
+          },
+          "csrfToken": {
+            "type": "string",
+            "minLength": 32,
+            "maxLength": 128
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "idleExpiresAt": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
