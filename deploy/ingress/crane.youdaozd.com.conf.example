@@ -35,6 +35,8 @@ server {
   location /metrics { deny all; }
   location ~ ^/(realms|resources)/ {
     access_log off;
+    # Upstream failures can otherwise include the OIDC query in nginx error logs.
+    error_log /dev/null;
     # Preserve Keycloak's nonce-aware CSP. Location headers override the app CSP above.
     add_header Strict-Transport-Security 'max-age=31536000' always;
     add_header X-Content-Type-Options nosniff always;
@@ -51,6 +53,7 @@ server {
   }
   location = /auth/callback {
     access_log off;
+    error_log /dev/null;
     proxy_pass http://$crane_web;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Host $host;

@@ -253,7 +253,8 @@ func seed(ctx context.Context) error {
 }
 
 // HTTPS probes use only the short-lived anonymous fixture CA, never skip verification.
-func probe(ctx context.Context, discoveryOnly bool) error {
+func probe(ctx context.Context, mode string) error {
+	discoveryOnly := mode == "probe-discovery"
 	ca, err := os.ReadFile("/fixture/ingress/ca.crt")
 	if err != nil {
 		return err
@@ -265,7 +266,9 @@ func probe(ctx context.Context, discoveryOnly bool) error {
 	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	origin := os.Getenv("PUBLIC_URL")
 	targets := map[string]int{"/realms/crane/.well-known/openid-configuration": 200}
-	if !discoveryOnly {
+	if mode == "probe-callback-unavailable" {
+		targets = map[string]int{"/auth/callback?code=fixture-oidc-marker&state=fixture-oidc-marker": 502}
+	} else if !discoveryOnly {
 		for path, status := range map[string]int{"/": 200, "/auth/session": 401, "/api/v1/projects": 401, "/auth/callback?code=fixture-oidc-marker&state=fixture-oidc-marker": 401, "/resources/": 404, "/admin": 403, "/admin/": 403, "/health": 403, "/health/ready": 403, "/metrics": 403} {
 			targets[path] = status
 		}
@@ -303,7 +306,7 @@ func probe(ctx context.Context, discoveryOnly bool) error {
 }
 
 func main() {
-	operation := flag.String("operation", "prepare", "prepare|seed|probe-discovery|probe-topology")
+	operation := flag.String("operation", "prepare", "prepare|seed|probe-discovery|probe-topology|probe-callback-unavailable")
 	out := flag.String("out", "deploy/compose/runtime/a1-production", "ignored fixture output")
 	flag.Parse()
 	var err error
@@ -313,10 +316,10 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 		err = seed(ctx)
-	} else if *operation == "probe-discovery" || *operation == "probe-topology" {
+	} else if *operation == "probe-discovery" || *operation == "probe-topology" || *operation == "probe-callback-unavailable" {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
-		err = probe(ctx, *operation == "probe-discovery")
+		err = probe(ctx, *operation)
 	} else {
 		err = errors.New("unknown fixture operation")
 	}

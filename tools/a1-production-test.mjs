@@ -59,6 +59,7 @@ try {
   run(docker, [...compose, 'run', '--rm', '--no-deps', 'provisioner']);
   run(docker, [...compose, 'run', '--rm', '--no-deps', 'provisioner']); // Repeat must be safe and retain exact client secret.
   run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-tool', '--operation', 'probe-discovery']);
+  run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-tool', '--operation', 'probe-callback-unavailable']);
   recreateDifferentIP('keycloak');
   run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-tool', '--operation', 'probe-discovery']);
   run(docker, [...compose, 'up', '-d', '--wait', '--wait-timeout', '180', 'cloud-api', 'web-console']);
@@ -68,6 +69,7 @@ try {
   run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-tool', '--operation', 'probe-topology']);
   const accessLog = run(docker, [...compose, 'exec', '-T', 'ingress', 'cat', '/var/log/nginx/crane-access.log'], {}, true);
   assert.doesNotMatch(accessLog, /fixture-oidc-marker|\/auth\/callback/);
+  assert.doesNotMatch(run(docker, [...compose, 'logs', '--no-color', 'ingress'], {}, true), /fixture-oidc-marker/);
   console.log('PRODUCTION_INGRESS_TOPOLOGY=PASS TEMPLATE=PRODUCTION RECREATE_CHANGED_IP=2 CALLBACK_LOG=REDACTED');
   const state = run(docker, [...compose, 'ps', '--services'], {}, true).trim().split('\n');
   if (state.some(name => /simulator|remote|pointcloud/.test(name))) throw Error('Unexpected production fixture service');

@@ -49,7 +49,7 @@ services:
       OIDC_ISSUER: ${CRANE_AUTH_URL}/realms/crane
       PUBLIC_URL: ${CRANE_PUBLIC_URL}
     volumes: [a1-fixture:/fixture:ro]
-    networks: [backend]
+    networks: [backend, frontend]
   provisioner:
     image: ${CRANE_CLOUD_IMAGE}
     profiles: [tests]

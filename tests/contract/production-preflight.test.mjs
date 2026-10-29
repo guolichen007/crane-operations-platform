@@ -136,6 +136,7 @@ test('production template rejects loopback, static upstreams, lost resolver, cal
     original.replace('127.0.0.11', '127.0.0.1'),
     original.replace('location = /auth/callback {\n    access_log off;', 'location = /auth/callback {\n    access_log on;'),
     original.replace('location /admin/ { deny all; }', ''),
+    original.replaceAll('error_log /dev/null;', 'error_log /dev/stderr;'),
   ]) assert.throws(() => validateIngress(changed));
   assert.throws(() => validateIngress(original, "log_format crane_safe '$request_uri';"));
   const rendered = fixtureIngress(23456);

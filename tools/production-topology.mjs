@@ -16,6 +16,11 @@ export function validateIngress(text = readFileSync(ingressTemplate, 'utf8'), co
   assert.match(active, /location\s+\/\s*\{\s*proxy_pass\s+http:\/\/\$crane_web;/);
   assert.match(active, /location\s+~\s+\^\/\(realms\|resources\)\/\s*\{[^}]*proxy_pass\s+http:\/\/\$crane_keycloak;/);
   assert.match(active, /location\s+=\s+\/auth\/callback\s*\{\s*access_log\s+off;[^}]*proxy_pass\s+http:\/\/\$crane_web;/);
+  for (const location of ['location = /auth/callback', 'location ~ ^/(realms|resources)/']) {
+    const block = active.slice(active.indexOf(location)).split('}')[0];
+    assert.match(block, /access_log off;/);
+    assert.match(block, /error_log \/dev\/null;/, 'OIDC query must not enter upstream failure logs');
+  }
   for (const path of ['= /admin', '/admin/', '/health', '/metrics']) assert.ok(active.includes(`location ${path} { deny all; }`), 'Public administration/health/metrics must be denied');
   assert.match(common, /log_format crane_safe '\$remote_addr \$request_method \$uri \$status \$body_bytes_sent';/);
   assert.doesNotMatch(common, /\$(?:request_uri|args|query_string|request|http_cookie|http_referer)\b/, 'Ingress access logs cannot contain code/state or credentials');
