@@ -294,12 +294,12 @@ async function assetModeCheck() {
     await page.getByLabel('本地开发凭据', { exact: true }).fill(token);
     await page.getByRole('button', { name: '连接云端', exact: true }).click();
     await expect(page.getByTestId('inventory-summary').locator('strong')).toHaveText(['9','6','3','10','10','0']);
-    await page.getByRole('link', { name: '项目中心', exact: true }).click();
+    await page.getByRole('link', { name: '项目', exact: true }).click();
     await expect(page.getByTestId('inventory-project')).toHaveCount(9);
     const completed = page.getByTestId('inventory-project').filter({ hasText: '已完成' });
     await expect(completed).toHaveCount(3);
     for (const card of await completed.all()) { await expect(card).toContainText('待接入Cloud'); await expect(card).not.toContainText('OFFLINE'); }
-    await page.getByRole('link', { name: '设备中心', exact: true }).click();
+    await page.getByRole('link', { name: '设备', exact: true }).click();
     await expect(page.getByTestId('inventory-asset')).toHaveCount(10);
     await expect(page.getByTestId('inventory-asset').first()).toContainText('规划模拟 · 模拟在线');
     await page.screenshot({ path: root + '/asset-mode.png', fullPage: true });
