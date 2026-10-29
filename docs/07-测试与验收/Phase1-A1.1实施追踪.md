@@ -42,10 +42,16 @@ UI0–UI7 已分阶段提交；UI7 复核追加修正 Vignette 二次乘色、�
 | `node tools/task.mjs security` | PASS，仓库预检、npm audit 0 漏洞、govulncheck 无漏洞；不等同于 CI Trivy/gitleaks 完成 |
 | `node tools/task.mjs production-contract` | PASS，五服务、固定 project、只读 Keycloak 主题及一致 issuer |
 | Compose / A1 身份集成 | 未通过：初始本机 Docker 未运行；启动后引擎 API 未响应，终止等待。真实 Keycloak E2E、普通 Compose 集成和备份恢复不得记为通过 |
-| 远程 8 项 CI / release | 未执行：推送被自动审批拒绝，等待对明确远程仓库/分支的直接授权 |
+| 远程 8 项 CI / release | 2026-10-28 尚未执行；2026-10-29 负责人明确授权后已推送并触发。最终状态以当前 source SHA 的 Actions 记录与 release artifact 为准，不能用旧 SHA 的结果替代 |
 
 环境为 Windows、Node 24.19.0、Go 缓存工具链、headless Chrome，允许软件 WebGL。Premium 1920×1080 / 1366×768 截图经本地查看，结果在 `tools/.cache/delivery-qa`；旧视觉、完整回归、强化预算分别位于 `tools/.cache/ui0-before.png`、`tools/.cache/final-ui-qa`、`tools/.cache/performance-qa`，不提交生成物。
 
 孪生场景 premium 档整帧统计（关闭 renderer 自动逐 pass 清零）为 **62 draw calls / 1,861 triangles / 39 geometries / 38 textures**，测试同时断言非空场景下限，避免只统计最终 fullscreen pass。20 次行政区下钻往返每次 148 geometries；20 次全国→Project-A→单机→全国，每次 194 geometries / 11 textures，末段没有增长。DEMO 地图旧性能回归读到约 60 FPS / 249 draw calls / 323,229 triangles，但其部分测试缩小 deviceScaleFactor，此读数不作为实际 1080p 桌面帧率验收。
 
 未完成的正式验收：负责人确认像素 golden、目标硬件持续 FPS/Heap、真实 Keycloak 同域主题与 OIDC 浏览器演练、8 项 CI 和新 source SHA 镜像/registry digest。未部署、未合并、未移动基线 tag。
+
+## 2026-10-29 远程交付
+
+负责人在当前会话明确授权“推送”，功能分支已发布到既有 Public origin。仅推送 `feature/phase1-a1-1-premium-ui`，没有推 main 或 tag。[该分支 CI](https://github.com/guolichen007/crane-operations-platform/actions?query=branch%3Afeature%2Fphase1-a1-1-premium-ui) 验证 source SHA 对应的八项门禁及镜像交付；发布清单与 SBOM 保存在 Actions artifact，不提交生成物。
+
+Draft PR 创建尝试收到连接器 403 `Resource not accessible by integration`，本机 GitHub CLI 未登录，未申请额外权限。保留功能分支作为负责人审查入口，不影响 CI 验收。正式像素 golden、目标硬件持续 FPS 和 Heap 仍由负责人确认，不能由镜像构建成功推定。

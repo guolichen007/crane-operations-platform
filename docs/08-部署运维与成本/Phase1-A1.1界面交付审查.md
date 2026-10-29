@@ -34,4 +34,4 @@ HalfFloat composer、末端 ACES tone mapping、选择性 Bloom/三类 Outline�
 
 ## 负责人审查点
 
-保留 Public 例外，不改变仓库可见性和根许可证。只允许推送本次单一功能分支，不移动基线 tag、不推 main、不批量推 tag。远程推送在本机自动审批中被拒绝，原因是缺少对目标仓库外发范围的直接授权；故远程 8 项 CI、真实 Keycloak 同域演练与新 source SHA 镜像/digest 仍待完成。不得把本地测试状态写成远程 CI/生产发布成功。
+保留 Public 例外，不改变仓库可见性和根许可证。只允许推送本次单一功能分支，不移动基线 tag、不推 main、不批量推 tag。2026-10-28 的自动审批拒绝在 2026-10-29 负责人明确授权后解除，已推送功能分支并触发 CI。八项门禁、真实 Keycloak 同域演练和新 source SHA 镜像/digest 的最终状态以同 SHA 的 Actions 记录和发布清单为准，不得将本地测试或旧 SHA 的结果写成当前发布成功。Draft PR 创建受到连接器 403 限制，未申请额外权限。
