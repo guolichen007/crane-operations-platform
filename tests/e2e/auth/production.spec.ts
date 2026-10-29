@@ -8,6 +8,8 @@ async function login(page: Page, user: string) {
   expect(new URL(page.url()).origin).toBe(origin);
   await expect(page.locator('link[href*="udao.css"]')).toHaveCount(1);
   await expect(page.locator('#kc-header-wrapper')).toContainText('U·DAO');
+  await expect(page.locator('#username')).toHaveCSS('background-color', 'rgb(6, 21, 45)');
+  await expect(page.locator('#kc-login')).toHaveCSS('background-image', /linear-gradient/);
   await page.locator('#username').fill(user);
   await page.locator('#password').fill(password());
   await page.locator('#kc-login').click();
@@ -52,7 +54,8 @@ test('operator 仅操作 P002 LIVE，管理员也不能跨项目读取', async (
   expect(results).toEqual({ open: 201, renew: 200, close: 204, cross: 404 });
   await page.getByRole('button', { name: '退出', exact: true }).click();
   // Keycloak may require explicit logout confirmation because no id_token is sent to the browser.
-  const confirm = page.getByRole('button', { name: 'Logout', exact: true });
+  // The inherited Keycloak template has a stable id across supported locales.
+  const confirm = page.locator('#kc-logout');
   await expect(confirm).toBeVisible();
   await confirm.click();
   await page.waitForURL(url => url.origin === origin && url.pathname === '/');
