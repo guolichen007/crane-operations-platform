@@ -10,6 +10,7 @@ import { verifyRelease } from '../../deploy/scripts/release-check.mjs';
 import { checkProductionDisks, checkDisk } from '../../deploy/scripts/disk-check.mjs';
 import { upgrade } from '../../deploy/scripts/upgrade.mjs';
 import { productionProject, validateProduction } from '../../tools/production-contract.mjs';
+import { frontendNetwork, validateIngress, fixtureIngress, createFixtureNetwork, ingressTemplate } from '../../tools/production-topology.mjs';
 
 function fixture(t) {
   const directory = mkdtempSync(join(tmpdir(), 'crane-r1-'));
@@ -44,7 +45,9 @@ function config(manifest) {
   services['cloud-api'].environment = { APP_ENV: 'production', OIDC_CLIENT_SECRET_FILE: '/run/secrets/oidc_client_secret', OIDC_ISSUER: 'https://anonymous.example.test/realms/crane' };
   services.keycloak.environment = { KC_HOSTNAME_STRICT: 'true', KC_DB: 'postgres', KC_HOSTNAME: 'https://anonymous.example.test' };
   services.keycloak.volumes = [{ target: '/opt/keycloak/themes/u-dao', source: '/anonymous/themes/u-dao', read_only: true }];
-  return { name: productionProject, services, secrets: Object.fromEntries(Array.from({ length: 6 }, (_, index) => ['anonymous' + index, { file: '/anonymous/file' + index }])) };
+  for (const service of Object.values(services)) service.networks = { backend: null };
+  for (const name of ['keycloak', 'cloud-api', 'web-console']) services[name].networks.frontend = null;
+  return { name: productionProject, services, networks: { frontend: { external: true, name: frontendNetwork }, backend: { internal: true } }, secrets: Object.fromEntries(Array.from({ length: 6 }, (_, index) => ['anonymous' + index, { file: '/anonymous/file' + index }])) };
 }
 
 test('manifest SHA different from actual checkout HEAD rejects before any Docker action', t => {
@@ -121,4 +124,59 @@ test('all tracked Dockerfile base images use explicit version and digest', () =>
     assert.ok(lines.length);
     for (const line of lines) assert.match(line, /^FROM \S+:[^\s@]+@sha256:[a-f0-9]{64}(?: AS \S+)?$/i, name);
   }
+});
+
+test('production template rejects loopback, static upstreams, lost resolver, callback logging and public management', () => {
+  const original = readFileSync(ingressTemplate, 'utf8');
+  validateIngress(original);
+  for (const changed of [
+    original.replace('http://$crane_web', 'http://127.0.0.1:18081'),
+    original.replace('http://$crane_keycloak', 'http://127.0.0.1:18082'),
+    original.replace('http://$crane_keycloak', 'http://keycloak:8080'),
+    original.replace('127.0.0.11', '127.0.0.1'),
+    original.replace('location = /auth/callback {\n    access_log off;', 'location = /auth/callback {\n    access_log on;'),
+    original.replace('location /admin/ { deny all; }', ''),
+  ]) assert.throws(() => validateIngress(changed));
+  assert.throws(() => validateIngress(original, "log_format crane_safe '$request_uri';"));
+  const rendered = fixtureIngress(23456);
+  assert.ok(rendered.includes('listen 23456 ssl;'));
+  assert.ok(rendered.includes('set $crane_web web-console:8080;'));
+  assert.ok(rendered.includes('set $crane_keycloak keycloak:8080;'));
+});
+
+test('production rejects Compose-owned frontend, exposed backend and published API', t => {
+  const f = fixture(t);
+  for (const mutate of [
+    c => { c.networks.frontend.external = false; },
+    c => { c.networks.backend.internal = false; },
+    c => { c.services.postgres.networks.frontend = null; },
+    c => { c.services['cloud-api'].ports = [{ host_ip: '127.0.0.1', published: '18083' }]; },
+  ]) { const c = config(f.manifest); mutate(c); assert.throws(() => validateProduction(c)); }
+});
+
+test('fixture external network cleanup checks created ID/name/owner and never adopts a shared network', () => {
+  const calls = [], id = 'a'.repeat(64); let network;
+  const execute = args => {
+    calls.push(args);
+    if (args[1] === 'create') {
+      const owner = args[args.indexOf('--label') + 1].split('=')[1];
+      network = { Id: id, Name: args.at(-1), Labels: { 'crane.a1.fixture': owner } };
+      return id;
+    }
+    if (args[1] === 'inspect') return JSON.stringify([network]);
+    return '';
+  };
+  const owned = createFixtureNetwork(execute);
+  assert.match(owned.name, /^crane-a1-prod-test-[a-f0-9]{32}$/);
+  network.Name = frontendNetwork;
+  assert.throws(() => owned.remove());
+  assert.equal(calls.some(args => args[1] === 'rm'), false);
+  network.Name = owned.name;
+  const owner = network.Labels['crane.a1.fixture'];
+  network.Labels['crane.a1.fixture'] = 'different-owner';
+  assert.throws(() => owned.remove());
+  assert.equal(calls.some(args => args[1] === 'rm'), false);
+  network.Labels['crane.a1.fixture'] = owner;
+  owned.remove();
+  assert.deepEqual(calls.at(-1), ['network', 'rm', id]);
 });

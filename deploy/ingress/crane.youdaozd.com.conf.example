@@ -1,5 +1,10 @@
 # Template only. Existing u-dao-ingress continues to own 80/443. No DNS/TLS provisioning here.
 server {
+  # Shared ingress joins the explicitly provisioned external frontend network.
+  # Variables defer DNS until a request; recreate must not pin an old container IP.
+  resolver 127.0.0.11 valid=5s ipv6=off;
+  set $crane_web web-console:8080;
+  set $crane_keycloak keycloak:8080;
   listen 443 ssl;
   server_name crane.youdaozd.com;
   ssl_certificate /REVIEW_REQUIRED/crane/fullchain.pem;
@@ -12,7 +17,7 @@ server {
   add_header Permissions-Policy 'camera=(), microphone=(), geolocation=()' always;
   add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
   location / {
-    proxy_pass http://127.0.0.1:18081;
+    proxy_pass http://$crane_web;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Host $host;
@@ -24,6 +29,7 @@ server {
     proxy_read_timeout 65s;
   }
   # Same-origin Keycloak. Do not expose administration or health endpoints.
+  location = /admin { deny all; }
   location /admin/ { deny all; }
   location /health { deny all; }
   location /metrics { deny all; }
@@ -36,7 +42,7 @@ server {
     add_header X-Frame-Options SAMEORIGIN always;
     add_header Permissions-Policy 'camera=(), microphone=(), geolocation=()' always;
     add_header Content-Security-Policy "frame-ancestors 'self'; object-src 'none'; base-uri 'self'" always;
-    proxy_pass http://127.0.0.1:18082;
+    proxy_pass http://$crane_keycloak;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Host $host;
     proxy_set_header X-Forwarded-Proto https;
@@ -45,7 +51,7 @@ server {
   }
   location = /auth/callback {
     access_log off;
-    proxy_pass http://127.0.0.1:18081;
+    proxy_pass http://$crane_web;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Host $host;
     proxy_set_header X-Forwarded-Proto https;

@@ -139,3 +139,5 @@ volumes:
 networks:
   backend: {internal: true}
   frontend:
+    external: true
+    name: ${CRANE_FRONTEND_NETWORK:-u-dao-crane-frontend}
