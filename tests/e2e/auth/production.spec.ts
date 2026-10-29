@@ -16,7 +16,7 @@ async function login(page: Page, user: string, updatePassword = false) {
   await page.locator('#kc-login').click();
   if (updatePassword) {
     await expect(page.locator('#password-new')).toBeVisible();
-    expect((await page.request.get('/auth/session')).status()).toBe(401);
+    expect(await page.evaluate(async () => (await fetch('/auth/session', { credentials: 'same-origin' })).status)).toBe(401);
     const replacement = randomBytes(32).toString('hex');
     await page.locator('#password-new').fill(replacement);
     await page.locator('#password-confirm').fill(replacement);
