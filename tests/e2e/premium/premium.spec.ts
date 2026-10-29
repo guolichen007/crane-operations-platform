@@ -200,6 +200,9 @@ test('路由往返释放 canvas 且孪生 draw calls / triangles 受预算限制
 });
 test('20 次行政区下钻往返不持续增长 GPU 资源', async ({ page }) => {
   test.setTimeout(240000);
+  // Resource retention is resolution-independent; exercise the supported reduced viewport.
+  // Native 1920x1080 screenshots and focused-scene budgets have separate cases above.
+  await page.setViewportSize({ width: 1366, height: 768 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await fixture(page);
   await page.goto('/#/overview');
