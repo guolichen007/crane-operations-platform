@@ -58,6 +58,21 @@ async function screenshot(page: Page, name: string) {
     .info()
     .attach(name, { path: test.info().outputPath(name + '.png'), contentType: 'image/png' });
 }
+test('首次资产指标无需动画帧即可显示真实 API 数值', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.requestAnimationFrame = () => 0;
+  });
+  await fixture(page);
+  await page.goto('/#/overview');
+  await expect(page.getByTestId('inventory-summary').locator('strong')).toHaveText([
+    '9',
+    '6',
+    '3',
+    '10',
+    '10',
+    '0',
+  ]);
+});
 test('告警日期筛选使用上海日期并与显示一致', async ({ page }) => {
   await fixture(page);
   await page.route('**/api/v1/alarms', (route) =>

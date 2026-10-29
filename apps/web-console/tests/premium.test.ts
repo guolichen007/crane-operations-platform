@@ -45,6 +45,11 @@ describe('工业视觉语义', () => {
   });
 });
 describe('连续帧率降级', () => {
+  it('软件 WebGL 不等待数秒慢帧采样即进入 reduced', () => {
+    expect(new QualityManager(2, false, 16384, 'ANGLE SwiftShader Device').tier).toBe('reduced');
+    expect(new QualityManager(2, false, 16384, 'llvmpipe').pixelRatio).toBe(1);
+    expect(new QualityManager(1.5, false, 16384, 'hardware GPU').tier).toBe('premium');
+  });
   it('硬件与 reduced motion 控制初始档位及 DPR', () => {
     expect(new QualityManager(3).tier).toBe('balanced');
     expect(new QualityManager(2, true).pixelRatio).toBe(1);

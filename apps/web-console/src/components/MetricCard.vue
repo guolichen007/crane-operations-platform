@@ -15,7 +15,12 @@ watch(
   () => props.value,
   (value) => {
     tween?.kill();
-    if (typeof value !== 'number' || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    // First authoritative data must never wait for the animation ticker / GPU.
+    if (
+      typeof shown.value !== 'number' ||
+      typeof value !== 'number' ||
+      matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
       shown.value = value;
       return;
     }

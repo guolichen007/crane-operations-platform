@@ -12,7 +12,7 @@ import {
   type WebGLRenderer,
 } from 'three';
 import { createRenderer } from '../core/Renderer';
-import { QualityManager } from '../core/QualityManager';
+import { QualityManager, rendererQuality } from '../core/QualityManager';
 import { CameraRig } from '../core/CameraRig';
 import { SceneLoop } from '../core/SceneLoop';
 import { GeoJsonLoader, type RegionEntry } from './GeoJsonLoader';
@@ -102,11 +102,7 @@ export class MapSceneManager {
       this.shownDevices = [];
     }
     this.renderer = createRenderer();
-    this.quality = new QualityManager(
-      devicePixelRatio,
-      this.reduced,
-      this.renderer.capabilities.maxTextureSize
-    );
+    this.quality = rendererQuality(this.renderer, devicePixelRatio, this.reduced);
     this.renderer.setPixelRatio(this.quality.pixelRatio);
     this.renderer.info.autoReset = false;
     host.append(this.renderer.domElement);

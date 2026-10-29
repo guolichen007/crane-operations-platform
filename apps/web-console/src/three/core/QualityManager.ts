@@ -1,3 +1,4 @@
+import type { WebGLRenderer } from 'three';
 export type QualityTier = 'premium' | 'balanced' | 'reduced';
 export const qualityProfiles = {
   premium: { dpr: 1.5, minFPS: 45, shadows: true, bloom: 0.3 },
@@ -12,10 +13,13 @@ export class QualityManager {
   constructor(
     readonly dpr: number,
     readonly reducedMotion = false,
-    maxTextureSize = 8192
+    maxTextureSize = 8192,
+    rendererName = ''
   ) {
     this.tier =
-      reducedMotion || maxTextureSize < 4096
+      reducedMotion ||
+      maxTextureSize < 4096 ||
+      /swiftshader|llvmpipe|softpipe|software|microsoft basic render/i.test(rendererName)
         ? 'reduced'
         : dpr > 2 || maxTextureSize < 8192
           ? 'balanced'
@@ -41,4 +45,15 @@ export class QualityManager {
     this.slowWindows = 0;
     return true;
   }
+}
+export function rendererQuality(renderer: WebGLRenderer, dpr: number, reducedMotion = false) {
+  let name = '';
+  try {
+    const gl = renderer.getContext(),
+      debug = gl.getExtension('WEBGL_debug_renderer_info');
+    name = String(gl.getParameter(debug ? debug.UNMASKED_RENDERER_WEBGL : gl.RENDERER));
+  } catch {
+    /* Capability probing may be restricted; continuous FPS still controls quality. */
+  }
+  return new QualityManager(dpr, reducedMotion, renderer.capabilities.maxTextureSize, name);
 }

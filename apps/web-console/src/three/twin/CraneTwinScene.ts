@@ -14,7 +14,7 @@ import {
 import { createRenderer } from '../core/Renderer';
 import { CameraRig } from '../core/CameraRig';
 import { SceneLoop } from '../core/SceneLoop';
-import { QualityManager } from '../core/QualityManager';
+import { rendererQuality } from '../core/QualityManager';
 import { createPostProcessing } from '../effects/PostProcessing';
 import { addAtmosphere } from '../effects/SceneAtmosphere';
 import { PremiumSceneBackground } from '../effects/PremiumSceneBackground';
@@ -27,10 +27,10 @@ export class CraneTwinScene {
   readonly twin = new CraneTwinFactory();
   private loop: SceneLoop;
   private observer: ResizeObserver;
-  private quality = new QualityManager(
+  private quality = rendererQuality(
+    this.renderer,
     devicePixelRatio,
-    matchMedia('(prefers-reduced-motion: reduce)').matches,
-    this.renderer.capabilities.maxTextureSize
+    matchMedia('(prefers-reduced-motion: reduce)').matches
   );
   private post: ReturnType<typeof createPostProcessing>;
   constructor(

@@ -4,10 +4,12 @@ import { CraneTwinFactory } from '../twin/CraneTwinFactory';
 import { addAtmosphere } from '../effects/SceneAtmosphere';
 import { SceneLoop } from '../core/SceneLoop';
 import { disposeObject } from '../utils/dispose';
+import { rendererQuality } from '../core/QualityManager';
 export function createCoverScene(host: HTMLElement) {
   const renderer = createRenderer(),
     scene = new Scene(),
     camera = new PerspectiveCamera(36, 1, 0.1, 200);
+  renderer.setPixelRatio(rendererQuality(renderer, devicePixelRatio).pixelRatio);
   renderer.setClearColor(0x06152d, 0);
   renderer.shadowMap.enabled = false;
   host.append(renderer.domElement);
