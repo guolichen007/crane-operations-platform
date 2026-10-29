@@ -206,7 +206,10 @@ test('实际动效截图及真实计划线路隔离', async ({ page }) => {
   expect(b.animation.spatialBeacons).toHaveLength(0);
   expect(b.animation.network.arcCount).toBeLessThanOrEqual(10);
   const routes = b.animation.network.routeIds;
-  await page.waitForFunction(() => window.__spatialDiagnostics!().animation.network.batch >= 1);
+  await page.waitForFunction(
+    (previousBatch) => window.__spatialDiagnostics!().animation.network.batch > previousBatch,
+    b.animation.network.batch
+  );
   expect((await read(page)).animation.network.routeIds).not.toEqual(routes);
   await page.getByRole('button', { name: '匿名登记项目', exact: true }).click();
   await page.waitForTimeout(300);
