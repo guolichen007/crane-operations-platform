@@ -40,8 +40,9 @@ function recreateDifferentIP(service) {
   const previous = serviceIP(service);
   run(docker, [...compose, 'rm', '--stop', '--force', service]);
   const image = JSON.parse(readFileSync('deploy/production/images.json', 'utf8')).base_images.alpine_runtime;
-  // Occupy the released IP so this test proves re-resolution instead of accidental IP reuse.
-  const holder = run(docker, ['run', '-d', '--network', ownedNetwork.name, '--ip', previous, image, 'sleep', '600'], {}, true).trim();
+  // Consume an allocation before recreate; require the observed new IP to differ below.
+  // Do not request --ip on Docker's automatically allocated test subnet.
+  const holder = run(docker, ['run', '-d', '--network', ownedNetwork.name, image, 'sleep', '600'], {}, true).trim();
   assert.match(holder, /^[a-f0-9]{64}$/); holders.push(holder);
   run(docker, [...compose, 'up', '-d', '--no-deps', '--wait', '--wait-timeout', '180', service]);
   assert.notEqual(serviceIP(service), previous);

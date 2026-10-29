@@ -8,7 +8,7 @@ frontend 是显式命名的 external Docker network，默认 u-dao-crane-fronten
 
 正式 crane.youdaozd.com 模板采用 resolver 127.0.0.11 valid=5s ipv6=off 与变量 proxy_pass。/realms/、/resources/ 到 Keycloak，/auth/、/api/、/ 到 Web；/admin、/admin/、/health、/metrics 拒绝公网；callback access_log off，通用日志只使用无 query 的 uri。callback 与 Keycloak 路径的 error_log 指向 /dev/null，避免上游失联时错误日志记录 OIDC query；测试同时检查 access log 与入口容器日志。
 
-生产 integration 不再独立手写 routing，直接从该正式模板替换匿名域名、随机 TLS 端口、临时证书路径，以及带测试端口的 Host header。正式 resolver/upstream/location/security/log 配置保持同一来源。匿名测试先执行无上游 nginx -t/启动，再验证真实 HTTPS discovery 和路由；Keycloak/Web 分别销毁重建并占住旧 IP，要求新 IP 不同且入口重解析成功；回调标记不得进入 access log。
+生产 integration 不再独立手写 routing，直接从该正式模板替换匿名域名、随机 TLS 端口、临时证书路径，以及带测试端口的 Host header。正式 resolver/upstream/location/security/log 配置保持同一来源。匿名测试先执行无上游 nginx -t/启动，再验证真实 HTTPS discovery 和路由；Keycloak/Web 分别销毁重建，在其间分配匿名占位容器，要求实测新 IP 不同且入口重解析成功，不把偶然复用旧 IP 算成通过；回调标记不得进入 access log。
 
 测试自行创建带随机名称与归属标签的 external network，env 显式覆盖默认真实网络名；清理前核对创建返回的 ID、名称与标签，只删除自己创建的容器/网络，不连接 u-dao-ingress 或 u-dao-crane-frontend。
 
