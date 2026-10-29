@@ -62,13 +62,13 @@ async function browserCheck() {
       const box = await fleetCards.filter({ hasText: id }).boundingBox();
       assert.ok(box && bar && box.y >= 60 && box.y + box.height <= bar.y, `${id} clears CloudStatus`);
     }
-    await page.getByRole('link', { name: '态势沙盘', exact: true }).click();
+    await page.getByRole('link', { name: '总览', exact: true }).click();
     const runtime = page.getByTestId('cloud-runtime');
     await expect(runtime.locator('.runtime-metrics b').first()).toHaveText(String((await api('devices')).length));
     await expect(runtime).toContainText('未配置时不生成地图点');
     await expect(runtime).toContainText('SIM 为模拟设备');
     record('S3.5 real Cloud runtime summary and 1920x1080 grid safe area');
-    await page.getByRole('link', { name: '告警中心', exact: true }).click();
+    await page.getByRole('link', { name: '告警', exact: true }).click();
     const alarms = await api('alarms');
     await expect(page.getByTestId('cloud-alarm')).toHaveCount(alarms.length);
     if (alarms.length) await expect(page.getByTestId('cloud-alarm').first()).toContainText(alarms[0].payload.code);
