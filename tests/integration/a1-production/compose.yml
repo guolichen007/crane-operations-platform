@@ -47,6 +47,7 @@ services:
     entrypoint: [/fixture/a1-fixture]
     environment:
       OIDC_ISSUER: ${CRANE_AUTH_URL}/realms/crane
+      PUBLIC_URL: ${CRANE_PUBLIC_URL}
     volumes: [a1-fixture:/fixture:ro]
     networks: [backend]
   provisioner:
@@ -66,13 +67,10 @@ services:
     image: nginx:1.28-alpine
     ports:
       - "127.0.0.1:${A1_WEB_PORT}:${A1_WEB_PORT}"
-      - "127.0.0.1:${A1_AUTH_PORT}:${A1_AUTH_PORT}"
     volumes: [a1-fixture:/fixture:ro]
     command: [nginx, -c, /fixture/ingress.conf, -g, "daemon off;"]
     networks:
-      frontend: {aliases: [crane.test, auth.crane.test]}
-    depends_on:
-      keycloak: {condition: service_healthy}
+      frontend: {aliases: [crane.test]}
 volumes:
   a1-fixture:
   a1-mqtt:

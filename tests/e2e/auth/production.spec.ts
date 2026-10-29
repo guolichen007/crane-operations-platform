@@ -1,8 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 const origin = process.env.A1_WEB_ORIGIN!;
 const password = () => readFileSync(process.env.A1_BROWSER_PASSWORD_FILE!, 'utf8').trim();
-async function login(page: Page, user: string) {
+async function login(page: Page, user: string, updatePassword = false) {
   await page.goto('/');
   await page.getByRole('link', { name: '账号登录', exact: true }).click();
   expect(new URL(page.url()).origin).toBe(origin);
@@ -13,6 +14,14 @@ async function login(page: Page, user: string) {
   await page.locator('#username').fill(user);
   await page.locator('#password').fill(password());
   await page.locator('#kc-login').click();
+  if (updatePassword) {
+    await expect(page.locator('#password-new')).toBeVisible();
+    expect((await page.request.get('/auth/session')).status()).toBe(401);
+    const replacement = randomBytes(32).toString('hex');
+    await page.locator('#password-new').fill(replacement);
+    await page.locator('#password-confirm').fill(replacement);
+    await page.locator('#kc-passwd-update-form input[type="submit"]').click();
+  }
   await expect(page.getByTestId('session-user')).toContainText(user);
 }
 
@@ -63,7 +72,7 @@ test('operator 仅操作 P002 LIVE，管理员也不能跨项目读取', async (
 });
 
 test('scoped platform_admin 没有全局项目读取权', async ({ page }) => {
-  await login(page, 'a1-admin');
+  await login(page, 'a1-admin', true);
   const values = await page.evaluate(async () => ({ projects: await (await fetch('/api/v1/projects')).json(), cross: (await fetch('/api/v1/devices/SIM-P002-01')).status }));
   expect(values.projects.map((item: { id: string }) => item.id)).toEqual(['P001']); expect(values.cross).toBe(404);
 });

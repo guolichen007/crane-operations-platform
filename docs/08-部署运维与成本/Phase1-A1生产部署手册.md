@@ -37,27 +37,22 @@ docker pull ghcr.io/guolichen007/crane-operations-platform/web-console@sha256:�
 
 ## 启动与身份初始化（需后续授权）
 
-首次部署严格冻结为以下顺序，所有服务器操作仍需另行授权；不得先整体 up Cloud 再补 DNS/TLS：
+腾讯云 shared ingress 是独立容器 u-dao-ingress-nginx-1，其 localhost 属于容器自身。正式入口必须通过 external frontend 的 Docker DNS 访问 Crane，不得用宿主 loopback upstream。以下所有服务器操作均须另行授权，本轮没有执行：
 
-1. PostgreSQL。
-2. Keycloak。
-3. Mosquitto。
-4. 初始化 Keycloak realm/client。
-5. 配置共享 ingress（先准备模板，不能激活引用不存在证书的配置）。
-6. DNS。
-7. TLS（证书就绪后验证并激活共享 ingress）。
-8. 验证 `https://crane.youdaozd.com/realms/crane/.well-known/openid-configuration` HTTPS discovery，正常校验证书链、hostname 与精确 issuer。
-9. Cloud API。
-10. Web Console。
-11. OIDC 登录/RBAC/LIVE/告警验收。
-12. Backup/Restore drill。
-13. Firebot 回归（后续授权时执行，本轮不操作 Firebot）。
+1. 先检查现有 Docker network/IPAM、Firebot/ingress 路由及地址段；为 u-dao-crane-frontend 选择经审核且无冲突的 subnet。已有同名网络必须核验 driver、subnet、连接者与所有权，不覆盖重建；没有时由运维显式创建 bridge external network。禁止在文档中照抄任意固定 subnet。
+2. 在受限 production.env 显式设置 CRANE_FRONTEND_NETWORK=u-dao-crane-frontend、该网络实际的可信代理 CIDR、固定镜像与私有路径。Crane Compose 的 frontend.external=true，backend.internal=true；Compose 不拥有 shared network，down 不删除它。
+3. 仅启动 PostgreSQL、Keycloak、Mosquitto，并初始化 realm/client。不得整体 up Cloud/Web。Keycloak 可以先启动，BFF 此时尚未执行 HTTPS discovery。
+4. 经批准把 shared ingress 加入该 network；若尚未连接，可运行 `docker network connect u-dao-crane-frontend u-dao-ingress-nginx-1`，并在 shared ingress 的受控 Compose 配置中声明此 external network，确保重建后仍连接。此步骤属于运维窗口，不是本仓库自动操作。
+5. 在 shared ingress http context 包含 crane-http-common.conf.example，审核证书、DNS/TLS 前置条件及 Crane server 模板，再执行 `docker exec u-dao-ingress-nginx-1 nginx -t`；通过后按既有共享入口流程 reload，禁止 down/recreate 整套入口。变量 upstream 与 resolver 127.0.0.11 允许 Cloud/Web 缺席时校验配置；它不免除证书校验。
+6. 验证 `https://crane.youdaozd.com/realms/crane/.well-known/openid-configuration`，正常校验证书链、hostname、精确 issuer=https://crane.youdaozd.com/realms/crane，并确认静态资源路由与公网管理/health/metrics 拒绝。失败则停止，不能通过关闭 TLS 校验启动 Cloud。
+7. 执行 Firebot HTTP/health 回归，核对共享入口既有路由可用。失败则按入口受控配置回滚，不操作 Firebot 容器、网络或数据。
+8. 再依次启动 Cloud API、Web Console；执行 OIDC/CSRF/项目授权/LIVE/WS 验收、匿名或受控双库备份与独立恢复演练，然后按私下批准计划创建业务身份和逐项目授权。
 
-每个正式 Compose 命令显式使用 `--project-name u-dao-crane-ops --env-file deploy/compose/production.env -f deploy/compose/docker-compose.prod.yml`。前八步完成前只启动指定基础服务，不能无 service 范围整体 up。Keycloak 为26.8.1，固定 digest 见 deploy/production/images.json；正式 `start`，strict hostname、受限 proxy headers、内部9000 health/metrics，8080只映射127.0.0.1。禁止 start-dev。
+每个正式 Compose 命令显式使用 `--project-name u-dao-crane-ops --env-file deploy/compose/production.env -f deploy/compose/docker-compose.prod.yml`。第七步通过前只启动指定基础服务，不能无 service 范围整体 up。Keycloak 为26.8.1，固定 digest 见 deploy/production/images.json；正式 `start`，strict hostname、受限 proxy headers、内部9000 health/metrics。禁止 start-dev。
 
 realm.template.json 不包含客户端 secret、用户或密码。一次性运行镜像中的 provision-keycloak：KEYCLOAK_ADMIN_URL 为本机 loopback 或隔离网络的 http://keycloak:8080，或受信 HTTPS；PUBLIC_URL 为精确业务 origin；以 KEYCLOAK_BOOTSTRAP_PASSWORD_FILE/OIDC_CLIENT_SECRET_FILE/KEYCLOAK_REALM_TEMPLATE 传入只读文件路径。管理员 CLI 的临时 token 只在内存；自动创建/更新 crane realm 与精确 Code+PKCE client，不创建用户/项目授权。仅此受控一次性进程可读 bootstrap 与 OIDC 两份 secret；Cloud 容器绝不挂载 bootstrap secret。操作后收回 bootstrap 使用权限并按 Keycloak 管理流程移除临时管理员。
 
-完成单域名 crane.youdaozd.com 在共享 ingress 的 HTTPS，并将 /realms/ 与 /resources/ 转发到 Keycloak、验证 discovery 后，Cloud 才能启动。不得使用 curl -k、InsecureSkipVerify、HTTP issuer 或 localhost fallback 绕过 strict HTTPS discovery。共享 ingress 保持宿主80/443所有权，Crane Web仅127.0.0.1:18081、Keycloak仅127.0.0.1:18082。模板的 REVIEW_REQUIRED 证书路径必须人工替换；本轮不签发真实域名证书。
+完成单域名 crane.youdaozd.com 在共享 ingress 的 HTTPS，并将 /realms/ 与 /resources/ 经 keycloak:8080 转发，/auth/、/api/ 与 / 经 web-console:8080 转发，验证 discovery 后 Cloud 才能启动。正式模板使用变量 proxy_pass 与 resolver 127.0.0.11 valid=5s ipv6=off，容器 recreate 后按 DNS 更新，不在 nginx startup 固化服务 IP。不得使用 curl -k、InsecureSkipVerify、HTTP issuer 或 localhost fallback 绕过 strict HTTPS discovery。共享 ingress 永远拥有宿主80/443；Web 的127.0.0.1:18081、Keycloak 的127.0.0.1:18082仅作宿主运维 fallback，shared ingress 不使用它们。模板的 REVIEW_REQUIRED 证书路径必须人工替换；本轮不签发真实域名证书。
 
 管理员在 Keycloak 管理界面创建实际账号并获取不可变 sub，再以业务 DB secret 文件执行镜像内 identity：
 
@@ -68,11 +63,17 @@ identity list-grants --id 本地用户ID
 # 必要时 identity revoke --id 本地用户ID --project 明确项目ID --actor 已授权管理员
 ```
 
-APP_ENV=production、password-free DATABASE_URL、DATABASE_PASSWORD_FILE 必须显式设置。首次管理员只授予一个项目，不授全部九项目；email 不作为 identity key。实际身份/授权信息禁止粘贴到 Public 仓库。
+APP_ENV=production、password-free DATABASE_URL、DATABASE_PASSWORD_FILE 必须显式设置。所有授权必须是逐项目显式 grant；首次授权范围来自负责人批准的私下部署计划，可以包含多个项目，必须逐项核对 list-grants 与 audit。email 不作为 identity key，用户名无权限特判，platform_admin 不能绕过 Project Scope。真实账号、初始密码和实际身份/授权清单禁止放进 README、docs、fixture、CI、Git history 或 artifact。
+
+正式 realm 模板明确启用 UPDATE_PASSWORD required action。创建管理员业务身份时，通过受控 Keycloak 管理界面/API 将初始凭据设为 Temporary，并为该用户添加 UPDATE_PASSWORD；首次登录应先出现改密页，完成前业务 /auth/session 必须仍未认证。初始密码只经负责人批准的私下渠道交付，不写公共模板或命令示例。provision-keycloak 只配置 realm/client，不创建业务账号。CI 使用匿名身份与运行时随机密码验证该流程，未导入真实部署计划。
 
 ## 网络、日志与回滚
 
 默认五服务；device-simulator 只有额外 simulation overlay 加 --profile simulation 才存在。remote-gateway 与 pointcloud 不在生产启动集合；不公开 MQTT/Edge 管理端口。共享入口覆盖 Host/XFF/XFP/XFH/Forwarded；信任 CIDR 必须包含真实入口及 Web 代理的受控网段，禁止通配。应用固定 PUBLIC_URL，不能用客户端 Host 改写回调。
+
+PostgreSQL、Mosquitto 不连接 external frontend；Cloud API 无宿主端口发布。shared network 只允许明确审核的容器加入，防止服务别名碰撞或无关容器接触上游。禁止 `docker compose down` shared ingress、`docker network rm` shared network，禁止把 Crane 18081/18082 发布到公网。Crane down 只管理自己的容器、backend 和卷，不承担 shared network 生命周期；不修改 Firebot network/volume/logging。
+
+交付报告使用 HISTORICAL_A0_BASE_SHA、A0_BASELINE_SHA、A1_BASELINE_SHA、CURRENT_MAIN_SHA、A1_1_DELIVERY_SHA 分别标识阶段与当前状态，不再以 A0_MAIN_SHA 表示当前 main。
 
 业务安全头包含 CSP、frame-ancestors、nosniff、no-referrer、Permissions-Policy；HSTS 只对当前子域，绝不 includeSubDomains/preload。Keycloak 保留自身登录 CSP，入口额外限制 framing。回调、认证/API 代理访问日志关闭，其他日志不含 query/cookie/Referer；五服务日志各10m×5。不要在诊断命令中输出 secrets、env、完整 Inventory 或 Keycloak token。
 

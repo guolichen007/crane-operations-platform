@@ -7,6 +7,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"database/sql"
@@ -191,8 +192,15 @@ func seed(ctx context.Context) error {
 		return err
 	}
 	defer db.Close()
-	for _, item := range []struct{ name, project, role string }{{"a1-viewer", "P001", "viewer"}, {"a1-operator", "P002", "operator"}, {"a1-admin", "P001", "platform_admin"}} {
-		body := map[string]any{"username": item.name, "email": item.name + "@example.test", "emailVerified": true, "enabled": true, "firstName": "Anonymous", "lastName": item.name, "credentials": []any{map[string]any{"type": "password", "value": string(userPassword), "temporary": false}}}
+	for _, item := range []struct {
+		name, project, role string
+		updatePassword      bool
+	}{{"a1-viewer", "P001", "viewer", false}, {"a1-operator", "P002", "operator", false}, {"a1-admin", "P001", "platform_admin", true}} {
+		actions := []string{}
+		if item.updatePassword {
+			actions = append(actions, "UPDATE_PASSWORD")
+		}
+		body := map[string]any{"username": item.name, "email": item.name + "@example.test", "emailVerified": true, "enabled": true, "firstName": "Anonymous", "lastName": item.name, "requiredActions": actions, "credentials": []any{map[string]any{"type": "password", "value": string(userPassword), "temporary": item.updatePassword}}}
 		if err = request("POST", "/users", body, nil); err != nil {
 			return err
 		}
@@ -244,8 +252,58 @@ func seed(ctx context.Context) error {
 	return nil
 }
 
+// HTTPS probes use only the short-lived anonymous fixture CA, never skip verification.
+func probe(ctx context.Context, discoveryOnly bool) error {
+	ca, err := os.ReadFile("/fixture/ingress/ca.crt")
+	if err != nil {
+		return err
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(ca) {
+		return errors.New("fixture CA rejected")
+	}
+	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	origin := os.Getenv("PUBLIC_URL")
+	targets := map[string]int{"/realms/crane/.well-known/openid-configuration": 200}
+	if !discoveryOnly {
+		for path, status := range map[string]int{"/": 200, "/auth/session": 401, "/api/v1/projects": 401, "/auth/callback?code=fixture-oidc-marker&state=fixture-oidc-marker": 401, "/resources/": 404, "/admin": 403, "/admin/": 403, "/health": 403, "/health/ready": 403, "/metrics": 403} {
+			targets[path] = status
+		}
+	}
+	for path, expected := range targets {
+		for {
+			r, err := http.NewRequestWithContext(ctx, "GET", origin+path, nil)
+			if err != nil {
+				return err
+			}
+			response, e := client.Do(r)
+			valid := false
+			if e == nil {
+				valid = response.StatusCode == expected
+				if discoveryOnly || strings.Contains(path, "openid-configuration") {
+					var metadata struct {
+						Issuer string `json:"issuer"`
+					}
+					valid = valid && json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&metadata) == nil && metadata.Issuer == origin+"/realms/crane"
+				}
+				_, _ = io.Copy(io.Discard, response.Body)
+				_ = response.Body.Close()
+			}
+			if valid {
+				break
+			}
+			select {
+			case <-ctx.Done():
+				return errors.New("production template HTTPS topology probe failed")
+			case <-time.After(500 * time.Millisecond):
+			}
+		}
+	}
+	return nil
+}
+
 func main() {
-	operation := flag.String("operation", "prepare", "prepare|seed")
+	operation := flag.String("operation", "prepare", "prepare|seed|probe-discovery|probe-topology")
 	out := flag.String("out", "deploy/compose/runtime/a1-production", "ignored fixture output")
 	flag.Parse()
 	var err error
@@ -255,6 +313,10 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 		err = seed(ctx)
+	} else if *operation == "probe-discovery" || *operation == "probe-topology" {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		err = probe(ctx, *operation == "probe-discovery")
 	} else {
 		err = errors.New("unknown fixture operation")
 	}

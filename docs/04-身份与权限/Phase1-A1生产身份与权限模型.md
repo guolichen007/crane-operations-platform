@@ -30,7 +30,9 @@ WebSocket 使用相同 HttpOnly Cookie，连接前检查 Origin、session、DB �
 
 ## 映射与审计
 
-`users` 的永久外部键为 issuer+sub，email 只可作为显示信息。`tools/identity` 提供 bind、grant、revoke、list-grants；这是宿主机管理员工具，不是公开授权 API。bind 不自动赋权，grant 必须指定一个项目。首次管理员只对一个验收项目赋 platform_admin。
+`users` 的永久外部键为 issuer+sub，email 只可作为显示信息。`tools/identity` 提供 bind、grant、revoke、list-grants；这是宿主机管理员工具，不是公开授权 API。bind 不自动赋权。所有授权必须逐项目显式 grant，首次授权范围来自负责人批准的私下部署计划；覆盖多个项目时逐项执行并审计，不根据用户名或 platform_admin 角色推导全局 scope。
+
+正式 realm 启用 UPDATE_PASSWORD required action；管理员初始密码只能在受控管理流程中设置为 Temporary，并给该用户指定 UPDATE_PASSWORD，首次登录完成改密前不得建立业务 Session。公共模板不创建真实账号，也不保存初始密码；匿名 fixture 的密码在测试时随机生成，只写忽略目录。
 
 审计事件包括 login_success、login_failure、logout、authorization_denied、live_start、live_renew、live_stop、project_role_changed；字段包括 actor/project/device/action/result/observed_at/source_ip/request_id。角色变更、会话创建/删除及 LIVE 成功写入与对应审计在同一事务中提交。预留 device_enrollment、certificate_revocation 事件名，本阶段不实现流程。
 

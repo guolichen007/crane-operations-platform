@@ -18,7 +18,7 @@ npm run dev -- --port 5175 --strictPort
 
 入口和 Keycloak 均为 `https://crane.youdaozd.com`。issuer 为 `/realms/crane`，BFF callback 为 `/auth/callback`。生产 Compose 保持原有五服务、固定 project 和基础镜像 digest；Keycloak `u-dao` 主题从仓库以只读 volume 挂载，realm 模板指定 loginTheme。继承官方 keycloak 主题，仅覆盖 CSS/messages，未 fork Freemarker。
 
-共享 ingress 模板按 `/realms/`、`/resources/` 转发到 Keycloak loopback；`/auth/` 与 API 仍进 BFF。Keycloak 路径保留其 nonce-aware CSP，避免应用 CSP 破坏官方表单脚本。`/admin/`、`/health`、`/metrics` 拒绝公共入口。旧 auth 子域名模板仅为历史回滚参考，A1.1 不启用第二入口。
+共享 ingress 与 Crane 连接明确的 external frontend network，通过 Docker DNS 将 `/realms/`、`/resources/` 转发到 keycloak:8080，`/auth/`、API 与 `/` 转发到 web-console:8080，再进入 BFF。使用变量 proxy_pass 和 Docker resolver，宿主 loopback 仅作运维 fallback。Keycloak 路径保留其 nonce-aware CSP，避免应用 CSP 破坏官方表单脚本。`/admin/`、`/health`、`/metrics` 拒绝公共入口。旧 auth 子域名模板仅为历史回滚参考，A1.1 不启用第二入口。
 
 所有模板均未激活。后续获准部署仍遵守 A1 的 clean source、磁盘、固定 project、HTTPS discovery 首次启动顺序。已有双域名环境切换 issuer 时需受控核验 `(issuer, sub)` 绑定及会话，不自动迁移身份。真实账号、密码、凭据和客户 Inventory 不属于本次交付。
 

@@ -19,4 +19,4 @@
 
 基础镜像固定到已验收 A1 CI 实际解析的 digest，不引入新镜像体系；构建后仍跑 Trivy HIGH/CRITICAL，不以 pin 替代漏洞扫描。正式 release 的 source SHA、Cloud/Web registry digest 和两份 SBOM 必须重新生成，最终只认本补丁 HEAD 的完整8项 CI。Artifact attestation 列下一轮建议，本轮不引入 Cosign/KMS。
 
-首次部署13步及严格 HTTPS discovery 顺序见生产部署手册。/srv/u-dao/platform/docker 仅是当前服务器事实，代码始终读取 daemon 实际 DockerRootDir。secrets/backup 既有目录路径不等于 Compose project，不做服务器目录或 Docker daemon 配置变更。
+首次部署顺序及严格 HTTPS discovery 见生产部署手册（A1.1-R1 补充 external frontend / shared ingress / Firebot 回归后再启动 Cloud/Web）。/srv/u-dao/platform/docker 仅是当前服务器事实，代码始终读取 daemon 实际 DockerRootDir。secrets/backup 既有目录路径不等于 Compose project，不做服务器目录或 Docker daemon 配置变更。
