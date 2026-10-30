@@ -34,5 +34,17 @@ test('installer checks signed pinned upstream before installation and cannot iss
   assert.ok(script.includes('https://github.com/acmesh-official/acme.sh.git'));
   for (const item of ['VERSION=3.1.6','807da6498377ee5e0cf43a78091f46f12dc59a89','c6e7807f8e2573bf8b02b71da186b4022afafa56','gpg.ssh.allowedSignersFile=', 'verify-tag "$VERSION"', 'sha256sum']) assert.ok(script.includes(item));
   assert.ok(script.indexOf('verify-tag') < script.indexOf('git -C "$temp/source" archive'));
+  assert.ok(script.indexOf('systemctl is-active u-dao-crane-cert-renew.service') < script.indexOf('clone --depth'));
+  assert.ok(script.indexOf('then renewal_lock; fi') < script.indexOf('clone --depth'));
+  assert.ok(script.includes('flock -n 9'));
+  assert.ok(script.includes('deploy/scripts/cert-state.py" /usr/local/libexec/u-dao-crane-cert-state'));
   assert.doesNotMatch(script, /--issue|--install-cert|--cron|--auto-upgrade|systemctl enable|nginx -s reload|curl.*\|.*sh/);
+});
+test('required a1-security job runs shell syntax, real systemd parser and Linux interruption fixtures', () => {
+  const ci = read('.github/workflows/ci.yml').split('  a1-security:')[1].split('  production-release:')[0];
+  for (const command of ['bash -n deploy/scripts/cert-renew.sh', 'bash -n deploy/scripts/provision-acme.sh', 'sudo bash tests/ops/verify-cert-units.sh', 'sudo env PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/ops -v']) assert.ok(ci.includes(command), command);
+  assert.doesNotMatch(ci, /continue-on-error|if:|\|\| true/);
+  const verify = read('tests/ops/verify-cert-units.sh');
+  assert.match(verify, /systemd-analyze --man=no verify/);
+  assert.doesNotMatch(verify, /systemctl|daemon-reload/);
 });

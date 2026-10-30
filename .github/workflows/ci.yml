@@ -108,6 +108,11 @@ jobs:
         with: { node-version: '24.19.0', cache: npm }
       - run: npm ci
       - run: node tools/task.mjs production-contract
+      - name: 证书脚本语法与真实systemd单元解析（隔离root）
+        run: |
+          bash -n deploy/scripts/cert-renew.sh
+          bash -n deploy/scripts/provision-acme.sh
+          sudo bash tests/ops/verify-cert-units.sh
       - name: 验证固定ACME上游签名（不安装、不签发）
         run: bash deploy/scripts/provision-acme.sh --verify-only
       - name: 隔离运维与证书故障回滚反证（不访问真实CA）
