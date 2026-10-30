@@ -28,7 +28,7 @@ export function validateIngress(text = readFileSync(ingressTemplate, 'utf8'), co
 }
 
 // Routing comes from the reviewed production template, never a separate test implementation.
-export function fixtureIngress(port) {
+export function fixtureIngress(port, httpPort) {
   validateIngress();
   const server = readFileSync(ingressTemplate, 'utf8')
     .replace('listen 443 ssl;', `listen ${port} ssl;`)
@@ -36,7 +36,11 @@ export function fixtureIngress(port) {
     .replace('/REVIEW_REQUIRED/crane/fullchain.pem', '/fixture/ingress/ingress.crt')
     .replace('/REVIEW_REQUIRED/crane/privkey.pem', '/fixture/ingress/ingress.key')
     .replaceAll('$host;', '$http_host;'); // Anonymous HTTPS fixture uses a random port.
-  return `events {}\nhttp {\n${readFileSync('deploy/ingress/crane-http-common.conf.example', 'utf8')}\n${server}\n}\n`;
+  const challenge = httpPort ? readFileSync('deploy/ingress/crane-http01.conf.example', 'utf8')
+    .replace('listen 80;', `listen ${httpPort};`)
+    .replaceAll('crane.youdaozd.com', `crane.test:${port}`)
+    .replace(`server_name crane.test:${port};`, 'server_name crane.test;') : '';
+  return `events {}\nhttp {\n${readFileSync('deploy/ingress/crane-http-common.conf.example', 'utf8')}\n${server}\n${challenge}\n}\n`;
 }
 
 // No caller-supplied name: the fixture can never adopt the real shared network.

@@ -305,6 +305,37 @@ func probe(ctx context.Context, mode string) error {
 	return nil
 }
 
+func probeHTTP01(ctx context.Context) error {
+	client := &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	for _, path := range []string{"/.well-known/acme-challenge/fixture-http01", "/.well-known/acme-challenge/missing", "/realms/", "/resources/", "/api/", "/auth/", "/"} {
+		r, err := http.NewRequestWithContext(ctx, "GET", os.Getenv("HTTP_PROBE_URL")+path, nil)
+		if err != nil {
+			return err
+		}
+		response, err := client.Do(r)
+		if err != nil {
+			return errors.New("anonymous HTTP-01 probe unavailable")
+		}
+		body, err := io.ReadAll(io.LimitReader(response.Body, 1024))
+		_ = response.Body.Close()
+		if err != nil {
+			return err
+		}
+		if strings.Contains(path, "fixture-http01") {
+			if response.StatusCode != 200 || string(body) != "fixture-http01" || response.Header.Get("Cache-Control") != "no-store" {
+				return errors.New("anonymous HTTP-01 route rejected")
+			}
+		} else if strings.Contains(path, "missing") {
+			if response.StatusCode != 404 {
+				return errors.New("HTTP-01 missing token must not redirect")
+			}
+		} else if response.StatusCode != 301 || response.Header.Get("Location") != os.Getenv("PUBLIC_URL")+path {
+			return errors.New("ordinary HTTP route must preserve HTTPS redirect")
+		}
+	}
+	return nil
+}
+
 func main() {
 	operation := flag.String("operation", "prepare", "prepare|seed|probe-discovery|probe-topology|probe-callback-unavailable")
 	out := flag.String("out", "deploy/compose/runtime/a1-production", "ignored fixture output")
@@ -320,6 +351,10 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 		err = probe(ctx, *operation)
+	} else if *operation == "probe-http01" {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		err = probeHTTP01(ctx)
 	} else {
 		err = errors.New("unknown fixture operation")
 	}

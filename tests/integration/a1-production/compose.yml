@@ -48,6 +48,7 @@ services:
     environment:
       OIDC_ISSUER: ${CRANE_AUTH_URL}/realms/crane
       PUBLIC_URL: ${CRANE_PUBLIC_URL}
+      HTTP_PROBE_URL: http://crane.test:${A1_HTTP_PORT}
     volumes: [a1-fixture:/fixture:ro]
     networks: [backend, frontend]
   provisioner:
@@ -67,7 +68,10 @@ services:
     image: nginx:1.28-alpine
     ports:
       - "127.0.0.1:${A1_WEB_PORT}:${A1_WEB_PORT}"
-    volumes: [a1-fixture:/fixture:ro]
+      - "127.0.0.1:${A1_HTTP_PORT}:${A1_HTTP_PORT}"
+    volumes:
+      - a1-fixture:/fixture:ro
+      - ${A1_PROD_FIXTURE_DIR}/http-webroot:/var/www/acme:ro
     command: [nginx, -c, /fixture/ingress.conf, -g, "daemon off;"]
     networks:
       frontend: {aliases: [crane.test]}

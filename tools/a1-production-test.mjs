@@ -12,7 +12,7 @@ const directory = resolve(`deploy/compose/runtime/a1-production-${process.pid}`)
 const env = { ...process.env, GOCACHE: resolve('tools/.cache/gobuild'), GOMODCACHE: resolve('tools/.cache/gomod'), GOPATH: resolve('tools/.cache/gopath') };
 function run(command, args, extra = {}, capture = false) { const result = spawnSync(command, args, { env: { ...env, ...extra }, encoding: 'utf8', stdio: capture ? 'pipe' : 'inherit' }); if (result.error || result.status) throw Error('A1 production fixture command failed: ' + command); return result.stdout || ''; }
 async function port() { const server = createServer(); await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); const selected = server.address().port; await new Promise(resolve => server.close(resolve)); return selected; }
-const [webPort, directWebPort, directAuthPort] = await Promise.all([port(), port(), port()]);
+const [webPort, directWebPort, directAuthPort, httpPort] = await Promise.all([port(), port(), port(), port()]);
 run(go, ['run', './tests/integration/a1fixture', '--out', directory]);
 run(go, ['build', '-trimpath', '-o', join(directory, 'a1-fixture'), './tests/integration/a1fixture'], { GOOS: 'linux', GOARCH: 'amd64', CGO_ENABLED: '0' });
 const webOrigin = `https://crane.test:${webPort}`, authOrigin = webOrigin;
@@ -22,11 +22,14 @@ const configuration = {
   CRANE_PROXY_CIDRS: '172.16.0.0/12,192.168.0.0/16', CRANE_SECRET_DIR: join(directory, 'secrets').replaceAll('\\', '/'),
   CRANE_MQTT_DIR: directory.replaceAll('\\', '/'), CRANE_MQTT_ACL: join(directory, 'acl').replaceAll('\\', '/'),
   CRANE_INVENTORY_FILE: join(directory, 'inventory.json').replaceAll('\\', '/'), CRANE_FLEET_FILE: join(directory, 'fleet.json').replaceAll('\\', '/'),
-  A1_PROD_FIXTURE_DIR: directory.replaceAll('\\', '/'), A1_WEB_PORT: webPort,
+  A1_PROD_FIXTURE_DIR: directory.replaceAll('\\', '/'), A1_WEB_PORT: webPort, A1_HTTP_PORT: httpPort,
 };
 const envFile = join(directory, '.env');
 writeFileSync(join(directory, 'mosquitto.conf'), readFileSync('deploy/mosquitto/mosquitto.prod.conf', 'utf8').replaceAll('/mosquitto/certs', '/fixture/broker').replace('/mosquitto/acl', '/fixture/acl'));
-writeFileSync(join(directory, 'ingress.conf'), fixtureIngress(webPort));
+const httpWebroot = join(directory, 'http-webroot/.well-known/acme-challenge');
+mkdirSync(httpWebroot, { recursive: true, mode: 0o755 });
+writeFileSync(join(httpWebroot, 'fixture-http01'), 'fixture-http01', { mode: 0o644 });
+writeFileSync(join(directory, 'ingress.conf'), fixtureIngress(webPort, httpPort));
 const fixtureProject = `crane-a1-prod-${process.pid}`;
 if (fixtureProject === productionProject) throw Error('Anonymous fixture must not use the production project');
 const compose = ['compose', '--project-name', fixtureProject, '--env-file', envFile, '-f', 'deploy/compose/docker-compose.prod.yml', '-f', 'tests/integration/a1-production/compose.yml'];
@@ -60,6 +63,8 @@ try {
   run(docker, [...compose, 'run', '--rm', '--no-deps', 'provisioner']);
   run(docker, [...compose, 'run', '--rm', '--no-deps', 'provisioner']); // Repeat must be safe and retain exact client secret.
   run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-tool', '--operation', 'probe-discovery']);
+  run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-tool', '--operation', 'probe-http01']);
+  console.log('PRODUCTION_HTTP01_WEBROOT=PASS HTTP_REDIRECT=PASS HTTPS_ROUTES=UNCHANGED');
   run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-tool', '--operation', 'probe-callback-unavailable']);
   recreateDifferentIP('keycloak');
   run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-tool', '--operation', 'probe-discovery']);
