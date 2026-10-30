@@ -83,6 +83,6 @@ PostgreSQL、Mosquitto 不连接 external frontend；Cloud API 无宿主端口�
 
 ## 长期证书运维（A1.1-O1）
 
-负责人已确认正式A1.1上线验收。O1-1仅交付证书运维能力，不在本轮服务器执行：固定acme.sh 3.1.6 signed tag、LE/RSA2048、单域HTTP-01 webroot；先provision验证依赖与安装disabled timer，再经后续批准bootstrap到stage、人工adopt迁移，最后才允许启用六小时systemd timer。scheduled run不传force，依赖ARI；所有替换均有nginx前后校验、Crane/OIDC/远端TLS/Firebot健康门禁及自动回滚。不能现场在线安装最新版或启用DNS写凭据。
+负责人已确认正式A1.1上线验收。O1-1-R1仅交付证书运维能力，不在本轮服务器执行：固定acme.sh 3.1.6 signed tag、LE/RSA2048、单域HTTP-01 webroot；先provision验证依赖与安装disabled timer，安装前service须inactive且获取同一renewal lock，再经后续批准bootstrap到stage、人工adopt迁移。生产六小时timer必须等O1-4监控与告警完成并验收后，另行批准启用，本轮不enable。scheduled run不传force，依赖ARI；candidate至少保留604800秒有效期。所有替换均有持久pending journal、nginx前后校验、Crane/OIDC/远端TLS/Firebot健康门禁；意外终止后优先恢复旧pair并停止该轮续期，adopt marker仅在全部健康通过后原子写入。不能现场在线安装最新版或启用DNS写凭据。
 
 具体路径、HTTP路由/只读挂载、TrustAsia首次迁移、日志脱敏、暂停与故障恢复见[Phase1-A1.1证书自动续期与故障回滚](Phase1-A1.1证书自动续期与故障回滚.md)。shared ingress保持80/443所有权，不允许证书脚本restart/down/recreate入口或改Firebot server block。

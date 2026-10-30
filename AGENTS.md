@@ -1,6 +1,6 @@
 # 工程入口
 
-当前阶段：Phase1-A1.1-O1 Production Operations Hardening，仅实现O1-1证书生命周期管理。正式基线7565ee454953af1cbface7e15e23676bdb2b83dd，分支feature/phase1-a1-1-ops-hardening。负责人已确认A1.1上线验收，本轮不操作生产服务器、不签发真实证书、不修改生产TLS/DNS/Firebot、不创建真实账号，不进入A2。固定acme.sh 3.1.6 signed tag、HTTP-01 webroot、Let's Encrypt与RSA2048，保留既有8项CI及所有身份/安全门禁。baseline/phase1-a1和baseline/phase1-a1-1均不得移动；不得直接修改main或自动合并。O1-2至O1-5只规划，不混入O1-1实现。完成后等待负责人代码、安全、运维审查。保留Public例外，不引入真实凭据或客户资料。
+当前阶段：Phase1-A1.1-O1-1-R1，审查基线f0ed114bd24947f94dce2c44fa803020be27d5e2，仅修复证书持久事务、中断恢复与安装门禁。正式基线7565ee454953af1cbface7e15e23676bdb2b83dd，分支feature/phase1-a1-1-ops-hardening。负责人已确认A1.1上线验收，本轮不操作生产服务器、不签发真实证书、不修改生产TLS/DNS/Firebot、不创建真实账号、不enable timer，不进入A2。固定acme.sh 3.1.6 signed tag、HTTP-01 webroot、Let's Encrypt与RSA2048，保留既有8项CI及所有身份/安全门禁。baseline/phase1-a1和baseline/phase1-a1-1均不得移动；不得直接修改main或自动合并。O1-2至O1-5只规划，不混入O1-1实现；O1-4监控与告警验收前生产timer不得正式启用。完成后等待负责人R1审查。保留Public例外，不引入真实凭据或客户资料。
 不得改变现场边缘自治边界，不接真实 PLC，不实现真实远控，不公开 Edge 管理端口。
 协议先更新 contracts，Cloud 与 Edge 共用契约；数据库变更必须有序 migration。
 文档、提交、PR 优先中文，代码标识符英文。新功能应有有意义的测试。
