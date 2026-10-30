@@ -383,6 +383,22 @@ class CertificateLifecycle(unittest.TestCase):
         shutil.copyfile(self.m/'above.pem',self.stage/'fullchain.pem'); shutil.copyfile(self.m/'above.key',self.stage/'privkey.pem')
         self.run_mode('--adopt',success=True)
 
+    def test_failed_critical_write_still_revokes_scheduling(self):
+        backup=self.interrupted(adopted=True)
+        spec=importlib.util.spec_from_file_location('critical_state',ROOT/'deploy/scripts/cert-state.py'); module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        with patch.object(module,'atomic',side_effect=OSError('fixture full filesystem')):
+            with self.assertRaises(OSError): module.State(str(self.root/'home'),str(self.root/'prod')).latch('state-policy')
+        self.assertFalse((self.root/'home/.production-adopted').exists())
+        self.assertTrue((self.root/'home/.promotion-pending').exists()); self.assertTrue(backup.exists())
+        self.assert_recovered()
+        self.run_mode('--run',success=True)
+        self.assertFalse(any(c[0]=='acme.sh' for c in self.calls()))
+
+    def test_dangling_critical_latch_cannot_authorize_ca(self):
+        self.adopted(); (self.root/'home/.renew-critical').symlink_to(self.root/'missing-critical')
+        r=self.run_mode('--run'); self.assertNotEqual(r.returncode,0); self.assertIn('CRITICAL',r.stdout)
+        self.assertFalse(any(c[0]=='acme.sh' for c in self.calls()))
+
     def test_acme_diagnostics_are_sanitized_private_and_bounded(self):
         self.adopted()
         for reason in ['network','CA','challenge']:

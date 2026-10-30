@@ -163,9 +163,11 @@ class State:
 
     def latch(self, reason):
         assert reason in REASONS
+        # Revoke scheduling first, including when a full filesystem prevents the
+        # durable critical write. Pending recovery material remains untouched.
+        self.remove_marker()
         data = {'schema': 1, 'reason': reason, 'pending': '.promotion-pending' if os.path.lexists(self.pending) else None}
         atomic(self.critical, (json.dumps(data) + '\n').encode())
-        self.remove_marker()
 
     def adopt(self, fingerprint):
         assert FINGERPRINT.fullmatch(fingerprint) and not os.path.lexists(self.marker)

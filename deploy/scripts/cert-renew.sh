@@ -188,7 +188,7 @@ if [[ $mode == --check ]]; then
   openssl x509 -in "$PRODUCTION_TLS/fullchain.pem" -issuer -enddate -fingerprint -sha256 -noout 2>/dev/null
   result CHECKED; exit 0
 fi
-if [[ $mode == --run && -e $ACME_HOME/.renew-critical ]]; then result CRITICAL; exit 1; fi
+if [[ $mode == --run && ( -e $ACME_HOME/.renew-critical || -L $ACME_HOME/.renew-critical ) ]]; then result CRITICAL; exit 1; fi
 if [[ $mode == --run && ! -e $MARKER ]]; then result NOOP; exit 0; fi
 [[ ! -L $MARKER && -x $ACME_BIN && ! -L $ACME_BIN && $(stat -c %u "$ACME_BIN") == 0 ]] || fail
 (( (8#$(stat -c %a "$ACME_BIN") & 8#022) == 0 )) || fail
@@ -219,7 +219,7 @@ PY
     validate_pair "$STAGE/fullchain.pem" "$STAGE/privkey.pem" 1 || fail
     printf 'CERT_BOOTSTRAP=READY_FOR_ADOPTION\n';;
   --adopt)
-    [[ ! -e $ACME_HOME/.renew-critical && -f $ACME_HOME/certs/$DOMAIN/$DOMAIN.conf ]] || fail
+    [[ ! -e $ACME_HOME/.renew-critical && ! -L $ACME_HOME/.renew-critical && -f $ACME_HOME/certs/$DOMAIN/$DOMAIN.conf ]] || fail
     domain_policy >/dev/null 2>&1 || fail state-policy
     validate_pair "$STAGE/fullchain.pem" "$STAGE/privkey.pem" 1 || fail
     [[ ! -e $MARKER ]] || fail
