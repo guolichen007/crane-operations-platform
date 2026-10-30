@@ -1,6 +1,6 @@
 # 工程入口
 
-当前阶段：Phase1-A1.1 Premium Industrial Digital Twin UI，按负责人 2026-10-28 v2 任务书，基线 3525a351aa3677b15754541ff13e9f27e5e0685f，分支 feature/phase1-a1-1-premium-ui。升级现有 Vue / direct Three.js 架构，保留 OIDC/PKCE/BFF/PostgreSQL Session/CSRF/RBAC/Project Scope。baseline/phase1-a1 不得移动。按 UI0–UI8 分阶段提交；8 项 CI 与新 source SHA 镜像交付后停在负责人审查点，不自动合并 main，不部署服务器、不修改真实 DNS/TLS、不进入 A2。保留 Public 例外，不引入真实凭据或客户资料。
+当前阶段：Phase1-A1.1-O1 Production Operations Hardening，仅实现O1-1证书生命周期管理。正式基线7565ee454953af1cbface7e15e23676bdb2b83dd，分支feature/phase1-a1-1-ops-hardening。负责人已确认A1.1上线验收，本轮不操作生产服务器、不签发真实证书、不修改生产TLS/DNS/Firebot、不创建真实账号，不进入A2。固定acme.sh 3.1.6 signed tag、HTTP-01 webroot、Let's Encrypt与RSA2048，保留既有8项CI及所有身份/安全门禁。baseline/phase1-a1和baseline/phase1-a1-1均不得移动；不得直接修改main或自动合并。O1-2至O1-5只规划，不混入O1-1实现。完成后等待负责人代码、安全、运维审查。保留Public例外，不引入真实凭据或客户资料。
 不得改变现场边缘自治边界，不接真实 PLC，不实现真实远控，不公开 Edge 管理端口。
 协议先更新 contracts，Cloud 与 Edge 共用契约；数据库变更必须有序 migration。
 文档、提交、PR 优先中文，代码标识符英文。新功能应有有意义的测试。

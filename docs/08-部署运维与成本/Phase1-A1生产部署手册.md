@@ -80,3 +80,9 @@ PostgreSQL、Mosquitto 不连接 external frontend；Cloud API 无宿主端口�
 升级前完成双库备份与演练、记录原 image digests/source/schema。应用回滚只切换已审查的 A1 digest，并确认 DB schema 兼容；00004 为 forward-only，不能自动 down，也不能把 A0 development token 版当生产身份回滚目标。必要数据库恢复属于另行审批的事故流程；drill 工具只允许临时 DB，不能恢复覆盖正式库。
 
 官方依据：[Keycloak reverse proxy](https://www.keycloak.org/server/reverseproxy)、[hostname](https://www.keycloak.org/server/hostname)、[Admin REST API](https://www.keycloak.org/docs-api/latest/rest-api/index.html)、[Trivy SBOM](https://trivy.dev/latest/docs/supply-chain/sbom/)。
+
+## 长期证书运维（A1.1-O1）
+
+负责人已确认正式A1.1上线验收。O1-1仅交付证书运维能力，不在本轮服务器执行：固定acme.sh 3.1.6 signed tag、LE/RSA2048、单域HTTP-01 webroot；先provision验证依赖与安装disabled timer，再经后续批准bootstrap到stage、人工adopt迁移，最后才允许启用六小时systemd timer。scheduled run不传force，依赖ARI；所有替换均有nginx前后校验、Crane/OIDC/远端TLS/Firebot健康门禁及自动回滚。不能现场在线安装最新版或启用DNS写凭据。
+
+具体路径、HTTP路由/只读挂载、TrustAsia首次迁移、日志脱敏、暂停与故障恢复见[Phase1-A1.1证书自动续期与故障回滚](Phase1-A1.1证书自动续期与故障回滚.md)。shared ingress保持80/443所有权，不允许证书脚本restart/down/recreate入口或改Firebot server block。
