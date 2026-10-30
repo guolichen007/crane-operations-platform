@@ -61,6 +61,7 @@ if kind == 'openssl':
     if scenario=='remote-fingerprint' and is_new: current=(base/'old/fullchain.pem').read_bytes()
     sys.stdout.buffer.write(current); sys.exit(0)
 if kind == 'curl':
+    assert args[0]=='--disable'  # Ignore ambient root curlrc (TLS bypass, auth or logging).
     assert '-k' not in args and '--insecure' not in args
     url=next(x for x in args if x.startswith('http'))
     out=pathlib.Path(args[args.index('-o')+1])

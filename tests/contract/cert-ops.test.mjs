@@ -22,6 +22,7 @@ test('renewal is root-only, locks, fixed LE/RSA, no force/unsafe TLS/restart/cro
   const script = read('deploy/scripts/cert-renew.sh');
   for (const item of ['set -Eeuo pipefail', 'umask 077', 'flock -n 9', '--server letsencrypt', '--keylength 2048', '--install-cert', '--cron', '--bootstrap', '--adopt', '--run', '--check', '-verify_hostname', '-verify_return_error', 'CERT_BOOTSTRAP=READY_FOR_ADOPTION', 'result CRITICAL']) assert.ok(script.includes(item), item);
   assert.doesNotMatch(script, /--force|curl -k|InsecureSkipVerify|docker (?:restart|compose)|nginx -s stop|dns_tencent/);
+  for (const call of script.matchAll(/\bcurl\s+([^\n]+)/g)) assert.ok(call[1].startsWith('--disable '), 'curl must ignore ambient configuration');
   const unit = read('deploy/systemd/u-dao-crane-cert-renew.service');
   for (const item of ['Type=oneshot', 'User=root', 'UMask=0077', 'ExecStart=/usr/local/sbin/u-dao-crane-cert-renew --run', 'ProtectSystem=strict', 'AF_UNIX AF_INET AF_INET6']) assert.ok(unit.includes(item));
   assert.doesNotMatch(unit, /PrivateNetwork=true/);

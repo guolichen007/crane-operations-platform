@@ -50,7 +50,7 @@ PY
     openssl verify -purpose sslserver -verify_hostname "$DOMAIN" -untrusted "$cert" "$cert" >/dev/null 2>&1 || return 1
   fi
 }
-https_get() { curl --fail --silent --show-error --location --max-redirs 3 --proto '=https' --proto-redir '=https' --noproxy '*' --connect-timeout 5 --max-time 20 "$1" -o "$2" 2>/dev/null; }
+https_get() { curl --disable --fail --silent --show-error --location --max-redirs 3 --proto '=https' --proto-redir '=https' --noproxy '*' --connect-timeout 5 --max-time 20 "$1" -o "$2" 2>/dev/null; }
 health_once() {
   local expected=$1
   https_get "https://$DOMAIN/" "$work/crane" || return 1
@@ -177,7 +177,7 @@ case $mode in
     token=$(openssl rand -hex 24)
     probe="$WEBROOT/.well-known/acme-challenge/$token"
     printf '%s' "$token" >"$probe"; chmod 0644 "$probe"
-    ip=$(curl --fail --silent --show-error --proto '=http' --noproxy '*' --connect-timeout 5 --max-time 20 -w '%{remote_ip}' "http://$DOMAIN/.well-known/acme-challenge/$token" -o "$work/probe" 2>/dev/null) || fail
+    ip=$(curl --disable --fail --silent --show-error --proto '=http' --noproxy '*' --connect-timeout 5 --max-time 20 -w '%{remote_ip}' "http://$DOMAIN/.well-known/acme-challenge/$token" -o "$work/probe" 2>/dev/null) || fail
     python3 - "$ip" <<'PY' >/dev/null 2>&1 || fail
 import ipaddress, sys
 assert ipaddress.ip_address(sys.argv[1]).is_global
