@@ -1,0 +1,6 @@
+# Merge into the shared ingress project manually; never run this as a Crane stack.
+# Preserve every existing network/volume, including Firebot. Provision/renew never apply this.
+services:
+  nginx:
+    volumes:
+      - /srv/u-dao/platform/ingress/acme-webroot:/var/www/acme:ro

@@ -1,0 +1,11 @@
+[Unit]
+Description=Check Crane certificate renewal every six hours
+
+[Timer]
+OnCalendar=*-*-* 00,06,12,18:00:00
+RandomizedDelaySec=30m
+Persistent=true
+Unit=u-dao-crane-cert-renew.service
+
+[Install]
+WantedBy=timers.target

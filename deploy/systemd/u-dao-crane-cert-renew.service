@@ -1,0 +1,27 @@
+[Unit]
+Description=U-Dao Crane guarded certificate renewal
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+Environment=ACME_PACKAGED=1
+Environment=AUTO_UPGRADE=0
+ExecStart=/usr/local/sbin/u-dao-crane-cert-renew --run
+TimeoutStartSec=30min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/srv/u-dao/secrets/crane-ops/acme /srv/u-dao/platform/ingress/acme-webroot
+ReadWritePaths=-/srv/u-dao/platform/ingress/tls/crane
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+

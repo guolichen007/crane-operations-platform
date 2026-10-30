@@ -1,0 +1,14 @@
+# Add this Crane-only HTTP server to shared ingress after operator review.
+# A server-level return would bypass the challenge location: redirect only in /.
+server {
+  listen 80;
+  server_name crane.youdaozd.com;
+  location ^~ /.well-known/acme-challenge/ {
+    root /var/www/acme;
+    default_type text/plain;
+    try_files $uri =404;
+    access_log off;
+    add_header Cache-Control "no-store" always;
+  }
+  location / { return 301 https://crane.youdaozd.com$request_uri; }
+}
