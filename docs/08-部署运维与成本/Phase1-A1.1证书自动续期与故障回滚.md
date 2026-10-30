@@ -47,7 +47,7 @@ Bootstrap会写入一次性probe文件，使用固定公网HTTP域名、禁用�
 | INGRESS | u-dao-ingress-nginx-1（固定） |
 | 生产文件 | fullchain.pem / privkey.pem |
 
-路径环境变量供受控打包和临时隔离测试使用，正式运维保持默认；禁止指向符号链接、共享可写目录或其他系统TLS路径。ACME_HOME和STAGE为root:root 0700，marker/lock 0600。共享入口应绑定TLS目录，而不是把单个证书文件inode固定成file bind mount；逐文件rename才能让ingress看到新文件。
+路径环境变量供受控打包和临时隔离测试使用，正式运维保持默认；禁止指向符号链接、共享可写目录或其他系统TLS路径。ACME_HOME、WEBROOT和PRODUCTION_TLS三根目录必须互不重合、互不嵌套，避免bootstrap/stage写入生产或把私有状态混入webroot；错误配置在CA请求前拒绝。ACME_HOME和STAGE为root:root 0700，marker/lock 0600。共享入口应绑定TLS目录，而不是把单个证书文件inode固定成file bind mount；逐文件rename才能让ingress看到新文件。
 
 后续经批准由root调用 /usr/local/sbin/u-dao-crane-cert-renew：
 

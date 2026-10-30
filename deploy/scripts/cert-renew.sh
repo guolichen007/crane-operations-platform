@@ -16,6 +16,7 @@ work= rollback= probe= promoting=0 new_marker=0 completed=0 retain_rollback=0
 result() { printf '%s domain=%s CERT_RENEW_RESULT=%s\n' "$(date -u +%FT%TZ)" "$DOMAIN" "$1"; }
 fail() { result FAIL; exit 1; }
 safe_path() { [[ $1 == /* && $1 != / && $1 != *[[:space:]]* && $(realpath -m -- "$1") == "$1" ]]; }
+disjoint() { [[ $1 != "$2" && $1/ != "$2/"* && $2/ != "$1/"* ]]; }
 private_dir() { [[ -d $1 && ! -L $1 && $(stat -c %u "$1") == 0 && $(stat -c %a "$1") == 700 ]]; }
 cleanup() {
   [[ -z $probe ]] || rm -f -- "$probe"
@@ -149,6 +150,9 @@ PY
 }
 [[ $# == 1 && $mode =~ ^--(bootstrap|adopt|run|check)$ && $EUID == 0 ]] || fail
 for path in "$ACME_HOME" "$WEBROOT" "$PRODUCTION_TLS" "$STAGE"; do safe_path "$path" || fail; done
+disjoint "$ACME_HOME" "$PRODUCTION_TLS" || fail
+disjoint "$ACME_HOME" "$WEBROOT" || fail
+disjoint "$WEBROOT" "$PRODUCTION_TLS" || fail
 private_dir "$ACME_HOME" || fail
 [[ -f $ACME_HOME/.renew.lock && ! -L $ACME_HOME/.renew.lock ]] || fail
 exec 9<"$ACME_HOME/.renew.lock"

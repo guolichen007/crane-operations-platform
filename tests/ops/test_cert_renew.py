@@ -156,6 +156,15 @@ class CertificateLifecycle(unittest.TestCase):
         self.assertFalse(any(c[0]=='acme.sh' for c in self.calls()))
         self.assert_old()
 
+    def test_overlapping_state_webroot_or_production_paths_refuse_before_ca(self):
+        original=self.env.copy()
+        for key, value in [('PRODUCTION_TLS',str(self.stage)),('PRODUCTION_TLS',str(self.root/'home')),('WEBROOT',str(self.root/'home'))]:
+            with self.subTest(key=key,value=value):
+                self.env={**original,key:value}; (self.root/'calls').write_text('')
+                r=self.run_mode('--bootstrap'); self.assertNotEqual(r.returncode,0)
+                self.assertFalse(any(c[0]=='acme.sh' for c in self.calls())); self.assert_old()
+        self.env=original
+
     def test_certificate_file_cannot_publish_embedded_private_key(self):
         with (self.stage/'fullchain.pem').open('ab') as stream: stream.write((self.stage/'privkey.pem').read_bytes())
         r=self.run_mode('--adopt')
