@@ -5,16 +5,23 @@
 
 ---
 
-## 1. 产品定位（六套能力，不再漂）
+## 1. 产品定位（七大业务域 + 三个技术底座，不再漂）
 
-从「Premium 展示 + 只读台账 + 通用沙盘」升级为**全国行车数字资产运营平台**：
+从「Premium 展示 + 只读台账 + 通用沙盘」升级为**全国行车综合管理平台**。
 
-1. **资产运营**：行车 / Equipment / 位置 / 型号 / 档案
-2. **实时运行**：在线 / 状态 / X/Y/Z / 载荷 / 告警
-3. **数字孪生**：3D 行车 / Equipment / 传感器 / 系统拓扑
-4. **运维**：点检 / 工单 / 更换 / 标定 / 软件版本
-5. **历史取证**：趋势 / Timeline / Revision / Replay / Incident Review
-6. **合规治理**：使用登记 / 检验 / 日管控 / 周排查 / 月调度 / 审计
+七大业务域：
+
+| 域 | 平台回答的问题 |
+|----|--------------|
+| 1 项目交付与资源排期 | 新项目什么时候做？谁做？有没有施工冲突？ |
+| 2 资产运营 | 公司有多少行车、装在哪、什么配置？ |
+| 3 实时运行 | 现在谁在线、怎么运行、哪里告警？ |
+| 4 数字孪生 | 真实 Equipment 在哪、状态、相互关系？ |
+| 5 运维可靠性 | 什么时候检查/保养/维修/更换？ |
+| 6 历史取证 | 故障时什么配置、什么版本、怎样运动？ |
+| 7 合规治理 | 登记/检验/档案/日周月是否完整？ |
+
+三个技术底座：**Identity/RBAC/Audit** · **Data/Search/History** · **Documents/Import/Export**。
 
 ## 2. 核心架构（已冻结）
 
@@ -65,19 +72,21 @@ WebGL（不追 WebGPU）；PBR/HDR/ACES/soft shadow/outline/selective bloom（�
 | P1-4 Historical Configuration Resolver | resolve(assetId, at)；installation/relation/binding 加 valid_from/valid_to；revision 加 effective_at/recorded_at；semantic_slot 双解析 |
 | P1-5 Runtime Performance Gate | FPS/DPR/DrawCalls/Triangles/交互延迟/Long Task 阈值 + RuntimeFrameAdapter（display decimation，UI 可丢帧服务器历史不丢） |
 
-## 4. 实施路线（R2-1 → R2-9）
+## 4. 实施路线（G0-R1 + B1 → B10，十批）
 
-| Stage | 交付 |
+| Batch | 交付 |
 |-------|------|
-| R2-1 | contracts + migrations(00005-00008) + ownership + capability + equipment schema + 时间质量持久化 |
-| R2-2 | Asset/Location/Equipment/Catalog CRUD API |
-| R2-3 | Revision + temporal relations/bindings + ConfigurationResolver + Timeline |
-| R2-4 | 钢丝绳/点检/工单/合规/标定/软件/文档/导入导出 |
-| R2-5 | 工业 Shell/DataGrid/表单/全局搜索/Operations Map |
-| R2-6 | Asset 360 + Equipment Center + 编辑工作流 |
-| R2-7 | Semantic Twin + GLB + 传感器可视化 + 系统拓扑 |
-| R2-8 | History Explorer + Replay + Incident Review |
-| R2-9 | 性能/bundle/无障碍/安全/视觉回归/REA 前后对比/迁移演练/备份恢复/文档 |
+| G0-R1 | 主计划/能力地图/技术来源/治理（本批，只文档） |
+| B1 | contracts + migrations(00005起) + ownership + capability + equipment schema + 时间质量持久化 |
+| B2 | 项目组合与排期（Project Intake/生命周期/排期引擎/冲突/风险·问题·变更） |
+| B3 | Asset/Location/Equipment/Catalog 后端 CRUD |
+| B4 | 工业 Shell/DataGrid/表单/全局搜索/Operations Map/排期可视化 |
+| B5 | 钢丝绳/点检/PM/工单/标定/软件/供应商/质保/备件/合规 |
+| B6 | Revision + Timeline + 时态关系 + ConfigurationResolver + History API + 遥测时间质量 |
+| B7 | Semantic Twin + GLB + 传感器可视化 + 系统拓扑 |
+| B8 | History Explorer + Replay + Incident Review |
+| B9 | 验收/Punch List/Project→Asset Handover/导入导出/文档 |
+| B10 | 性能/bundle/无障碍/安全/视觉回归/REA 前后对比/迁移演练/备份恢复 |
 
 ## 5. 四条验收链（负责人最终盯的重点）
 
@@ -99,16 +108,28 @@ WebGL（不追 WebGPU）；PBR/HDR/ACES/soft shadow/outline/selective bloom（�
 - 业务档案不自动 purge；telemetry 默认不 purge；容量 trigger（rows/day、P95、disk）需真实数据校准。
 - AGPL（realvirtual/xeokit）只学交互不复制；Open MCT（Other）只学模式。
 
-## 7. 验证与环境约束（诚实）
+## 7. 验证与环境约束（修正版）
 
-- **沙盒已具备**：Node 22.23.4 + npm；contracts 生成（`node tools/codegen/contracts.mjs`）为 Node 脚本可跑；前端 lint/test/build 可跑。
-- **沙盒缺失**：Go 1.27.3、Docker Compose、psql、浏览器（Playwright e2e/视觉回归）。
-- 后果：R2-1+ 的 Go 编译/测试、migration 运行、Compose 集成、浏览器 e2e/视觉回归将如实标 **NOT_RUN**（不写 PASS），需在具备 Go/Docker/PG/浏览器的完整环境（用户主机或 CI）执行验证。
-- 建议：代码实现阶段请确认可提供 Go 1.27.3 + Docker Compose + PostgreSQL 的验证环境，否则我只能在沙盒内完成 contracts 生成 + 前端 lint/build 的验证，其余标 NOT_RUN。
+| 工具 | 状态 |
+|------|------|
+| Node | 22.23.4 可用 |
+| Go | 1.27.3 可用（用户态已装） |
+| REA | 6.8.0 可用 |
+| Docker daemon | 硬限制不可用（NoNewPrivs=1 非特权容器） |
+| PostgreSQL | 用户态可装（未冻结，项目用 postgres:17.8） |
+| 浏览器 | 待探测（Playwright e2e/视觉回归需装 chromium） |
+
+- **CC 本地可跑**：contracts 生成（Node）、Go 编译/单测（Go 已装）、migration（装 PG 用户态后）、前端 lint/test/build。
+- **归 GitHub CI（权威证据）**：Docker Compose 集成（mosquitto/keycloak/postgres）、完整 e2e、视觉回归。
+- **生产服务器**：只做 B10 release rehearsal（isolated DB restore/migration rehearsal/backup restore），禁开发/实验。
+- 未执行一律标 NOT_RUN，不写 PASS。
 
 ## 8. 已交付文档清单
 
-- `Phase1-A1.1-R2-成熟资产运营平台设计蓝图.md`（主蓝图，含四轮升级 + 5 P1 收口）
-- `docs/架构/`：行车数字资产图谱（ERD + 完整实例）、设备与运行数据边界、自动化设备分类与字段模型、前端工业工作台与数字孪生规范、工业历史数据与回放架构、前端性能与Bundle预算、历史数据保留与容量规划
-- `docs/产品设计/`：成熟平台对标研究、REA前端优秀平台取证报告
-- `AGENTS.md`：阶段已更新为 Phase1-A1.1-R2，LOCAL_ONLY 边界
+- `Phase1-A1.1-R2-成熟资产运营平台设计蓝图.md`（主蓝图，四轮 + 5 P1 收口）
+- `Phase1-A1.1-R2-方案整理与实施蓝图.md`（本文件，七域方案总览）
+- `docs/架构/`：行车数字资产图谱、设备与运行数据边界、自动化设备分类与字段模型、前端工业工作台与数字孪生规范、工业历史数据与回放架构、前端性能与Bundle预算、历史数据保留与容量规划、技术模式与REA来源登记
+- `docs/产品设计/`：成熟平台对标研究、REA前端优秀平台取证报告、成熟平台能力地图、项目交付与资源排期设计
+- `docs/项目管理/`：分阶段实施与审查计划、当前状态与交接
+- `AGENTS.md`：阶段=R2，LOCAL_ONLY 边界
+- `docs/会话上下文.md`：本地，DO NOT COMMIT
