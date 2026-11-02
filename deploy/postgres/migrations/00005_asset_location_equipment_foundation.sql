@@ -32,13 +32,15 @@ CREATE TABLE manufacturers (
 CREATE INDEX manufacturers_project ON manufacturers(project_id);
 
 -- ---------------------------------------------------------------------------
--- Asset master-data additive extension (existing asset_devices anchor)
+-- Asset master-data additive extension (existing asset_devices anchor).
+-- manufacturer_id is a catalog reference to manufacturers; snapshots stay the
+-- authoritative frozen data so a later catalog rename never rewrites history.
 -- ---------------------------------------------------------------------------
 ALTER TABLE asset_devices
   ADD COLUMN asset_code text,
   ADD COLUMN asset_type text NOT NULL DEFAULT 'CRANE',
   ADD COLUMN asset_status text NOT NULL DEFAULT 'ACTIVE' CHECK (asset_status IN ('DRAFT','ACTIVE','OUT_OF_SERVICE','RETIRED')),
-  ADD COLUMN manufacturer_id text,
+  ADD COLUMN manufacturer_id text REFERENCES manufacturers(id),
   ADD COLUMN manufacturer_snapshot text NOT NULL DEFAULT '',
   ADD COLUMN brand_snapshot text NOT NULL DEFAULT '',
   ADD COLUMN model_snapshot text NOT NULL DEFAULT '',
@@ -55,13 +57,17 @@ ALTER TABLE asset_devices
   ADD COLUMN inspection_valid_until date,
   ADD COLUMN version bigint NOT NULL DEFAULT 1;
 
+-- asset_code is project-unique; NULL (unconfigured) is allowed any number of times.
+CREATE UNIQUE INDEX asset_devices_project_code ON asset_devices(project_id, asset_code) WHERE asset_code IS NOT NULL;
+
 -- ---------------------------------------------------------------------------
--- Location hierarchy
+-- Location hierarchy. A parent location must belong to the same project, so the
+-- composite FK pins (parent_id, project_id) to the parent's (id, project_id).
 -- ---------------------------------------------------------------------------
 CREATE TABLE asset_locations (
   id text PRIMARY KEY,
   project_id text NOT NULL REFERENCES projects(id),
-  parent_id text REFERENCES asset_locations(id),
+  parent_id text,
   kind text NOT NULL CHECK (kind IN ('SITE','PLANT','WORKSHOP','BAY','RUNWAY','OTHER')),
   code text NOT NULL DEFAULT '',
   name text NOT NULL,
@@ -82,12 +88,16 @@ CREATE TABLE asset_locations (
   version bigint NOT NULL DEFAULT 1,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE(project_id, code)
+  UNIQUE(project_id, code),
+  UNIQUE(id, project_id)
 );
 CREATE INDEX asset_locations_project ON asset_locations(project_id);
+ALTER TABLE asset_locations ADD CONSTRAINT asset_locations_parent_project_fk
+  FOREIGN KEY (parent_id, project_id) REFERENCES asset_locations (id, project_id);
 
 -- ---------------------------------------------------------------------------
--- Asset installation history (asset <-> location, one active at a time)
+-- Asset installation history (asset <-> location, one active at a time).
+-- An asset must never be installed at a location of another project.
 -- ---------------------------------------------------------------------------
 CREATE TABLE asset_installations (
   id text PRIMARY KEY,
@@ -106,6 +116,22 @@ CREATE TABLE asset_installations (
 );
 CREATE INDEX asset_installations_asset ON asset_installations(asset_id, valid_from);
 CREATE UNIQUE INDEX asset_installations_one_active ON asset_installations(asset_id) WHERE valid_to IS NULL;
+
+-- Authoritative project-boundary guard: the asset and the location must share a project.
+CREATE FUNCTION asset_installation_same_project() RETURNS trigger AS $$
+BEGIN
+  IF (SELECT a.project_id FROM asset_devices a WHERE a.id = NEW.asset_id)
+      IS DISTINCT FROM
+     (SELECT l.project_id FROM asset_locations l WHERE l.id = NEW.location_id) THEN
+    RAISE EXCEPTION 'asset installation crosses project boundary';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER asset_installation_same_project_trigger
+  BEFORE INSERT OR UPDATE OF asset_id, location_id ON asset_installations
+  FOR EACH ROW EXECUTE FUNCTION asset_installation_same_project();
 
 -- ---------------------------------------------------------------------------
 -- Equipment catalog (type templates; never field serial/pose/runtime here)
@@ -130,7 +156,11 @@ CREATE INDEX equipment_catalog_items_project ON equipment_catalog_items(project_
 CREATE INDEX equipment_catalog_items_type ON equipment_catalog_items(type_code);
 
 -- ---------------------------------------------------------------------------
--- Asset equipment installation (the maintainable, replaceable equipment instance)
+-- Asset equipment installation (the maintainable, replaceable equipment instance).
+-- equipment_code is a business number and stays permanently unique per asset:
+-- an installation instance is a historical record and is never deleted, so the
+-- code cannot be reused without making history ambiguous. semantic_slot is the
+-- reusable slot; the code is the immutable instance label.
 -- ---------------------------------------------------------------------------
 CREATE TABLE asset_equipment_installations (
   id text PRIMARY KEY,
@@ -164,24 +194,26 @@ CREATE TABLE asset_equipment_installations (
   pitch_deg double precision,
   yaw_deg double precision,
   pose_source text NOT NULL DEFAULT 'MANUAL' CHECK (pose_source IN ('MANUAL','CAD','SURVEY','CALIBRATED')),
-  pose_accuracy_m double precision,
+  pose_accuracy_m double precision CHECK (pose_accuracy_m >= 0),
   notes text NOT NULL DEFAULT '',
   version bigint NOT NULL DEFAULT 1,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE(asset_id, equipment_code),
+  UNIQUE(id, asset_id),
   CHECK (valid_to IS NULL OR valid_to > valid_from)
 );
 CREATE INDEX asset_equipment_installations_asset ON asset_equipment_installations(asset_id, valid_from);
 
 -- ---------------------------------------------------------------------------
--- Equipment relations (both ends must belong to the same asset)
+-- Equipment relations. Both ends must belong to the same asset: the composite
+-- FK pins (installation_id, asset_id) to the installation's (id, asset_id).
 -- ---------------------------------------------------------------------------
 CREATE TABLE equipment_relations (
   id text PRIMARY KEY,
   asset_id text NOT NULL REFERENCES asset_devices(id),
-  from_equipment_installation_id text NOT NULL REFERENCES asset_equipment_installations(id),
-  to_equipment_installation_id text NOT NULL REFERENCES asset_equipment_installations(id),
+  from_equipment_installation_id text NOT NULL,
+  to_equipment_installation_id text NOT NULL,
   relation_type text NOT NULL CHECK (relation_type IN ('CONTAINS','MOUNTED_ON','DRIVES','CONTROLS','SENSES','MONITORS','POWERED_BY','NETWORKED_TO','PROTECTS','BACKS_UP')),
   valid_from timestamptz NOT NULL,
   valid_to timestamptz,
@@ -190,7 +222,9 @@ CREATE TABLE equipment_relations (
   version bigint NOT NULL DEFAULT 1,
   created_at timestamptz NOT NULL DEFAULT now(),
   CHECK (valid_to IS NULL OR valid_to > valid_from),
-  CHECK (from_equipment_installation_id <> to_equipment_installation_id)
+  CHECK (from_equipment_installation_id <> to_equipment_installation_id),
+  FOREIGN KEY (from_equipment_installation_id, asset_id) REFERENCES asset_equipment_installations (id, asset_id),
+  FOREIGN KEY (to_equipment_installation_id, asset_id) REFERENCES asset_equipment_installations (id, asset_id)
 );
 CREATE INDEX equipment_relations_asset ON equipment_relations(asset_id, valid_from);
 

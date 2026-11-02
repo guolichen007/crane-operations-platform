@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -21,6 +21,14 @@ function run(cmd, args, extra = {}, capture = false) {
 }
 function compose(args, extra = {}, capture = false) { return run(docker, [...composeArgs, ...args], { ...testConfig, ...extra }, capture); }
 function db(sql) { return compose(['exec', '-T', 'postgres', 'psql', '-U', 'crane', '-d', 'crane', '-v', 'ON_ERROR_STOP=1', '-At', '-c', sql], {}, true); }
+// The highest migration version is derived from the on-disk migration files, so
+// adding 00007+ never leaves a stale hard-coded schema version behind.
+function expectedSchemaVersion() {
+  const versions = readdirSync(resolve('deploy/postgres/migrations'))
+    .filter((name) => /^\d{5}_.*\.sql$/.test(name))
+    .map((name) => Number(name.slice(0, 5)));
+  return String(Math.max(...versions));
+}
 const pause = (ms) => new Promise((done) => setTimeout(done, ms));
 async function api(path, method = 'GET', expected = 200) {
   const res = await fetch(base + '/api/v1/' + path, { method, headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(5000) });
@@ -122,9 +130,10 @@ try {
   const restart = Date.now();
   compose(['up', '-d', '--force-recreate', '--no-deps', 'device-simulator']);
   await until('20 independent online device identities', async () => (await simulated()).filter((d) => d.presence.connectivity === 'MQTT_CONNECTED' && Date.parse(d.updatedAt) >= restart).length === 20);
-  assert.equal(db('SELECT max(version_id) FROM goose_db_version'), '4');
+  const schemaVersion = expectedSchemaVersion();
+  assert.equal(db('SELECT max(version_id) FROM goose_db_version'), schemaVersion);
   assert.equal(db('SELECT count(*) FROM project_memberships'), '0');
-  record('A1 migration applied without granting projects to legacy development identities');
+  record(`R2 B1 schema gate: goose applied through migration ${schemaVersion}; no projects granted to legacy development identities`);
   record('20 simulated devices Edge → MQTT5 TLS → PostgreSQL typed Shadow');
   await browserCheck();
   await until('browser lease closes with grace', async () => (await shadow()).upstreamStatus === 'SILENT');

@@ -10,7 +10,8 @@ ALTER TABLE telemetry_samples
   ADD COLUMN sequence bigint,
   ADD COLUMN late_arrival interval,
   ADD COLUMN clock_skew_ms bigint,
-  ADD COLUMN quality_flags text[] NOT NULL DEFAULT '{}';
+  ADD COLUMN quality_state text CHECK (quality_state IN ('GOOD','UNKNOWN','DEGRADED')),
+  ADD COLUMN quality_flags text[];
 CREATE INDEX telemetry_device_received ON telemetry_samples(device_id, cloud_received_at DESC);
 
 -- ---------------------------------------------------------------------------
@@ -30,7 +31,8 @@ CREATE TABLE entity_revisions (
   request_id text NOT NULL DEFAULT '',
   changed_fields text[] NOT NULL DEFAULT '{}',
   snapshot_json jsonb NOT NULL DEFAULT '{}'::jsonb,
-  snapshot_sha256 text
+  snapshot_sha256 text,
+  UNIQUE(entity_type, entity_id, revision)
 );
 CREATE INDEX entity_revisions_entity ON entity_revisions(entity_type, entity_id, revision DESC);
 CREATE INDEX entity_revisions_asset ON entity_revisions(asset_id, recorded_at);
@@ -59,7 +61,7 @@ CREATE INDEX asset_timeline_events_asset ON asset_timeline_events(asset_id, occu
 CREATE TABLE equipment_runtime_bindings (
   id text PRIMARY KEY,
   asset_id text NOT NULL REFERENCES asset_devices(id),
-  equipment_installation_id text NOT NULL REFERENCES asset_equipment_installations(id),
+  equipment_installation_id text NOT NULL,
   source_kind text NOT NULL,
   source_ref text NOT NULL,
   telemetry_namespace text,
@@ -69,7 +71,8 @@ CREATE TABLE equipment_runtime_bindings (
   valid_to timestamptz,
   created_by_deployment boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
-  CHECK (valid_to IS NULL OR valid_to > valid_from)
+  CHECK (valid_to IS NULL OR valid_to > valid_from),
+  FOREIGN KEY (equipment_installation_id, asset_id) REFERENCES asset_equipment_installations (id, asset_id)
 );
 CREATE INDEX equipment_runtime_bindings_asset ON equipment_runtime_bindings(asset_id, valid_from);
 CREATE UNIQUE INDEX equipment_runtime_bindings_one_active ON equipment_runtime_bindings(equipment_installation_id) WHERE valid_to IS NULL;

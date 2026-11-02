@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"testing"
+	"time"
 )
 
 func database(t *testing.T) *sql.DB {
@@ -238,5 +239,110 @@ INSERT INTO audit_logs(user_id,device_id,action,result) VALUES('dev-admin','SIM-
 	}
 	if count(t, db, `SELECT count(*) FROM devices`) != 2 || count(t, db, `SELECT count(*) FROM devices WHERE id IN ('SIM-021','TEST-001')`) != 2 {
 		t.Fatal("reset exceeded original20")
+	}
+}
+
+func seedTwoProjects(t *testing.T, db *sql.DB) {
+	t.Helper()
+	if _, e := db.Exec(`INSERT INTO projects(id,tenant_id,name) VALUES('P-A','demo','A'),('P-B','demo','B')`); e != nil {
+		t.Fatal(e)
+	}
+}
+
+func TestAssetCodeProjectUnique(t *testing.T) {
+	db := database(t)
+	migrateDB(t, db, 6)
+	seedTwoProjects(t, db)
+	// Same asset_code in different projects is allowed.
+	if _, e := db.Exec(`INSERT INTO asset_devices(id,project_id,display_name,lifecycle,asset_code) VALUES('ASSET-A1','P-A','A1','PLANNED','QD-001'),('ASSET-B1','P-B','B1','PLANNED','QD-001')`); e != nil {
+		t.Fatal("same asset_code in different projects rejected", e)
+	}
+	// Duplicate asset_code within the same project is rejected.
+	if _, e := db.Exec(`INSERT INTO asset_devices(id,project_id,display_name,lifecycle,asset_code) VALUES('ASSET-A2','P-A','A2','PLANNED','QD-001')`); e == nil {
+		t.Fatal("duplicate asset_code in same project accepted")
+	}
+}
+
+func TestLocationParentProjectInvariant(t *testing.T) {
+	db := database(t)
+	migrateDB(t, db, 6)
+	seedTwoProjects(t, db)
+	if _, e := db.Exec(`INSERT INTO asset_locations(id,project_id,kind,name) VALUES('LOC-A1','P-A','SITE','A1'),('LOC-B1','P-B','BAY','B1')`); e != nil {
+		t.Fatal(e)
+	}
+	// A child location in project B must not point at a parent in project A.
+	if _, e := db.Exec(`INSERT INTO asset_locations(id,project_id,parent_id,kind,name) VALUES('LOC-B2','P-B','LOC-A1','BAY','B2')`); e == nil {
+		t.Fatal("cross-project location parent accepted")
+	}
+}
+
+func seedTwoAssetsAndEquipment(t *testing.T, db *sql.DB) {
+	t.Helper()
+	seedTwoProjects(t, db)
+	if _, e := db.Exec(`INSERT INTO asset_devices(id,project_id,display_name,lifecycle) VALUES('ASSET-A1','P-A','A1','PLANNED'),('ASSET-B1','P-B','B1','PLANNED')`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := db.Exec(`INSERT INTO equipment_types(type_code,display_name,domain) VALUES('MOTOR','Motor','MECHANICAL')`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := db.Exec(`INSERT INTO asset_equipment_installations(id,asset_id,equipment_code,type_code,valid_from) VALUES('EQ-A1','ASSET-A1','M-1','MOTOR',now()),('EQ-B1','ASSET-B1','M-1','MOTOR',now())`); e != nil {
+		t.Fatal(e)
+	}
+}
+
+func TestEquipmentRelationSameAssetInvariant(t *testing.T) {
+	db := database(t)
+	migrateDB(t, db, 6)
+	seedTwoAssetsAndEquipment(t, db)
+	// from/asset and to/asset must be consistent; a cross-asset relation is rejected.
+	if _, e := db.Exec(`INSERT INTO equipment_relations(id,asset_id,from_equipment_installation_id,to_equipment_installation_id,relation_type,valid_from) VALUES('REL-1','ASSET-A1','EQ-A1','EQ-B1','DRIVES',now())`); e == nil {
+		t.Fatal("cross-asset equipment relation accepted")
+	}
+}
+
+func TestRuntimeBindingSameAssetInvariant(t *testing.T) {
+	db := database(t)
+	migrateDB(t, db, 6)
+	seedTwoAssetsAndEquipment(t, db)
+	// A runtime binding must not pair an asset with another asset's equipment.
+	if _, e := db.Exec(`INSERT INTO equipment_runtime_bindings(id,asset_id,equipment_installation_id,source_kind,source_ref,valid_from) VALUES('RB-1','ASSET-A1','EQ-B1','MQTT','ref',now())`); e == nil {
+		t.Fatal("cross-asset runtime binding accepted")
+	}
+}
+
+func TestAssetInstallationLocationProjectInvariant(t *testing.T) {
+	db := database(t)
+	migrateDB(t, db, 6)
+	seedTwoProjects(t, db)
+	if _, e := db.Exec(`INSERT INTO asset_devices(id,project_id,display_name,lifecycle) VALUES('ASSET-A1','P-A','A1','PLANNED')`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := db.Exec(`INSERT INTO asset_locations(id,project_id,kind,name) VALUES('LOC-B1','P-B','SITE','B1')`); e != nil {
+		t.Fatal(e)
+	}
+	// An asset must never be installed at another project's location.
+	if _, e := db.Exec(`INSERT INTO asset_installations(id,asset_id,location_id,valid_from) VALUES('INST-1','ASSET-A1','LOC-B1',now())`); e == nil {
+		t.Fatal("cross-project asset installation accepted")
+	}
+}
+
+func TestLegacyTelemetryQualityStaysNull(t *testing.T) {
+	db := database(t)
+	migrateDB(t, db, 6)
+	if _, e := db.Exec(`INSERT INTO devices(id,project_id,source_mode) VALUES('SIM-001','Project-A','SIMULATION')`); e != nil {
+		t.Fatal(e)
+	}
+	// Pre-00006 three-column insert: time-quality columns stay NULL, never a fake GOOD.
+	if _, e := db.Exec(`INSERT INTO telemetry_samples(device_id,sampled_at,payload_json) VALUES('SIM-001',now(),'{}')`); e != nil {
+		t.Fatal(e)
+	}
+	var sourceSent, received *time.Time
+	var bootID, qualityState *string
+	var qualityFlags *[]string
+	if e := db.QueryRow(`SELECT source_sent_at,cloud_received_at,boot_id,quality_state,quality_flags FROM telemetry_samples WHERE device_id='SIM-001'`).Scan(&sourceSent, &received, &bootID, &qualityState, &qualityFlags); e != nil {
+		t.Fatal(e)
+	}
+	if sourceSent != nil || received != nil || bootID != nil || qualityState != nil || qualityFlags != nil {
+		t.Fatal("legacy telemetry fabricated time-quality metadata")
 	}
 }

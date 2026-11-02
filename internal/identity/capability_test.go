@@ -36,7 +36,7 @@ func TestRoleCapabilityBundles(t *testing.T) {
 	mustLack(t, "maintainer", CapAssetMasterWrite, CapLocationWrite, CapCatalogWrite, CapAssetRetire, CapComplianceWrite, CapHandoverWrite)
 
 	mustHave(t, "platform_admin", CapRead, CapWatch, CapInspectionWrite, CapMaintenanceWrite, CapWireRopeWrite, CapDocumentWrite,
-		CapAssetMasterWrite, CapLocationWrite, CapCatalogWrite, CapAssetRetire, CapComplianceWrite, CapHandoverWrite)
+	         CapAssetMasterWrite, CapLocationWrite, CapCatalogWrite, CapAssetRetire, CapComplianceWrite, CapHandoverWrite)
 }
 
 // Equipment Condition is TELEMETRY_OWNED; no role has a direct write capability.
@@ -67,8 +67,8 @@ func TestLegacyActionCompat(t *testing.T) {
 	if !Allowed("maintainer", "read") || Allowed("maintainer", "admin") {
 		t.Fatal("maintainer legacy action mapping")
 	}
-	if !Allowed("platform_admin", "admin") {
-		t.Fatal("platform_admin admin action mapping")
+	if Allowed("platform_admin", "admin") {
+		t.Fatal("legacy coarse admin action must be fail-closed even for platform_admin")
 	}
 }
 

@@ -18,18 +18,19 @@ type User struct {
 	ID, DisplayName string
 }
 
-// Allowed maps legacy coarse actions (read/watch/admin) onto the capability
-// resolver for backward compatibility. New code should use AuthorizeCapability.
+// Allowed maps the legacy coarse actions (read/watch) onto the capability
+// resolver for backward compatibility. The former coarse "admin" action is
+// fail-closed: business authorization uses explicit capabilities, never a bare
+// role comparison, and platform_admin is not a global bypass. New code should
+// use AuthorizeCapability.
 func Allowed(role, action string) bool {
 	switch action {
 	case "read":
 		return HasCapability(role, CapRead)
 	case "watch":
 		return HasCapability(role, CapWatch)
-	case "admin":
-		return role == "platform_admin"
 	default:
-		return false // Remote control is not a production permission in A1.
+		return false // "admin", "remote", "plc" and unknown actions are denied by default.
 	}
 }
 

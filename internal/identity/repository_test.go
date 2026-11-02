@@ -12,7 +12,7 @@ import (
 func TestFourRolesAndScopeAreIndependent(t *testing.T) {
 	for role, actions := range map[string]map[string]bool{
 		"viewer": {"read": true}, "operator": {"read": true, "watch": true},
-		"maintainer": {"read": true, "watch": true}, "platform_admin": {"read": true, "watch": true, "admin": true},
+		"maintainer": {"read": true, "watch": true}, "platform_admin": {"read": true, "watch": true},
 		"unknown": {},
 	} {
 		for _, action := range []string{"read", "watch", "admin", "remote", "plc"} {
@@ -45,8 +45,8 @@ func TestExplicitSubjectBindingGrantsRevokeAndAudit(t *testing.T) {
 	if err := ChangeGrant(ctx, db, "user-a", "Project-A", "platform_admin", false, event); err != nil {
 		t.Fatal(err)
 	}
-	if err := Authorize(ctx, db, "user-a", "Project-A", "admin"); err != nil {
-		t.Fatal(err)
+	if err := Authorize(ctx, db, "user-a", "Project-A", "admin"); !errors.Is(err, ErrDenied) {
+		t.Fatal("legacy coarse admin action must be fail-closed")
 	}
 	if _, err := db.Exec(`INSERT INTO projects(id,tenant_id,name) VALUES('Project-B','demo','Anonymous B')`); err != nil {
 		t.Fatal(err)

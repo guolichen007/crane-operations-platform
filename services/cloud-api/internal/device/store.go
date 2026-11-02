@@ -101,8 +101,8 @@ func (s *Store) Apply(ctx context.Context, m contract.Envelope) (bool, error) {
 		// Persist raw time-quality inputs from the V1 envelope. sampled_at stays
 		// the shadow-update time (backward compatible); source_sent_at is the
 		// edge clock, cloud_received_at is the Cloud receive time. Quality
-		// analysis (gap/clock-skew flags) is B6, so quality_flags stays empty
-		// and clock_skew_ms stays NULL/UNKNOWN here.
+		// evaluation (gap/clock-skew) is B6, so quality_state and quality_flags
+		// stay NULL here — never a fabricated GOOD.
 		received := time.Now().UTC()
 		if _, e = tx.ExecContext(ctx, "INSERT INTO telemetry_samples(device_id,sampled_at,payload_json,source_sent_at,cloud_received_at,boot_id,boot_seq,sequence,late_arrival) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$5-$4)", m.DeviceId, next.UpdatedAt, payload, m.SentAt, received, m.BootId, m.BootSeq, m.Sequence); e != nil {
 			return false, e
