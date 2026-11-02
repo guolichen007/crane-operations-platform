@@ -36,7 +36,7 @@ func TestRoleCapabilityBundles(t *testing.T) {
 	mustLack(t, "maintainer", CapAssetMasterWrite, CapLocationWrite, CapCatalogWrite, CapAssetRetire, CapComplianceWrite, CapHandoverWrite)
 
 	mustHave(t, "platform_admin", CapRead, CapWatch, CapInspectionWrite, CapMaintenanceWrite, CapWireRopeWrite, CapDocumentWrite,
-	         CapAssetMasterWrite, CapLocationWrite, CapCatalogWrite, CapAssetRetire, CapComplianceWrite, CapHandoverWrite)
+		CapAssetMasterWrite, CapLocationWrite, CapCatalogWrite, CapAssetRetire, CapComplianceWrite, CapHandoverWrite)
 }
 
 // Equipment Condition is TELEMETRY_OWNED; no role has a direct write capability.
