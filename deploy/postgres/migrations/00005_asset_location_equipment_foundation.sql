@@ -118,6 +118,7 @@ CREATE INDEX asset_installations_asset ON asset_installations(asset_id, valid_fr
 CREATE UNIQUE INDEX asset_installations_one_active ON asset_installations(asset_id) WHERE valid_to IS NULL;
 
 -- Authoritative project-boundary guard: the asset and the location must share a project.
+-- +goose StatementBegin
 CREATE FUNCTION asset_installation_same_project() RETURNS trigger AS $$
 BEGIN
   IF (SELECT a.project_id FROM asset_devices a WHERE a.id = NEW.asset_id)
@@ -128,6 +129,7 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+-- +goose StatementEnd
 
 CREATE TRIGGER asset_installation_same_project_trigger
   BEFORE INSERT OR UPDATE OF asset_id, location_id ON asset_installations
