@@ -3,11 +3,14 @@
 ## 当前阶段
 
 - Phase：Phase1-A1.1-R2；
-- 当前工作：G0-R1 文档总方案；
-- 远程 main 基线：`29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18`；
+- 当前工作：G0-R1-R1 文档收口补丁（审查修复）；
+- REMOTE_MAIN_BASE=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18；
 - 功能分支：`feature/phase1-a1-1-r2-asset-operations`；
-- CC 上一轮报告的本地文档 HEAD：`c269c2a91672be7a3db6a78c140c9bb4900a1ee9`（仅作为交接参考，应用本包前必须本地 `git rev-parse HEAD` 重新核验）；
-- A2：未开始。
+- G0_R1_PREVIOUS_REVIEW_HEAD=ff3ec2d20960109c6bdcc852844261d722e9ac9a；
+- G0_R1_REVIEW=PENDING_AFTER_R1_PATCH；
+- B1_STARTED=NO；
+- PHASE1_A2_STARTED=NO；
+- PRODUCTION_CHANGED=NO。
 
 ## 已冻结方向
 
@@ -34,9 +37,7 @@ B1~B9 不改生产服务器/数据库/TLS/DNS/Firebot；B10 isolated rehearsal�
 
 ## 下一步
 
-1. CC 将本 docs 包合并到 feature；
-2. docs-only commit；
-3. OWNER 手动 push；
-4. G0-R1 GitHub 审查；
-5. PASS 后仅开启 B1。
+1. OWNER 手动 push feature 到 origin；
+2. G0-R1-R1 GitHub/GPT 独立审查；
+3. G0_R1_REVIEW=PASS 后才开放 B1（此前禁止创建 00005/00006、修改 contracts/Go/Vue/Three/package 依赖）。
 

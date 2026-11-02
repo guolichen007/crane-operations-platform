@@ -28,7 +28,7 @@
 - realvirtual-WEB：AGPL-3.0，只学习 browser 3D HMI/GLB/设备信息/信号绑定模式，不复制源码。https://github.com/game4automation/realvirtual-WEB
 - xeokit-sdk：AGPL-3.0，只学习 Select/Focus/Isolate/X-Ray/Tree 交互。https://github.com/xeokit/xeokit-sdk
 - Autodesk Tandem：3D + Asset/Stream/Chart/Data Completeness 工作区思想。https://intandem.autodesk.com/
-- NASA Open MCT：Time Conductor/telemetry analysis 模式；许可证不是 MIT/Apache，R2 只学模式。https://github.com/nasa/openmct
+- NASA Open MCT：Time Conductor/telemetry analysis 模式；LICENSE=Apache-2.0（仓库 LICENSE.md 权威；GitHub API classifier 曾 NOASSERTION）。https://github.com/nasa/openmct
 - TanStack Table/Virtual/Query：MIT。https://tanstack.com/
 - Reka UI：MIT。https://reka-ui.com/
 - MapLibre GL JS：BSD-3-Clause。https://maplibre.org/maplibre-gl-js/

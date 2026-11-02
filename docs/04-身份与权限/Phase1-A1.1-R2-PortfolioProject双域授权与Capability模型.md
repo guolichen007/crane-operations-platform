@@ -40,7 +40,6 @@ watch
 maintenance_request_create
 inspection_write
 maintenance_write
-equipment_condition_write
 wire_rope_write
 document_write
 asset_master_write
@@ -50,6 +49,8 @@ asset_retire
 compliance_write
 handover_write
 ```
+
+Equipment Condition（NORMAL/WARNING/ALARM/UNKNOWN）是 TELEMETRY/DERIVED 状态，业务 UI 不允许直接覆盖，故 capability 中不设 condition 写权限。人工健康判断经 `inspection_write` 或未来独立 assessment record（必须含 source、observed_at、actor、evidence）表达，且与 TELEMETRY_OWNED current condition 分离。禁止任何业务 API 直接 PATCH 当前 telemetry condition。
 
 角色只是 capability bundle，代码禁止 `role >= maintainer` 这种隐式比较。
 
@@ -65,7 +66,7 @@ handover_write
 
 ### maintainer
 
-`read, watch, maintenance_request_create, inspection_write, maintenance_write, equipment_condition_write, wire_rope_write, document_write`
+`read, watch, maintenance_request_create, inspection_write, maintenance_write, wire_rope_write, document_write`
 
 ### platform_admin
 

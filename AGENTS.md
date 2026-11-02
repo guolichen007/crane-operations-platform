@@ -1,6 +1,9 @@
 # 工程入口
 
-当前阶段：Phase1-A1.1-R2（成熟资产运营平台升级），基线 origin/main=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18，分支 feature/phase1-a1-1-r2-asset-operations。设计已冻结（R2_DESIGN_FROZEN=YES_AFTER_R2_0_PATCH），连续实施 R2-0 → R2-9。
+当前阶段：Phase1-A1.1-R2（成熟综合管理平台），基线 origin/main=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18，分支 feature/phase1-a1-1-r2-asset-operations。
+实施路线统一为 G0-R1 → B1 → B2 → … → B10，每批固定流程：CC 本地开发/验证 → 本地 commit → STOP → OWNER 手动 push feature → GitHub CI → GPT 独立审查 → BATCH_REVIEW=PASS 才开放下一批。
+当前事实源：根级 Phase1-A1.1-R2-成熟综合管理平台主蓝图.md + docs/Phase1-A1.1-R2-文档索引.md（唯一 SSOT 入口）；禁止把 DEPRECATED/旧草稿作为当前设计依据。
+当前状态：G0_R1_REVIEW=PENDING_AFTER_R1_PATCH；B1_STARTED=NO；R2_DESIGN_FROZEN 暂不置 YES（等审查通过）。
 不进入 A2；不操作生产服务器；不签发真实证书；不修改生产 TLS/DNS/Firebot；不创建真实账号；不启用 production timer；不接真实 PLC；不开放真实远控；不开放公网 Edge 管理端口。
 LOCAL_ONLY：只本地 commit，禁止 push / PR / merge main / tag / 改远端 ref；负责人手动 push。
 保留 Public 例外，不引入真实凭据或客户资料。

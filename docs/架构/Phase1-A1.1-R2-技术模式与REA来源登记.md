@@ -114,9 +114,9 @@
 ## TP-HISTORY-TIME — Contextual Time Conductor
 
 - SOURCE：NASA Open MCT。
-- LICENSE：NASA/Other，只学交互。
+- LICENSE：Apache-2.0（仓库 LICENSE.md 权威；API classifier 曾 NOASSERTION）。
 - ADOPT：LIVE/Fixed range、时间窗统一、URL state、panel 联动。
-- REJECT：框架本体；非时间页面全局常驻 Time Conductor。
+- REJECT：框架本体；非时间页面全局常驻 Time Conductor（原因：架构/体量/领域适配，非许可证禁止）。
 
 ## TP-HISTORY-DASH — Trend + Event Overlay
 
