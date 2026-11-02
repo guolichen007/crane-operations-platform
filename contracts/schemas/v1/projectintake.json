@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/projectintake.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "portfolioScopeId",
+    "tenantId",
+    "intakeCode",
+    "projectName",
+    "customerName",
+    "projectType",
+    "priority",
+    "riskLevel",
+    "scopeSummary",
+    "siteReference",
+    "registeredAt",
+    "registeredBy",
+    "requestedStart",
+    "requestedHandover",
+    "plannedStart",
+    "plannedEnd",
+    "status",
+    "projectManagerUserId",
+    "technicalLeadUserId",
+    "siteLeadUserId",
+    "formalProjectId",
+    "version"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "portfolioScopeId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "tenantId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "intakeCode": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "projectName": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "customerName": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 160
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "projectType": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH",
+        "CRITICAL"
+      ]
+    },
+    "riskLevel": {
+      "type": "string",
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH"
+      ]
+    },
+    "scopeSummary": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "siteReference": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 160
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "registeredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "registeredBy": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "requestedStart": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "date-time"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "requestedHandover": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "date-time"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "plannedStart": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "date-time"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "plannedEnd": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "date-time"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "REGISTERED",
+        "REVIEW",
+        "PLANNING",
+        "APPROVED",
+        "REJECTED",
+        "CANCELLED"
+      ]
+    },
+    "projectManagerUserId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 80
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "technicalLeadUserId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 80
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "siteLeadUserId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 80
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "formalProjectId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "$defs": {}
+}

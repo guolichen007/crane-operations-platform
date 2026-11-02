@@ -109,3 +109,54 @@ INSERT INTO project_memberships(user_id,project_id,role) VALUES
 		t.Fatal("platform_admin exposed equipment_condition_write")
 	}
 }
+
+func TestPortfolioCapabilityBundles(t *testing.T) {
+	assertHave := func(role string, caps ...Capability) {
+		t.Helper()
+		for _, c := range caps {
+			if !HasPortfolioCapability(role, c) {
+				t.Errorf("%s should have %s", role, c)
+			}
+		}
+	}
+	assertLack := func(role string, caps ...Capability) {
+		t.Helper()
+		for _, c := range caps {
+			if HasPortfolioCapability(role, c) {
+				t.Errorf("%s should NOT have %s", role, c)
+			}
+		}
+	}
+	assertHave("portfolio_planner", CapPortfolioRead, CapProjectIntakeRead, CapProjectIntakeWrite, CapProjectScheduleRead, CapProjectScheduleWrite, CapResourceCalendarRead)
+	assertLack("portfolio_planner", CapProjectApprove, CapScheduleOverride, CapResourceCalendarWrite)
+	assertHave("portfolio_manager", CapPortfolioRead, CapProjectApprove, CapScheduleOverride, CapResourceCalendarWrite, CapPortfolioRiskWrite)
+}
+
+// PortfolioGrant must never grant project asset access, and a project
+// platform_admin must never get a portfolio bypass.
+func TestPortfolioGrantIsolation(t *testing.T) {
+	db := testsupport.Database(t)
+	ctx := context.Background()
+	if _, err := db.Exec(`
+INSERT INTO users(id,issuer,subject,display_name,enabled) VALUES
+('u-pm','https://issuer.example','pm','PM',true),
+('u-admin','https://issuer.example','admin','Admin',true);
+INSERT INTO portfolio_scopes(id,tenant_id,code,name) VALUES('PS-A','demo','PS-A','Portfolio A');
+INSERT INTO portfolio_memberships(user_id,portfolio_scope_id,role) VALUES('u-pm','PS-A','portfolio_manager');
+`); err != nil {
+		t.Fatal(err)
+	}
+	// portfolio_manager without PortfolioGrant? no — it has one, so this must pass.
+	if err := AuthorizePortfolioCapability(ctx, db, "u-pm", "PS-A", CapProjectIntakeWrite); err != nil {
+		t.Fatalf("portfolio_manager with grant denied intake_write: %v", err)
+	}
+	// platform_admin with only a ProjectGrant must NOT have a portfolio bypass.
+	if err := AuthorizePortfolioCapability(ctx, db, "u-admin", "PS-A", CapProjectIntakeWrite); err == nil {
+		t.Fatal("platform_admin without PortfolioGrant got portfolio access")
+	}
+	// Portfolio capability must not be a project capability: a portfolio grant
+	// does not imply project asset read.
+	if err := AuthorizeCapability(ctx, db, "u-pm", "Project-A", CapRead); err == nil {
+		t.Fatal("portfolio_manager without ProjectGrant read project asset")
+	}
+}

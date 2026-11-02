@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/schedulebaseline.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "portfolioScopeId",
+    "projectId",
+    "name",
+    "baselineVersion",
+    "approvedBy",
+    "approvedAt"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "portfolioScopeId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "projectId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "name": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "baselineVersion": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "approvedBy": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "approvedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "$defs": {}
+}

@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/resource.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "portfolioScopeId",
+    "resourceType",
+    "referenceId",
+    "name",
+    "capacity",
+    "exclusive",
+    "overrideAllowed",
+    "homeTimezone",
+    "status",
+    "version"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "portfolioScopeId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "resourceType": {
+      "type": "string",
+      "enum": [
+        "PERSON",
+        "TEAM",
+        "SITE",
+        "WORKSHOP",
+        "BAY",
+        "RUNWAY",
+        "ASSET",
+        "TEST_EQUIPMENT",
+        "TOOL",
+        "VEHICLE",
+        "COMMISSIONING_SLOT",
+        "NETWORK_CUTOVER_SLOT",
+        "OTHER"
+      ]
+    },
+    "referenceId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 80
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "name": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "capacity": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "exclusive": {
+      "type": "boolean"
+    },
+    "overrideAllowed": {
+      "type": "boolean"
+    },
+    "homeTimezone": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ACTIVE",
+        "DISABLED"
+      ]
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "$defs": {}
+}

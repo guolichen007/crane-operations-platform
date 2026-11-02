@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/projectintakeinput.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "portfolioScopeId",
+    "intakeCode",
+    "projectName",
+    "customerName",
+    "projectType",
+    "priority",
+    "riskLevel",
+    "scopeSummary",
+    "siteReference",
+    "requestedStart",
+    "requestedHandover",
+    "plannedStart",
+    "plannedEnd",
+    "projectManagerUserId",
+    "technicalLeadUserId",
+    "siteLeadUserId"
+  ],
+  "properties": {
+    "portfolioScopeId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "intakeCode": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "projectName": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "customerName": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 160
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "projectType": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH",
+        "CRITICAL"
+      ]
+    },
+    "riskLevel": {
+      "type": "string",
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH"
+      ]
+    },
+    "scopeSummary": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "siteReference": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 160
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "requestedStart": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "date-time"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "requestedHandover": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "date-time"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "plannedStart": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "date-time"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "plannedEnd": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "date-time"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "projectManagerUserId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 80
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "technicalLeadUserId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 80
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "siteLeadUserId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 80
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "$defs": {}
+}

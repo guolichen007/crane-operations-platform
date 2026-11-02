@@ -62,6 +62,29 @@ func AuthorizeCapability(ctx context.Context, db *sql.DB, user, project string, 
 	return err
 }
 
+// PortfolioRole resolves the portfolio membership for a user and scope. It is
+// a narrow grant: it never grants project asset/equipment/telemetry access.
+func PortfolioRole(ctx context.Context, db *sql.DB, user, scope string) (string, error) {
+	var role string
+	err := db.QueryRowContext(ctx, `SELECT m.role FROM portfolio_memberships m JOIN users u ON u.id=m.user_id
+WHERE m.user_id=$1 AND m.portfolio_scope_id=$2 AND u.enabled`, user, scope).Scan(&role)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrDenied
+	}
+	return role, err
+}
+
+// AuthorizePortfolioCapability resolves the portfolio membership and checks one
+// explicit portfolio capability. It never trusts a request scope id; the grant
+// is loaded from DB.
+func AuthorizePortfolioCapability(ctx context.Context, db *sql.DB, user, scope string, cap Capability) error {
+	role, err := PortfolioRole(ctx, db, user, scope)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && !HasPortfolioCapability(role, cap)) {
+		return ErrDenied
+	}
+	return err
+}
+
 func ProjectRole(ctx context.Context, db *sql.DB, user, project string) (string, error) {
 	var role string
 	err := db.QueryRowContext(ctx, `SELECT m.role FROM project_memberships m JOIN users u ON u.id=m.user_id

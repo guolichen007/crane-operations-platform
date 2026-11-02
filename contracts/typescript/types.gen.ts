@@ -249,6 +249,119 @@ export interface EquipmentType {
   specSchemaVersion: string;
   status: "ACTIVE" | "DISABLED";
 }
+export interface PortfolioScope {
+  id: string;
+  tenantId: string;
+  code: string;
+  name: string;
+  status: "ACTIVE" | "DISABLED";
+  version: number;
+}
+export interface ProjectIntake {
+  id: string;
+  portfolioScopeId: string;
+  tenantId: string;
+  intakeCode: string;
+  projectName: string;
+  customerName: string | null;
+  projectType: string;
+  priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  riskLevel: "LOW" | "MEDIUM" | "HIGH";
+  scopeSummary: string;
+  siteReference: string | null;
+  registeredAt: string;
+  registeredBy: string;
+  requestedStart: string | null;
+  requestedHandover: string | null;
+  plannedStart: string | null;
+  plannedEnd: string | null;
+  status: "REGISTERED" | "REVIEW" | "PLANNING" | "APPROVED" | "REJECTED" | "CANCELLED";
+  projectManagerUserId: string | null;
+  technicalLeadUserId: string | null;
+  siteLeadUserId: string | null;
+  formalProjectId: string | null;
+  version: number;
+}
+export interface ProjectIntakeInput {
+  portfolioScopeId: string;
+  intakeCode: string;
+  projectName: string;
+  customerName: string | null;
+  projectType: string;
+  priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  riskLevel: "LOW" | "MEDIUM" | "HIGH";
+  scopeSummary: string;
+  siteReference: string | null;
+  requestedStart: string | null;
+  requestedHandover: string | null;
+  plannedStart: string | null;
+  plannedEnd: string | null;
+  projectManagerUserId: string | null;
+  technicalLeadUserId: string | null;
+  siteLeadUserId: string | null;
+}
+export interface ScheduleItem {
+  id: string;
+  projectId: string | null;
+  sourceType: "PROJECT_ACTIVITY" | "WORK_ORDER" | "INSPECTION" | "CALIBRATION" | "COMMISSIONING" | "SITE_WINDOW" | "NETWORK_CUTOVER";
+  sourceId: string;
+  name: string;
+  startAt: string;
+  endAt: string;
+  timezone: string;
+  status: "PLANNED" | "APPROVED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+  priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  exclusiveLocationId: string | null;
+  version: number;
+}
+export interface Resource {
+  id: string;
+  portfolioScopeId: string;
+  resourceType: "PERSON" | "TEAM" | "SITE" | "WORKSHOP" | "BAY" | "RUNWAY" | "ASSET" | "TEST_EQUIPMENT" | "TOOL" | "VEHICLE" | "COMMISSIONING_SLOT" | "NETWORK_CUTOVER_SLOT" | "OTHER";
+  referenceId: string | null;
+  name: string;
+  capacity: number;
+  exclusive: boolean;
+  overrideAllowed: boolean;
+  homeTimezone: string;
+  status: "ACTIVE" | "DISABLED";
+  version: number;
+}
+export interface ResourceReservation {
+  id: string;
+  scheduleItemId: string;
+  resourceId: string;
+  startAt: string;
+  endAt: string;
+  quantity: number;
+  status: "ACTIVE" | "CANCELLED";
+  version: number;
+}
+export interface ScheduleConflict {
+  id: number;
+  conflictType: "RESOURCE_OVERLAP" | "RESOURCE_OVER_CAPACITY" | "SITE_OVERLAP" | "RUNWAY_OVERLAP" | "ASSET_DOWNTIME_OVERLAP" | "DEPENDENCY_VIOLATION" | "CALENDAR_UNAVAILABLE" | "SITE_ACCESS_WINDOW" | "COMMISSIONING_CONFLICT" | "NETWORK_CUTOVER_CONFLICT";
+  severity: "WARNING" | "BLOCKING";
+  leftItemId: string;
+  rightItemId: string | null;
+  resourceId: string | null;
+  status: "OPEN" | "RESOLVED" | "OVERRIDDEN";
+}
+export interface ScheduleDependency {
+  id: string;
+  predecessorItemId: string;
+  successorItemId: string;
+  dependencyType: "FS" | "SS" | "FF" | "SF";
+  lagMinutes: number;
+}
+export interface ScheduleBaseline {
+  id: string;
+  portfolioScopeId: string;
+  projectId: string | null;
+  name: string;
+  baselineVersion: number;
+  approvedBy: string;
+  approvedAt: string;
+}
 export type Envelope = {
   schemaVersion: 1;
   messageId: string;

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/scheduledependency.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "predecessorItemId",
+    "successorItemId",
+    "dependencyType",
+    "lagMinutes"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "predecessorItemId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "successorItemId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "dependencyType": {
+      "type": "string",
+      "enum": [
+        "FS",
+        "SS",
+        "FF",
+        "SF"
+      ]
+    },
+    "lagMinutes": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "$defs": {}
+}

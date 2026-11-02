@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/scheduleconflict.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "conflictType",
+    "severity",
+    "leftItemId",
+    "rightItemId",
+    "resourceId",
+    "status"
+  ],
+  "properties": {
+    "id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "conflictType": {
+      "type": "string",
+      "enum": [
+        "RESOURCE_OVERLAP",
+        "RESOURCE_OVER_CAPACITY",
+        "SITE_OVERLAP",
+        "RUNWAY_OVERLAP",
+        "ASSET_DOWNTIME_OVERLAP",
+        "DEPENDENCY_VIOLATION",
+        "CALENDAR_UNAVAILABLE",
+        "SITE_ACCESS_WINDOW",
+        "COMMISSIONING_CONFLICT",
+        "NETWORK_CUTOVER_CONFLICT"
+      ]
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "WARNING",
+        "BLOCKING"
+      ]
+    },
+    "leftItemId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "rightItemId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "resourceId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "OPEN",
+        "RESOLVED",
+        "OVERRIDDEN"
+      ]
+    }
+  },
+  "$defs": {}
+}

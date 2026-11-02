@@ -1201,6 +1201,517 @@
           "DISABLED"
         ]
       }
+    },
+    "PortfolioScope": {
+      "id": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "tenantId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "code": {
+        "type": "string",
+        "maxLength": 80
+      },
+      "name": {
+        "type": "string",
+        "maxLength": 160
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "ACTIVE",
+          "DISABLED"
+        ]
+      },
+      "version": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "ProjectIntake": {
+      "id": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "portfolioScopeId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "tenantId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "intakeCode": {
+        "type": "string",
+        "maxLength": 80
+      },
+      "projectName": {
+        "type": "string",
+        "maxLength": 160
+      },
+      "customerName": {
+        "type": "string",
+        "maxLength": 160,
+        "nullable": true
+      },
+      "projectType": {
+        "type": "string",
+        "maxLength": 80
+      },
+      "priority": {
+        "type": "string",
+        "enum": [
+          "LOW",
+          "MEDIUM",
+          "HIGH",
+          "CRITICAL"
+        ]
+      },
+      "riskLevel": {
+        "type": "string",
+        "enum": [
+          "LOW",
+          "MEDIUM",
+          "HIGH"
+        ]
+      },
+      "scopeSummary": {
+        "type": "string",
+        "maxLength": 2000
+      },
+      "siteReference": {
+        "type": "string",
+        "maxLength": 160,
+        "nullable": true
+      },
+      "registeredAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "registeredBy": {
+        "type": "string",
+        "maxLength": 80
+      },
+      "requestedStart": {
+        "type": "string",
+        "format": "date-time",
+        "nullable": true
+      },
+      "requestedHandover": {
+        "type": "string",
+        "format": "date-time",
+        "nullable": true
+      },
+      "plannedStart": {
+        "type": "string",
+        "format": "date-time",
+        "nullable": true
+      },
+      "plannedEnd": {
+        "type": "string",
+        "format": "date-time",
+        "nullable": true
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "REGISTERED",
+          "REVIEW",
+          "PLANNING",
+          "APPROVED",
+          "REJECTED",
+          "CANCELLED"
+        ]
+      },
+      "projectManagerUserId": {
+        "type": "string",
+        "maxLength": 80,
+        "nullable": true
+      },
+      "technicalLeadUserId": {
+        "type": "string",
+        "maxLength": 80,
+        "nullable": true
+      },
+      "siteLeadUserId": {
+        "type": "string",
+        "maxLength": 80,
+        "nullable": true
+      },
+      "formalProjectId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$",
+        "nullable": true
+      },
+      "version": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "ProjectIntakeInput": {
+      "portfolioScopeId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "intakeCode": {
+        "type": "string",
+        "maxLength": 80
+      },
+      "projectName": {
+        "type": "string",
+        "maxLength": 160
+      },
+      "customerName": {
+        "type": "string",
+        "maxLength": 160,
+        "nullable": true
+      },
+      "projectType": {
+        "type": "string",
+        "maxLength": 80
+      },
+      "priority": {
+        "type": "string",
+        "enum": [
+          "LOW",
+          "MEDIUM",
+          "HIGH",
+          "CRITICAL"
+        ]
+      },
+      "riskLevel": {
+        "type": "string",
+        "enum": [
+          "LOW",
+          "MEDIUM",
+          "HIGH"
+        ]
+      },
+      "scopeSummary": {
+        "type": "string",
+        "maxLength": 2000
+      },
+      "siteReference": {
+        "type": "string",
+        "maxLength": 160,
+        "nullable": true
+      },
+      "requestedStart": {
+        "type": "string",
+        "format": "date-time",
+        "nullable": true
+      },
+      "requestedHandover": {
+        "type": "string",
+        "format": "date-time",
+        "nullable": true
+      },
+      "plannedStart": {
+        "type": "string",
+        "format": "date-time",
+        "nullable": true
+      },
+      "plannedEnd": {
+        "type": "string",
+        "format": "date-time",
+        "nullable": true
+      },
+      "projectManagerUserId": {
+        "type": "string",
+        "maxLength": 80,
+        "nullable": true
+      },
+      "technicalLeadUserId": {
+        "type": "string",
+        "maxLength": 80,
+        "nullable": true
+      },
+      "siteLeadUserId": {
+        "type": "string",
+        "maxLength": 80,
+        "nullable": true
+      }
+    },
+    "ScheduleItem": {
+      "id": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "projectId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$",
+        "nullable": true
+      },
+      "sourceType": {
+        "type": "string",
+        "enum": [
+          "PROJECT_ACTIVITY",
+          "WORK_ORDER",
+          "INSPECTION",
+          "CALIBRATION",
+          "COMMISSIONING",
+          "SITE_WINDOW",
+          "NETWORK_CUTOVER"
+        ]
+      },
+      "sourceId": {
+        "type": "string",
+        "maxLength": 80
+      },
+      "name": {
+        "type": "string",
+        "maxLength": 160
+      },
+      "startAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "endAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "timezone": {
+        "type": "string",
+        "maxLength": 80
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "PLANNED",
+          "APPROVED",
+          "IN_PROGRESS",
+          "COMPLETED",
+          "CANCELLED"
+        ]
+      },
+      "priority": {
+        "type": "string",
+        "enum": [
+          "LOW",
+          "MEDIUM",
+          "HIGH",
+          "CRITICAL"
+        ]
+      },
+      "exclusiveLocationId": {
+        "type": "string",
+        "maxLength": 80,
+        "nullable": true
+      },
+      "version": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "Resource": {
+      "id": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "portfolioScopeId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "resourceType": {
+        "type": "string",
+        "enum": [
+          "PERSON",
+          "TEAM",
+          "SITE",
+          "WORKSHOP",
+          "BAY",
+          "RUNWAY",
+          "ASSET",
+          "TEST_EQUIPMENT",
+          "TOOL",
+          "VEHICLE",
+          "COMMISSIONING_SLOT",
+          "NETWORK_CUTOVER_SLOT",
+          "OTHER"
+        ]
+      },
+      "referenceId": {
+        "type": "string",
+        "maxLength": 80,
+        "nullable": true
+      },
+      "name": {
+        "type": "string",
+        "maxLength": 160
+      },
+      "capacity": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "exclusive": {
+        "type": "boolean"
+      },
+      "overrideAllowed": {
+        "type": "boolean"
+      },
+      "homeTimezone": {
+        "type": "string",
+        "maxLength": 80
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "ACTIVE",
+          "DISABLED"
+        ]
+      },
+      "version": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "ResourceReservation": {
+      "id": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "scheduleItemId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "resourceId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "startAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "endAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "quantity": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "ACTIVE",
+          "CANCELLED"
+        ]
+      },
+      "version": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "ScheduleConflict": {
+      "id": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "conflictType": {
+        "type": "string",
+        "enum": [
+          "RESOURCE_OVERLAP",
+          "RESOURCE_OVER_CAPACITY",
+          "SITE_OVERLAP",
+          "RUNWAY_OVERLAP",
+          "ASSET_DOWNTIME_OVERLAP",
+          "DEPENDENCY_VIOLATION",
+          "CALENDAR_UNAVAILABLE",
+          "SITE_ACCESS_WINDOW",
+          "COMMISSIONING_CONFLICT",
+          "NETWORK_CUTOVER_CONFLICT"
+        ]
+      },
+      "severity": {
+        "type": "string",
+        "enum": [
+          "WARNING",
+          "BLOCKING"
+        ]
+      },
+      "leftItemId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "rightItemId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$",
+        "nullable": true
+      },
+      "resourceId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$",
+        "nullable": true
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "OPEN",
+          "RESOLVED",
+          "OVERRIDDEN"
+        ]
+      }
+    },
+    "ScheduleDependency": {
+      "id": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "predecessorItemId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "successorItemId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "dependencyType": {
+        "type": "string",
+        "enum": [
+          "FS",
+          "SS",
+          "FF",
+          "SF"
+        ]
+      },
+      "lagMinutes": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "ScheduleBaseline": {
+      "id": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "portfolioScopeId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "projectId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$",
+        "nullable": true
+      },
+      "name": {
+        "type": "string",
+        "maxLength": 160
+      },
+      "baselineVersion": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "approvedBy": {
+        "type": "string",
+        "maxLength": 80
+      },
+      "approvedAt": {
+        "type": "string",
+        "format": "date-time"
+      }
     }
   },
   "restTypes": [
@@ -1217,6 +1728,15 @@
     "AssetLocation",
     "EquipmentInstallation",
     "EquipmentCatalogItem",
-    "EquipmentType"
+    "EquipmentType",
+    "PortfolioScope",
+    "ProjectIntake",
+    "ProjectIntakeInput",
+    "ScheduleItem",
+    "Resource",
+    "ResourceReservation",
+    "ScheduleConflict",
+    "ScheduleDependency",
+    "ScheduleBaseline"
   ]
 }
