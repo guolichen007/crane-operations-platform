@@ -18,12 +18,14 @@ type User struct {
 	ID, DisplayName string
 }
 
+// Allowed maps legacy coarse actions (read/watch/admin) onto the capability
+// resolver for backward compatibility. New code should use AuthorizeCapability.
 func Allowed(role, action string) bool {
 	switch action {
 	case "read":
-		return role == "viewer" || role == "operator" || role == "maintainer" || role == "platform_admin"
+		return HasCapability(role, CapRead)
 	case "watch":
-		return role == "operator" || role == "maintainer" || role == "platform_admin"
+		return HasCapability(role, CapWatch)
 	case "admin":
 		return role == "platform_admin"
 	default:
@@ -44,6 +46,16 @@ func Lookup(ctx context.Context, db *sql.DB, issuer, subject string) (User, erro
 func Authorize(ctx context.Context, db *sql.DB, user, project, action string) error {
 	role, err := ProjectRole(ctx, db, user, project)
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && !Allowed(role, action)) {
+		return ErrDenied
+	}
+	return err
+}
+
+// AuthorizeCapability resolves the project role and checks one explicit
+// capability. It never trusts a request project_id; the grant is loaded from DB.
+func AuthorizeCapability(ctx context.Context, db *sql.DB, user, project string, cap Capability) error {
+	role, err := ProjectRole(ctx, db, user, project)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && !HasCapability(role, cap)) {
 		return ErrDenied
 	}
 	return err
@@ -115,7 +127,7 @@ WHERE users.issuer=excluded.issuer AND users.subject=excluded.subject`, id, issu
 }
 
 func ChangeGrant(ctx context.Context, db *sql.DB, user, project, role string, revoke bool, event auditlog.Event) error {
-	if !contract.ValidID(user) || !contract.ValidID(project) || (!revoke && !Allowed(role, "read")) {
+	if !contract.ValidID(user) || !contract.ValidID(project) || (!revoke && !HasCapability(role, CapRead)) {
 		return errors.New("invalid explicit project role")
 	}
 	tx, err := db.BeginTx(ctx, nil)

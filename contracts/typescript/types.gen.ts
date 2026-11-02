@@ -180,6 +180,75 @@ export interface WebSession {
   expiresAt: string;
   idleExpiresAt: string;
 }
+export interface AssetMasterData {
+  id: string;
+  projectId: string;
+  assetCode: string | null;
+  assetType: string;
+  assetStatus: "DRAFT" | "ACTIVE" | "OUT_OF_SERVICE" | "RETIRED";
+  manufacturerId: string | null;
+  manufacturerSnapshot: string;
+  brandSnapshot: string;
+  modelSnapshot: string;
+  serialNumber: string | null;
+  manufactureDate: string | null;
+  installationDate: string | null;
+  commissioningDate: string | null;
+  liftingHeightM: number | null;
+  applicationType: string | null;
+  controlMode: string | null;
+  version: number;
+}
+export interface AssetLocation {
+  id: string;
+  projectId: string;
+  parentId: string | null;
+  kind: "SITE" | "PLANT" | "WORKSHOP" | "BAY" | "RUNWAY" | "OTHER";
+  code: string;
+  name: string;
+  province: string;
+  city: string;
+  county: string;
+  longitude: number | null;
+  latitude: number | null;
+  coordinateSystem: "WGS84" | "GCJ02" | "LOCAL_SITE" | "UNKNOWN";
+  coordinateSource: "MANUAL" | "SURVEY" | "IMPORTED" | "SITE_CENTER";
+  status: "ACTIVE" | "DISABLED";
+  version: number;
+}
+export interface EquipmentInstallation {
+  id: string;
+  assetId: string;
+  equipmentCode: string;
+  typeCode: string;
+  catalogItemId: string | null;
+  serialNumber: string | null;
+  semanticSlot: string | null;
+  positionLabel: string | null;
+  criticality: "LOW" | "MEDIUM" | "HIGH" | "SAFETY_CRITICAL";
+  administrativeState: "IN_SERVICE" | "MAINTENANCE" | "OUT_OF_SERVICE" | "FAULT_REPORTED";
+  version: number;
+}
+export interface EquipmentCatalogItem {
+  id: string;
+  projectId: string | null;
+  name: string;
+  typeCode: string;
+  manufacturerId: string | null;
+  brand: string;
+  model: string;
+  productCode: string | null;
+  specSchemaVersion: string;
+  status: "ACTIVE" | "DISABLED";
+  version: number;
+}
+export interface EquipmentType {
+  typeCode: string;
+  displayName: string;
+  domain: "MECHANICAL" | "CONTROL" | "PERCEPTION" | "COMPUTE" | "NETWORK" | "POWER" | "SENSOR" | "OTHER";
+  specSchemaVersion: string;
+  status: "ACTIVE" | "DISABLED";
+}
 export type Envelope = {
   schemaVersion: 1;
   messageId: string;

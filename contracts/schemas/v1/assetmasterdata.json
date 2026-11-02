@@ -1,0 +1,164 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/assetmasterdata.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "projectId",
+    "assetCode",
+    "assetType",
+    "assetStatus",
+    "manufacturerId",
+    "manufacturerSnapshot",
+    "brandSnapshot",
+    "modelSnapshot",
+    "serialNumber",
+    "manufactureDate",
+    "installationDate",
+    "commissioningDate",
+    "liftingHeightM",
+    "applicationType",
+    "controlMode",
+    "version"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "projectId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "assetCode": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 160
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "assetType": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "assetStatus": {
+      "type": "string",
+      "enum": [
+        "DRAFT",
+        "ACTIVE",
+        "OUT_OF_SERVICE",
+        "RETIRED"
+      ]
+    },
+    "manufacturerId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 80
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "manufacturerSnapshot": {
+      "type": "string",
+      "maxLength": 256
+    },
+    "brandSnapshot": {
+      "type": "string",
+      "maxLength": 256
+    },
+    "modelSnapshot": {
+      "type": "string",
+      "maxLength": 256
+    },
+    "serialNumber": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 256
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "manufactureDate": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "date"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "installationDate": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "date"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "commissioningDate": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "date"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "liftingHeightM": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "applicationType": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 80
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "controlMode": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 80
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "$defs": {}
+}

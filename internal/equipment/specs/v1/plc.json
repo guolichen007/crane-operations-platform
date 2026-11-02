@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/equipment-spec/1/plc.json",
+  "title": "PLC specification v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "manufacturer": {"type": "string"},
+    "series": {"type": "string"},
+    "model": {"type": "string"},
+    "cpu_model": {"type": "string"},
+    "serial_number": {"type": "string"},
+    "firmware_version": {"type": "string"},
+    "rack": {"type": "integer", "minimum": 0},
+    "slot": {"type": "integer", "minimum": 0},
+    "di_count": {"type": "integer", "minimum": 0},
+    "do_count": {"type": "integer", "minimum": 0},
+    "ai_count": {"type": "integer", "minimum": 0},
+    "ao_count": {"type": "integer", "minimum": 0},
+    "protocol_capabilities": {"type": "array", "items": {"type": "string"}},
+    "program_name": {"type": "string"},
+    "program_version": {"type": "string"},
+    "program_sha256": {"type": "string"}
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/equipment-spec/1/generic.json",
+  "title": "Generic equipment specification v1 (no specialized fields yet)",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {}
+}

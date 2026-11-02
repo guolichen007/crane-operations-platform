@@ -135,6 +135,69 @@ func TestImportIdempotentRollbackAndRealIdentitySeparation(t *testing.T) {
 		t.Fatal("simulation history replaced by real identity")
 	}
 }
+// Inventory ownership counterproof: first import seeds BUSINESS_OWNED; a later
+// import of the same document must not overwrite a business edit, and runtime
+// identity/provenance stays immutable.
+func TestImportDoesNotOverwriteExistingBusinessFields(t *testing.T) {
+	db := database(t)
+	migrateDB(t, db, 6)
+	ctx := context.Background()
+	d := example(t)
+	if e := Import(ctx, db, d); e != nil {
+		t.Fatal(e)
+	}
+	// Simulate a business edit through the business path (direct UPDATE here).
+	if _, e := db.Exec(`UPDATE projects SET name='Business-Edited' WHERE id='P001'`); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := db.Exec(`UPDATE asset_devices SET display_name='Business-Asset', crane_model='Business-Crane' WHERE id='ASSET-P001-01'`); e != nil {
+		t.Fatal(e)
+	}
+	// Re-import the exact same OLD document.
+	if e := Import(ctx, db, d); e != nil {
+		t.Fatal(e)
+	}
+	var name, display, model string
+	if e := db.QueryRow(`SELECT name FROM projects WHERE id='P001'`).Scan(&name); e != nil {
+		t.Fatal(e)
+	}
+	if name != "Business-Edited" {
+		t.Fatalf("project BUSINESS name was overwritten: %q", name)
+	}
+	if e := db.QueryRow(`SELECT display_name,crane_model FROM asset_devices WHERE id='ASSET-P001-01'`).Scan(&display, &model); e != nil {
+		t.Fatal(e)
+	}
+	if display != "Business-Asset" || model != "Business-Crane" {
+		t.Fatalf("asset BUSINESS fields were overwritten: %q / %q", display, model)
+	}
+	// Runtime identity and provenance remain immutable.
+	if count(t, db, `SELECT count(*) FROM devices WHERE asset_device_id='ASSET-P001-01' AND source_mode='SIMULATION'`) != 1 {
+		t.Fatal("runtime provenance changed after re-import")
+	}
+}
+
+func TestFreshMigrationCreatesR2Foundation(t *testing.T) {
+	db := database(t)
+	migrateDB(t, db, 6)
+	for _, table := range []string{
+		"equipment_types", "manufacturers", "asset_locations", "asset_installations",
+		"equipment_catalog_items", "asset_equipment_installations", "equipment_relations",
+		"entity_revisions", "asset_timeline_events", "equipment_runtime_bindings",
+	} {
+		if count(t, db, `SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='`+table+`'`) != 1 {
+			t.Fatalf("foundation table %s missing", table)
+		}
+	}
+	for _, col := range []string{"source_sent_at", "cloud_received_at", "boot_id", "boot_seq", "sequence", "quality_flags"} {
+		if count(t, db, `SELECT count(*) FROM information_schema.columns WHERE table_name='telemetry_samples' AND column_name='`+col+`'`) != 1 {
+			t.Fatalf("telemetry_samples column %s missing", col)
+		}
+	}
+	if count(t, db, `SELECT count(*) FROM information_schema.tables WHERE table_name LIKE 'component_%'`) != 0 {
+		t.Fatal("component_* tables created")
+	}
+}
+
 func TestLegacyResetHasEnvironmentAndExactIdentityProtection(t *testing.T) {
 	db := database(t)
 	migrateDB(t, db, 3)

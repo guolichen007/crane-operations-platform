@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/equipmentinstallation.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "assetId",
+    "equipmentCode",
+    "typeCode",
+    "catalogItemId",
+    "serialNumber",
+    "semanticSlot",
+    "positionLabel",
+    "criticality",
+    "administrativeState",
+    "version"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "assetId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "equipmentCode": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "typeCode": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "catalogItemId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 80
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "serialNumber": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 256
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "semanticSlot": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 80
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "positionLabel": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 80
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "criticality": {
+      "type": "string",
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH",
+        "SAFETY_CRITICAL"
+      ]
+    },
+    "administrativeState": {
+      "type": "string",
+      "enum": [
+        "IN_SERVICE",
+        "MAINTENANCE",
+        "OUT_OF_SERVICE",
+        "FAULT_REPORTED"
+      ]
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "$defs": {}
+}

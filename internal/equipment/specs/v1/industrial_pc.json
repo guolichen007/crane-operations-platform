@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/equipment-spec/1/industrial_pc.json",
+  "title": "Industrial PC specification v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "cpu_model": {"type": "string"},
+    "gpu_model": {"type": "string"},
+    "ram_gb": {"type": "number", "minimum": 0},
+    "storage_gb": {"type": "number", "minimum": 0},
+    "nic_count": {"type": "integer", "minimum": 0},
+    "os_name": {"type": "string"},
+    "os_version": {"type": "string"},
+    "hostname": {"type": "string"},
+    "edge_runtime_version": {"type": "string"}
+  }
+}

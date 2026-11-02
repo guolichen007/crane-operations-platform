@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/equipment-spec/1/load_cell.json",
+  "title": "Load cell specification v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "rated_capacity": {"type": "number", "minimum": 0},
+    "sensitivity": {"type": "string"},
+    "accuracy_class": {"type": "string"},
+    "signal_type": {"type": "string"},
+    "excitation": {"type": "string"},
+    "amplifier_model": {"type": "string"}
+  }
+}

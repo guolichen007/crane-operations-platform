@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/equipmenttype.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "typeCode",
+    "displayName",
+    "domain",
+    "specSchemaVersion",
+    "status"
+  ],
+  "properties": {
+    "typeCode": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "displayName": {
+      "type": "string",
+      "maxLength": 256
+    },
+    "domain": {
+      "type": "string",
+      "enum": [
+        "MECHANICAL",
+        "CONTROL",
+        "PERCEPTION",
+        "COMPUTE",
+        "NETWORK",
+        "POWER",
+        "SENSOR",
+        "OTHER"
+      ]
+    },
+    "specSchemaVersion": {
+      "type": "string",
+      "maxLength": 40
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ACTIVE",
+        "DISABLED"
+      ]
+    }
+  },
+  "$defs": {}
+}

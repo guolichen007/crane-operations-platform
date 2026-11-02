@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/assetlocation.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "projectId",
+    "parentId",
+    "kind",
+    "code",
+    "name",
+    "province",
+    "city",
+    "county",
+    "longitude",
+    "latitude",
+    "coordinateSystem",
+    "coordinateSource",
+    "status",
+    "version"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "projectId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "parentId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "SITE",
+        "PLANT",
+        "WORKSHOP",
+        "BAY",
+        "RUNWAY",
+        "OTHER"
+      ]
+    },
+    "code": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "name": {
+      "type": "string",
+      "maxLength": 256
+    },
+    "province": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "city": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "county": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "longitude": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "latitude": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "coordinateSystem": {
+      "type": "string",
+      "enum": [
+        "WGS84",
+        "GCJ02",
+        "LOCAL_SITE",
+        "UNKNOWN"
+      ]
+    },
+    "coordinateSource": {
+      "type": "string",
+      "enum": [
+        "MANUAL",
+        "SURVEY",
+        "IMPORTED",
+        "SITE_CENTER"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ACTIVE",
+        "DISABLED"
+      ]
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "$defs": {}
+}

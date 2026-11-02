@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/equipment-spec/1/motor.json",
+  "title": "Motor specification v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "rated_power_kw": {"type": "number", "minimum": 0},
+    "rated_voltage_v": {"type": "number", "minimum": 0},
+    "rated_current_a": {"type": "number", "minimum": 0},
+    "rated_speed_rpm": {"type": "number", "minimum": 0},
+    "frequency_hz": {"type": "number", "minimum": 0},
+    "duty": {"type": "string"},
+    "insulation_class": {"type": "string"},
+    "protection_class": {"type": "string"},
+    "mounting_type": {"type": "string"},
+    "brake_integrated": {"type": "boolean"}
+  }
+}

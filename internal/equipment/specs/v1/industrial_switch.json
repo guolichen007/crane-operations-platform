@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/equipment-spec/1/industrial_switch.json",
+  "title": "Industrial/PoE switch specification v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "port_count": {"type": "integer", "minimum": 1},
+    "speed_profile": {"type": "string"},
+    "managed": {"type": "boolean"},
+    "poe_capable": {"type": "boolean"},
+    "poe_budget_w": {"type": "number", "minimum": 0},
+    "uplink_type": {"type": "string"},
+    "firmware_version": {"type": "string"}
+  }
+}

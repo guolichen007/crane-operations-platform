@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/equipment-spec/1/lidar_3d.json",
+  "title": "LIDAR_3D specification v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "channels": {"type": "integer", "minimum": 1},
+    "scan_type": {"type": "string", "enum": ["rotating", "solid_state", "hybrid"]},
+    "horizontal_fov_deg": {"type": "number", "minimum": 0},
+    "vertical_fov_deg": {"type": "number", "minimum": 0},
+    "minimum_range_m": {"type": "number", "minimum": 0},
+    "maximum_range_m": {"type": "number", "minimum": 0},
+    "range_accuracy_cm": {"type": "number", "minimum": 0},
+    "point_rate_hz": {"type": "number", "minimum": 0},
+    "scan_rate_hz": {"type": "number", "minimum": 0},
+    "wavelength_nm": {"type": "number", "minimum": 0},
+    "interface_type": {"type": "string"},
+    "supported_protocols": {"type": "array", "items": {"type": "string"}},
+    "time_sync_capability": {"type": "string", "enum": ["PTP", "NTP", "GPS", "UNKNOWN"]},
+    "ingress_protection": {"type": "string"},
+    "operating_temperature_min_c": {"type": "number"},
+    "operating_temperature_max_c": {"type": "number"},
+    "firmware_version": {"type": "string"}
+  }
+}

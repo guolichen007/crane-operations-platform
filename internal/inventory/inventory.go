@@ -106,7 +106,10 @@ func Import(ctx context.Context, db *sql.DB, d contract.InventoryDocument) error
 		if err == nil && tenant != d.TenantId {
 			return errors.New("project tenant is immutable")
 		}
-		_, err = tx.ExecContext(ctx, `INSERT INTO projects(id,tenant_id,name,lifecycle,province,city,county,location_label,admin_code,schedule_text,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(id) DO UPDATE SET name=excluded.name,lifecycle=excluded.lifecycle,province=excluded.province,city=excluded.city,county=excluded.county,location_label=excluded.location_label,admin_code=excluded.admin_code,schedule_text=excluded.schedule_text,notes=excluded.notes,updated_at=now()`, p.Id, d.TenantId, p.Name, p.Lifecycle, p.Province, p.City, p.County, p.LocationLabel, p.AdminCode, p.ScheduleText, p.Notes)
+		// First import seeds BUSINESS_OWNED fields; a later import must not
+		// overwrite them (existing objects are only subject to the immutable
+		// tenant/provenance checks above).
+		_, err = tx.ExecContext(ctx, `INSERT INTO projects(id,tenant_id,name,lifecycle,province,city,county,location_label,admin_code,schedule_text,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(id) DO NOTHING`, p.Id, d.TenantId, p.Name, p.Lifecycle, p.Province, p.City, p.County, p.LocationLabel, p.AdminCode, p.ScheduleText, p.Notes)
 		if err != nil {
 			return err
 		}
@@ -120,7 +123,10 @@ func Import(ctx context.Context, db *sql.DB, d contract.InventoryDocument) error
 		if err == nil && project != a.ProjectId {
 			return errors.New("asset project is immutable")
 		}
-		_, err = tx.ExecContext(ctx, `INSERT INTO asset_devices(id,project_id,display_name,crane_model,rated_capacity_t,span_m,work_class,grab_type,lifecycle) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name,crane_model=excluded.crane_model,rated_capacity_t=excluded.rated_capacity_t,span_m=excluded.span_m,work_class=excluded.work_class,grab_type=excluded.grab_type,lifecycle=excluded.lifecycle,updated_at=now()`, a.AssetDeviceId, a.ProjectId, a.DisplayName, a.CraneModel, a.RatedCapacityT, a.SpanM, a.WorkClass, a.GrabType, a.Lifecycle)
+		// BUSINESS_OWNED fields (display_name, model, capacity, span, work_class,
+		// grab_type, lifecycle) are seeded on first import only; a later import
+		// must not overwrite them. Runtime identity/provenance stays immutable.
+		_, err = tx.ExecContext(ctx, `INSERT INTO asset_devices(id,project_id,display_name,crane_model,rated_capacity_t,span_m,work_class,grab_type,lifecycle) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(id) DO NOTHING`, a.AssetDeviceId, a.ProjectId, a.DisplayName, a.CraneModel, a.RatedCapacityT, a.SpanM, a.WorkClass, a.GrabType, a.Lifecycle)
 		if err != nil {
 			return err
 		}

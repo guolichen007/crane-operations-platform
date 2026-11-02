@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/equipment-spec/1/vfd.json",
+  "title": "VFD specification v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "rated_power_kw": {"type": "number", "minimum": 0},
+    "input_voltage_v": {"type": "number", "minimum": 0},
+    "rated_current_a": {"type": "number", "minimum": 0},
+    "output_frequency_min_hz": {"type": "number", "minimum": 0},
+    "output_frequency_max_hz": {"type": "number", "minimum": 0},
+    "control_mode": {"type": "string"},
+    "supported_protocols": {"type": "array", "items": {"type": "string"}},
+    "firmware_version": {"type": "string"}
+  }
+}

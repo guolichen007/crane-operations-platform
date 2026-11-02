@@ -3,12 +3,15 @@
 ## 当前阶段
 
 - Phase：Phase1-A1.1-R2；
-- 当前工作：G0-R1-R1 文档收口补丁（审查修复）；
+- 当前工作：B1 Data / Contract Foundation（本批代码实施中）；
 - REMOTE_MAIN_BASE=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18；
 - 功能分支：`feature/phase1-a1-1-r2-asset-operations`；
-- G0_R1_PREVIOUS_REVIEW_HEAD=ff3ec2d20960109c6bdcc852844261d722e9ac9a；
-- G0_R1_REVIEW=PENDING_AFTER_R1_PATCH；
-- B1_STARTED=NO；
+- G0_R1_REVIEW_HEAD=725458b6953a48b9aa10a3fa62bb499867e3adad；
+- B1_BASE_SHA=725458b6953a48b9aa10a3fa62bb499867e3adad；
+- G0_R1_REVIEW=PASS；
+- R2_DESIGN_FROZEN=YES；
+- B1_STARTED=YES；
+- B2_STARTED=NO；
 - PHASE1_A2_STARTED=NO；
 - PRODUCTION_CHANGED=NO。
 

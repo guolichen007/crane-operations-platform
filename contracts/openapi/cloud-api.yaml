@@ -1805,6 +1805,522 @@
           }
         }
       },
+      "AssetMasterData": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "projectId",
+          "assetCode",
+          "assetType",
+          "assetStatus",
+          "manufacturerId",
+          "manufacturerSnapshot",
+          "brandSnapshot",
+          "modelSnapshot",
+          "serialNumber",
+          "manufactureDate",
+          "installationDate",
+          "commissioningDate",
+          "liftingHeightM",
+          "applicationType",
+          "controlMode",
+          "version"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "projectId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "assetCode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "assetType": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "assetStatus": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "ACTIVE",
+              "OUT_OF_SERVICE",
+              "RETIRED"
+            ]
+          },
+          "manufacturerId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "manufacturerSnapshot": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "brandSnapshot": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "modelSnapshot": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "serialNumber": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "manufactureDate": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "installationDate": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "commissioningDate": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "liftingHeightM": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "applicationType": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "controlMode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "AssetLocation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "projectId",
+          "parentId",
+          "kind",
+          "code",
+          "name",
+          "province",
+          "city",
+          "county",
+          "longitude",
+          "latitude",
+          "coordinateSystem",
+          "coordinateSource",
+          "status",
+          "version"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "projectId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "parentId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "SITE",
+              "PLANT",
+              "WORKSHOP",
+              "BAY",
+              "RUNWAY",
+              "OTHER"
+            ]
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "province": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "city": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "county": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "coordinateSystem": {
+            "type": "string",
+            "enum": [
+              "WGS84",
+              "GCJ02",
+              "LOCAL_SITE",
+              "UNKNOWN"
+            ]
+          },
+          "coordinateSource": {
+            "type": "string",
+            "enum": [
+              "MANUAL",
+              "SURVEY",
+              "IMPORTED",
+              "SITE_CENTER"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "DISABLED"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "EquipmentInstallation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "assetId",
+          "equipmentCode",
+          "typeCode",
+          "catalogItemId",
+          "serialNumber",
+          "semanticSlot",
+          "positionLabel",
+          "criticality",
+          "administrativeState",
+          "version"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "assetId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "equipmentCode": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "typeCode": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "catalogItemId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "serialNumber": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "semanticSlot": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "positionLabel": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "criticality": {
+            "type": "string",
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH",
+              "SAFETY_CRITICAL"
+            ]
+          },
+          "administrativeState": {
+            "type": "string",
+            "enum": [
+              "IN_SERVICE",
+              "MAINTENANCE",
+              "OUT_OF_SERVICE",
+              "FAULT_REPORTED"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "EquipmentCatalogItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "projectId",
+          "name",
+          "typeCode",
+          "manufacturerId",
+          "brand",
+          "model",
+          "productCode",
+          "specSchemaVersion",
+          "status",
+          "version"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "projectId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,80}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "typeCode": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "manufacturerId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "brand": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "productCode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "specSchemaVersion": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "DISABLED"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "EquipmentType": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "typeCode",
+          "displayName",
+          "domain",
+          "specSchemaVersion",
+          "status"
+        ],
+        "properties": {
+          "typeCode": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "displayName": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "domain": {
+            "type": "string",
+            "enum": [
+              "MECHANICAL",
+              "CONTROL",
+              "PERCEPTION",
+              "COMPUTE",
+              "NETWORK",
+              "POWER",
+              "SENSOR",
+              "OTHER"
+            ]
+          },
+          "specSchemaVersion": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "DISABLED"
+            ]
+          }
+        }
+      },
       "Envelope": {
         "oneOf": [
           {
