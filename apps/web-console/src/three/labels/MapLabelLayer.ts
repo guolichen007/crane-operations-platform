@@ -21,6 +21,7 @@ export class MapLabelLayer {
   renderer = new CSS2DRenderer();
   labels: Label[] = [];
   private temp = new Vector3();
+  private dragging = false;
   constructor(
     private host: HTMLElement,
     private pointerRoute?: (event: MouseEvent) => boolean
@@ -82,6 +83,10 @@ export class MapLabelLayer {
     }
     this.labels = [];
   }
+  /** During drag the collision layout is paused and labels keep their last offset. */
+  setDragging(dragging: boolean) {
+    this.dragging = dragging;
+  }
   render(scene: Scene, camera: Camera, width: number, height: number) {
     const host = this.host.getBoundingClientRect();
     const occupied: Rect[] = [];
@@ -129,7 +134,10 @@ export class MapLabelLayer {
       // Keep the previous valid placement instead of oscillating between candidates.
       if (label.offset && label.kind !== 'hover-card') offsets.unshift(label.offset);
       let chosen: [number, number] | undefined;
-      if (this.temp.z >= -1 && this.temp.z <= 1)
+      if (this.dragging) {
+        // Keep the previous placement while dragging; rebuild on settle.
+        chosen = label.offset;
+      } else if (this.temp.z >= -1 && this.temp.z <= 1)
         for (const [dx, dy] of offsets) {
           const cx = x + dx,
             cy = y + dy;

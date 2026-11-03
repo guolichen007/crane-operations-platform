@@ -5,6 +5,9 @@ export class InteractionRouter {
   private ray = new Raycaster();
   private pointer = new Vector2();
   private down = { x: 0, y: 0 };
+  private dragging = false;
+  private rafPending = false;
+  private queuedMove: PointerEvent | null = null;
   readonly picker: ScreenSpacePicker;
   lastPick: (InteractionPick & { regionBehind?: number }) | null = null;
   constructor(
@@ -15,13 +18,28 @@ export class InteractionRouter {
     private hover: (region: Group | null) => void,
     private select: (target: InteractionPick) => void,
     private busy: () => boolean,
-    private hoverAsset?: (target: AssetPick | null) => void
+    private hoverAsset?: (target: AssetPick | null) => void,
+    private onDragChange?: (dragging: boolean) => void
   ) {
     this.picker = new ScreenSpacePicker(element, camera, targets);
     element.addEventListener('pointermove', this.move);
     element.addEventListener('pointerleave', this.leave);
     element.addEventListener('pointerdown', this.start);
     element.addEventListener('pointerup', this.end);
+  }
+  get isDragging() {
+    return this.dragging;
+  }
+  private setDragging(value: boolean) {
+    if (this.dragging === value) return;
+    this.dragging = value;
+    this.onDragChange?.(value);
+    if (value) {
+      // Entering drag: drop hover state and any pending hover pick.
+      this.queuedMove = null;
+      this.hover(null);
+      this.hoverAsset?.(null);
+    }
   }
   private region(e: PointerEvent) {
     const r = this.element.getBoundingClientRect();
@@ -33,13 +51,32 @@ export class InteractionRouter {
     return this.ray.intersectObjects(this.regions(), true).find((h) => h.object.userData.region)
       ?.object.userData.region as Group | undefined;
   }
+  /** pointermove is rAF-throttled: at most one pick per frame. */
   private move = (e: PointerEvent) => {
-    if (this.busy()) return;
+    if (e.buttons && Math.hypot(e.clientX - this.down.x, e.clientY - this.down.y) > 5)
+      this.setDragging(true);
+    if (this.rafPending) {
+      this.queuedMove = e;
+      return;
+    }
+    this.rafPending = true;
+    const process = () => {
+      this.rafPending = false;
+      const event = this.queuedMove ?? null;
+      this.queuedMove = null;
+      if (event) this.processMove(event);
+    };
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(process);
+    else process();
+  };
+  private processMove(e: PointerEvent) {
+    if (this.busy() || this.dragging) return;
     const asset = this.picker.pick(e.clientX, e.clientY);
     this.hoverAsset?.(asset);
     this.hover(asset ? null : (this.region(e) ?? null));
     if (asset) this.element.style.cursor = 'pointer';
-  };
+    else this.element.style.cursor = 'grab';
+  }
   private leave = () => {
     this.hover(null);
     this.hoverAsset?.(null);
@@ -48,7 +85,10 @@ export class InteractionRouter {
     this.down = { x: e.clientX, y: e.clientY };
   };
   private end = (e: PointerEvent) => {
+    const wasDragging = this.dragging;
+    this.setDragging(false);
     if (
+      wasDragging ||
       this.busy() ||
       e.button !== 0 ||
       Math.hypot(e.clientX - this.down.x, e.clientY - this.down.y) > 5

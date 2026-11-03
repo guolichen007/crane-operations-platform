@@ -15,6 +15,8 @@ import { createRenderer } from '../core/Renderer';
 import { QualityManager, rendererQuality } from '../core/QualityManager';
 import { CameraRig } from '../core/CameraRig';
 import { SceneLoop } from '../core/SceneLoop';
+import { RenderScheduler, type RenderMode } from '../core/RenderScheduler';
+import { PerfRecorder } from '../core/PerfRecorder';
 import { GeoJsonLoader, type RegionEntry } from './GeoJsonLoader';
 import { DrilldownController, type MapLevel } from './DrilldownController';
 import { buildRegion } from './RegionMeshBuilder';
@@ -92,6 +94,9 @@ export class MapSceneManager {
   private hoverColor = new Color(1.05, 1.05, 1.05);
   private currentTime = 0;
   private resizeTimer: ReturnType<typeof setTimeout> | undefined;
+  private scheduler = new RenderScheduler();
+  private perf = new PerfRecorder();
+  private tourActive = false;
   constructor(
     private host: HTMLElement,
     private callbacks: SceneCallbacks,
@@ -128,12 +133,20 @@ export class MapSceneManager {
       (g) => this.hover(g),
       (target) => this.routePick(target),
       () => this.drill.busy,
-      (asset) => this.hoverAsset(asset?.id ?? null)
+      (asset) => this.hoverAsset(asset?.id ?? null),
+      (dragging) => {
+        this.labels.setDragging(dragging);
+        if (!dragging) {
+          // Camera settled: rebuild the projected pick index and label layout.
+          this.interaction.picker.invalidate();
+          this.scheduler.invalidate();
+        }
+      }
     );
     this.observer = new ResizeObserver(() => this.resize());
     this.observer.observe(host);
     this.resize();
-    this.loop = new SceneLoop((dt, t) => this.update(dt, t));
+    this.loop = new SceneLoop((dt, t) => this.update(dt, t), this.scheduler);
   }
   async init() {
     try {
@@ -193,6 +206,8 @@ export class MapSceneManager {
     this.labels.renderer.setSize(this.width, this.height);
     this.rig.resize(this.width, this.height);
     this.outer?.resize(this.width, this.height);
+    this.interaction.picker.invalidate();
+    this.scheduler.invalidate();
     clearTimeout(this.resizeTimer);
     if (this.countrySamples.length)
       this.resizeTimer = setTimeout(() => void this.reframeCurrentView(), 120);
@@ -442,6 +457,8 @@ export class MapSceneManager {
     this.pulses = [];
     this.runningWaves = [];
     this.pickTargets = [];
+    this.interaction.picker.invalidate();
+    this.scheduler.invalidate();
     const current = this.drill.current;
     const country = current.level === 'country' && !this.focusedProjectId;
     const relevant = this.shownProjects.filter((p) =>
@@ -884,6 +901,7 @@ export class MapSceneManager {
       maxY = Math.max(...points.map((p) => p.y));
     return {
       quality: this.quality.tier,
+      renderMode: this.scheduler.current,
       memory: { ...this.renderer.info.memory },
       drawCalls: this.renderer.info.render.calls,
       triangles: this.renderer.info.render.triangles,
@@ -948,7 +966,14 @@ export class MapSceneManager {
       adcode: this.drill.current.adcode,
     };
   }
+  startPerfRecording() {
+    this.perf.start();
+  }
+  stopPerfRecording() {
+    return this.perf.stop();
+  }
   setTour(active: boolean) {
+    this.tourActive = active;
     this.rig.controls.enabled = !active;
     if (!this.drill.busy) {
       if (active) this.drill.state = 'AUTO_TOUR';
@@ -961,7 +986,15 @@ export class MapSceneManager {
     }
     this.notify();
   }
+  private computeRenderMode(): RenderMode {
+    if (this.interaction.isDragging) return 'INTERACTING';
+    if (this.drill.busy || this.intro?.active) return 'CAMERA';
+    if (this.tourActive) return 'TOUR';
+    if (this.pulses.length || this.runningWaves.length || this.network.group.visible) return 'LIVE';
+    return 'IDLE';
+  }
   private update(dt: number, t: number) {
+    this.scheduler.setMode(this.computeRenderMode());
     this.rig.controls.update(dt);
     this.intro?.update(t);
     this.floor.update(this.reduced ? 0 : t);
