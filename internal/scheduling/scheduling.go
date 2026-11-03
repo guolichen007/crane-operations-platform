@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -21,15 +22,44 @@ import (
 )
 
 var (
-	ErrHardConflict        = errors.New("schedule has an unresolved hard conflict")
-	ErrHardOverride        = errors.New("hard exclusive conflict cannot be overridden")
-	ErrShortReason         = errors.New("override reason must be at least 8 characters")
-	ErrInvalidTransition   = errors.New("invalid schedule item transition")
-	ErrVersionConflict     = errors.New("schedule item version conflict")
-	ErrDependencyCycle     = errors.New("schedule dependency cycle detected")
-	ErrInvalidTimezone     = errors.New("invalid IANA timezone")
-	ErrCrossPortfolio      = errors.New("schedule item cannot reserve a resource of another portfolio")
+	ErrHardConflict      = errors.New("schedule has an unresolved hard conflict")
+	ErrHardOverride      = errors.New("hard exclusive conflict cannot be overridden")
+	ErrShortReason       = errors.New("override reason must be at least 8 characters")
+	ErrInvalidTransition = errors.New("invalid schedule item transition")
+	ErrVersionConflict   = errors.New("schedule item version conflict")
+	ErrDependencyCycle   = errors.New("schedule dependency cycle detected")
+	ErrInvalidTimezone   = errors.New("invalid IANA timezone")
+	ErrCrossPortfolio    = errors.New("schedule item cannot reserve a resource of another portfolio")
+	ErrScopeMismatch     = errors.New("schedule scope mismatch")
+	ErrProjectNotManaged = errors.New("project is not portfolio-managed")
 )
+
+// ResolveScheduleScope derives the authoritative portfolio scope for a schedule
+// item. A project-linked item resolves from the project's portfolio scope; a
+// pure portfolio item requires an explicit scope. The client-supplied scope is
+// only a consistency check, never the authority.
+func ResolveScheduleScope(ctx context.Context, db *sql.DB, projectID, clientScope *string) (string, error) {
+	if projectID != nil && *projectID != "" {
+		var scope sql.NullString
+		if err := db.QueryRowContext(ctx, `SELECT portfolio_scope_id FROM projects WHERE id=$1`, *projectID).Scan(&scope); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return "", errors.New("project not found")
+			}
+			return "", err
+		}
+		if !scope.Valid {
+			return "", ErrProjectNotManaged
+		}
+		if clientScope != nil && *clientScope != "" && *clientScope != scope.String {
+			return "", ErrScopeMismatch
+		}
+		return scope.String, nil
+	}
+	if clientScope == nil || *clientScope == "" {
+		return "", errors.New("portfolio schedule requires an explicit portfolio scope")
+	}
+	return *clientScope, nil
+}
 
 // Conflict is a detected scheduling conflict before persistence. Hard marks a
 // conflict that can never be overridden (e.g. exclusive resource with
@@ -110,6 +140,8 @@ func CreateResource(ctx context.Context, db *sql.DB, in contract.Resource) (cont
 }
 
 // CreateScheduleItem inserts a schedule item with half-open range validation.
+// The portfolio scope is resolved authoritatively, never trusted from the
+// client body.
 func CreateScheduleItem(ctx context.Context, db *sql.DB, in contract.ScheduleItem) (contract.ScheduleItem, error) {
 	if in.Id == "" {
 		in.Id = platform.ID()
@@ -117,7 +149,12 @@ func CreateScheduleItem(ctx context.Context, db *sql.DB, in contract.ScheduleIte
 	if !in.StartAt.Before(in.EndAt) {
 		return in, errors.New("schedule item start_at must be before end_at")
 	}
-	_, err := db.ExecContext(ctx, `INSERT INTO schedule_items(id,project_id,portfolio_scope_id,source_type,source_id,name,start_at,end_at,timezone,status,priority,exclusive_location_id,version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+	scope, err := ResolveScheduleScope(ctx, db, in.ProjectId, in.PortfolioScopeId)
+	if err != nil {
+		return in, err
+	}
+	in.PortfolioScopeId = &scope
+	_, err = db.ExecContext(ctx, `INSERT INTO schedule_items(id,project_id,portfolio_scope_id,source_type,source_id,name,start_at,end_at,timezone,status,priority,exclusive_location_id,version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
 		in.Id, in.ProjectId, in.PortfolioScopeId, in.SourceType, in.SourceId, in.Name, in.StartAt, in.EndAt, in.Timezone, in.Status, in.Priority, in.ExclusiveLocationId, in.Version)
 	return in, err
 }
@@ -153,9 +190,52 @@ func CreateReservation(ctx context.Context, db *sql.DB, in contract.ResourceRese
 	return in, err
 }
 
-// EvaluateCalendarAvailability checks a reservation window against a resource's
-// calendar rules and exceptions in the calendar's IANA timezone. An invalid
-// timezone is a validation error, never silently UTC.
+// timeInterval is a half-open local-time interval within one calendar day.
+type timeInterval struct {
+	start time.Time
+	end   time.Time
+}
+
+func later(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
+}
+
+func earlier(a, b time.Time) time.Time {
+	if a.Before(b) {
+		return a
+	}
+	return b
+}
+
+// covered reports whether [start,end) is fully contained in the union of the
+// given intervals (merged, non-overlapping).
+func covered(intervals []timeInterval, start, end time.Time) bool {
+	if len(intervals) == 0 {
+		return false
+	}
+	merged := append([]timeInterval(nil), intervals...)
+	sort.Slice(merged, func(i, j int) bool { return merged[i].start.Before(merged[j].start) })
+	cursor := start
+	for _, iv := range merged {
+		if iv.start.After(cursor) {
+			return false
+		}
+		if iv.end.After(cursor) {
+			cursor = iv.end
+		}
+		if !cursor.Before(end) {
+			return true
+		}
+	}
+	return !cursor.Before(end)
+}
+
+// EvaluateCalendarAvailability checks that the entire [start,end) window is
+// covered by the resource calendar's availability in its IANA timezone. An
+// invalid timezone is a validation error, never silently UTC.
 func EvaluateCalendarAvailability(ctx context.Context, tx *sql.Tx, resourceID string, start, end time.Time) (bool, string, error) {
 	var calID sql.NullString
 	var tz string
@@ -174,36 +254,68 @@ func EvaluateCalendarAvailability(ctx context.Context, tx *sql.Tx, resourceID st
 	}
 	localStart := start.In(loc)
 	localEnd := end.In(loc)
-	for d := localStart; d.Before(localEnd); d = d.Add(24 * time.Hour) {
-		day := time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, loc)
-		// Exception first: explicit AVAILABLE may override a normally-closed day.
-		var excKind sql.NullString
-		if err := tx.QueryRowContext(ctx, `SELECT kind FROM resource_calendar_exceptions WHERE calendar_id=$1 AND start_at <= $2 AND end_at > $3 LIMIT 1`, calID.String, day, day.Add(24*time.Hour)).Scan(&excKind); err == nil && excKind.Valid {
-			if excKind.String == "AVAILABLE" {
-				continue
-			}
-			return false, excKind.String, nil
-		}
-		// Weekday rule.
-		weekday := int(d.Weekday())
-		var avail sql.NullString
-		var ruleStart, ruleEnd sql.NullTime
-		err := tx.QueryRowContext(ctx, `SELECT availability,start_local,end_local FROM resource_calendar_rules WHERE calendar_id=$1 AND weekday=$2 LIMIT 1`, calID.String, weekday).Scan(&avail, &ruleStart, &ruleEnd)
-		if errors.Is(err, sql.ErrNoRows) {
+	for day := time.Date(localStart.Year(), localStart.Month(), localStart.Day(), 0, 0, 0, 0, loc); day.Before(localEnd); day = day.AddDate(0, 0, 1) {
+		segStart := later(localStart, day)
+		segEnd := earlier(localEnd, day.AddDate(0, 0, 1))
+		if !segStart.Before(segEnd) {
 			continue
 		}
+		intervals := []timeInterval{}
+		var avail sql.NullString
+		var sh, sm, eh, em float64
+		err := tx.QueryRowContext(ctx, `SELECT availability,EXTRACT(HOUR FROM start_local),EXTRACT(MINUTE FROM start_local),EXTRACT(HOUR FROM end_local),EXTRACT(MINUTE FROM end_local) FROM resource_calendar_rules WHERE calendar_id=$1 AND weekday=$2 LIMIT 1`, calID.String, int(day.Weekday())).Scan(&avail, &sh, &sm, &eh, &em)
+		if errors.Is(err, sql.ErrNoRows) {
+			intervals = append(intervals, timeInterval{day, day.AddDate(0, 0, 1)})
+		} else if err != nil {
+			return false, "", err
+		} else if avail.Valid && avail.String == "AVAILABLE" {
+			ws := day.Add(time.Duration(sh)*time.Hour + time.Duration(sm)*time.Minute)
+			we := day.Add(time.Duration(eh)*time.Hour + time.Duration(em)*time.Minute)
+			if we.After(ws) {
+				intervals = append(intervals, timeInterval{ws, we})
+			}
+		}
+		rows, err := tx.QueryContext(ctx, `SELECT kind,start_at,end_at FROM resource_calendar_exceptions WHERE calendar_id=$1 AND start_at < $2 AND end_at > $3`, calID.String, segEnd, segStart)
 		if err != nil {
 			return false, "", err
 		}
-		if avail.Valid && avail.String == "UNAVAILABLE" {
-			return false, "UNAVAILABLE_RULE", nil
-		}
-		if avail.Valid && ruleStart.Valid && ruleEnd.Valid {
-			windowStart := day.Add(time.Duration(ruleStart.Time.Hour())*time.Hour + time.Duration(ruleStart.Time.Minute())*time.Minute)
-			windowEnd := day.Add(time.Duration(ruleEnd.Time.Hour())*time.Hour + time.Duration(ruleEnd.Time.Minute())*time.Minute)
-			if d.Before(windowStart) || !d.Before(windowEnd) {
-				return false, "OUTSIDE_RULE_WINDOW", nil
+		for rows.Next() {
+			var kind string
+			var es, ee time.Time
+			if err := rows.Scan(&kind, &es, &ee); err != nil {
+				rows.Close()
+				return false, "", err
 			}
+			excStart := later(es.In(loc), day)
+			excEnd := earlier(ee.In(loc), day.AddDate(0, 0, 1))
+			if !excStart.Before(excEnd) {
+				continue
+			}
+			if kind == "AVAILABLE" {
+				intervals = append(intervals, timeInterval{excStart, excEnd})
+			} else {
+				sub := []timeInterval{}
+				for _, iv := range intervals {
+					if excEnd.Before(iv.start) || excStart.After(iv.end) {
+						sub = append(sub, iv)
+						continue
+					}
+					if iv.start.Before(excStart) {
+						sub = append(sub, timeInterval{iv.start, excStart})
+					}
+					if iv.end.After(excEnd) {
+						sub = append(sub, timeInterval{excEnd, iv.end})
+					}
+				}
+				intervals = sub
+			}
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return false, "", err
+		}
+		if !covered(intervals, segStart, segEnd) {
+			return false, "CALENDAR_UNAVAILABLE", nil
 		}
 	}
 	return true, "", nil
@@ -366,8 +478,12 @@ func ReconcileConflicts(ctx context.Context, tx *sql.Tx, itemID string, current 
 	for _, c := range current {
 		fp := c.Fingerprint()
 		currentSet[fp] = true
-		if _, err := tx.ExecContext(ctx, `INSERT INTO schedule_conflicts(conflict_type,severity,left_item_id,right_item_id,resource_id,fingerprint,details_json,status) VALUES($1,$2,$3,NULLIF($4,''),NULLIF($5,''),$6,$7,'OPEN') ON CONFLICT(fingerprint) DO UPDATE SET detected_at=now(),details_json=excluded.details_json,updated_at=now()`,
-			c.Type, c.Severity, c.Left, c.Right, c.Resource, fp, c.Detail); err != nil {
+		detail, err := json.Marshal(c)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO schedule_conflicts(conflict_type,severity,left_item_id,right_item_id,resource_id,fingerprint,details_json,status) VALUES($1,$2,$3,NULLIF($4,''),NULLIF($5,''),$6,$7::jsonb,'OPEN') ON CONFLICT(fingerprint) DO UPDATE SET detected_at=now(),details_json=excluded.details_json,updated_at=now()`,
+			c.Type, c.Severity, c.Left, c.Right, c.Resource, fp, string(detail)); err != nil {
 			return err
 		}
 	}
@@ -559,4 +675,68 @@ func OverrideConflict(ctx context.Context, db *sql.DB, conflictID int64, reason,
 		return err
 	}
 	return auditlog.Write(ctx, db, auditlog.Event{Actor: actor, Action: "conflict_override", Result: "success", RequestID: requestID})
+}
+
+// CalendarRule is a weekly availability rule expressed as local wall-clock time.
+type CalendarRule struct {
+	Weekday      int
+	StartLocal   string
+	EndLocal     string
+	Availability string
+}
+
+// ReplaceCalendar atomically replaces a resource calendar's timezone and weekly
+// rules. The expected version provides optimistic concurrency.
+func ReplaceCalendar(ctx context.Context, db *sql.DB, resourceID, timezone string, rules []CalendarRule, expectedVersion int64) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var calID string
+	err = tx.QueryRowContext(ctx, `SELECT id FROM resource_calendars WHERE resource_id=$1`, resourceID).Scan(&calID)
+	if errors.Is(err, sql.ErrNoRows) {
+		calID = platform.ID()
+		if _, err := tx.ExecContext(ctx, `INSERT INTO resource_calendars(id,resource_id,timezone,version) VALUES($1,$2,$3,1)`, calID, resourceID, timezone); err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	} else {
+		if _, err := tx.ExecContext(ctx, `UPDATE resource_calendars SET timezone=$2,version=version+1,updated_at=now() WHERE id=$1 AND version=$3`, calID, timezone, expectedVersion); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM resource_calendar_rules WHERE calendar_id=$1`, calID); err != nil {
+		return err
+	}
+	for _, r := range rules {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO resource_calendar_rules(calendar_id,weekday,start_local,end_local,availability) VALUES($1,$2,$3,$4,$5)`, calID, r.Weekday, r.StartLocal, r.EndLocal, r.Availability); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// CreateDependency inserts an FS dependency after cycle detection. SS/FF/SF are
+// rejected as unsupported in this batch.
+func CreateDependency(ctx context.Context, db *sql.DB, in contract.ScheduleDependency) error {
+	if in.DependencyType != "FS" {
+		return errors.New("unsupported dependency type")
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if in.Id == "" {
+		in.Id = platform.ID()
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO schedule_dependencies(id,predecessor_item_id,successor_item_id,dependency_type,lag_minutes) VALUES($1,$2,$3,$4,$5)`, in.Id, in.PredecessorItemId, in.SuccessorItemId, in.DependencyType, in.LagMinutes); err != nil {
+		return err
+	}
+	if err := ValidateDependencyAcyclic(ctx, tx, in.SuccessorItemId); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

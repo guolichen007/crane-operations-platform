@@ -47,6 +47,37 @@ add('/auth/login', 'get', 'beginOIDCLogin', null, '302');
 add('/auth/callback', 'get', 'finishOIDCLogin', null, '303');
 add('/auth/session', 'get', 'getWebSession', { $ref: '#/components/schemas/WebSession' });
 add('/auth/logout', 'post', 'logoutWebSession', null, '204');
+// Portfolio (project intake / scheduling / resource / conflict) routes.
+const portfolioScope = { $ref: '#/components/schemas/PortfolioScope' },
+  projectIntake = { $ref: '#/components/schemas/ProjectIntake' },
+  resource = { $ref: '#/components/schemas/Resource' },
+  scheduleItem = { $ref: '#/components/schemas/ScheduleItem' },
+  scheduleConflict = { $ref: '#/components/schemas/ScheduleConflict' },
+  scheduleDependency = { $ref: '#/components/schemas/ScheduleDependency' },
+  scheduleBaseline = { $ref: '#/components/schemas/ScheduleBaseline' };
+add('/api/v1/portfolio/scopes', 'get', 'listPortfolioScopes', { type: 'array', items: portfolioScope });
+add('/api/v1/portfolio/intakes', 'get', 'listIntakes', { type: 'array', items: projectIntake });
+add('/api/v1/portfolio/intakes', 'post', 'createIntake', projectIntake, '201');
+add('/api/v1/portfolio/intakes/{id}', 'get', 'getIntake', projectIntake);
+add('/api/v1/portfolio/intakes/{id}/transitions', 'post', 'transitionIntake', null);
+add('/api/v1/portfolio/intakes/{id}/approve', 'post', 'approveIntake', null);
+add('/api/v1/portfolio/resources', 'get', 'listResources', { type: 'array', items: resource });
+add('/api/v1/portfolio/resources', 'post', 'createResource', resource, '201');
+add('/api/v1/portfolio/resources/{id}', 'get', 'getResource', resource);
+add('/api/v1/portfolio/resources/{id}/calendar', 'get', 'getResourceCalendar', null);
+add('/api/v1/portfolio/resources/{id}/calendar', 'put', 'putResourceCalendar', null);
+add('/api/v1/portfolio/schedule/dependencies', 'get', 'listScheduleDependencies', { type: 'array', items: scheduleDependency });
+add('/api/v1/portfolio/schedule/dependencies', 'post', 'createScheduleDependency', scheduleDependency, '201');
+add('/api/v1/portfolio/schedule/items', 'get', 'listScheduleItems', { type: 'array', items: scheduleItem });
+add('/api/v1/portfolio/schedule/items', 'post', 'createScheduleItem', scheduleItem, '201');
+add('/api/v1/portfolio/schedule/items/{id}', 'get', 'getScheduleItem', scheduleItem);
+add('/api/v1/portfolio/schedule/items/{id}/reservations', 'post', 'createReservation', { $ref: '#/components/schemas/ResourceReservation' }, '201');
+add('/api/v1/portfolio/schedule/approve', 'post', 'approveSchedule', null);
+add('/api/v1/portfolio/conflicts', 'get', 'listConflicts', { type: 'array', items: scheduleConflict });
+add('/api/v1/portfolio/conflicts/{id}', 'get', 'getConflict', scheduleConflict);
+add('/api/v1/portfolio/conflicts/{id}/override', 'post', 'overrideConflict', null);
+add('/api/v1/portfolio/baselines', 'get', 'listBaselines', { type: 'array', items: scheduleBaseline });
+add('/api/v1/portfolio/baselines', 'post', 'createBaseline', scheduleBaseline, '201');
 paths['/auth/logout'].post.responses['204'].headers = { Location: { description: 'Optional OIDC RP-initiated logout URL with client_id and exact post_logout_redirect_uri; contains no token', schema: { type: 'string', format: 'uri' } } };
 for (const path of ['/auth/login', '/auth/callback']) {
   paths[path].get.security = [];

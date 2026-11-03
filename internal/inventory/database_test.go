@@ -136,6 +136,7 @@ func TestImportIdempotentRollbackAndRealIdentitySeparation(t *testing.T) {
 		t.Fatal("simulation history replaced by real identity")
 	}
 }
+
 // Inventory ownership counterproof: first import seeds BUSINESS_OWNED; a later
 // import of the same document must not overwrite a business edit, and runtime
 // identity/provenance stays immutable.

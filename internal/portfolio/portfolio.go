@@ -127,9 +127,9 @@ func ApproveIntake(ctx context.Context, db *sql.DB, intakeID, actor, requestID s
 	defer tx.Rollback()
 	var status string
 	var version int64
-	var tenantID, name string
+	var tenantID, name, portfolioScopeID string
 	var formalID sql.NullString
-	if err := tx.QueryRowContext(ctx, `SELECT status,version,tenant_id,project_name,formal_project_id FROM project_intakes WHERE id=$1 FOR UPDATE`, intakeID).Scan(&status, &version, &tenantID, &name, &formalID); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT status,version,tenant_id,project_name,portfolio_scope_id,formal_project_id FROM project_intakes WHERE id=$1 FOR UPDATE`, intakeID).Scan(&status, &version, &tenantID, &name, &portfolioScopeID, &formalID); err != nil {
 		return "", err
 	}
 	if formalID.Valid {
@@ -139,7 +139,7 @@ func ApproveIntake(ctx context.Context, db *sql.DB, intakeID, actor, requestID s
 		return "", ErrNotReadyToApprove
 	}
 	projectID := platform.ID()
-	if _, err := tx.ExecContext(ctx, `INSERT INTO projects(id,tenant_id,name,project_phase) VALUES($1,$2,$3,'REGISTERED')`, projectID, tenantID, name); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO projects(id,tenant_id,name,portfolio_scope_id,project_phase) VALUES($1,$2,$3,$4,'REGISTERED')`, projectID, tenantID, name, portfolioScopeID); err != nil {
 		return "", err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE project_intakes SET status='APPROVED',formal_project_id=$1,version=version+1,updated_at=now() WHERE id=$2 AND version=$3`, projectID, intakeID, version); err != nil {
