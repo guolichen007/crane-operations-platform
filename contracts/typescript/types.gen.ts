@@ -313,6 +313,7 @@ export interface ScheduleItem {
   priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   exclusiveLocationId: string | null;
   version: number;
+  portfolioScopeId: string | null;
 }
 export interface Resource {
   id: string;
@@ -334,7 +335,7 @@ export interface ResourceReservation {
   startAt: string;
   endAt: string;
   quantity: number;
-  status: "ACTIVE" | "CANCELLED";
+  status: "PENDING" | "ACTIVE" | "CANCELLED";
   version: number;
 }
 export interface ScheduleConflict {

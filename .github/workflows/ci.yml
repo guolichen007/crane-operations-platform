@@ -33,9 +33,30 @@ jobs:
         with: { go-version: '1.27.3', cache: true }
       - run: go test -race ./services/... ./internal/... ./contracts/... ./deploy/postgres/... ./tools/certs/... ./tools/identity/... ./tools/provision-keycloak/...
       - run: go vet ./...
-      - run: test -z "$(gofmt -l contracts internal services edge simulators tools/certs tools/fleet tools/inventory tools/identity tools/provision-keycloak tools/diagnostics/mqtt-probe tests/integration deploy/postgres)"
+      - name: gofmt gate（打印未格式化文件）
+        run: |
+          unformatted="$(gofmt -l contracts internal services edge simulators \
+            tools/certs tools/fleet tools/inventory tools/identity \
+            tools/provision-keycloak tools/diagnostics/mqtt-probe \
+            tests/integration deploy/postgres)"
+          if [ -n "$unformatted" ]; then
+            echo "GOFMT_UNFORMATTED_FILES:"
+            printf '%s\n' "$unformatted"
+            exit 1
+          fi
       - run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
       - run: go build ./...
+  r2-db-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
+        with: { go-version: '1.27.3', cache: true }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with: { node-version: '24.19.0', cache: npm }
+      - run: npm ci
+      - run: node tools/r2-b2-test.mjs
   edge:
     runs-on: ubuntu-latest
     steps:

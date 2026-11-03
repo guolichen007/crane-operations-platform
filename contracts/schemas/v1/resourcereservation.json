@@ -41,6 +41,7 @@
     "status": {
       "type": "string",
       "enum": [
+        "PENDING",
         "ACTIVE",
         "CANCELLED"
       ]

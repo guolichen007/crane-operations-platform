@@ -1,13 +1,15 @@
 // Package scheduling owns the deterministic scheduling kernel: resources,
-// calendars, reservations, dependencies, conflict detection, approval and
-// baseline. Time ranges are half-open [start_at, end_at). This is not a CPM
-// optimizer and not an auto-leveler; it detects and explains, never silently
-// moves schedules.
+// calendars, reservations, dependencies, conflict detection, reconciliation,
+// approval and baseline. Time ranges are half-open [start_at, end_at). This is
+// not a CPM optimizer and not an auto-leveler; it detects and explains, never
+// silently moves schedules.
 package scheduling
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sort"
@@ -19,12 +21,19 @@ import (
 )
 
 var (
-	ErrHardConflict   = errors.New("schedule has an unresolved hard conflict")
-	ErrHardOverride   = errors.New("hard exclusive conflict cannot be overridden")
-	ErrShortReason    = errors.New("override reason must be at least 8 characters")
+	ErrHardConflict        = errors.New("schedule has an unresolved hard conflict")
+	ErrHardOverride        = errors.New("hard exclusive conflict cannot be overridden")
+	ErrShortReason         = errors.New("override reason must be at least 8 characters")
+	ErrInvalidTransition   = errors.New("invalid schedule item transition")
+	ErrVersionConflict     = errors.New("schedule item version conflict")
+	ErrDependencyCycle     = errors.New("schedule dependency cycle detected")
+	ErrInvalidTimezone     = errors.New("invalid IANA timezone")
+	ErrCrossPortfolio      = errors.New("schedule item cannot reserve a resource of another portfolio")
 )
 
-// Conflict is a detected scheduling conflict before persistence.
+// Conflict is a detected scheduling conflict before persistence. Hard marks a
+// conflict that can never be overridden (e.g. exclusive resource with
+// override_allowed=false).
 type Conflict struct {
 	Type     string
 	Severity string
@@ -32,10 +41,17 @@ type Conflict struct {
 	Right    string
 	Resource string
 	Detail   string
+	Start    time.Time
+	End      time.Time
+	Hard     bool
 }
 
+// Fingerprint returns a stable identity including the conflict interval, so a
+// re-scheduled conflict in a later window is a distinct conflict.
 func (c Conflict) Fingerprint() string {
-	return fmt.Sprintf("%s|%s|%s|%s", c.Type, c.Left, c.Right, c.Resource)
+	canonical := fmt.Sprintf("%s|%s|%s|%s|%s|%s", c.Type, c.Left, c.Right, c.Resource, c.Start.UTC().Format(time.RFC3339), c.End.UTC().Format(time.RFC3339))
+	sum := sha256.Sum256([]byte(canonical))
+	return hex.EncodeToString(sum[:])
 }
 
 // Overlaps reports whether two half-open [start,end) ranges overlap. Adjacent
@@ -101,13 +117,14 @@ func CreateScheduleItem(ctx context.Context, db *sql.DB, in contract.ScheduleIte
 	if !in.StartAt.Before(in.EndAt) {
 		return in, errors.New("schedule item start_at must be before end_at")
 	}
-	_, err := db.ExecContext(ctx, `INSERT INTO schedule_items(id,project_id,source_type,source_id,name,start_at,end_at,timezone,status,priority,exclusive_location_id,version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-		in.Id, in.ProjectId, in.SourceType, in.SourceId, in.Name, in.StartAt, in.EndAt, in.Timezone, in.Status, in.Priority, in.ExclusiveLocationId, in.Version)
+	_, err := db.ExecContext(ctx, `INSERT INTO schedule_items(id,project_id,portfolio_scope_id,source_type,source_id,name,start_at,end_at,timezone,status,priority,exclusive_location_id,version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+		in.Id, in.ProjectId, in.PortfolioScopeId, in.SourceType, in.SourceId, in.Name, in.StartAt, in.EndAt, in.Timezone, in.Status, in.Priority, in.ExclusiveLocationId, in.Version)
 	return in, err
 }
 
-// CreateReservation inserts a reservation. The reservation range must lie
-// within its schedule item range.
+// CreateReservation inserts a PENDING reservation. The reservation range must
+// lie within its schedule item range, and its portfolio scope must equal both
+// the item's and the resource's scope (DB composite FKs enforce this too).
 func CreateReservation(ctx context.Context, db *sql.DB, in contract.ResourceReservation) (contract.ResourceReservation, error) {
 	if in.Id == "" {
 		in.Id = platform.ID()
@@ -116,19 +133,126 @@ func CreateReservation(ctx context.Context, db *sql.DB, in contract.ResourceRese
 		return in, errors.New("reservation start_at must be before end_at")
 	}
 	var itemStart, itemEnd time.Time
-	if err := db.QueryRowContext(ctx, `SELECT start_at,end_at FROM schedule_items WHERE id=$1`, in.ScheduleItemId).Scan(&itemStart, &itemEnd); err != nil {
+	var itemScope sql.NullString
+	if err := db.QueryRowContext(ctx, `SELECT start_at,end_at,portfolio_scope_id FROM schedule_items WHERE id=$1`, in.ScheduleItemId).Scan(&itemStart, &itemEnd, &itemScope); err != nil {
 		return in, err
 	}
 	if in.StartAt.Before(itemStart) || in.EndAt.After(itemEnd) {
 		return in, errors.New("reservation range is outside its schedule item range")
 	}
-	_, err := db.ExecContext(ctx, `INSERT INTO resource_reservations(id,schedule_item_id,resource_id,start_at,end_at,quantity,status,created_by,version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-		in.Id, in.ScheduleItemId, in.ResourceId, in.StartAt, in.EndAt, in.Quantity, in.Status, "", in.Version)
+	var resScope string
+	if err := db.QueryRowContext(ctx, `SELECT portfolio_scope_id FROM resources WHERE id=$1`, in.ResourceId).Scan(&resScope); err != nil {
+		return in, err
+	}
+	if itemScope.Valid && itemScope.String != resScope {
+		return in, ErrCrossPortfolio
+	}
+	_, err := db.ExecContext(ctx, `INSERT INTO resource_reservations(id,schedule_item_id,resource_id,portfolio_scope_id,start_at,end_at,quantity,status,created_by,version) VALUES($1,$2,$3,$4,$5,$6,$7,'PENDING',$8,$9)`,
+		in.Id, in.ScheduleItemId, in.ResourceId, resScope, in.StartAt, in.EndAt, in.Quantity, "", in.Version)
+	in.Status = "PENDING"
 	return in, err
 }
 
+// EvaluateCalendarAvailability checks a reservation window against a resource's
+// calendar rules and exceptions in the calendar's IANA timezone. An invalid
+// timezone is a validation error, never silently UTC.
+func EvaluateCalendarAvailability(ctx context.Context, tx *sql.Tx, resourceID string, start, end time.Time) (bool, string, error) {
+	var calID sql.NullString
+	var tz string
+	if err := tx.QueryRowContext(ctx, `SELECT id,timezone FROM resource_calendars WHERE resource_id=$1`, resourceID).Scan(&calID, &tz); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return true, "", nil
+		}
+		return false, "", err
+	}
+	if !calID.Valid {
+		return true, "", nil
+	}
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		return false, "", fmt.Errorf("%w: %s", ErrInvalidTimezone, tz)
+	}
+	localStart := start.In(loc)
+	localEnd := end.In(loc)
+	for d := localStart; d.Before(localEnd); d = d.Add(24 * time.Hour) {
+		day := time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, loc)
+		// Exception first: explicit AVAILABLE may override a normally-closed day.
+		var excKind sql.NullString
+		if err := tx.QueryRowContext(ctx, `SELECT kind FROM resource_calendar_exceptions WHERE calendar_id=$1 AND start_at <= $2 AND end_at > $3 LIMIT 1`, calID.String, day, day.Add(24*time.Hour)).Scan(&excKind); err == nil && excKind.Valid {
+			if excKind.String == "AVAILABLE" {
+				continue
+			}
+			return false, excKind.String, nil
+		}
+		// Weekday rule.
+		weekday := int(d.Weekday())
+		var avail sql.NullString
+		var ruleStart, ruleEnd sql.NullTime
+		err := tx.QueryRowContext(ctx, `SELECT availability,start_local,end_local FROM resource_calendar_rules WHERE calendar_id=$1 AND weekday=$2 LIMIT 1`, calID.String, weekday).Scan(&avail, &ruleStart, &ruleEnd)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return false, "", err
+		}
+		if avail.Valid && avail.String == "UNAVAILABLE" {
+			return false, "UNAVAILABLE_RULE", nil
+		}
+		if avail.Valid && ruleStart.Valid && ruleEnd.Valid {
+			windowStart := day.Add(time.Duration(ruleStart.Time.Hour())*time.Hour + time.Duration(ruleStart.Time.Minute())*time.Minute)
+			windowEnd := day.Add(time.Duration(ruleEnd.Time.Hour())*time.Hour + time.Duration(ruleEnd.Time.Minute())*time.Minute)
+			if d.Before(windowStart) || !d.Before(windowEnd) {
+				return false, "OUTSIDE_RULE_WINDOW", nil
+			}
+		}
+	}
+	return true, "", nil
+}
+
+// ValidateDependencyAcyclic performs directed-graph cycle detection over the
+// schedule_dependencies table reachable from the given successor item.
+func ValidateDependencyAcyclic(ctx context.Context, tx *sql.Tx, startItem string) error {
+	const (
+		white = 0
+		gray  = 1
+		black = 2
+	)
+	color := map[string]int{}
+	var dfs func(id string) error
+	dfs = func(id string) error {
+		color[id] = gray
+		rows, err := tx.QueryContext(ctx, `SELECT predecessor_item_id FROM schedule_dependencies WHERE successor_item_id=$1`, id)
+		if err != nil {
+			return err
+		}
+		var preds []string
+		for rows.Next() {
+			var p string
+			if err := rows.Scan(&p); err != nil {
+				rows.Close()
+				return err
+			}
+			preds = append(preds, p)
+		}
+		rows.Close()
+		for _, p := range preds {
+			if color[p] == gray {
+				return ErrDependencyCycle
+			}
+			if color[p] == white {
+				if err := dfs(p); err != nil {
+					return err
+				}
+			}
+		}
+		color[id] = black
+		return nil
+	}
+	return dfs(startItem)
+}
+
 // DetectConflicts evaluates a schedule item's reservations against existing
-// reservations and dependencies. Callers hold the required resource locks.
+// ACTIVE reservations, calendar and dependencies. Callers hold resource locks.
 func DetectConflicts(ctx context.Context, tx *sql.Tx, itemID string) ([]Conflict, error) {
 	var itemStart, itemEnd time.Time
 	if err := tx.QueryRowContext(ctx, `SELECT start_at,end_at FROM schedule_items WHERE id=$1`, itemID).Scan(&itemStart, &itemEnd); err != nil {
@@ -159,12 +283,12 @@ func DetectConflicts(ctx context.Context, tx *sql.Tx, itemID string) ([]Conflict
 	for _, d := range deps {
 		required := d.end.Add(time.Duration(d.lag) * time.Minute)
 		if itemStart.Before(required) {
-			conflicts = append(conflicts, Conflict{Type: "DEPENDENCY_VIOLATION", Severity: "BLOCKING", Left: d.pred, Right: itemID, Detail: "successor starts before predecessor end + lag"})
+			conflicts = append(conflicts, Conflict{Type: "DEPENDENCY_VIOLATION", Severity: "BLOCKING", Left: d.pred, Right: itemID, Start: itemStart, End: required, Detail: "successor starts before predecessor end + lag"})
 		}
 	}
 
-	// Candidate reservations for this item, grouped by resource.
-	crows, err := tx.QueryContext(ctx, `SELECT resource_id,start_at,end_at,quantity FROM resource_reservations WHERE schedule_item_id=$1 AND status='ACTIVE'`, itemID)
+	// Candidate PENDING reservations for this item, grouped by resource.
+	crows, err := tx.QueryContext(ctx, `SELECT resource_id,start_at,end_at,quantity FROM resource_reservations WHERE schedule_item_id=$1 AND status='PENDING'`, itemID)
 	if err != nil {
 		return nil, err
 	}
@@ -184,11 +308,12 @@ func DetectConflicts(ctx context.Context, tx *sql.Tx, itemID string) ([]Conflict
 	}
 
 	for rid, cands := range candidates {
-		var exclusive bool
+		var exclusive, overrideAllowed bool
 		var capacity int
-		if err := tx.QueryRowContext(ctx, `SELECT exclusive,capacity FROM resources WHERE id=$1`, rid).Scan(&exclusive, &capacity); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT exclusive,override_allowed,capacity FROM resources WHERE id=$1`, rid).Scan(&exclusive, &overrideAllowed, &capacity); err != nil {
 			return nil, err
 		}
+		// Existing ACTIVE reservations of OTHER items only.
 		erows, err := tx.QueryContext(ctx, `SELECT start_at,end_at,quantity FROM resource_reservations WHERE resource_id=$1 AND status='ACTIVE' AND schedule_item_id<>$2`, rid, itemID)
 		if err != nil {
 			return nil, err
@@ -204,27 +329,76 @@ func DetectConflicts(ctx context.Context, tx *sql.Tx, itemID string) ([]Conflict
 			existing = append(existing, quantityWindow{es, ee, eq})
 		}
 		erows.Close()
+		if err := erows.Err(); err != nil {
+			return nil, err
+		}
 		for _, cand := range cands {
 			if exclusive {
 				for _, w := range existing {
 					if Overlaps(cand.start, cand.end, w.start, w.end) {
-						conflicts = append(conflicts, Conflict{Type: "RESOURCE_OVERLAP", Severity: "BLOCKING", Left: itemID, Resource: rid, Detail: "exclusive resource overlap"})
+						conflicts = append(conflicts, Conflict{Type: "RESOURCE_OVERLAP", Severity: "BLOCKING", Left: itemID, Resource: rid, Start: cand.start, End: cand.end, Hard: !overrideAllowed})
 						break
 					}
 				}
 			} else {
 				peak := capacityPeak(existing, cand.start, cand.end, cand.qty)
 				if peak > capacity {
-					conflicts = append(conflicts, Conflict{Type: "RESOURCE_OVER_CAPACITY", Severity: "BLOCKING", Left: itemID, Resource: rid, Detail: fmt.Sprintf("capacity peak %d > capacity %d", peak, capacity)})
+					conflicts = append(conflicts, Conflict{Type: "RESOURCE_OVER_CAPACITY", Severity: "BLOCKING", Left: itemID, Resource: rid, Start: cand.start, End: cand.end, Hard: !overrideAllowed, Detail: fmt.Sprintf("capacity peak %d > capacity %d", peak, capacity)})
 				}
+			}
+			ok, reason, err := EvaluateCalendarAvailability(ctx, tx, rid, cand.start, cand.end)
+			if err != nil {
+				return nil, err
+			}
+			if !ok {
+				conflicts = append(conflicts, Conflict{Type: "CALENDAR_UNAVAILABLE", Severity: "BLOCKING", Left: itemID, Resource: rid, Start: cand.start, End: cand.end, Hard: false, Detail: reason})
 			}
 		}
 	}
 	return conflicts, nil
 }
 
-// lockResources acquires deterministic advisory xact locks for a set of
-// resource ids (sorted to avoid deadlock).
+// ReconcileConflicts upserts the current conflict set: new conflicts OPEN,
+// still-existing conflicts kept, disappeared OPEN conflicts marked RESOLVED.
+// History is never deleted.
+func ReconcileConflicts(ctx context.Context, tx *sql.Tx, itemID string, current []Conflict) error {
+	currentSet := map[string]bool{}
+	for _, c := range current {
+		fp := c.Fingerprint()
+		currentSet[fp] = true
+		if _, err := tx.ExecContext(ctx, `INSERT INTO schedule_conflicts(conflict_type,severity,left_item_id,right_item_id,resource_id,fingerprint,details_json,status) VALUES($1,$2,$3,NULLIF($4,''),NULLIF($5,''),$6,$7,'OPEN') ON CONFLICT(fingerprint) DO UPDATE SET detected_at=now(),details_json=excluded.details_json,updated_at=now()`,
+			c.Type, c.Severity, c.Left, c.Right, c.Resource, fp, c.Detail); err != nil {
+			return err
+		}
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT id,fingerprint FROM schedule_conflicts WHERE left_item_id=$1 AND status='OPEN'`, itemID)
+	if err != nil {
+		return err
+	}
+	type openConf struct {
+		id int64
+		fp string
+	}
+	var opens []openConf
+	for rows.Next() {
+		var oc openConf
+		if err := rows.Scan(&oc.id, &oc.fp); err != nil {
+			rows.Close()
+			return err
+		}
+		opens = append(opens, oc)
+	}
+	rows.Close()
+	for _, oc := range opens {
+		if !currentSet[oc.fp] {
+			if _, err := tx.ExecContext(ctx, `UPDATE schedule_conflicts SET status='RESOLVED',resolved_at=now(),updated_at=now() WHERE id=$1`, oc.id); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func lockResources(ctx context.Context, tx *sql.Tx, resourceIDs []string) error {
 	sorted := append([]string(nil), resourceIDs...)
 	sort.Strings(sorted)
@@ -236,13 +410,11 @@ func lockResources(ctx context.Context, tx *sql.Tx, resourceIDs []string) error 
 	return nil
 }
 
-// resourceIDsForItems loads the resource ids referenced by the items'
-// reservations.
 func resourceIDsForItems(ctx context.Context, tx *sql.Tx, itemIDs []string) ([]string, error) {
 	seen := map[string]bool{}
 	var ids []string
 	for _, id := range itemIDs {
-		rows, err := tx.QueryContext(ctx, `SELECT DISTINCT resource_id FROM resource_reservations WHERE schedule_item_id=$1 AND status='ACTIVE'`, id)
+		rows, err := tx.QueryContext(ctx, `SELECT DISTINCT resource_id FROM resource_reservations WHERE schedule_item_id=$1 AND status='PENDING'`, id)
 		if err != nil {
 			return nil, err
 		}
@@ -266,14 +438,33 @@ func resourceIDsForItems(ctx context.Context, tx *sql.Tx, itemIDs []string) ([]s
 }
 
 // ApproveSchedule re-checks conflicts inside a transaction. It locks involved
-// resources deterministically, recomputes conflicts, refuses to commit on an
-// unresolved hard conflict, and only then marks items APPROVED.
+// resources deterministically, recomputes conflicts, reconciles them, refuses
+// to commit on an unresolved HARD block or an overridable block without a valid
+// override, and only then flips PENDING reservations to ACTIVE and items to
+// APPROVED. Items must currently be PLANNED (status + version guard).
 func ApproveSchedule(ctx context.Context, db *sql.DB, itemIDs []string, actor, requestID string) ([]Conflict, error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
+	// Status/version guard.
+	type itemState struct {
+		status  string
+		version int64
+	}
+	states := map[string]itemState{}
+	for _, id := range itemIDs {
+		var st string
+		var v int64
+		if err := tx.QueryRowContext(ctx, `SELECT status,version FROM schedule_items WHERE id=$1 FOR UPDATE`, id).Scan(&st, &v); err != nil {
+			return nil, err
+		}
+		if st != "PLANNED" {
+			return nil, ErrInvalidTransition
+		}
+		states[id] = itemState{st, v}
+	}
 	resourceIDs, err := resourceIDsForItems(ctx, tx, itemIDs)
 	if err != nil {
 		return nil, err
@@ -287,8 +478,20 @@ func ApproveSchedule(ctx context.Context, db *sql.DB, itemIDs []string, actor, r
 		if err != nil {
 			return nil, err
 		}
+		if err := ReconcileConflicts(ctx, tx, id, conflicts); err != nil {
+			return nil, err
+		}
 		for _, c := range conflicts {
-			if c.Severity == "BLOCKING" {
+			if c.Hard {
+				hard = append(hard, c)
+				continue
+			}
+			// Overridable block: allow only with a valid override on this exact fingerprint.
+			var overrideCount int
+			if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM schedule_conflicts sc JOIN schedule_conflict_overrides o ON o.conflict_id=sc.id WHERE sc.fingerprint=$1 AND sc.status='OVERRIDDEN'`, c.Fingerprint()).Scan(&overrideCount); err != nil {
+				return nil, err
+			}
+			if overrideCount == 0 && c.Severity == "BLOCKING" {
 				hard = append(hard, c)
 			}
 		}
@@ -297,7 +500,15 @@ func ApproveSchedule(ctx context.Context, db *sql.DB, itemIDs []string, actor, r
 		return hard, ErrHardConflict
 	}
 	for _, id := range itemIDs {
-		if _, err := tx.ExecContext(ctx, `UPDATE schedule_items SET status='APPROVED',version=version+1,updated_at=now() WHERE id=$1`, id); err != nil {
+		st := states[id]
+		result, err := tx.ExecContext(ctx, `UPDATE schedule_items SET status='APPROVED',version=version+1,updated_at=now() WHERE id=$1 AND version=$2 AND status='PLANNED'`, id, st.version)
+		if err != nil {
+			return nil, err
+		}
+		if n, err := result.RowsAffected(); err != nil || n != 1 {
+			return nil, ErrVersionConflict
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE resource_reservations SET status='ACTIVE',updated_at=now() WHERE schedule_item_id=$1 AND status='PENDING'`, id); err != nil {
 			return nil, err
 		}
 	}
