@@ -70,7 +70,7 @@ test('Overview reports 20 Cloud devices separately; missing site metadata create
   await page.goto('/#/overview');
   const summary = page.getByTestId('cloud-runtime');
   await expect(summary.locator('.runtime-metrics b')).toHaveText(['20', '20', '1', '1']);
-  await expect(summary).toContainText('未配置时不生成地图点');
+  await expect(summary).toContainText('位置元数据未配置');
   await expect(summary).toContainText('SIM 为模拟设备');
   expect(h.calls.some((r) => r.path === '/api/v1/alarms')).toBe(true);
   expect(h.calls.some((r) => r.path === '/api/v1/devices')).toBe(true);

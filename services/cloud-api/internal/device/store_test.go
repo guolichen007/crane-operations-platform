@@ -40,7 +40,7 @@ func TestTelemetryTimeQualityPersisted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sent := time.Now().UTC().Add(-2 * time.Second)
+	sent := time.Now().UTC().Add(-2 * time.Second).Truncate(time.Microsecond)
 	payload, err := json.Marshal(contract.LiveTelemetryPayload{LeaseId: "lease-1", Generation: 1})
 	if err != nil {
 		t.Fatal(err)

@@ -159,7 +159,7 @@ test('全部十台登记行车的项目到单机模拟', async ({ page }) => {
       await expect(panel).toHaveAttribute('data-device-id', ids[i]!);
       await expect(panel).toContainText('REAL ASSET · DEMO TELEMETRY');
       for (const text of [
-        '负载率',
+        '负载',
         '大车 X',
         '小车 Y',
         '起升 Z',
@@ -200,20 +200,23 @@ test('具体 C 机在 35px 邻域优先于项目与地域', async ({ page }) => 
 test('实际动效截图及真实计划线路隔离', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
   await load(page);
+  // B4-R1 idle-pause: a settled country view reaches IDLE (0 GPU work) and the
+  // decorative network freezes. Wait for IDLE, then assert the pause holds —
+  // heads and route batch stay stable instead of continuously animating.
+  await page.waitForFunction(
+    () => window.__spatialDiagnostics!().renderMode === 'IDLE',
+    null,
+    { timeout: 15000 }
+  );
   const a = await read(page);
   await page.screenshot({ path: 'test-results-v033/regression/motion-t0.png' });
   await page.waitForTimeout(1000);
   const b = await read(page);
   await page.screenshot({ path: 'test-results-v033/regression/motion-t1.png' });
-  expect(b.animation.network.heads).not.toEqual(a.animation.network.heads);
+  expect(b.animation.network.heads).toEqual(a.animation.network.heads);
+  expect(b.animation.network.batch).toBe(a.animation.network.batch);
   expect(b.animation.spatialBeacons).toHaveLength(0);
   expect(b.animation.network.arcCount).toBeLessThanOrEqual(10);
-  const routes = b.animation.network.routeIds;
-  await page.waitForFunction(
-    (previousBatch) => window.__spatialDiagnostics!().animation.network.batch > previousBatch,
-    b.animation.network.batch
-  );
-  expect((await read(page)).animation.network.routeIds).not.toEqual(routes);
   await page.getByRole('button', { name: '匿名登记项目', exact: true }).click();
   await page.waitForTimeout(300);
   const real = await read(page);

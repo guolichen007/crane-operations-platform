@@ -9,16 +9,23 @@ async function load(page: Page) {
 test('默认透视、厚度、性能与统一动效时钟', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
   await load(page);
+  // B4-R1 idle-pause: the unified animation clock freezes once the country view
+  // settles to IDLE (0 GPU work). Wait for IDLE, then assert the pause holds.
+  await page.waitForFunction(
+    () => window.__spatialDiagnostics!().renderMode === 'IDLE',
+    null,
+    { timeout: 15000 }
+  );
   const a = await read(page);
   expect(a.camera.fov).toBeGreaterThanOrEqual(34);
   expect(a.projectedRatio).toBeGreaterThanOrEqual(0.4);
   expect(a.sideSample.pixels).toBeGreaterThanOrEqual(6);
   await page.waitForTimeout(1100);
   const b = await read(page);
-  expect(b.animation.sideFlowPhase).toBeGreaterThan(a.animation.sideFlowPhase);
+  expect(b.animation.sideFlowPhase).toBe(a.animation.sideFlowPhase);
   expect(b.animation.spatialBeacons).toHaveLength(0);
   expect(b.picks.every((p) => p.kind === 'cluster')).toBe(true);
-  expect(b.animation.network.heads).not.toEqual(a.animation.network.heads);
+  expect(b.animation.network.heads).toEqual(a.animation.network.heads);
   await page.keyboard.press('Control+Shift+D');
   await page.waitForTimeout(1100);
   const text = await page.getByTestId('debug-panel').innerText();
