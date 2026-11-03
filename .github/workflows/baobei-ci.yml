@@ -1,0 +1,190 @@
+name: Baobei CI
+on:
+  push:
+    branches: ['product/baobei-*']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: baobei-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  baobei-contract:
+    if: startsWith(github.ref, 'refs/heads/product/baobei-')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: apps/project-intake-web/package-lock.json
+      - run: npm ci --prefix apps/project-intake-web --ignore-scripts
+      - run: node tools/task.mjs baobei contract
+  baobei-web-quality:
+    if: startsWith(github.ref, 'refs/heads/product/baobei-')
+    runs-on: ubuntu-latest
+    needs: [baobei-contract]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: apps/project-intake-web/package-lock.json
+      - run: npm ci --prefix apps/project-intake-web --ignore-scripts
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/project-intake-api/go.mod
+          cache-dependency-path: services/project-intake-api/go.sum
+      - run: node tools/task.mjs baobei lint
+      - run: npm test --prefix apps/project-intake-web
+  baobei-api-test:
+    if: startsWith(github.ref, 'refs/heads/product/baobei-')
+    runs-on: ubuntu-latest
+    needs: [baobei-contract]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: apps/project-intake-web/package-lock.json
+      - run: npm ci --prefix apps/project-intake-web --ignore-scripts
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/project-intake-api/go.mod
+          cache-dependency-path: services/project-intake-api/go.sum
+      - run: go test -race ./...
+        working-directory: services/project-intake-api
+  baobei-db-test:
+    if: startsWith(github.ref, 'refs/heads/product/baobei-')
+    runs-on: ubuntu-latest
+    needs: [baobei-contract]
+    services:
+      postgres:
+        image: postgres:18.4-alpine
+        env:
+          POSTGRES_USER: baobei
+          POSTGRES_DB: baobei_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ['55439:5432']
+        options: >-
+          --health-cmd "pg_isready -U baobei -d baobei_test"
+          --health-interval 3s --health-timeout 3s --health-retries 30
+    env:
+      BAOBEI_TEST_DATABASE_URL: postgres://baobei@127.0.0.1:55439/baobei_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: apps/project-intake-web/package-lock.json
+      - run: npm ci --prefix apps/project-intake-web --ignore-scripts
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/project-intake-api/go.mod
+          cache-dependency-path: services/project-intake-api/go.sum
+      - run: node tools/task.mjs baobei integration
+  baobei-e2e:
+    if: startsWith(github.ref, 'refs/heads/product/baobei-')
+    runs-on: ubuntu-latest
+    needs: [baobei-web-quality, baobei-db-test]
+    services:
+      postgres:
+        image: postgres:18.4-alpine
+        env:
+          POSTGRES_USER: baobei
+          POSTGRES_DB: baobei_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ['55439:5432']
+        options: >-
+          --health-cmd "pg_isready -U baobei -d baobei_test"
+          --health-interval 3s --health-timeout 3s --health-retries 30
+    env:
+      BAOBEI_TEST_DATABASE_URL: postgres://baobei@127.0.0.1:55439/baobei_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: apps/project-intake-web/package-lock.json
+      - run: npm ci --prefix apps/project-intake-web --ignore-scripts
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/project-intake-api/go.mod
+          cache-dependency-path: services/project-intake-api/go.sum
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/project-intake-web
+      - name: Start synthetic application
+        env:
+          APP_ENV: development
+          DEV_AUTH: '1'
+          LISTEN_ADDR: 127.0.0.1:8088
+          PUBLIC_ORIGIN: http://127.0.0.1:5188
+          DATABASE_URL: postgres://baobei@127.0.0.1:55439/baobei_test?sslmode=disable
+        run: |
+          (cd services/project-intake-api && go run .) > /tmp/baobei-api.log 2>&1 &
+          npm run dev --prefix apps/project-intake-web > /tmp/baobei-web.log 2>&1 &
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8088/health/ready && curl --fail --silent http://127.0.0.1:5188/auth/config; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - run: node tools/task.mjs baobei e2e
+  baobei-security:
+    if: startsWith(github.ref, 'refs/heads/product/baobei-')
+    runs-on: ubuntu-latest
+    needs: [baobei-contract]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: apps/project-intake-web/package-lock.json
+      - run: npm ci --prefix apps/project-intake-web --ignore-scripts
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/project-intake-api/go.mod
+          cache-dependency-path: services/project-intake-api/go.sum
+      - run: node tools/task.mjs baobei security
+      - run: node tests/baobei/security-snapshot.mjs
+      - run: docker run --rm -v "$PWD/local-private/baobei/security-snapshot:/scan:ro" ghcr.io/gitleaks/gitleaks:v8.24.2 dir /scan --redact --no-banner
+  baobei-compose:
+    if: startsWith(github.ref, 'refs/heads/product/baobei-')
+    runs-on: ubuntu-latest
+    needs: [baobei-web-quality, baobei-api-test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: apps/project-intake-web/package-lock.json
+      - run: npm ci --prefix apps/project-intake-web --ignore-scripts
+      - run: node tools/task.mjs baobei compose
+      - run: node tools/task.mjs baobei up
+      - run: curl --fail http://127.0.0.1:5188/health/ready
+      - if: always()
+        run: node tools/task.mjs baobei down
+  baobei-build:
+    if: startsWith(github.ref, 'refs/heads/product/baobei-')
+    runs-on: ubuntu-latest
+    needs: [baobei-contract]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: apps/project-intake-web/package-lock.json
+      - run: npm ci --prefix apps/project-intake-web --ignore-scripts
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/project-intake-api/go.mod
+          cache-dependency-path: services/project-intake-api/go.sum
+      - run: node tools/task.mjs baobei build
+      - run: node tools/task.mjs baobei docker-build

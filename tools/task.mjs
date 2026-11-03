@@ -134,6 +134,10 @@ const tasks = {
     run(go, ['run', 'golang.org/x/vuln/cmd/govulncheck@v1.9.0', './...']);
   },
 };
+if (process.argv[2] === 'baobei') {
+  const r = spawnSync(process.execPath, ['tests/baobei/task.mjs', ...process.argv.slice(3)], {stdio: 'inherit', env: process.env});
+  process.exit(r.status ?? 1);
+}
 const task = process.argv[2];
 if (!Object.hasOwn(tasks, task)) {
   console.error('Usage: node tools/task.mjs ' + Object.keys(tasks).join('|'));

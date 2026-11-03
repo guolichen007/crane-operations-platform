@@ -29,3 +29,10 @@ BB-B1：开发认证/生产 OIDC BFF 结构、工作台、我的报备、三步�
 独立 PostgreSQL、独立 Cookie、独立服务、契约先行。没有运行时 Crane 集成。
 Planned Equipment 永远不能直接生成 Equipment / Serial Number / Runtime Binding。
 不扩展 ERP/财务/完整 CRM/邮件/LLM/爬虫/三维/PLC/远控。没有根许可证变更。
+
+BB_G0_LOCAL=PASS
+BB_B1_LOCAL_VALIDATION=PASS
+BB_B1_OWNER_REVIEW=PENDING
+BB_B2_STARTED=NO
+
+本轮本地交付证据见 05-BB-G0-B1验收报告.md。全部 production 操作未执行；后续批次须负责人架构/代码/UI/安全审查。
