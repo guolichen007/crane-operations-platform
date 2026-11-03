@@ -155,41 +155,78 @@
   white-space: nowrap;
 }
 .side-rail {
-  width: 72px;
+  width: 216px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
   background: var(--surface-900);
   border-right: 1px solid var(--line-soft);
   z-index: 20;
+  transition: width 0.18s ease;
+}
+.side-rail.collapsed {
+  width: 64px;
+}
+.rail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 14px 8px;
+}
+.rail-brand {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
 }
 .rail-index {
   font: 9px Consolas;
   letter-spacing: 2px;
   color: var(--text-3);
-  margin: 25px 0;
 }
+.rail-toggle {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.rail-toggle:hover { color: var(--text-1); background: var(--surface-850); }
 .side-rail nav {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 3px;
+  padding: 4px 8px;
 }
 .side-rail nav > a {
   display: flex;
   position: relative;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  height: 68px;
+  gap: 12px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 8px;
   color: var(--text-3);
-  font-size: 10px;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
   transition:
     color 0.2s,
     background 0.2s;
 }
+.side-rail.collapsed nav > a {
+  justify-content: center;
+  padding: 0;
+}
+.side-rail.collapsed nav > a span { display: none; }
 .side-rail nav > a:hover {
   background: var(--surface-850);
   color: var(--text-1);
@@ -202,19 +239,24 @@
   content: '';
   position: absolute;
   left: 0;
-  top: 15px;
-  height: 38px;
+  top: 9px;
+  height: 22px;
   width: 2px;
   background: var(--accent-blue);
+}
+.rail-sep {
+  height: 1px;
+  margin: 10px 12px;
+  background: var(--line-soft);
 }
 .rail-foot {
   margin-top: auto;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 16px;
+  justify-content: center;
+  gap: 10px;
   color: var(--text-3);
-  padding-bottom: 22px;
+  padding: 16px 0 22px;
 }
 .rail-foot small {
   font: 8px Consolas;
@@ -1586,3 +1628,24 @@
 }
 .scene-mode-dock button:hover { color: #d8e8f8; }
 .scene-mode-dock button.selected { background: rgba(56, 225, 255, 0.16); color: #5fe0ff; }
+
+/* ---- B4 workspace pages ---- */
+.workspace-page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 28px 32px;
+  gap: 20px;
+  color: var(--text-2);
+}
+.workspace-page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.workspace-page-head h1 { font-size: 22px; font-weight: 700; color: var(--text-1); margin: 4px 0 6px; }
+.workspace-page-head p { font-size: 13px; color: var(--text-3); margin: 0; }
+.workspace-page-body { flex: 1; color: var(--text-3); font-size: 14px; }

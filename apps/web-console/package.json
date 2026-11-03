@@ -14,6 +14,8 @@
     "build:html": "node scripts/build-standalone.mjs"
   },
   "dependencies": {
+    "@tanstack/vue-query": "^5.105.3",
+    "@tanstack/vue-table": "^8.21.3",
     "camera-controls": "^3.1.0",
     "d3-geo": "^3.1.1",
     "echarts": "^6.0.0",
@@ -21,6 +23,7 @@
     "lucide-vue-next": "^0.468.0",
     "pinia": "^3.0.3",
     "postprocessing": "^6.38.0",
+    "reka-ui": "^2.11.0",
     "three": "0.186.1",
     "vue": "^3.5.22",
     "vue-router": "^4.5.1"
