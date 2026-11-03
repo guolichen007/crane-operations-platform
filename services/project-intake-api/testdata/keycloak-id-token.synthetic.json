@@ -1,0 +1,10 @@
+{
+  "iss": "https://identity.example.test/realms/synthetic",
+  "aud": "baobei-web", "sub": "33333333-3333-4333-8333-333333333333",
+  "exp": 2000003600, "iat": 2000000000, "auth_time": 1999999900,
+  "jti": "44444444-4444-4444-8444-444444444444", "typ": "ID", "azp": "baobei-web",
+  "sid": "55555555-5555-4555-8555-555555555555", "nonce": "synthetic-nonce",
+  "acr": "1", "email_verified": false, "preferred_username": "synthetic-user",
+  "realm_access": {"roles": ["default-roles-synthetic", "offline_access"]},
+  "resource_access": {"baobei-web": {"roles": ["baobei_sales"]}, "account": {"roles": ["view-profile"]}}
+}

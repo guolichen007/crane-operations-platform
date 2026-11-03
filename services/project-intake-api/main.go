@@ -111,6 +111,12 @@ func main() {
 		log.Fatal("database migration failed")
 	}
 	if len(os.Args) > 1 {
+		if len(os.Args) >= 3 && os.Args[1] == "maintenance" && os.Args[2] == "identity-apply" {
+			if e = identityCommand(ctx, pool, os.Args[3:], os.Stdout); e != nil {
+				log.Fatal(e)
+			}
+			return
+		}
 		if len(os.Args) == 3 && os.Args[1] == "maintenance" && os.Args[2] == "protection-sweep" {
 			n, e := (&App{db: pool, cfg: c}).protectionSweep(ctx, time.Now().UTC())
 			if e != nil {

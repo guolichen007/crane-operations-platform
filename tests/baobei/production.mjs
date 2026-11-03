@@ -36,7 +36,8 @@ export function validateProduction(c) {
   assert(env.OIDC_CLIENT_SECRET_FILE && !env.OIDC_CLIENT_SECRET);
   assert(!env.DATABASE_URL);
   for (const name of ['baobei-web', 'baobei-api'])
-    assert(/@sha256:[a-f0-9]{64}$/.test(s[name].image), 'digest required');
+    assert(new RegExp('^ghcr\\.io/guolichen007/' + name + '@sha256:[a-f0-9]{64}$').test(s[name].image), 'fixed GHCR registry digest required');
+  assert.equal(s['baobei-postgres'].image,'postgres:18.4-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15');
   return true;
 }
 const r = spawnSync(
@@ -54,8 +55,8 @@ const r = spawnSync(
     encoding: 'utf8',
     env: {
       ...process.env,
-      BAOBEI_WEB_IMAGE: 'baobei-web@sha256:' + 'a'.repeat(64),
-      BAOBEI_API_IMAGE: 'baobei-api@sha256:' + 'b'.repeat(64),
+      BAOBEI_WEB_IMAGE: 'ghcr.io/guolichen007/baobei-web@sha256:' + 'a'.repeat(64),
+      BAOBEI_API_IMAGE: 'ghcr.io/guolichen007/baobei-api@sha256:' + 'b'.repeat(64),
       BAOBEI_SECRETS_DIR: process.cwd() + '/local-private/baobei/config-test-only',
     },
   }
@@ -81,6 +82,13 @@ for (const service of Object.values(raw.services)) {
   for (const key of ['POSTGRES_PASSWORD', 'OIDC_CLIENT_SECRET', 'DATABASE_URL'])
     assert(!(key in (service.environment || {})), 'plaintext environment secret');
 }
+for(const name of ['baobei-web','baobei-api']){
+ for(const image of [name+':latest',name+'@sha256:'+'a'.repeat(64),'sha256:'+'a'.repeat(64),'ghcr.io/other/'+name+'@sha256:'+'a'.repeat(64)]){
+  const bad=structuredClone(c);bad.services[name].image=image;assert.throws(()=>validateProduction(bad));
+ }
+}
+{const bad=structuredClone(c);bad.services['baobei-postgres'].image='postgres:18.4-alpine';assert.throws(()=>validateProduction(bad));}
+console.log('WEB_IMAGE_REQUIRES_REGISTRY_DIGEST=YES API_IMAGE_REQUIRES_REGISTRY_DIGEST=YES PRODUCTION_POSTGRES_PINNED=YES');
 const nginx = readFileSync('deploy/baobei/nginx.production.conf', 'utf8');
 assert(nginx.includes('resolver 127.0.0.11'));
 assert(!nginx.includes('127.0.0.1:8088'));

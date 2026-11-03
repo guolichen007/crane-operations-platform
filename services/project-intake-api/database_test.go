@@ -315,6 +315,15 @@ func testOIDC(t *testing.T, db *pgxpool.Pool) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	fixtureBytes, e := os.ReadFile("testdata/keycloak-id-token.synthetic.json")
+	if e != nil {
+		t.Fatal(e)
+	}
+	var fixture map[string]any
+	if e = json.Unmarshal(fixtureBytes, &fixture); e != nil {
+		t.Fatal(e)
+	}
+	tokenSubject := "synthetic-a"
 	var issuer, nonce, challenge string
 	badNonce := false
 	roleMode := "client"
@@ -337,7 +346,15 @@ func testOIDC(t *testing.T, db *pgxpool.Pool) {
 			if badNonce {
 				n = "wrong"
 			}
-			claims := map[string]any{"iss": issuer, "aud": "baobei-web", "sub": "synthetic-a", "exp": time.Now().Add(time.Hour).Unix(), "iat": time.Now().Unix(), "nonce": n, "resource_access": map[string]any{"baobei-web": map[string]any{"roles": []string{"baobei_sales"}}}}
+			claims := map[string]any{}
+			for k, v := range fixture {
+				claims[k] = v
+			}
+			claims["iss"] = issuer
+			claims["sub"] = tokenSubject
+			claims["exp"] = time.Now().Add(time.Hour).Unix()
+			claims["iat"] = time.Now().Unix()
+			claims["nonce"] = n
 			if roleMode == "realm" {
 				delete(claims, "resource_access")
 				claims["realm_access"] = map[string]any{"roles": []string{"baobei_sales"}}
@@ -415,6 +432,35 @@ func testOIDC(t *testing.T, db *pgxpool.Pool) {
 		expect(t, s, want, b)
 	}
 	roleMode = "client"
+	for _, test := range []struct {
+		name, sql string
+		want      int
+	}{
+		{"absent", "", 403},
+		{"mismatch", `INSERT INTO app_users(subject,display_name,role) VALUES($1,'Synthetic','baobei_admin')`, 403},
+		{"inactive", `UPDATE app_users SET role='baobei_sales',team_id='11111111-1111-4111-8111-111111111111',active=false WHERE subject=$1`, 403},
+		{"matching", `UPDATE app_users SET active=true WHERE subject=$1`, 303},
+	} {
+		t.Run("identity_"+test.name, func(t *testing.T) {
+			tokenSubject = fixture["sub"].(string)
+			if test.sql != "" {
+				if _, e = db.Exec(context.Background(), test.sql, tokenSubject); e != nil {
+					t.Fatal(e)
+				}
+			}
+			state = start()
+			s, b = c.call("GET", "/auth/callback?code=synthetic&state="+url.QueryEscape(state), nil)
+			expect(t, s, test.want, b)
+			var count int
+			if e = db.QueryRow(context.Background(), `SELECT count(*) FROM app_users WHERE subject=$1`, tokenSubject).Scan(&count); e != nil {
+				t.Fatal(e)
+			}
+			if test.name == "absent" && count != 0 {
+				t.Fatal("login auto-provisioned user")
+			}
+		})
+	}
+	tokenSubject = "synthetic-a"
 	state = start()
 	if _, e = db.Exec(context.Background(), `UPDATE oidc_pending_logins SET expires_at=now()-interval '1 second' WHERE state_hash=$1`, hash(state)); e != nil {
 		t.Fatal(e)

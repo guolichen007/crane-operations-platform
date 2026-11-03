@@ -13,27 +13,28 @@ jobs:
     if: startsWith(github.ref, 'refs/heads/product/baobei-')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24.19.0
           cache: npm
           cache-dependency-path: apps/project-intake-web/package-lock.json
       - run: npm ci --prefix apps/project-intake-web --ignore-scripts
       - run: node tools/task.mjs baobei contract
+      - run: python3 -m unittest discover -s tests/baobei/publish -v
   baobei-web-quality:
     if: startsWith(github.ref, 'refs/heads/product/baobei-')
     runs-on: ubuntu-latest
     needs: [baobei-contract]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24.19.0
           cache: npm
           cache-dependency-path: apps/project-intake-web/package-lock.json
       - run: npm ci --prefix apps/project-intake-web --ignore-scripts
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: services/project-intake-api/go.mod
           cache-dependency-path: services/project-intake-api/go.sum
@@ -44,14 +45,14 @@ jobs:
     runs-on: ubuntu-latest
     needs: [baobei-contract]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24.19.0
           cache: npm
           cache-dependency-path: apps/project-intake-web/package-lock.json
       - run: npm ci --prefix apps/project-intake-web --ignore-scripts
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: services/project-intake-api/go.mod
           cache-dependency-path: services/project-intake-api/go.sum
@@ -75,19 +76,27 @@ jobs:
     env:
       BAOBEI_TEST_DATABASE_URL: postgres://baobei@127.0.0.1:55439/baobei_test?sslmode=disable
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24.19.0
           cache: npm
           cache-dependency-path: apps/project-intake-web/package-lock.json
       - run: npm ci --prefix apps/project-intake-web --ignore-scripts
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: services/project-intake-api/go.mod
           cache-dependency-path: services/project-intake-api/go.sum
       - run: node tools/task.mjs baobei race
       - run: node tools/task.mjs baobei integration
+      - name: Root-only identity CLI ownership and database fixture
+        run: |
+          docker run --rm --network host -e BAOBEI_TEST_DATABASE_URL \
+            -e GOPROXY=file:///go/pkg/mod/cache/download -e GOSUMDB=off \
+            -v "$PWD/services/project-intake-api:/src:ro" \
+            -v "$(go env GOMODCACHE)/cache/download:/cache:ro" \
+            -w /src golang:1.27.3-alpine \
+            sh -ec 'mkdir -p /go/pkg/mod/cache/download; cp -R /cache/. /go/pkg/mod/cache/download/; go test -mod=readonly -count=1 -run "TestIdentityRootFile|TestDatabaseIdentityCLI" -v ./...'
   baobei-e2e:
     if: startsWith(github.ref, 'refs/heads/product/baobei-')
     runs-on: ubuntu-latest
@@ -106,14 +115,14 @@ jobs:
     env:
       BAOBEI_TEST_DATABASE_URL: postgres://baobei@127.0.0.1:55439/baobei_test?sslmode=disable
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24.19.0
           cache: npm
           cache-dependency-path: apps/project-intake-web/package-lock.json
       - run: npm ci --prefix apps/project-intake-web --ignore-scripts
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: services/project-intake-api/go.mod
           cache-dependency-path: services/project-intake-api/go.sum
@@ -140,14 +149,14 @@ jobs:
     runs-on: ubuntu-latest
     needs: [baobei-contract]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24.19.0
           cache: npm
           cache-dependency-path: apps/project-intake-web/package-lock.json
       - run: npm ci --prefix apps/project-intake-web --ignore-scripts
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: services/project-intake-api/go.mod
           cache-dependency-path: services/project-intake-api/go.sum
@@ -159,13 +168,14 @@ jobs:
     runs-on: ubuntu-latest
     needs: [baobei-web-quality, baobei-api-test]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24.19.0
           cache: npm
           cache-dependency-path: apps/project-intake-web/package-lock.json
       - run: npm ci --prefix apps/project-intake-web --ignore-scripts
+      - run: node tools/task.mjs baobei cert-test
       - run: node tools/task.mjs baobei compose
       - run: node tools/task.mjs baobei up
       - run: curl --fail http://127.0.0.1:5188/health/ready
@@ -177,14 +187,14 @@ jobs:
     runs-on: ubuntu-latest
     needs: [baobei-contract]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24.19.0
           cache: npm
           cache-dependency-path: apps/project-intake-web/package-lock.json
       - run: npm ci --prefix apps/project-intake-web --ignore-scripts
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: services/project-intake-api/go.mod
           cache-dependency-path: services/project-intake-api/go.sum

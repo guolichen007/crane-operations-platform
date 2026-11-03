@@ -12,10 +12,11 @@ for (const path of [
   'tests/baobei',
   'docs/项目报备中心',
   '.github/workflows/baobei-ci.yml',
+  '.github/workflows/baobei-publish.yml',
 ])
   cpSync(path, resolve(dest, path), {
     recursive: true,
     filter: (src) =>
-      !src.split(/[\\/]/).some((p) => ['node_modules', 'dist', 'local-private'].includes(p)),
+      !src.split(/[\\/]/).some((p) => ['node_modules', 'dist', 'local-private', '__pycache__'].includes(p)),
   });
 console.log('Product-only secret-scan snapshot prepared.');

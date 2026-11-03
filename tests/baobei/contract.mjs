@@ -1,3 +1,4 @@
+import './closure.mjs';
 import { createRequire } from 'node:module';
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';

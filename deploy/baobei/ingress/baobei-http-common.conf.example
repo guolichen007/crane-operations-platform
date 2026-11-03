@@ -1,0 +1,6 @@
+# Include once inside shared Nginx http {}, e.g. conf.d/00-baobei-common.conf.
+# Only the shared ingress joins u-dao-baobei-frontend; do not join Crane services to it.
+resolver 127.0.0.11 valid=10s ipv6=off;
+resolver_timeout 5s;
+limit_req_zone $binary_remote_addr zone=baobei_ingress_login:1m rate=12r/m;
+limit_req_zone $binary_remote_addr zone=baobei_ingress_callback:1m rate=24r/m;

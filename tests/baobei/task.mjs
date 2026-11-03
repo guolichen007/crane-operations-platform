@@ -44,6 +44,7 @@ function compose(...args) {
   ]);
 }
 const tasks = {
+  'cert-test'(){run(process.execPath,['tests/baobei/cert/run.mjs']);},
   'production-check'() {
     run(process.execPath, ['tests/baobei/production.mjs']);
   },
@@ -71,6 +72,7 @@ const tasks = {
   test() {
     run(go, ['test', './...'], api);
     npm('test');
+    run('python'+(process.platform==='win32'?'':'3'),['-m','unittest','discover','-s','tests/baobei/publish','-v']);
   },
   build() {
     mkdirSync('local-private', { recursive: true });

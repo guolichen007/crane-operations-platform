@@ -1,4 +1,8 @@
-node_modules
-dist
-local-private
-*.log
+**
+!package.json
+!package-lock.json
+!index.html
+!tsconfig*.json
+!vite.config.ts
+!src
+!src/**

@@ -67,13 +67,24 @@ func (a *App) user(r *http.Request) (User, error) {
 	e = a.db.QueryRow(r.Context(), `SELECT u.subject,u.display_name,u.role,coalesce(u.team_id::text,''),s.csrf FROM app_sessions s JOIN app_users u ON u.subject=s.subject WHERE s.token_hash=$1 AND s.expires_at>now() AND u.active`, hash(c.Value)).Scan(&u.Subject, &u.Name, &u.Role, &u.TeamID, &u.CSRF)
 	return u, e
 }
-func (a *App) session(w http.ResponseWriter, r *http.Request, subject string) error {
+func (a *App) session(w http.ResponseWriter, r *http.Request, subject string, roles ...string) error {
 	token, csrf := randomToken(), randomToken()
 	tx, e := a.db.Begin(r.Context())
 	if e != nil {
 		return e
 	}
 	defer tx.Rollback(r.Context())
+	// Serialize authorization/session creation with explicit identity changes.
+	if _, e = tx.Exec(r.Context(), `SELECT pg_advisory_xact_lock_shared($1)`, identityLock); e != nil {
+		return e
+	}
+	var currentRole string
+	if e = tx.QueryRow(r.Context(), `SELECT role FROM app_users WHERE subject=$1 AND active`, subject).Scan(&currentRole); e != nil {
+		return errIdentityDenied
+	}
+	if roles != nil && !contains(roles, currentRole) {
+		return errIdentityDenied
+	}
 	if old, e := r.Cookie(a.cookieName()); e == nil {
 		if _, e = tx.Exec(r.Context(), `DELETE FROM app_sessions WHERE token_hash=$1`, hash(old.Value)); e != nil {
 			return e
@@ -192,7 +203,11 @@ func (a *App) auth(w http.ResponseWriter, r *http.Request) {
 			fail(w, 403, "FORBIDDEN", "报备账号未授权，请联系管理员")
 			return
 		}
-		if e = a.session(w, r, id.Subject); e != nil {
+		if e = a.session(w, r, id.Subject, roles...); e != nil {
+			if errors.Is(e, errIdentityDenied) {
+				fail(w, 403, "FORBIDDEN", "报备账号未授权，请联系管理员")
+				return
+			}
 			fail(w, 503, "SESSION_UNAVAILABLE", "登录暂时不可用")
 			return
 		}

@@ -1,0 +1,46 @@
+name: Baobei GHCR Publish
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: '完整产品提交 SHA；必须已通过 Baobei CI 八门'
+        type: string
+        required: true
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: baobei-publish-${{ inputs.source_sha }}
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'guolichen007/crane-operations-platform' && github.ref == 'refs/heads/product/baobei-v1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SOURCE_SHA: ${{ inputs.source_sha }}
+    steps:
+      - name: Validate exact input
+        shell: bash
+        run: '[[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]'
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prove product ancestry before executing source
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          git fetch --no-tags origin refs/heads/product/baobei-v1:refs/remotes/origin/product/baobei-v1
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/product/baobei-v1
+      - name: Verify eight gates, build, publish and verify anonymous digest pulls
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 deploy/baobei/publish/publish.py --source-sha "$SOURCE_SHA"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: baobei-registry-deployment-${{ inputs.source_sha }}
+          path: local-private/baobei/registry-release/${{ inputs.source_sha }}/deployment-manifest.json
+          if-no-files-found: error
+          retention-days: 30

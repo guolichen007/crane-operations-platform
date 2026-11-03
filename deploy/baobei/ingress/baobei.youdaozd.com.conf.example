@@ -1,0 +1,46 @@
+# Include inside shared Nginx http {} after baobei-http-common.conf.example.
+server {
+    listen 80;
+    server_name baobei.youdaozd.com;
+    access_log off;
+    error_log /dev/stderr crit;
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/acme;
+        default_type text/plain;
+        try_files $uri =404;
+    }
+    location / { return 308 https://baobei.youdaozd.com$request_uri; }
+}
+server {
+    listen 443 ssl;
+    server_name baobei.youdaozd.com;
+    ssl_certificate /etc/nginx/tls/baobei/fullchain.pem;
+    ssl_certificate_key /etc/nginx/tls/baobei/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    access_log off;
+    error_log /dev/stderr crit;
+    client_max_body_size 64k;
+    # Variable + Docker DNS avoids a pinned container IP and startup DNS lookup.
+    set $baobei_web http://baobei-web:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Host baobei.youdaozd.com;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header Connection "";
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 30s;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy no-referrer always;
+    location = /auth/login {
+        limit_req zone=baobei_ingress_login burst=8 nodelay;
+        limit_req_status 429;
+        proxy_pass $baobei_web;
+    }
+    location = /auth/callback {
+        limit_req zone=baobei_ingress_callback burst=12 nodelay;
+        limit_req_status 429;
+        proxy_pass $baobei_web;
+    }
+    location / { proxy_pass $baobei_web; }
+}

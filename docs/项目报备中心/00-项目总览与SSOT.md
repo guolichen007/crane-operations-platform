@@ -5,7 +5,7 @@ BAOBEI_MAIN_MERGE=FORBIDDEN
 BAOBEI_R2_MERGE=FORBIDDEN
 BASE_SHA=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18
 BRANCH=product/baobei-v1
-CURRENT_BATCH=BB-B2
+CURRENT_BATCH=BB-B2-R1
 STOP_AFTER_BB_B2=YES
 
 目标：快速报项目、识别重复、明确归属并跟进。独立产品，永不合并 main/R2。
@@ -39,4 +39,13 @@ BB_B2_STARTED=YES
 
 ## BB-B2 当前交付
 负责人批准 START_HEAD=4c87266620f493bf8d04a2d2c17cc0118b4a5bd5。B1边界说明保留为历史记录，B2已新增：客户端角色隔离/DB pending、主管审核与重复裁决、归属转移、保护期CLI、受控阶段流转、生产错误模型、隔离部署模板、备份恢复和发布证据。
-规则与证据入口：BB-B2-业务规则与运维.md、生产安全与限流.md、06-BB-B2验收报告.md。BB_B2_OWNER_REVIEW=PENDING；本轮后STOP，不开启下一批。生产模板不在本轮部署。
+规则与证据入口：BB-B2-业务规则与运维.md、生产安全与限流.md、06-BB-B2验收报告.md。BB_B2_CODE_REVIEW=PASS；本轮后STOP，不开启下一批。生产模板不在本轮部署。
+
+## BB-B2-R1 Production Closure
+
+START_HEAD=06d911007b01fe3fda10a1bc3a6687984376fa21；仅生产收口，无新增销售业务功能。
+生产 SSOT：[生产部署契约](生产部署契约.md)、[Keycloak生产配置契约](Keycloak生产配置契约.md)。独立 ACME 入口 deploy/baobei/cert/README.md。
+S1B_PUBLIC_DEPLOY=NOT_AUTHORIZED；GHCR_PUBLISHED=NO；ACME_SERVER_APPLIED=NO。
+完成本地验证并 push product/baobei-v1、等待原八门后 STOP_AFTER_BB_B2_R1=YES；发布工作流只交付机制，不触发。main/R2/真实生产保持禁止修改。
+
+本地验证证据：[07-BB-B2-R1验收报告](07-BB-B2-R1验收报告.md)。
