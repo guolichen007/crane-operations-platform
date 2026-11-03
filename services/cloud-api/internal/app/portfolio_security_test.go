@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -113,5 +114,46 @@ func TestPortfolioManagerWithoutProjectGrantCannotReadProjectAssets(t *testing.T
 	}
 	if w := f.request(pm, sessionPM.CsrfToken, "/api/v1/devices/SIM-P001-01/shadow", "GET"); w.Code != 404 {
 		t.Fatalf("portfolio-only user read project device: %d", w.Code)
+	}
+}
+
+// TestPortfolioDirectObjectExistenceLeak proves child-ID routes hide a foreign
+// object's existence (404) rather than leaking it with 403, and that a caller
+// with membership but insufficient capability gets 403.
+func TestPortfolioDirectObjectExistenceLeak(t *testing.T) {
+	f := newSecurityFixture(t)
+	portfolioSecurityData(t, f)
+	// A PS-B intake exists.
+	if _, err := f.db.Exec(`INSERT INTO project_intakes(id,portfolio_scope_id,tenant_id,intake_code,project_name,project_type,status) VALUES('INT-B','PS-B','demo','INT-B','B Project','NEW_INSTALLATION','PLANNING')`); err != nil {
+		t.Fatal(err)
+	}
+	var conflictID int64
+	if err := f.db.QueryRow(`SELECT id FROM schedule_conflicts WHERE fingerprint='fp-b'`).Scan(&conflictID); err != nil {
+		t.Fatal(err)
+	}
+
+	// user-a belongs only to PS-A: every PS-B child-ID route must be 404.
+	a, sessionA := f.login(t, "a")
+	if w := f.requestJSON(a, sessionA.CsrfToken, "/api/v1/portfolio/intakes/INT-B/transitions", "POST", `{"status":"REVIEW","reason":"review"}`); w.Code != 404 {
+		t.Fatalf("foreign intake transition leaked existence: %d", w.Code)
+	}
+	if w := f.requestJSON(a, sessionA.CsrfToken, "/api/v1/portfolio/intakes/INT-B/approve", "POST", "{}"); w.Code != 404 {
+		t.Fatalf("foreign intake approve leaked existence: %d", w.Code)
+	}
+	if w := f.request(a, sessionA.CsrfToken, "/api/v1/portfolio/resources/R-B/calendar", "GET"); w.Code != 404 {
+		t.Fatalf("foreign resource calendar leaked existence: %d", w.Code)
+	}
+	if w := f.requestJSON(a, sessionA.CsrfToken, "/api/v1/portfolio/resources/R-B/calendar", "PUT", `{"timezone":"UTC","version":1,"rules":[]}`); w.Code != 404 {
+		t.Fatalf("foreign resource calendar PUT leaked existence: %d", w.Code)
+	}
+	if w := f.requestJSON(a, sessionA.CsrfToken, "/api/v1/portfolio/conflicts/"+strconv.FormatInt(conflictID, 10)+"/override", "POST", `{"reason":"long enough reason"}`); w.Code != 404 {
+		t.Fatalf("foreign conflict override leaked existence: %d", w.Code)
+	}
+
+	// user-b belongs to PS-B as a planner: membership exists, but approve needs
+	// portfolio_manager capability -> 403, not 404.
+	b, sessionB := f.login(t, "b")
+	if w := f.requestJSON(b, sessionB.CsrfToken, "/api/v1/portfolio/intakes/INT-B/approve", "POST", "{}"); w.Code != 403 {
+		t.Fatalf("planner approve = %d, want 403", w.Code)
 	}
 }

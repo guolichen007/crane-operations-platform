@@ -416,7 +416,7 @@ func TestCalendarFullIntervalEngine(t *testing.T) {
 	db := testsupport.Database(t)
 	shanghai, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
-		t.Skip("Asia/Shanghai tz not available")
+		t.Fatalf("Asia/Shanghai tz must be loadable (embedded tzdata): %v", err)
 	}
 	fixtureScope(t, db, "PS-8")
 	resID := fixtureResource(t, db, "PS-8", "Runway 8")
@@ -463,13 +463,18 @@ func TestCalendarFullIntervalEngine(t *testing.T) {
 // timezone and in Asia/Shanghai (never a fixed +8).
 func TestCalendarTimezoneDST(t *testing.T) {
 	db := testsupport.Database(t)
+	// Europe/Berlin must also be loadable from the embedded tzdata (Alpine has
+	// no host zoneinfo).
+	if _, err := time.LoadLocation("Europe/Berlin"); err != nil {
+		t.Fatalf("Europe/Berlin tz must be loadable (embedded tzdata): %v", err)
+	}
 	fixtureScope(t, db, "PS-9")
 	resID := fixtureResource(t, db, "PS-9", "Runway 9")
 
 	// America/Los_Angeles (DST-observing).
 	la, err := time.LoadLocation("America/Los_Angeles")
 	if err != nil {
-		t.Skip("America/Los_Angeles tz not available")
+		t.Fatalf("America/Los_Angeles tz must be loadable (embedded tzdata): %v", err)
 	}
 	calID := calendarFixture(t, db, resID, "America/Los_Angeles")
 	summer := time.Date(2026, 7, 15, 0, 0, 0, 0, la)
@@ -488,7 +493,7 @@ func TestCalendarTimezoneDST(t *testing.T) {
 	resSH := fixtureResource(t, db, "PS-9", "Runway SH")
 	sh, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
-		t.Skip("Asia/Shanghai tz not available")
+		t.Fatalf("Asia/Shanghai tz must be loadable (embedded tzdata): %v", err)
 	}
 	calSH := calendarFixture(t, db, resSH, "Asia/Shanghai")
 	day := time.Date(2026, 1, 15, 0, 0, 0, 0, sh)

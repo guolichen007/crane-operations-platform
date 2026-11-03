@@ -12,15 +12,32 @@ const environment = {
   ...process.env, GOCACHE: resolve('tools/.cache/gobuild'), GOMODCACHE: resolve('tools/.cache/gomod'), GOPATH: resolve('tools/.cache/gopath'),
   GOOS: 'linux', GOARCH: 'amd64', CGO_ENABLED: '0',
 };
-// [name, package path, required PASS test] — a required test that would otherwise
+// [name, package path, required PASS tests] — a required test that would otherwise
 // Skip on a missing DATABASE_URL; skipping is a hard failure, never a silent PASS.
 const b2Packages = [
-  ['portfolio', './internal/portfolio', 'TestIntakeStateMachineAndApprove'],
-  ['scheduling', './internal/scheduling', 'TestConcurrentExclusiveApprovalSingleWinner'],
-  ['identity', './internal/identity', 'TestPortfolioGrantIsolation'],
+  ['portfolio', './internal/portfolio', ['TestIntakeStateMachineAndApprove']],
+  ['scheduling', './internal/scheduling', [
+    'TestConcurrentExclusiveApprovalSingleWinner',
+    'TestCrossPortfolioReservationRejected',
+    'TestDependencyCycleDetection',
+    'TestConflictReconcileIdempotentAndReschedule',
+    'TestCalendarFullIntervalEngine',
+    'TestCalendarTimezoneDST',
+  ]],
+  ['identity', './internal/identity', ['TestPortfolioGrantIsolation']],
 ];
 const b3Packages = [
-  ['asset', './internal/asset', 'TestCreateAssetIdempotencyRetry'],
+  ['asset', './internal/asset', [
+    'TestCreateAssetIdempotencyRetry',
+    'TestCreateAssetConcurrentIdempotency',
+    'TestUpdateAssetStaleIfMatch',
+    'TestAssetRetireWithActiveBindingRejected',
+    'TestAssetMoveHistory',
+    'TestManufacturerCrossProjectRejected',
+    'TestCatalogGlobalReadAndCrossProjectReject',
+    'TestEquipmentActiveBindingRemoveRejected',
+    'TestRevisionAndAuditWritten',
+  ]],
 ];
 function run(command, args, extra = {}, capture = false) {
   const result = spawnSync(command, args, { encoding: 'utf8', stdio: capture ? 'pipe' : 'inherit', env: { ...environment, ...extra } });
@@ -29,6 +46,20 @@ function run(command, args, extra = {}, capture = false) {
     throw Error(`R2 DB test command failed: ${command}`);
   }
   return result.stdout || '';
+}
+// runGate executes one authoritative package and enforces two invariants: every
+// required counterexample PASSed, and the package produced zero SKIP lines. A
+// skipped test — required or not — in an authoritative package is a FAIL.
+function runGate(batch, name) {
+  const output = run(docker, [...compose, 'run', '--rm', '--no-deps', 'test-runner', '-test.v', '-test.count=1', '-test.timeout=120s'], { A1_TEST_BINARY: resolve(root, name + '.test') }, true);
+  process.stdout.write(output);
+  if (output.includes('--- SKIP:')) throw Error(`R2 ${batch} authoritative package has a skipped test: ${name}`);
+  for (const required of requiredByName(name, batch)) {
+    if (!output.includes('--- PASS: ' + required)) throw Error(`R2 ${batch} required counterexample was skipped or failed: ${name} :: ${required}`);
+  }
+}
+function requiredByName(name, batch) {
+  return (batch === 'B2' ? b2Packages : b3Packages).find(([n]) => n === name)[2];
 }
 for (const [name, path] of [...b2Packages, ...b3Packages]) run(go, ['test', '-c', '-o', resolve(root, name + '.test'), path]);
 const credentialFile = resolve(root, '.env');
@@ -39,17 +70,9 @@ const first = { A1_TEST_BINARY: resolve(root, 'portfolio.test') };
 try {
   run(docker, [...compose, 'config', '--quiet'], first);
   run(docker, [...compose, 'up', '-d', '--wait', 'postgres'], first);
-  for (const [name, , required] of b2Packages) {
-    const output = run(docker, [...compose, 'run', '--rm', '--no-deps', 'test-runner', '-test.v', '-test.count=1', '-test.timeout=120s'], { A1_TEST_BINARY: resolve(root, name + '.test') }, true);
-    process.stdout.write(output);
-    if (!output.includes('--- PASS: ' + required)) throw Error('R2 B2 required counterexample was skipped: ' + name);
-  }
+  for (const [name] of b2Packages) runGate('B2', name);
   console.log('R2_B2_DB_TEST=PASS');
-  for (const [name, , required] of b3Packages) {
-    const output = run(docker, [...compose, 'run', '--rm', '--no-deps', 'test-runner', '-test.v', '-test.count=1', '-test.timeout=120s'], { A1_TEST_BINARY: resolve(root, name + '.test') }, true);
-    process.stdout.write(output);
-    if (!output.includes('--- PASS: ' + required)) throw Error('R2 B3 required counterexample was skipped: ' + name);
-  }
+  for (const [name] of b3Packages) runGate('B3', name);
   console.log('R2_B3_DB_TEST=PASS');
 } finally {
   run(docker, [...compose, 'down', '--volumes', '--remove-orphans'], first);

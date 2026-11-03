@@ -208,7 +208,7 @@ func (h *apiHandler) registerPortfolio(api *http.ServeMux) {
 			respondAPI(w, 404, map[string]string{"error": "not found"})
 			return
 		}
-		if !h.authorizePortfolio(w, r, scope, identity.CapProjectIntakeWrite) {
+		if !h.authorizePortfolioObject(w, r, scope, identity.CapProjectIntakeWrite) {
 			return
 		}
 		var in struct {
@@ -237,7 +237,7 @@ func (h *apiHandler) registerPortfolio(api *http.ServeMux) {
 			respondAPI(w, 404, map[string]string{"error": "not found"})
 			return
 		}
-		if !h.authorizePortfolio(w, r, scope, identity.CapProjectApprove) {
+		if !h.authorizePortfolioObject(w, r, scope, identity.CapProjectApprove) {
 			return
 		}
 		projectID, err := portfolio.ApproveIntake(r.Context(), h.db, intakeID, currentPrincipal(r).user, "")
@@ -321,7 +321,7 @@ func (h *apiHandler) registerPortfolio(api *http.ServeMux) {
 			respondAPI(w, 404, map[string]string{"error": "not found"})
 			return
 		}
-		if !h.authorizePortfolio(w, r, scope, identity.CapResourceCalendarRead) {
+		if !h.authorizePortfolioObject(w, r, scope, identity.CapResourceCalendarRead) {
 			return
 		}
 		var calID, tz string
@@ -343,7 +343,7 @@ func (h *apiHandler) registerPortfolio(api *http.ServeMux) {
 			respondAPI(w, 404, map[string]string{"error": "not found"})
 			return
 		}
-		if !h.authorizePortfolio(w, r, scope, identity.CapResourceCalendarWrite) {
+		if !h.authorizePortfolioObject(w, r, scope, identity.CapResourceCalendarWrite) {
 			return
 		}
 		var in struct {
@@ -481,7 +481,7 @@ func (h *apiHandler) registerPortfolio(api *http.ServeMux) {
 			respondAPI(w, 404, map[string]string{"error": "not found"})
 			return
 		}
-		if !h.authorizePortfolio(w, r, scope, identity.CapProjectScheduleWrite) {
+		if !h.authorizePortfolioObject(w, r, scope, identity.CapProjectScheduleWrite) {
 			return
 		}
 		var in contract.ResourceReservation
@@ -516,7 +516,7 @@ func (h *apiHandler) registerPortfolio(api *http.ServeMux) {
 				respondAPI(w, 404, map[string]string{"error": "not found"})
 				return
 			}
-			if !h.authorizePortfolio(w, r, scope, identity.CapProjectScheduleWrite) {
+			if !h.authorizePortfolioObject(w, r, scope, identity.CapProjectScheduleWrite) {
 				return
 			}
 		}
@@ -587,20 +587,13 @@ func (h *apiHandler) registerPortfolio(api *http.ServeMux) {
 			respondAPI(w, 400, map[string]string{"error": "invalid body"})
 			return
 		}
-		var resourceID sql.NullString
-		if err := h.db.QueryRowContext(r.Context(), `SELECT resource_id FROM schedule_conflicts WHERE id=$1`, conflictID).Scan(&resourceID); err != nil {
+		scope, err := portfolioScopeOfConflict(r, h.db, conflictID)
+		if err != nil {
 			respondAPI(w, 404, map[string]string{"error": "not found"})
 			return
 		}
-		if resourceID.Valid {
-			scope, err := portfolioScopeOfResource(r, h.db, resourceID.String)
-			if err != nil {
-				respondAPI(w, 404, map[string]string{"error": "not found"})
-				return
-			}
-			if !h.authorizePortfolio(w, r, scope, identity.CapScheduleOverride) {
-				return
-			}
+		if !h.authorizePortfolioObject(w, r, scope, identity.CapScheduleOverride) {
+			return
 		}
 		id, err := strconv.ParseInt(conflictID, 10, 64)
 		if err != nil {

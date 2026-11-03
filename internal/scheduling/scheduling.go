@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"sort"
 	"time"
+	_ "time/tzdata"
 
 	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
 	"github.com/guolichen007/crane-operations-platform/internal/auditlog"
