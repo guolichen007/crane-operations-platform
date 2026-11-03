@@ -44,6 +44,22 @@ function compose(...args) {
   ]);
 }
 const tasks = {
+  'production-check'() {
+    run(process.execPath, ['tests/baobei/production.mjs']);
+  },
+  backup() {
+    run(process.execPath, ['tests/baobei/backup.mjs', 'backup']);
+  },
+  'restore-test'() {
+    env.BAOBEI_BACKUP_VERIFY = '1';
+    run(process.execPath, ['tests/baobei/backup.mjs', 'backup']);
+  },
+  release() {
+    run(process.execPath, ['tests/baobei/release.mjs']);
+  },
+  race() {
+    run(go, ['test', '-race', '-count=1', './...'], api);
+  },
   contract: () => run(process.execPath, ['tests/baobei/contract.mjs']),
   lint() {
     npm('run', 'typecheck');
@@ -86,6 +102,7 @@ const tasks = {
   },
   compose() {
     compose('config', '--quiet');
+    run(process.execPath, ['tests/baobei/production.mjs']);
   },
   up() {
     compose('up', '-d', '--build', '--wait', '--wait-timeout', '180');

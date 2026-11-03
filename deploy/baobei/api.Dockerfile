@@ -13,6 +13,8 @@ FROM ${BAOBEI_DEPS} AS build
 COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -o /baobei .
 FROM alpine:3.23
+ARG SOURCE_SHA=unknown
+LABEL org.opencontainers.image.revision=${SOURCE_SHA}
 RUN apk add --no-cache ca-certificates && adduser -D -u 10001 baobei
 COPY --from=build /baobei /usr/local/bin/baobei
 USER baobei

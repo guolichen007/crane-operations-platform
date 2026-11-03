@@ -5,8 +5,8 @@ BAOBEI_MAIN_MERGE=FORBIDDEN
 BAOBEI_R2_MERGE=FORBIDDEN
 BASE_SHA=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18
 BRANCH=product/baobei-v1
-CURRENT_BATCH=BB-B1
-STOP_AFTER_BB_B1=YES
+CURRENT_BATCH=BB-B2
+STOP_AFTER_BB_B2=YES
 
 目标：快速报项目、识别重复、明确归属并跟进。独立产品，永不合并 main/R2。
 
@@ -32,7 +32,11 @@ Planned Equipment 永远不能直接生成 Equipment / Serial Number / Runtime B
 
 BB_G0_LOCAL=PASS
 BB_B1_LOCAL_VALIDATION=PASS
-BB_B1_OWNER_REVIEW=PENDING
-BB_B2_STARTED=NO
+BB_B1_REVIEW=PASS
+BB_B2_STARTED=YES
 
 本轮本地交付证据见 05-BB-G0-B1验收报告.md。全部 production 操作未执行；后续批次须负责人架构/代码/UI/安全审查。
+
+## BB-B2 当前交付
+负责人批准 START_HEAD=4c87266620f493bf8d04a2d2c17cc0118b4a5bd5。B1边界说明保留为历史记录，B2已新增：客户端角色隔离/DB pending、主管审核与重复裁决、归属转移、保护期CLI、受控阶段流转、生产错误模型、隔离部署模板、备份恢复和发布证据。
+规则与证据入口：BB-B2-业务规则与运维.md、生产安全与限流.md、06-BB-B2验收报告.md。BB_B2_OWNER_REVIEW=PENDING；本轮后STOP，不开启下一批。生产模板不在本轮部署。

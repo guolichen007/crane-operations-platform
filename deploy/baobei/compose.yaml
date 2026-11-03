@@ -17,6 +17,8 @@ services:
     build:
       context: ../../apps/project-intake-web
       dockerfile: ../../deploy/baobei/web.Dockerfile
+      args:
+        SOURCE_SHA: ${BAOBEI_SOURCE_SHA:-unknown}
       additional_contexts:
         baobei_config: .
     ports: ['127.0.0.1:5188:80']
@@ -33,6 +35,7 @@ services:
       dockerfile: ../../deploy/baobei/api.Dockerfile
       args:
         GOPROXY: ${BAOBEI_GOPROXY:-https://proxy.golang.org,direct}
+        SOURCE_SHA: ${BAOBEI_SOURCE_SHA:-unknown}
     network_mode: service:baobei-web
     environment:
       APP_ENV: development
