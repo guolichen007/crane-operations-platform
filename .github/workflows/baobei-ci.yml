@@ -86,6 +86,7 @@ jobs:
         with:
           go-version-file: services/project-intake-api/go.mod
           cache-dependency-path: services/project-intake-api/go.sum
+      - run: node tools/task.mjs baobei race
       - run: node tools/task.mjs baobei integration
   baobei-e2e:
     if: startsWith(github.ref, 'refs/heads/product/baobei-')
@@ -168,6 +169,7 @@ jobs:
       - run: node tools/task.mjs baobei compose
       - run: node tools/task.mjs baobei up
       - run: curl --fail http://127.0.0.1:5188/health/ready
+      - run: node tools/task.mjs baobei restore-test
       - if: always()
         run: node tools/task.mjs baobei down
   baobei-build:
@@ -187,4 +189,5 @@ jobs:
           go-version-file: services/project-intake-api/go.mod
           cache-dependency-path: services/project-intake-api/go.sum
       - run: node tools/task.mjs baobei build
-      - run: node tools/task.mjs baobei docker-build
+      - run: BAOBEI_SOURCE_SHA=$(git rev-parse HEAD) node tools/task.mjs baobei docker-build
+      - run: node tools/task.mjs baobei release
