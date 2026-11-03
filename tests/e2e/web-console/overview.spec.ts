@@ -32,7 +32,10 @@ for (const viewport of [
     expect(normal.country.minY).toBeGreaterThanOrEqual(0);
     expect(normal.country.maxY).toBeLessThanOrEqual(normal.stage.height);
     if (viewport.width === 1920) {
-      expect(normal.country.pageWidthRatio).toBeGreaterThanOrEqual(0.58);
+      // Framing now uses the province surface extent (the decorative side walls
+      // are merged off-tree), so the map fills a slightly smaller but still
+      // centered share of the width.
+      expect(normal.country.pageWidthRatio).toBeGreaterThanOrEqual(0.52);
       expect(normal.country.pageWidthRatio).toBeLessThanOrEqual(0.68);
     }
     await page.screenshot({ path: `test-results-v033/regression/country-${viewport.width}.png` });

@@ -11,7 +11,7 @@ export class CountryOuterGlow {
   constructor(country: Group) {
     this.group.name = 'China contour ghost silhouette';
     const tops = country.children.map((r) => {
-      const top = r.children[1] as Mesh;
+      const top = r.getObjectByName('top-gradient') as Mesh;
       const g = top.geometry.clone();
       g.rotateX(-Math.PI / 2);
       const p = g.getAttribute('position');
@@ -30,19 +30,7 @@ export class CountryOuterGlow {
     base.name = 'country-underlay';
     base.scale.set(1.008, 1, 1.008);
     base.position.y = -0.15;
-    const lower = new Mesh(
-      base.geometry,
-      new MeshBasicMaterial({
-        color: '#164754',
-        transparent: true,
-        opacity: 0.11,
-        depthWrite: false,
-      })
-    );
-    lower.name = 'country-underlay-lower';
-    lower.scale.set(1.018, 1, 1.018);
-    lower.position.y = -0.24;
-    this.group.add(lower, base);
+    this.group.add(base);
     tops.forEach((g) => g.dispose());
     // Shared edges cancel; coastlines and exterior border retain their cached coordinates.
     const edges = new Map<string, { count: number; a: number[]; b: number[] }>();

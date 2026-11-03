@@ -35,9 +35,9 @@ describe('立体几何与全柱拾取', () => {
       },
     };
     const g = buildRegion(f);
-    const bevel = g.getObjectByName('micro-bevel') as Mesh;
-    expect(bevel.geometry.getAttribute('position').count).toBeGreaterThan(0);
-    const side = g.children[0] as Mesh,
+    // The decorative micro-bevel was removed for the draw-call budget; the
+    // side-flow wall still carries the extruded depth.
+    const side = g.getObjectByName('side-flow') as Mesh,
       pos = side.geometry.getAttribute('position');
     for (let i = 0; i < pos.count; i++)
       expect(Number.isFinite(pos.getX(i) + pos.getY(i) + pos.getZ(i))).toBe(true);

@@ -5,7 +5,6 @@ import {
   ExtrudeGeometry,
   ShapeGeometry,
   Mesh,
-  MeshStandardMaterial,
   BufferGeometry,
   Float32BufferAttribute,
   MathUtils,
@@ -38,14 +37,6 @@ export function buildRegion(f: Feature, depth = COUNTRY_DEPTH) {
   const projection = depth === COUNTRY_DEPTH ? projectCountry : project;
   const top = mapSurfaceMaterial(),
     side = mapSideMaterial();
-  const bevel = new MeshStandardMaterial({
-    color: '#1c505d',
-    emissive: '#143c47',
-    emissiveIntensity: 0.58,
-    roughness: 0.68,
-    metalness: 0.24,
-    transparent: true,
-  });
   const tops: BufferGeometry[] = [];
   const buckets = [
     { position: [] as number[], normal: [] as number[], uv: [] as number[] },
@@ -104,18 +95,43 @@ export function buildRegion(f: Feature, depth = COUNTRY_DEPTH) {
   });
   const wall = new Mesh(geometries[0], side),
     surface = new Mesh(mergeGeometries(tops), top);
-  const cut = new Mesh(geometries[1], bevel);
   for (const part of tops) part.dispose();
-  for (const mesh of [wall, surface, cut]) mesh.rotation.x = -Math.PI / 2;
+  for (const mesh of [wall, surface]) mesh.rotation.x = -Math.PI / 2;
   wall.name = 'side-flow';
   surface.name = 'top-gradient';
-  cut.name = 'micro-bevel';
   surface.userData.region = group;
   const height = depth + maxBevel;
   const border = regionOutline(geo, height + 0.008, 0x54818c, 0.23, projection),
     hover = regionOutline(geo, height + 0.02, 0x8fd5df, 0, projection),
     selected = regionOutline(geo, height + 0.025, 0x8fd5df, 0, projection);
-  group.add(wall, surface, border, hover, selected, cut);
+  // The micro-bevel (an extrude edge) is omitted to keep the region draw-call
+  // budget low; the side-flow wall already carries the extruded depth.
+  group.add(wall, surface, border, hover, selected);
   Object.assign(group.userData, { top, hover, selected, feature: f, bevel: maxBevel });
   return group;
+}
+
+/**
+ * Merges every province's decorative side-flow wall into a single mesh with a
+ * single shared material. Walls carry no region pick/outline semantics, so this
+ * collapses 34 draw calls to 1 without touching hover/selected/pick.
+ */
+export function mergeSideWalls(country: Group): Mesh | null {
+  const walls: BufferGeometry[] = [];
+  for (const region of country.children) {
+    const wall = region.getObjectByName('side-flow') as Mesh | undefined;
+    if (!wall || !wall.geometry) continue;
+    wall.updateWorldMatrix(true, true);
+    walls.push(wall.geometry.clone().applyMatrix4(wall.matrixWorld));
+    wall.geometry.dispose();
+    (wall.material as { dispose?: () => void }).dispose?.();
+    wall.removeFromParent();
+  }
+  if (!walls.length) return null;
+  const merged = mergeGeometries(walls);
+  if (!merged) return null;
+  for (const g of walls) g.dispose();
+  const mesh = new Mesh(merged, mapSideMaterial());
+  mesh.name = 'merged-side-flow';
+  return mesh;
 }
