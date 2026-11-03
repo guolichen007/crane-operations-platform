@@ -1733,6 +1733,116 @@
         "type": "string",
         "format": "date-time"
       }
+    },
+    "Manufacturer": {
+      "id": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "projectId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$",
+        "nullable": true
+      },
+      "name": {
+        "type": "string",
+        "maxLength": 256
+      },
+      "shortName": {
+        "type": "string",
+        "maxLength": 160
+      },
+      "countryRegion": {
+        "type": "string",
+        "maxLength": 80,
+        "nullable": true
+      },
+      "website": {
+        "type": "string",
+        "maxLength": 256,
+        "nullable": true
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "ACTIVE",
+          "DISABLED"
+        ]
+      },
+      "version": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "ManufacturerInput": {
+      "projectId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$",
+        "nullable": true
+      },
+      "name": {
+        "type": "string",
+        "maxLength": 256
+      },
+      "shortName": {
+        "type": "string",
+        "maxLength": 160
+      },
+      "countryRegion": {
+        "type": "string",
+        "maxLength": 80,
+        "nullable": true
+      },
+      "website": {
+        "type": "string",
+        "maxLength": 256,
+        "nullable": true
+      }
+    },
+    "EquipmentRelation": {
+      "id": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "assetId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "fromEquipmentInstallationId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "toEquipmentInstallationId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "relationType": {
+        "type": "string",
+        "enum": [
+          "CONTAINS",
+          "MOUNTED_ON",
+          "DRIVES",
+          "CONTROLS",
+          "SENSES",
+          "MONITORS",
+          "POWERED_BY",
+          "NETWORKED_TO",
+          "PROTECTS",
+          "BACKS_UP"
+        ]
+      },
+      "source": {
+        "type": "string",
+        "maxLength": 160
+      },
+      "notes": {
+        "type": "string",
+        "maxLength": 1000
+      },
+      "version": {
+        "type": "integer",
+        "minimum": 1
+      }
     }
   },
   "restTypes": [
@@ -1758,6 +1868,9 @@
     "ResourceReservation",
     "ScheduleConflict",
     "ScheduleDependency",
-    "ScheduleBaseline"
+    "ScheduleBaseline",
+    "Manufacturer",
+    "ManufacturerInput",
+    "EquipmentRelation"
   ]
 }

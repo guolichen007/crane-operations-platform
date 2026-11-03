@@ -366,6 +366,33 @@ export interface ScheduleBaseline {
   approvedBy: string;
   approvedAt: string;
 }
+export interface Manufacturer {
+  id: string;
+  projectId: string | null;
+  name: string;
+  shortName: string;
+  countryRegion: string | null;
+  website: string | null;
+  status: "ACTIVE" | "DISABLED";
+  version: number;
+}
+export interface ManufacturerInput {
+  projectId: string | null;
+  name: string;
+  shortName: string;
+  countryRegion: string | null;
+  website: string | null;
+}
+export interface EquipmentRelation {
+  id: string;
+  assetId: string;
+  fromEquipmentInstallationId: string;
+  toEquipmentInstallationId: string;
+  relationType: "CONTAINS" | "MOUNTED_ON" | "DRIVES" | "CONTROLS" | "SENSES" | "MONITORS" | "POWERED_BY" | "NETWORKED_TO" | "PROTECTS" | "BACKS_UP";
+  source: string;
+  notes: string;
+  version: number;
+}
 export type Envelope = {
   schemaVersion: 1;
   messageId: string;

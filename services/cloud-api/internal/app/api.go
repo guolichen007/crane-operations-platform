@@ -176,6 +176,7 @@ func (h *apiHandler) register(mux *http.ServeMux) error {
 	}
 	api := http.NewServeMux()
 	h.registerPortfolio(api)
+	h.registerAssets(api)
 	api.HandleFunc("GET /api/v1/projects", func(w http.ResponseWriter, r *http.Request) {
 		scopes, err := h.scopes(r)
 		if err != nil {

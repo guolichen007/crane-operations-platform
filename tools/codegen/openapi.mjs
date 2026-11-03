@@ -78,6 +78,42 @@ add('/api/v1/portfolio/conflicts/{id}', 'get', 'getConflict', scheduleConflict);
 add('/api/v1/portfolio/conflicts/{id}/override', 'post', 'overrideConflict', null);
 add('/api/v1/portfolio/baselines', 'get', 'listBaselines', { type: 'array', items: scheduleBaseline });
 add('/api/v1/portfolio/baselines', 'post', 'createBaseline', scheduleBaseline, '201');
+// Asset master-data business routes.
+const assetMaster = { $ref: '#/components/schemas/AssetMasterData' },
+  assetLocation = { $ref: '#/components/schemas/AssetLocation' },
+  manufacturer = { $ref: '#/components/schemas/Manufacturer' },
+  catalogItem = { $ref: '#/components/schemas/EquipmentCatalogItem' },
+  equipmentInstallation = { $ref: '#/components/schemas/EquipmentInstallation' },
+  equipmentRelation = { $ref: '#/components/schemas/EquipmentRelation' };
+add('/api/v1/assets', 'get', 'listAssetMasterData', { type: 'array', items: assetMaster });
+add('/api/v1/assets', 'post', 'createAssetMasterData', assetMaster, '201');
+add('/api/v1/assets/{id}', 'get', 'getAssetMasterData', assetMaster);
+add('/api/v1/assets/{id}', 'patch', 'updateAssetMasterData', assetMaster);
+add('/api/v1/assets/{id}/retire', 'post', 'retireAsset', null);
+add('/api/v1/assets/{id}/move', 'post', 'moveAsset', null);
+add('/api/v1/projects/{projectId}/locations', 'get', 'listLocations', { type: 'array', items: assetLocation });
+add('/api/v1/projects/{projectId}/locations', 'post', 'createLocation', assetLocation, '201');
+add('/api/v1/locations/{id}', 'get', 'getLocation', assetLocation);
+add('/api/v1/locations/{id}', 'patch', 'updateLocation', assetLocation);
+add('/api/v1/locations/{id}/disable', 'post', 'disableLocation', null);
+add('/api/v1/manufacturers', 'get', 'listManufacturers', { type: 'array', items: manufacturer });
+add('/api/v1/manufacturers', 'post', 'createManufacturer', manufacturer, '201');
+add('/api/v1/manufacturers/{id}', 'get', 'getManufacturer', manufacturer);
+add('/api/v1/manufacturers/{id}', 'patch', 'updateManufacturer', manufacturer);
+add('/api/v1/manufacturers/{id}/disable', 'post', 'disableManufacturer', null);
+add('/api/v1/equipment/catalog', 'get', 'listCatalogItems', { type: 'array', items: catalogItem });
+add('/api/v1/equipment/catalog', 'post', 'createCatalogItem', catalogItem, '201');
+add('/api/v1/equipment/catalog/{id}', 'get', 'getCatalogItem', catalogItem);
+add('/api/v1/equipment/catalog/{id}', 'patch', 'updateCatalogItem', catalogItem);
+add('/api/v1/equipment/catalog/{id}/disable', 'post', 'disableCatalogItem', null);
+add('/api/v1/assets/{assetId}/equipment', 'get', 'listEquipment', { type: 'array', items: equipmentInstallation });
+add('/api/v1/assets/{assetId}/equipment', 'post', 'createEquipment', equipmentInstallation, '201');
+add('/api/v1/equipment/{id}', 'get', 'getEquipment', equipmentInstallation);
+add('/api/v1/equipment/{id}', 'patch', 'updateEquipment', equipmentInstallation);
+add('/api/v1/equipment/{id}/remove', 'post', 'removeEquipment', null);
+add('/api/v1/assets/{assetId}/equipment-relations', 'get', 'listEquipmentRelations', { type: 'array', items: equipmentRelation });
+add('/api/v1/assets/{assetId}/equipment-relations', 'post', 'createEquipmentRelation', equipmentRelation, '201');
+add('/api/v1/equipment-relations/{id}/remove', 'post', 'removeEquipmentRelation', null);
 paths['/auth/logout'].post.responses['204'].headers = { Location: { description: 'Optional OIDC RP-initiated logout URL with client_id and exact post_logout_redirect_uri; contains no token', schema: { type: 'string', format: 'uri' } } };
 for (const path of ['/auth/login', '/auth/callback']) {
   paths[path].get.security = [];

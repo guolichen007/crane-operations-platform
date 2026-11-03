@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/equipmentrelation.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "assetId",
+    "fromEquipmentInstallationId",
+    "toEquipmentInstallationId",
+    "relationType",
+    "source",
+    "notes",
+    "version"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "assetId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "fromEquipmentInstallationId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "toEquipmentInstallationId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "relationType": {
+      "type": "string",
+      "enum": [
+        "CONTAINS",
+        "MOUNTED_ON",
+        "DRIVES",
+        "CONTROLS",
+        "SENSES",
+        "MONITORS",
+        "POWERED_BY",
+        "NETWORKED_TO",
+        "PROTECTS",
+        "BACKS_UP"
+      ]
+    },
+    "source": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "notes": {
+      "type": "string",
+      "maxLength": 1000
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "$defs": {}
+}
