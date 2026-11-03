@@ -7,6 +7,45 @@ import CraneTwin from './CraneTwin.vue';
 const props = defineProps<{ device: Device }>();
 const emit = defineEmits<{ close: []; select: [id: string]; project: [id: string] }>();
 const siblings = computed(() => sceneProvider.devices.value.filter((d) => d.id === props.device.id));
+
+const sourceLabel = computed(() => {
+  switch (props.device.telemetrySource) {
+    case 'cloud':
+      return 'REAL ASSET · CLOUD TELEMETRY';
+    case 'none':
+      return 'REAL ASSET · NO TELEMETRY';
+    default:
+      return props.device.dataSource === 'real'
+        ? 'REAL ASSET · DEMO TELEMETRY'
+        : 'DEMO ASSET · DEMO TELEMETRY';
+  }
+});
+const disclosureLabel = computed(() => {
+  switch (props.device.telemetrySource) {
+    case 'cloud':
+      return '云端运行态';
+    case 'none':
+      return '未接入运行数据';
+    default:
+      return '模拟运行态';
+  }
+});
+const disclosureCopy = computed(() => {
+  switch (props.device.telemetrySource) {
+    case 'cloud':
+      return '运行参数来自 Cloud 实时遥测，非演示数据。';
+    case 'none':
+      return '该资产尚未接入运行数据，无实时遥测。';
+    default:
+      return '运行参数仅为演示，非现场实时采集。';
+  }
+});
+const twinDemo = computed(() => props.device.telemetrySource === 'demo');
+const fmt = (v: number | null | undefined, digits = 2) =>
+  v === null || v === undefined || Number.isNaN(v) ? '—' : v.toFixed(digits);
+const grabText = computed(() => props.device.grab ?? '—');
+const modeText = computed(() => props.device.mode ?? '—');
+const faultText = computed(() => props.device.fault || '暂无数据');
 </script>
 <template>
   <section
@@ -24,8 +63,8 @@ const siblings = computed(() => sceneProvider.devices.value.filter((d) => d.id =
       <ArrowLeft :size="11" />返回项目总览
     </button>
     <div class="detail-heading">
-      <span :class="['source-badge', device.dataSource]">{{
-        device.dataSource === 'real' ? 'REAL ASSET · DEMO TELEMETRY' : 'DEMO ASSET · DEMO TELEMETRY'
+      <span :class="['source-badge', device.telemetrySource]" data-testid="device-source-badge">{{
+        sourceLabel
       }}</span>
       <h2>{{ device.deviceName.replace(' · ', ' / ') }}</h2>
       <p><MapPin :size="12" />{{ device.locationLabel }}</p>
@@ -38,48 +77,49 @@ const siblings = computed(() => sceneProvider.devices.value.filter((d) => d.id =
       >
     </div>
     <div class="telemetry-disclosure">
-      <strong>模拟运行态</strong
+      <strong>{{ disclosureLabel }}</strong
       ><b :style="{ color: statusColor[device.status] }"
         ><i :style="{ background: statusColor[device.status] }"></i
         >{{ statusText[device.status] }}</b
       >
-      <p>运行参数仅为演示，非现场实时采集。</p>
+      <p>{{ disclosureCopy }}</p>
     </div>
     <div class="telemetry-grid">
       <CraneTwin
         :key="device.deviceId"
         :axes="{ x: device.x, y: device.y, z: device.z, grab: device.grab === '打开' ? 1 : 0 }"
-        :demo="true"
+        :demo="twinDemo"
         :alarm="device.status === 'ALARM'"
       />
       <div>
-        <span>负载率</span><b>{{ device.load }}<small> %</small></b>
+        <span>负载</span><b>{{ fmt(device.load) }}</b>
       </div>
       <div>
-        <span>今日运行</span><b>{{ device.todayHours.toFixed(1) }}<small> h</small></b>
+        <span>今日运行</span><b>{{ fmt(device.todayHours, 1) }}</b>
       </div>
       <div>
-        <span>大车 X</span><b>{{ device.x.toFixed(2) }}<small> m</small></b>
+        <span>大车 X</span><b>{{ fmt(device.x) }}</b>
       </div>
       <div>
-        <span>小车 Y</span><b>{{ device.y.toFixed(2) }}<small> m</small></b>
+        <span>小车 Y</span><b>{{ fmt(device.y) }}</b>
       </div>
       <div>
-        <span>起升 Z</span><b>{{ device.z.toFixed(2) }}<small> m</small></b>
+        <span>起升 Z</span><b>{{ fmt(device.z) }}</b>
       </div>
       <div>
-        <span>抓斗</span><b>{{ device.grab }}</b>
+        <span>抓斗</span><b>{{ grabText }}</b>
       </div>
       <div>
-        <span>控制模式</span><b>{{ device.mode }}</b>
+        <span>控制模式</span><b>{{ modeText }}</b>
       </div>
       <div>
-        <span>累计模拟运行</span><b>{{ device.totalHours }}<small> h</small></b>
+        <span>累计运行</span><b>{{ fmt(device.totalHours, 1) }}</b>
       </div>
     </div>
     <div class="device-heartbeat">
-      <span>最后心跳 · DEMO</span><time>{{ device.heartbeat }}</time>
-      <p>{{ device.fault }}</p>
+      <span>最后心跳 · {{ device.telemetrySource === 'demo' ? 'DEMO' : 'CLOUD' }}</span
+      ><time>{{ device.heartbeat || '—' }}</time>
+      <p>{{ faultText }}</p>
     </div>
     <div class="device-sibling-switch">
       <button
@@ -96,12 +136,12 @@ const siblings = computed(() => sceneProvider.devices.value.filter((d) => d.id =
         {{ device.dataSource === 'real' ? '匿名登记项目档案' : '演示项目档案' }} ·
         {{ lifecycleText[device.lifecycle] }}
       </h3>
-      <span v-if="device.dataSource === 'real'" class="archive-warning">尚未投运 · 计划接入</span>
+      <span v-if="device.commissioningStatus !== 'OPERATIONAL'" class="archive-warning">
+        {{ device.telemetrySource === 'cloud' ? '尚未投运 · 计划接入' : '尚未投运' }}
+      </span>
       <p>{{ device.scheduleText }}</p>
       <div
-        v-for="m in device.milestones ?? [
-          { date: device.plannedImplementation, name: '项目计划实施' },
-        ]"
+        v-for="m in device.milestones ?? [{ date: device.plannedImplementation, name: '项目计划实施' }]"
         :key="m.name"
       >
         <time>{{ m.date }}</time
@@ -111,11 +151,19 @@ const siblings = computed(() => sceneProvider.devices.value.filter((d) => d.id =
     <code class="device-code">{{ device.deviceId }}</code>
     <p class="coordinate-note">
       {{
-        device.coordinateAccuracy === 'county_center_demo' ? '县中心' : '城市中心'
-      }}演示坐标，非设备精确位置。
+        device.telemetrySource === 'demo'
+          ? (device.coordinateAccuracy === 'county_center_demo' ? '县中心' : '城市中心') +
+            '演示坐标，非设备精确位置。'
+          : '行政区中心示意，非设备精确坐标。'
+      }}
     </p>
-    <RouterLink :to="'/monitor?device=' + device.deviceId" class="primary-button detail-link">
-      查看模拟监控<ArrowUpRight :size="14" />
+    <RouterLink
+      :to="'/monitor?device=' + device.deviceId"
+      class="primary-button detail-link"
+    >
+      {{ device.telemetrySource === 'demo' ? '查看模拟监控' : '查看运行监控' }}<ArrowUpRight
+        :size="14"
+      />
     </RouterLink>
   </section>
 </template>

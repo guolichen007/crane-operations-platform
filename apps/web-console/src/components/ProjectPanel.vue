@@ -6,6 +6,13 @@ import { statusText, statusColor, lifecycleText, type Project } from '../data/ty
 const props = defineProps<{ project: Project }>();
 const emit = defineEmits<{ close: []; select: [id: string]; focus: [] }>();
 const instances = computed(() => sceneProvider.devices.value.filter((d) => d.id === props.project.id));
+const disclosure = computed(() => {
+  if (instances.value.some((d) => d.telemetrySource === 'cloud'))
+    return { title: 'CLOUD TELEMETRY', copy: '以下运行态来自 Cloud 实时遥测。' };
+  if (instances.value.length && instances.value.every((d) => d.telemetrySource === 'none'))
+    return { title: 'NO TELEMETRY', copy: '尚未接入运行数据，无实时遥测。' };
+  return { title: 'DEMO TELEMETRY', copy: '以下运行态为固定模拟，匿名登记项目档案与实施计划保持不变。' };
+});
 </script>
 <template>
   <section class="project-context" data-testid="project-panel" :data-project-id="project.id">
@@ -26,8 +33,8 @@ const instances = computed(() => sceneProvider.devices.value.filter((d) => d.id 
       {{ project.craneModel }}<span>{{ project.grabType }}</span>
     </p>
     <div class="telemetry-disclosure">
-      <strong>DEMO TELEMETRY</strong>
-      <p>以下运行态为固定模拟，匿名登记项目档案与实施计划保持不变。</p>
+      <strong>{{ disclosure.title }}</strong>
+      <p>{{ disclosure.copy }}</p>
     </div>
     <div class="project-device-list">
       <h3>选择单台行车</h3>
