@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 )
@@ -96,5 +97,26 @@ func TestProductionConfig(t *testing.T) {
 	t.Setenv("LISTEN_ADDR", "0.0.0.0:8088")
 	if _, e := config(); e == nil {
 		t.Fatal("public dev auth accepted")
+	}
+}
+
+func TestProductionConfigGate(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("DEV_AUTH", "0")
+	t.Setenv("PUBLIC_ORIGIN", "https://baobei.youdaozd.com")
+	t.Setenv("OIDC_ISSUER", "https://crane.youdaozd.com/realms/crane")
+	t.Setenv("OIDC_CLIENT_ID", "baobei-web")
+	t.Setenv("OIDC_CLIENT_SECRET", "synthetic-unit-only")
+	t.Setenv("OIDC_CLIENT_SECRET_FILE", "")
+	if _, e := config(); e != nil {
+		t.Fatal(e)
+	}
+	for _, pair := range [][2]string{{"DEV_AUTH", "1"}, {"PUBLIC_ORIGIN", "http://bad"}, {"OIDC_ISSUER", "http://issuer"}, {"OIDC_CLIENT_ID", "other-client"}} {
+		old := os.Getenv(pair[0])
+		t.Setenv(pair[0], pair[1])
+		if _, e := config(); e == nil {
+			t.Fatal(pair[0])
+		}
+		t.Setenv(pair[0], old)
 	}
 }

@@ -218,7 +218,7 @@ func TestDatabase(t *testing.T) {
 		expect(t, s, 409, b)
 		s, b = ca.call("GET", "/api/v1/projects/"+p.ID, nil)
 		p = projectFrom(t, s, b)
-		if len(p.Activities) != 1 || p.NextAction != act.NextAction || p.LastActivityAt == nil || len(p.Audit) != 4 {
+		if len(p.Activities) != 1 || p.NextAction != act.NextAction || p.LastActivityAt == nil || len(p.Audit) != 6 {
 			t.Fatal("followup/audit", p)
 		}
 		var n int
@@ -317,6 +317,7 @@ func testOIDC(t *testing.T, db *pgxpool.Pool) {
 	}
 	var issuer, nonce, challenge string
 	badNonce := false
+	roleMode := "client"
 	pkceChecked := false
 	idp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -336,7 +337,14 @@ func testOIDC(t *testing.T, db *pgxpool.Pool) {
 			if badNonce {
 				n = "wrong"
 			}
-			claims := map[string]any{"iss": issuer, "aud": "baobei-web", "sub": "synthetic-a", "exp": time.Now().Add(time.Hour).Unix(), "iat": time.Now().Unix(), "nonce": n, "realm_access": map[string]any{"roles": []string{"baobei_sales"}}}
+			claims := map[string]any{"iss": issuer, "aud": "baobei-web", "sub": "synthetic-a", "exp": time.Now().Add(time.Hour).Unix(), "iat": time.Now().Unix(), "nonce": n, "resource_access": map[string]any{"baobei-web": map[string]any{"roles": []string{"baobei_sales"}}}}
+			if roleMode == "realm" {
+				delete(claims, "resource_access")
+				claims["realm_access"] = map[string]any{"roles": []string{"baobei_sales"}}
+			}
+			if roleMode == "other" {
+				claims["resource_access"] = map[string]any{"other-client": map[string]any{"roles": []string{"baobei_sales"}}}
+			}
 			b, _ := json.Marshal(claims)
 			obj, _ := signer.Sign(b)
 			token, _ := obj.CompactSerialize()
@@ -395,6 +403,43 @@ func testOIDC(t *testing.T, db *pgxpool.Pool) {
 	state = start()
 	s, b = c.call("GET", "/auth/callback?code=synthetic&state="+url.QueryEscape(state), nil)
 	expect(t, s, 401, b)
+	badNonce = false
+	for _, mode := range []string{"realm", "other", "client"} {
+		roleMode = mode
+		state = start()
+		s, b = c.call("GET", "/auth/callback?code=synthetic&state="+url.QueryEscape(state), nil)
+		want := 403
+		if mode == "client" {
+			want = 303
+		}
+		expect(t, s, want, b)
+	}
+	roleMode = "client"
+	state = start()
+	if _, e = db.Exec(context.Background(), `UPDATE oidc_pending_logins SET expires_at=now()-interval '1 second' WHERE state_hash=$1`, hash(state)); e != nil {
+		t.Fatal(e)
+	}
+	s, b = c.call("GET", "/auth/callback?code=synthetic&state="+url.QueryEscape(state), nil)
+	expect(t, s, 400, b)
+	second, e := newApp(context.Background(), db, Config{Env: "development", Issuer: issuer, ClientID: "baobei-web"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	secondServer := httptest.NewServer(second.handler())
+	defer secondServer.Close()
+	second.oauth.RedirectURL = app.oauth.RedirectURL
+	second.cfg.Origin = server.URL
+	state = start()
+	c.origin = secondServer.URL
+	s, b = c.call("GET", "/auth/callback?code=synthetic&state="+url.QueryEscape(state), nil)
+	expect(t, s, 303, b)
+	s, b = c.call("GET", "/auth/callback?code=synthetic&state="+url.QueryEscape(state), nil)
+	expect(t, s, 400, b)
+	c.origin = server.URL
+	var raw int
+	if e = db.QueryRow(context.Background(), `SELECT count(*) FROM oidc_pending_logins WHERE state_hash=$1 OR binding_hash=$1`, state).Scan(&raw); e != nil || raw != 0 {
+		t.Fatal("raw state persisted", e)
+	}
 	production := &App{cfg: Config{Env: "production"}}
 	rec := httptest.NewRecorder()
 	production.cookie(rec, production.cookieName(), "synthetic-only", 28800)

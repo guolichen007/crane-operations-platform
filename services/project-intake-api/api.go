@@ -52,20 +52,15 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 	defer cancel()
 	r = r.WithContext(ctx)
 	path, method := r.URL.Path, r.Method
+	if handled, e := a.governance(w, r, u); handled {
+		return e
+	}
 	if path == "/api/v1/me" && method == "GET" {
 		respond(w, 200, u)
 		return nil
 	}
 	if path == "/api/v1/reference-values" && method == "GET" {
 		respond(w, 200, map[string]any{"salesStages": stages, "informationSources": sources, "confidenceLevels": confidence, "requirements": requirements, "activityTypes": activityTypes})
-		return nil
-	}
-	if path == "/api/v1/reviews" {
-		if u.Role != "baobei_manager" && u.Role != "baobei_director" {
-			fail(w, 403, "FORBIDDEN", "没有审核权限")
-		} else {
-			fail(w, 501, "NOT_IMPLEMENTED", "审核将在后续批次开放")
-		}
 		return nil
 	}
 	if path == "/api/v1/duplicate-checks" && method == "POST" {
@@ -180,6 +175,9 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 		}
 		switch action {
 		case "":
+			if e = a.governanceHistory(ctx, &p); e != nil {
+				return e
+			}
 			rows, e := a.db.Query(ctx, `SELECT type,occurred_at,summary,result,next_action,coalesce(to_char(next_followup_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),'') FROM project_activities WHERE project_id=$1 ORDER BY occurred_at DESC,created_at DESC`, id)
 			if e != nil {
 				return e
@@ -198,7 +196,7 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 			if e != nil {
 				return e
 			}
-			rows, e = a.db.Query(ctx, `SELECT action,revision,created_at FROM audit_events WHERE project_id=$1 ORDER BY created_at DESC`, id)
+			rows, e = a.db.Query(ctx, `SELECT action,revision,created_at,subject,details FROM audit_events WHERE project_id=$1 ORDER BY created_at DESC`, id)
 			if e != nil {
 				return e
 			}
@@ -206,7 +204,11 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 			p.Audit = []Audit{}
 			for rows.Next() {
 				var x Audit
-				if e = rows.Scan(&x.Action, &x.Revision, &x.CreatedAt); e != nil {
+				var details []byte
+				if e = rows.Scan(&x.Action, &x.Revision, &x.CreatedAt, &x.Subject, &details); e != nil {
+					return e
+				}
+				if e = json.Unmarshal(details, &x.Details); e != nil {
 					return e
 				}
 				p.Audit = append(p.Audit, x)
@@ -224,19 +226,6 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 		default:
 			fail(w, 404, "NOT_FOUND", "接口不存在")
 		}
-		return nil
-	}
-	if contains([]string{"approve", "return", "reject", "ownership-transfer"}, action) {
-		if u.Role != "baobei_manager" && u.Role != "baobei_director" {
-			fail(w, 403, "FORBIDDEN", "没有审批权限")
-			return nil
-		}
-		p, e := get(ctx, a.db, id, false)
-		if e != nil || !canRead(u, p) {
-			fail(w, 404, "NOT_FOUND", "项目不存在或无权访问")
-			return nil
-		}
-		fail(w, 501, "NOT_IMPLEMENTED", "此操作将在后续批次开放")
 		return nil
 	}
 	if !(method == "PATCH" && action == "" || method == "POST" && contains([]string{"submit", "activities"}, action)) {
@@ -329,6 +318,9 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 			if _, e = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, fingerprint(in)); e != nil {
 				return e
 			}
+			if _, e = tx.Exec(ctx, `DELETE FROM duplicate_cases WHERE project_id=$1 AND decision='PENDING'`, id); e != nil {
+				return e
+			}
 			ds, e := a.duplicates(ctx, tx, in, id)
 			if e != nil {
 				return e
@@ -338,7 +330,7 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 				p.IntakeStatus = "UNDER_REVIEW"
 			}
 			for _, d := range ds {
-				if _, e = tx.Exec(ctx, `INSERT INTO duplicate_cases(project_id,candidate_id,score,risk) VALUES($1,$2,$3,$4)`, id, d.CandidateID, d.Score, d.Risk); e != nil {
+				if _, e = tx.Exec(ctx, `INSERT INTO duplicate_cases(project_id,candidate_id,score,risk,matched_signals) VALUES($1,$2,$3,$4,$5)`, id, d.CandidateID, d.Score, d.Risk, mustJSON(d.Signals)); e != nil {
 					return e
 				}
 			}
@@ -357,8 +349,17 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 		if _, e = tx.Exec(ctx, `UPDATE intake_projects SET project_name=$2,normalized_project_name=$3,sales_stage=$4,information_source=$5,confidence_level=$6,project_type=$7,estimated_amount=$8,expected_purchase_date=NULLIF($9,'')::date,document=$10,intake_status=$11,version=version+1,updated_at=now() WHERE id=$1`, id, in.ProjectName, normalize(in.ProjectName), in.SalesStage, in.InformationSource, in.ConfidenceLevel, in.ProjectType, in.EstimatedAmount, in.ExpectedPurchaseDate, b, p.IntakeStatus); e != nil {
 			return e
 		}
+		if action != "submit" && in.SalesStage != p.SalesStage && !validStage(p.SalesStage, in.SalesStage, p.IntakeStatus, false) {
+			fail(w, 409, "INVALID_STATE", "阶段必须正常向前或明确暂停/结束")
+			return nil
+		}
 		p.Input = in
 		if e = relations(ctx, tx, p); e != nil {
+			return e
+		}
+	}
+	if action == "activities" || action == "submit" {
+		if _, e = a.refreshProtection(ctx, tx, id, time.Now().UTC(), false); e != nil {
 			return e
 		}
 	}

@@ -71,7 +71,7 @@ type Config struct {
 }
 
 func config() (Config, error) {
-	c := Config{os.Getenv("APP_ENV"), os.Getenv("LISTEN_ADDR"), os.Getenv("PUBLIC_ORIGIN"), os.Getenv("OIDC_ISSUER"), os.Getenv("OIDC_CLIENT_ID"), os.Getenv("OIDC_CLIENT_SECRET"), os.Getenv("DEV_AUTH") == "1"}
+	c := Config{os.Getenv("APP_ENV"), os.Getenv("LISTEN_ADDR"), os.Getenv("PUBLIC_ORIGIN"), os.Getenv("OIDC_ISSUER"), os.Getenv("OIDC_CLIENT_ID"), envSecret("OIDC_CLIENT_SECRET"), os.Getenv("DEV_AUTH") == "1"}
 	if c.Addr == "" {
 		c.Addr = "127.0.0.1:8088"
 	}
@@ -87,7 +87,7 @@ func config() (Config, error) {
 			return c, fmt.Errorf("dev auth requires development and loopback listen")
 		}
 	}
-	if c.Env == "production" && (c.Origin != "https://baobei.youdaozd.com" || c.Issuer == "" || !strings.HasPrefix(c.Issuer, "https://") || c.ClientID != "baobei-web" || c.Secret == "") {
+	if c.Env == "production" && (c.Origin != "https://baobei.youdaozd.com" || c.Issuer != "https://crane.youdaozd.com/realms/crane" || c.ClientID != "baobei-web" || c.Secret == "") {
 		return c, fmt.Errorf("production OIDC configuration required")
 	}
 	return c, nil
@@ -99,16 +99,27 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if os.Getenv("DATABASE_URL") == "" {
+	if envSecret("DATABASE_URL") == "" {
 		log.Fatal("explicit DATABASE_URL required")
 	}
-	pool, e := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
+	pool, e := pgxpool.New(ctx, envSecret("DATABASE_URL"))
 	if e != nil {
 		log.Fatal("database configuration failed")
 	}
 	defer pool.Close()
 	if e = migrate(ctx, pool); e != nil {
 		log.Fatal("database migration failed")
+	}
+	if len(os.Args) > 1 {
+		if len(os.Args) == 3 && os.Args[1] == "maintenance" && os.Args[2] == "protection-sweep" {
+			n, e := (&App{db: pool, cfg: c}).protectionSweep(ctx, time.Now().UTC())
+			if e != nil {
+				log.Fatal("protection sweep failed")
+			}
+			fmt.Printf("protection sweep updated=%d\n", n)
+			return
+		}
+		log.Fatal("unknown maintenance command")
 	}
 	a, e := newApp(ctx, pool, c)
 	if e != nil {
@@ -119,6 +130,18 @@ func main() {
 			log.Fatal("synthetic identity seed failed")
 		}
 	}
+	go func() {
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				_ = a.cleanupAuth(ctx)
+			}
+		}
+	}()
 	server := &http.Server{Addr: c.Addr, Handler: a.handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
 	go func() {
 		<-ctx.Done()
@@ -136,6 +159,23 @@ func seed(ctx context.Context, p *pgxpool.Pool) error {
  INSERT INTO app_users(subject,display_name,role,team_id) VALUES
  ('synthetic-a','示例销售 A','baobei_sales','11111111-1111-4111-8111-111111111111'),
  ('synthetic-b','示例销售 B','baobei_sales','11111111-1111-4111-8111-111111111111'),
- ('synthetic-manager','示例主管','baobei_manager','11111111-1111-4111-8111-111111111111') ON CONFLICT DO NOTHING`)
+ ('synthetic-manager','示例主管','baobei_manager','11111111-1111-4111-8111-111111111111') ON CONFLICT DO NOTHING;
+ INSERT INTO teams(id,name) VALUES('22222222-2222-4222-8222-222222222222','Synthetic Other Team') ON CONFLICT DO NOTHING;
+ INSERT INTO app_users(subject,display_name,role,team_id) VALUES
+ ('synthetic-c','示例销售 C','baobei_sales','22222222-2222-4222-8222-222222222222'),
+ ('synthetic-manager-other','示例另一组主管','baobei_manager','22222222-2222-4222-8222-222222222222'),
+ ('synthetic-director','示例总监','baobei_director',NULL) ON CONFLICT DO NOTHING`)
 	return e
+}
+
+// File secrets are read only at startup; never logged or copied into responses.
+func envSecret(key string) string {
+	if path := os.Getenv(key + "_FILE"); path != "" {
+		b, e := os.ReadFile(path)
+		if e != nil {
+			return ""
+		}
+		return strings.TrimSpace(string(b))
+	}
+	return os.Getenv(key)
 }

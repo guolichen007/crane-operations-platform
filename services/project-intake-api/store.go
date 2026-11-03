@@ -15,12 +15,12 @@ type querier interface {
 	QueryRow(context.Context, string, ...any) pgx.Row
 }
 
-const columns = `p.id::text,p.registration_no,p.owner_subject,p.created_by_subject,coalesce(p.team_id::text,''),p.intake_status,p.protection_status,p.version,p.created_at,p.updated_at,p.last_activity_at,p.next_followup_at,p.document,coalesce((SELECT next_action FROM project_activities WHERE project_id=p.id ORDER BY created_at DESC LIMIT 1),'')`
+const columns = `p.protected_until,p.next_review_at,p.id::text,p.registration_no,p.owner_subject,p.created_by_subject,coalesce(p.team_id::text,''),p.intake_status,p.protection_status,p.version,p.created_at,p.updated_at,p.last_activity_at,p.next_followup_at,p.document,coalesce((SELECT next_action FROM project_activities WHERE project_id=p.id ORDER BY created_at DESC LIMIT 1),'')`
 
 func scan(row interface{ Scan(...any) error }) (Project, error) {
 	var p Project
 	var b []byte
-	e := row.Scan(&p.ID, &p.RegistrationNo, &p.OwnerSubject, &p.CreatedBySubject, &p.TeamID, &p.IntakeStatus, &p.ProtectionStatus, &p.Version, &p.CreatedAt, &p.UpdatedAt, &p.LastActivityAt, &p.NextFollowupAt, &b, &p.NextAction)
+	e := row.Scan(&p.ProtectedUntil, &p.NextReviewAt, &p.ID, &p.RegistrationNo, &p.OwnerSubject, &p.CreatedBySubject, &p.TeamID, &p.IntakeStatus, &p.ProtectionStatus, &p.Version, &p.CreatedAt, &p.UpdatedAt, &p.LastActivityAt, &p.NextFollowupAt, &b, &p.NextAction)
 	if e != nil {
 		return p, e
 	}
@@ -120,7 +120,7 @@ func (a *App) duplicates(ctx context.Context, q querier, p Input, exclude string
 		if n >= t.High {
 			risk = "HIGH"
 		}
-		out = append(out, Duplicate{CandidateID: id, Score: n, Risk: risk, Region: q.Location.Province + " / " + q.Location.City, CreatedAt: at, SalesStage: q.SalesStage, Message: "疑似已有报备，需要主管确认", ProjectName: q.ProjectName})
+		out = append(out, Duplicate{Signals: duplicateSignals(p, q, sim, same), CandidateID: id, Score: n, Risk: risk, Region: q.Location.Province + " / " + q.Location.City, CreatedAt: at, SalesStage: q.SalesStage, Message: "疑似已有报备，需要主管确认", ProjectName: q.ProjectName})
 	}
 	return out, rows.Err()
 }
@@ -158,6 +158,12 @@ func (a *App) list(ctx context.Context, u User, params map[string]string) ([]Pro
 	}
 	if params["due"] == "true" {
 		where += ` AND p.next_followup_at<=now()+interval '7 days'`
+	}
+	if params["review"] == "pending" {
+		where += ` AND p.intake_status IN ('SUBMITTED','UNDER_REVIEW')`
+	}
+	if params["review"] == "protection" {
+		where += ` AND p.protection_status IN ('WARNING','EXPIRING','EXPIRED') AND p.intake_status IN ('SUBMITTED','UNDER_REVIEW','APPROVED')`
 	}
 	var total int
 	if e := a.db.QueryRow(ctx, `SELECT count(*) FROM intake_projects p`+where, args...).Scan(&total); e != nil {

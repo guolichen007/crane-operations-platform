@@ -8,9 +8,9 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -27,12 +27,10 @@ type App struct {
 	cfg      Config
 	oauth    oauth2.Config
 	verifier *oidc.IDTokenVerifier
-	mu       sync.Mutex
-	logins   map[string]pendingLogin
 }
 
 func newApp(ctx context.Context, db *pgxpool.Pool, c Config) (*App, error) {
-	a := &App{db: db, cfg: c, logins: map[string]pendingLogin{}}
+	a := &App{db: db, cfg: c}
 	if c.Issuer != "" {
 		p, e := oidc.NewProvider(ctx, c.Issuer)
 		if e != nil {
@@ -112,7 +110,7 @@ func (a *App) auth(w http.ResponseWriter, r *http.Request) {
 		if !decode(w, r, &b) {
 			return
 		}
-		if !contains([]string{"synthetic-a", "synthetic-b", "synthetic-manager"}, b.Subject) {
+		if !contains([]string{"synthetic-a", "synthetic-b", "synthetic-manager", "synthetic-director", "synthetic-c", "synthetic-manager-other"}, b.Subject) {
 			fail(w, 403, "FORBIDDEN", "测试身份不允许")
 			return
 		}
@@ -127,19 +125,14 @@ func (a *App) auth(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		state, nonce, binding, verifier := randomToken(), randomToken(), randomToken(), oauth2.GenerateVerifier()
-		a.mu.Lock()
-		for k, v := range a.logins {
-			if v.Until.Before(time.Now()) {
-				delete(a.logins, k)
+		if e := a.storePending(r.Context(), hash(state), pendingLogin{nonce, verifier, hash(binding), time.Now().Add(5 * time.Minute)}); e != nil {
+			if errors.Is(e, errAuthCapacity) {
+				fail(w, 429, "AUTH_BUSY", "登录繁忙，请稍后重试")
+			} else {
+				fail(w, 503, "AUTH_UNAVAILABLE", "登录暂时不可用，请重试")
 			}
-		}
-		if len(a.logins) >= 1024 {
-			a.mu.Unlock()
-			fail(w, 429, "AUTH_BUSY", "登录繁忙，请稍后重试")
 			return
 		}
-		a.logins[hash(state)] = pendingLogin{nonce, verifier, hash(binding), time.Now().Add(5 * time.Minute)}
-		a.mu.Unlock()
 		loginCookie := "baobei_login"
 		if a.cfg.Env == "production" {
 			loginCookie = "__Host-baobei_login"
@@ -152,17 +145,14 @@ func (a *App) auth(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		state := r.URL.Query().Get("state")
-		a.mu.Lock()
-		p, ok := a.logins[hash(state)]
-		delete(a.logins, hash(state))
-		a.mu.Unlock()
+		p, pendingErr := a.consumePending(r.Context(), hash(state))
 		name := "baobei_login"
 		if a.cfg.Env == "production" {
 			name = "__Host-baobei_login"
 		}
 		binding, e := r.Cookie(name)
 		a.cookie(w, name, "", -1)
-		if !ok || p.Until.Before(time.Now()) || e != nil || subtle.ConstantTimeCompare([]byte(p.Binding), []byte(hash(binding.Value))) != 1 {
+		if pendingErr != nil || p.Until.Before(time.Now()) || e != nil || subtle.ConstantTimeCompare([]byte(p.Binding), []byte(hash(binding.Value))) != 1 {
 			fail(w, 400, "OIDC_INVALID", "登录已失效，请重新登录")
 			return
 		}
@@ -195,7 +185,7 @@ func (a *App) auth(w http.ResponseWriter, r *http.Request) {
 			fail(w, 401, "OIDC_INVALID", "角色声明无效")
 			return
 		}
-		roles := append(claims.Realm.Roles, claims.Resource[a.cfg.ClientID].Roles...)
+		roles := claims.Resource[a.cfg.ClientID].Roles
 		var role string
 		e = a.db.QueryRow(ctx, `SELECT role FROM app_users WHERE subject=$1 AND active`, id.Subject).Scan(&role)
 		if e != nil || !contains(roles, role) {

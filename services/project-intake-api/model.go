@@ -60,6 +60,9 @@ type Input struct {
 	Notes                string      `json:"notes"`
 }
 type Project struct {
+	ProtectedUntil    *time.Time        `json:"protectedUntil"`
+	NextReviewAt      *time.Time        `json:"nextReviewAt"`
+	GovernanceHistory []GovernanceEvent `json:"governanceHistory,omitempty"`
 	Input
 	ID               string     `json:"id"`
 	RegistrationNo   string     `json:"registrationNo"`
@@ -86,9 +89,11 @@ type Activity struct {
 	NextFollowupAt string    `json:"nextFollowupAt"`
 }
 type Audit struct {
-	Action    string    `json:"action"`
-	Revision  int       `json:"revision"`
-	CreatedAt time.Time `json:"createdAt"`
+	Subject   string         `json:"subject"`
+	Details   map[string]any `json:"details"`
+	Action    string         `json:"action"`
+	Revision  int            `json:"revision"`
+	CreatedAt time.Time      `json:"createdAt"`
 }
 type User struct {
 	Subject string `json:"subject"`
@@ -189,6 +194,7 @@ func validateInput(p *Input, submit bool) error {
 var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 type Duplicate struct {
+	Signals     []string  `json:"signals"`
 	CandidateID string    `json:"candidateId,omitempty"`
 	Score       int       `json:"score"`
 	Risk        string    `json:"risk"`
@@ -231,4 +237,30 @@ func score(p, q Input, similarity float64, sameCustomer bool) int {
 		n += 5
 	}
 	return n
+}
+
+func duplicateSignals(p, q Input, similarity float64, sameCustomer bool) []string {
+	out := []string{}
+	if p.TenderNo != "" && normalize(p.TenderNo) == normalize(q.TenderNo) {
+		out = append(out, "相同招标编号")
+	}
+	if sameCustomer {
+		out = append(out, "相同客户或别名")
+	}
+	if normalize(p.Location.Province+p.Location.City+p.Location.FactoryName+p.Location.Workshop) == normalize(q.Location.Province+q.Location.City+q.Location.FactoryName+q.Location.Workshop) {
+		out = append(out, "相同位置")
+	}
+	if similarity >= 0.8 {
+		out = append(out, "项目名称高度相似")
+	}
+	if len(p.PlannedEquipment) > 0 && len(q.PlannedEquipment) > 0 && p.PlannedEquipment[0].EquipmentType == q.PlannedEquipment[0].EquipmentType && p.PlannedEquipment[0].Quantity == q.PlannedEquipment[0].Quantity {
+		out = append(out, "相同设备类型及数量")
+	}
+	for _, r := range p.Requirements {
+		if contains(q.Requirements, r) {
+			out = append(out, "需求相同")
+			break
+		}
+	}
+	return out
 }
