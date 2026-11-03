@@ -173,11 +173,25 @@ func GetAsset(ctx context.Context, db *sql.DB, id string) (contract.AssetMasterD
 }
 
 // ListOptions carries server-side paging / filter / sort / search controls.
+// Filter fields are allowlisted column conditions, never raw client SQL.
 type ListOptions struct {
-	Limit  int
-	Offset int
-	Sort   string
-	Q      string
+	Limit              int
+	Offset             int
+	Sort               string
+	Q                  string
+	AssetStatus        string
+	AssetType          string
+	ManufacturerId     string
+	LocationKind       string
+	LocationStatus     string
+	LocationParent     string
+	EquipmentType      string
+	EquipmentState     string
+	Criticality        string
+	CatalogType        string
+	CatalogStatus      string
+	CatalogMfg         string
+	ManufacturerStatus string
 }
 
 func (o ListOptions) normalized() (int, int) {
@@ -189,6 +203,23 @@ func (o ListOptions) normalized() (int, int) {
 		offset = 0
 	}
 	return limit, offset
+}
+
+// assetFilters appends allowlisted asset filter conditions to the WHERE clause.
+func assetFilters(where string, args []any, o ListOptions) (string, []any) {
+	if o.AssetStatus != "" {
+		args = append(args, o.AssetStatus)
+		where += fmt.Sprintf(" AND asset_status=$%d", len(args))
+	}
+	if o.AssetType != "" {
+		args = append(args, o.AssetType)
+		where += fmt.Sprintf(" AND asset_type=$%d", len(args))
+	}
+	if o.ManufacturerId != "" {
+		args = append(args, o.ManufacturerId)
+		where += fmt.Sprintf(" AND manufacturer_id=$%d", len(args))
+	}
+	return where, args
 }
 
 // assetSortColumn maps an allowlisted sort key to a column; any other key fails
@@ -234,6 +265,7 @@ func ListAssets(ctx context.Context, db *sql.DB, projectID string, opts ListOpti
 		args = append(args, "%"+opts.Q+"%")
 		where += fmt.Sprintf(" AND (display_name ILIKE $%d OR asset_code ILIKE $%d)", len(args), len(args))
 	}
+	where, args = assetFilters(where, args, opts)
 	var total int
 	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM asset_devices WHERE `+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
@@ -1277,6 +1309,7 @@ func ListAssetsScoped(ctx context.Context, db *sql.DB, projectIDs []string, opts
 		args = append(args, "%"+opts.Q+"%")
 		where += fmt.Sprintf(" AND (display_name ILIKE $%d OR asset_code ILIKE $%d)", len(args), len(args))
 	}
+	where, args = assetFilters(where, args, opts)
 	var total int
 	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM asset_devices WHERE `+where, args...).Scan(&total); err != nil {
 		return nil, 0, err

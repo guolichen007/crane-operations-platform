@@ -12,6 +12,10 @@ const InventoryProjects = () => import('./views/InventoryProjects.vue');
 const InventoryDevices = () => import('./views/InventoryDevices.vue');
 const AlarmCenter = () => import('./views/AlarmCenter.vue');
 const WorkspacePlaceholder = () => import('./views/WorkspacePlaceholder.vue');
+const AssetCenter = () => import('./views/AssetCenter.vue');
+const AssetDetail = () => import('./views/AssetDetail.vue');
+const LocationCenter = () => import('./views/LocationCenter.vue');
+const CatalogCenter = () => import('./views/CatalogCenter.vue');
 const cloudMode = import.meta.env.VITE_DATA_MODE === 'api';
 const productionAuth = import.meta.env.VITE_AUTH_MODE === 'oidc';
 import './styles.css';
@@ -41,26 +45,15 @@ createApp(App)
         { path: '/runtime', component: CloudDevices },
         ...routes,
         { path: '/devices/:id', component: CloudDevices },
-        {
-          path: '/assets',
-          component: WorkspacePlaceholder,
-          props: { title: '资产中心', description: '资产台账 / 位置 / Equipment 运营工作区。' },
-        },
+        { path: '/assets', component: AssetCenter },
+        { path: '/assets/:id', component: AssetDetail },
         {
           path: '/portfolio',
           component: WorkspacePlaceholder,
           props: { title: '项目组合', description: '项目登记 / 资源 / 排期 / 冲突。' },
         },
-        {
-          path: '/locations',
-          component: WorkspacePlaceholder,
-          props: { title: '位置中心', description: '位置树 / 详情 / 资产。' },
-        },
-        {
-          path: '/catalog',
-          component: WorkspacePlaceholder,
-          props: { title: '设备目录', description: '设备类型 / 制造商 / 型号目录。' },
-        },
+        { path: '/locations', component: LocationCenter },
+        { path: '/catalog', component: CatalogCenter },
         ...(productionAuth ? [] : [{ path: '/system', component: Workspace }]),
         { path: '/:pathMatch(.*)*', redirect: '/overview' },
       ],

@@ -60,7 +60,25 @@ func parseListOptions(r *http.Request) asset.ListOptions {
 	q := r.URL.Query()
 	limit, _ := strconv.Atoi(q.Get("limit"))
 	offset, _ := strconv.Atoi(q.Get("offset"))
-	return asset.ListOptions{Limit: limit, Offset: offset, Sort: q.Get("sort"), Q: q.Get("q")}
+	return asset.ListOptions{
+		Limit:              limit,
+		Offset:             offset,
+		Sort:               q.Get("sort"),
+		Q:                  q.Get("q"),
+		AssetStatus:        q.Get("status"),
+		AssetType:          q.Get("type"),
+		ManufacturerId:     q.Get("manufacturerId"),
+		LocationKind:       q.Get("kind"),
+		LocationStatus:     q.Get("status"),
+		LocationParent:     q.Get("parentId"),
+		EquipmentType:      q.Get("typeCode"),
+		EquipmentState:     q.Get("state"),
+		Criticality:        q.Get("criticality"),
+		CatalogType:        q.Get("typeCode"),
+		CatalogStatus:      q.Get("status"),
+		CatalogMfg:         q.Get("manufacturerId"),
+		ManufacturerStatus: q.Get("status"),
+	}
 }
 
 func ifMatchVersion(r *http.Request) (int64, bool) {
