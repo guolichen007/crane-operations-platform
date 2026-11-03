@@ -3,7 +3,7 @@ import type {
   InventoryProject,
   AssetDevice,
   Shadow,
-} from '../../../../contracts/typescript/types.gen';
+} from '../../../contracts/typescript/types.gen';
 import { cloudDevice } from '../../../apps/web-console/tests/cloud-fixtures';
 
 const projects: InventoryProject[] = [
