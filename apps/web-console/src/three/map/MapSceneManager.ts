@@ -19,7 +19,7 @@ import { RenderScheduler, type RenderMode } from '../core/RenderScheduler';
 import { PerfRecorder } from '../core/PerfRecorder';
 import { GeoJsonLoader, type RegionEntry } from './GeoJsonLoader';
 import { DrilldownController, type MapLevel } from './DrilldownController';
-import { buildRegion } from './RegionMeshBuilder';
+import { buildRegion, mergeSideWalls } from './RegionMeshBuilder';
 import { InteractionRouter, type InteractionPick } from './InteractionRouter';
 import type { PickTarget } from './ScreenSpacePicker';
 import { MapLabelLayer } from '../labels/MapLabelLayer';
@@ -31,8 +31,8 @@ import { CountryOuterGlow } from '../effects/CountryOuterGlow';
 import { sceneTime } from '../materials/MapSideMaterial';
 import { createPostProcessing } from '../effects/PostProcessing';
 import { projectMarker } from '../markers/ProjectMarker';
-import { provinceDeviceCounts, provinceFleetSummary } from '../markers/MarkerCluster';
-import { ProvinceFleetBeacon } from '../markers/ProvinceFleetBeacon';
+import { provinceDeviceCounts, provinceFleetSummary, type ProvinceFleet } from '../markers/MarkerCluster';
+import { buildFleetBeaconLayer } from '../markers/ProvinceFleetBeacon';
 import { CraneGlyphLayer, type GlyphItem } from '../markers/CraneGlyphLayer';
 import { CraneSelectionOverlay } from '../markers/CraneSelectionOverlay';
 import { RunningWave } from '../markers/RunningWave';
@@ -99,6 +99,7 @@ export class MapSceneManager {
   private scheduler = new RenderScheduler();
   private perf = new PerfRecorder();
   private tourActive = false;
+  private transitioning = false;
   private glyphLayer?: CraneGlyphLayer;
   private overlay?: CraneSelectionOverlay;
   private glyphPositions = new Map<string, [number, number, number]>();
@@ -164,6 +165,9 @@ export class MapSceneManager {
         const region = buildRegion(f);
         this.country.add(region);
       }
+      // Collapse the 34 decorative side walls into one shared mesh (draw-call win).
+      const mergedWalls = mergeSideWalls(this.country);
+      if (mergedWalls) this.scene.add(mergedWalls);
       this.outer = new CountryOuterGlow(this.country);
       this.outer.resize(this.width, this.height);
       this.scene.add(this.outer.group);
@@ -220,41 +224,47 @@ export class MapSceneManager {
   }
   private async reframeCurrentView(transition = false) {
     if (!this.alive || this.drill.busy) return;
-    const marker = this.focusedDeviceId
-      ? this.markers.children.find((g) => g.userData.device?.deviceId === this.focusedDeviceId)
-      : undefined;
-    if (marker) {
-      const box = new Box3().setFromObject(marker);
-      box.expandByScalar(0.025);
-      await this.rig.frame(box, 'DEVICE_FOCUS', transition, undefined, this.assetSamples(marker));
-    } else if (this.focusedProjectId)
-      await this.rig.frame(this.projectContextBox(), 'PROJECT_FOCUS', transition);
-    else if (this.drill.current.level === 'country') {
-      const center = new Vector3();
-      let total = 0;
-      for (const p of this.shownProjects) {
-        const [x, z] = this.projectOf(p);
-        center.addScaledVector(new Vector3(x, 0, z), p.quantity);
-        total += p.quantity;
-      }
-      if (total) center.divideScalar(total);
-      await this.rig.frame(
-        this.countryBox,
-        'COUNTRY_OVERVIEW',
-        transition,
-        center,
-        this.countrySamples
-      );
-    } else
-      await this.rig.frame(
-        this.drill.current.level === 'county'
-          ? this.projectContextBox()
-          : new Box3().setFromObject(this.detail),
-        this.drill.current.level === 'province' ? 'PROVINCE_CONTEXT' : 'CITY_CONTEXT',
-        transition,
-        undefined,
-        this.drill.current.level === 'county' ? undefined : this.geometrySamples(this.detail)
-      );
+    this.transitioning = true;
+    this.scheduler.invalidate();
+    try {
+      const marker = this.focusedDeviceId
+        ? this.markers.children.find((g) => g.userData.device?.deviceId === this.focusedDeviceId)
+        : undefined;
+      if (marker) {
+        const box = new Box3().setFromObject(marker);
+        box.expandByScalar(0.025);
+        await this.rig.frame(box, 'DEVICE_FOCUS', transition, undefined, this.assetSamples(marker));
+      } else if (this.focusedProjectId)
+        await this.rig.frame(this.projectContextBox(), 'PROJECT_FOCUS', transition);
+      else if (this.drill.current.level === 'country') {
+        const center = new Vector3();
+        let total = 0;
+        for (const p of this.shownProjects) {
+          const [x, z] = this.projectOf(p);
+          center.addScaledVector(new Vector3(x, 0, z), p.quantity);
+          total += p.quantity;
+        }
+        if (total) center.divideScalar(total);
+        await this.rig.frame(
+          this.countryBox,
+          'COUNTRY_OVERVIEW',
+          transition,
+          center,
+          this.countrySamples
+        );
+      } else
+        await this.rig.frame(
+          this.drill.current.level === 'county'
+            ? this.projectContextBox()
+            : new Box3().setFromObject(this.detail),
+          this.drill.current.level === 'province' ? 'PROVINCE_CONTEXT' : 'CITY_CONTEXT',
+          transition,
+          undefined,
+          this.drill.current.level === 'county' ? undefined : this.geometrySamples(this.detail)
+        );
+    } finally {
+      this.transitioning = false;
+    }
     if (this.alive) this.notify();
   }
   private notify() {
@@ -679,6 +689,7 @@ export class MapSceneManager {
       : (this.detail.children as Group[]);
     const provinceCounts = provinceDeviceCounts(this.shownDevices);
     const provinceFleets = provinceFleetSummary(this.shownDevices, this.shownProjects);
+    const beaconItems: { fleet: ProvinceFleet; position: [number, number, number] }[] = [];
     for (const g of regions) {
       const e = this.loader.manifest[g.userData.adcode];
       if (!e?.center) continue;
@@ -693,13 +704,11 @@ export class MapSceneManager {
         ''
       );
       if (country && count > 0) {
-        // Province Fleet Beacon: segmented status ring + central total label.
+        // Province Fleet Beacon: status rings are merged into one draw call below;
+        // the anchor keeps the pick target and DOM label.
         const fleet = provinceFleets.get(e.adcode);
         if (fleet) {
-          const beacon = new ProvinceFleetBeacon(fleet, 0.16);
-          beacon.group.userData.fleetBeacon = true;
-          beacon.group.userData.adcode = e.adcode;
-          anchor.add(beacon.group);
+          beaconItems.push({ fleet, position: [x, top + 0.1, z] });
           this.pickTargets.push({
             kind: 'cluster',
             id: String(e.adcode),
@@ -726,6 +735,11 @@ export class MapSceneManager {
         regionLabel.element.dataset.provinceCode = String(e.adcode);
         regionLabel.element.dataset.deviceCount = String(count);
       }
+    }
+    // All province fleet rings share one vertex-colored mesh (single draw call).
+    if (country && beaconItems.length) {
+      const beaconLayer = buildFleetBeaconLayer(beaconItems, 0.16);
+      if (beaconLayer) this.markers.add(beaconLayer);
     }
     for (const g of this.markers.children) {
       if (g.userData.project) {
@@ -864,13 +878,19 @@ export class MapSceneManager {
       total += p.quantity;
     }
     if (total) center.divideScalar(total);
-    await this.rig.frame(
-      this.countryBox,
-      'COUNTRY_OVERVIEW',
-      !this.reduced,
-      center,
-      this.countrySamples
-    );
+    this.transitioning = true;
+    this.scheduler.invalidate();
+    try {
+      await this.rig.frame(
+        this.countryBox,
+        'COUNTRY_OVERVIEW',
+        !this.reduced,
+        center,
+        this.countrySamples
+      );
+    } finally {
+      this.transitioning = false;
+    }
   }
   async setObservation(mode: 'operations' | 'cinematic') {
     if (this.drill.busy) return;
@@ -910,7 +930,7 @@ export class MapSceneManager {
     group.updateMatrixWorld(true);
     const samples: Vector3[] = [];
     for (const region of group.children) {
-      const surface = region.children[1] as import('three').Mesh | undefined;
+      const surface = region.getObjectByName('top-gradient') as import('three').Mesh | undefined;
       if (!surface) continue;
       const positions = surface.geometry.getAttribute('position');
       for (let i = 0; i < positions.count; i++)
@@ -985,7 +1005,7 @@ export class MapSceneManager {
     const v = new Vector3();
     this.scene.updateMatrixWorld();
     for (const region of this.country.children) {
-      const surface = region.children[1] as import('three').Mesh;
+      const surface = region.getObjectByName('top-gradient') as import('three').Mesh;
       const positions = surface.geometry.getAttribute('position');
       for (let i = 0; i < positions.count; i++) {
         v.fromBufferAttribute(positions, i)
@@ -1087,9 +1107,11 @@ export class MapSceneManager {
   }
   private computeRenderMode(): RenderMode {
     if (this.interaction.isDragging) return 'INTERACTING';
-    if (this.drill.busy || this.intro?.active) return 'CAMERA';
+    if (this.drill.busy || this.intro?.active || this.transitioning) return 'CAMERA';
     if (this.tourActive) return 'TOUR';
-    if (this.pulses.length || this.runningWaves.length || this.network.group.visible) return 'LIVE';
+    // Only business attention (alarm) keeps LIVE; decorative floor/network/running
+    // waves idle-pause so a settled country default can reach IDLE (0 GPU work).
+    if (this.pulses.length) return 'LIVE';
     return 'IDLE';
   }
   private update(dt: number, t: number) {

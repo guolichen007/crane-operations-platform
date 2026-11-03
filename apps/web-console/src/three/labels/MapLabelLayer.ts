@@ -8,6 +8,7 @@ type Label = {
   width?: number;
   height?: number;
   offset?: [number, number];
+  sizeObserver?: ResizeObserver;
 };
 type Rect = { x: number; y: number; w: number; h: number };
 const priorities: Record<LabelKind, number> = {
@@ -17,11 +18,17 @@ const priorities: Record<LabelKind, number> = {
   'demo-cluster': 15,
   cloud: 10,
 };
+const HUD_SELECTOR =
+  '.left-context,.right-context,.map-topline > *,.map-view-switch,.map-caption,.map-legend,.observation-switch';
 export class MapLabelLayer {
   renderer = new CSS2DRenderer();
   labels: Label[] = [];
   private temp = new Vector3();
   private dragging = false;
+  // HUD bounds are cached and only re-read on resize/layout change, never per frame.
+  private hudBounds: Rect[] = [];
+  private boundsDirty = true;
+  private resizeObserver?: ResizeObserver;
   constructor(
     private host: HTMLElement,
     private pointerRoute?: (event: MouseEvent) => boolean
@@ -32,6 +39,28 @@ export class MapLabelLayer {
       pointerEvents: 'none',
     });
     host.append(this.renderer.domElement);
+    if (typeof ResizeObserver !== 'undefined') {
+      this.resizeObserver = new ResizeObserver(() => {
+        this.boundsDirty = true;
+      });
+      this.resizeObserver.observe(host);
+      if (host.parentElement) this.resizeObserver.observe(host.parentElement);
+    }
+  }
+  private refreshBounds() {
+    const host = this.host.getBoundingClientRect();
+    const occupied: Rect[] = [];
+    this.host.parentElement?.querySelectorAll(HUD_SELECTOR).forEach((panel) => {
+      const r = panel.getBoundingClientRect();
+      occupied.push({
+        x: r.left - host.left + r.width / 2,
+        y: r.top - host.top + r.height / 2,
+        w: r.width + 6,
+        h: r.height + 6,
+      });
+    });
+    this.hudBounds = occupied;
+    this.boundsDirty = false;
   }
   add(
     parent: Object3D,
@@ -73,35 +102,35 @@ export class MapLabelLayer {
     const object = new CSS2DObject(element);
     object.position.y = y;
     parent.add(object);
-    this.labels.push({ object, kind, priority: priority > 10 ? priority : priorities[kind] });
+    const label: Label = { object, kind, priority: priority > 10 ? priority : priorities[kind] };
+    this.labels.push(label);
+    // Invalidate the cached size when the element's content/layout changes; the
+    // next render re-measures once, not every frame.
+    if (typeof ResizeObserver !== 'undefined') {
+      label.sizeObserver = new ResizeObserver(() => {
+        label.width = undefined;
+        label.height = undefined;
+      });
+      label.sizeObserver.observe(element);
+    }
     return object;
   }
   clear() {
     for (const l of this.labels) {
+      l.sizeObserver?.disconnect();
       l.object.element.remove();
       l.object.removeFromParent();
     }
     this.labels = [];
+    this.boundsDirty = true;
   }
   /** During drag the collision layout is paused and labels keep their last offset. */
   setDragging(dragging: boolean) {
     this.dragging = dragging;
   }
   render(scene: Scene, camera: Camera, width: number, height: number) {
-    const host = this.host.getBoundingClientRect();
-    const occupied: Rect[] = [];
-    const panels = this.host.parentElement?.querySelectorAll(
-      '.left-context,.right-context,.map-topline > *,.map-view-switch,.map-caption,.map-legend,.observation-switch'
-    );
-    panels?.forEach((panel) => {
-      const r = panel.getBoundingClientRect();
-      occupied.push({
-        x: r.left - host.left + r.width / 2,
-        y: r.top - host.top + r.height / 2,
-        w: r.width + 6,
-        h: r.height + 6,
-      });
-    });
+    if (this.boundsDirty) this.refreshBounds();
+    const occupied: Rect[] = [...this.hudBounds];
     const priority = (l: Label) =>
       l.object.userData.forceVisible ? 90 : l.object.userData.selected ? 80 : l.priority;
     const ordered = [...this.labels].sort((a, b) => priority(b) - priority(a));
@@ -117,8 +146,9 @@ export class MapLabelLayer {
       this.temp.project(camera);
       const x = ((this.temp.x + 1) * width) / 2,
         y = ((1 - this.temp.y) * height) / 2;
-      if (element.offsetWidth) label.width = element.offsetWidth;
-      if (element.offsetHeight) label.height = element.offsetHeight;
+      // Lazy size cache: measure only when not yet known (ResizeObserver resets it).
+      if (label.width === undefined && element.offsetWidth) label.width = element.offsetWidth;
+      if (label.height === undefined && element.offsetHeight) label.height = element.offsetHeight;
       const w = label.width ?? 40,
         h = label.height ?? 16;
       const offsets: [number, number][] = [[0, 0]];
@@ -174,6 +204,7 @@ export class MapLabelLayer {
     this.renderer.render(scene, camera);
   }
   dispose() {
+    this.resizeObserver?.disconnect();
     this.clear();
     this.renderer.domElement.remove();
   }
