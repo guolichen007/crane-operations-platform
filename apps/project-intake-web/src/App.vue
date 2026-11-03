@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import {
   LayoutDashboard,
@@ -10,7 +10,7 @@ import {
   Plus,
   Search,
   LogOut,
-} from 'lucide-vue-next';
+} from '@lucide/vue';
 import ActionButton from './ActionButton.vue';
 import Modal from './Modal.vue';
 import { useApp } from './store';
@@ -18,13 +18,22 @@ const app = useApp(),
   router = useRouter(),
   route = useRoute(),
   search = ref('');
-const nav = [
+const baseNav = [
   { path: '/', label: '工作台', icon: LayoutDashboard },
   { path: '/projects', label: '我的报备', icon: FolderKanban },
   { path: '/followups', label: '待跟进', icon: Clock3 },
   { path: '/pipeline', label: '项目管道', icon: Columns3 },
   { path: '/statistics', label: '统计', icon: ChartNoAxesCombined },
 ];
+const nav = computed(() =>
+  ['baobei_manager', 'baobei_director'].includes(app.user?.role || '')
+    ? [
+        ...baseNav,
+        { path: '/reviews', label: '报备审核', icon: FolderKanban },
+        { path: '/duplicates', label: '重复处理', icon: Columns3 },
+      ]
+    : baseNav
+);
 async function logout() {
   await app.api('/auth/logout', 'POST', {});
   app.user = null;

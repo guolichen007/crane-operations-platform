@@ -1235,3 +1235,71 @@ td small {
 .badge {
   font-size: 11px;
 }
+
+.review-list {
+  display: grid;
+  gap: 1px;
+  border-block: 1px solid #e5e8ee;
+}
+.review-list > button {
+  display: flex;
+  justify-content: flex-start;
+  text-align: left;
+  gap: 16px;
+  border: 0;
+  border-radius: 0;
+  padding: 16px 8px;
+  border-bottom: 1px solid #eceef2;
+}
+.review-list strong {
+  flex: 1;
+}
+.comparison-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 20px;
+  margin: 20px 0;
+}
+.comparison-grid > div {
+  padding: 9px 0;
+  border-bottom: 1px solid #eceef2;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.comparison-grid p {
+  margin: 5px 0;
+  font-size: 12px;
+}
+.comparison-heading {
+  font-weight: 600;
+}
+.modal.sheet:has(.comparison-grid) {
+  width: 760px;
+  max-width: 100vw;
+}
+@media (max-width: 700px) {
+  .review-list > button {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .review-list strong {
+    flex-basis: 100%;
+    font-size: 14px;
+  }
+  .sidebar nav button {
+    font-size: 8px;
+    min-width: 0;
+  }
+  .comparison-grid {
+    gap: 0 12px;
+  }
+  .comparison-grid p {
+    font-size: 11px;
+  }
+  .modal.sheet:has(.comparison-grid) {
+    padding: 24px 16px;
+  }
+  .modal .actions button {
+    font-size: 11px;
+  }
+}

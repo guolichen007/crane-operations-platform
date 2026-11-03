@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
-import { ArrowUpRight, Plus } from 'lucide-vue-next';
+import { ArrowUpRight, Plus } from '@lucide/vue';
 import { useApp } from './store';
 import { type Project, statuses, stages, when } from './model';
 import ActionButton from './ActionButton.vue';

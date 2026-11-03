@@ -1,3 +1,4 @@
+import { request } from './api-client';
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import type { User } from './model';
@@ -14,29 +15,7 @@ export const useApp = defineStore('app', () => {
     toastTimer = setTimeout(() => (message.value = ''), 4500);
   }
   async function api<T>(url: string, method = 'GET', body?: unknown): Promise<T> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 20000);
-    try {
-      const r = await fetch(url, {
-        method,
-        credentials: 'same-origin',
-        signal: controller.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          ...(user.value ? { 'X-CSRF-Token': user.value.csrfToken } : {}),
-        },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      });
-      const b = await r.json();
-      if (!r.ok) throw new Error(b.message || '请求失败，请稍后重试');
-      return b as T;
-    } catch (e) {
-      if (e instanceof Error && e.name === 'AbortError')
-        throw new Error('请求超时，请保留输入并重试');
-      throw e;
-    } finally {
-      clearTimeout(timer);
-    }
+    return request<T>(url, method, body, user.value?.csrfToken || '');
   }
   async function loadUser() {
     try {

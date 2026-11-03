@@ -1,3 +1,4 @@
+import Reviews from './Reviews.vue';
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import { createRouter, createWebHistory } from 'vue-router';
@@ -13,6 +14,8 @@ const pinia = createPinia();
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    { path: '/reviews', component: Reviews },
+    { path: '/duplicates', component: Reviews },
     { path: '/login', component: Login },
     { path: '/', component: Dashboard },
     { path: '/projects', component: Projects },
@@ -28,6 +31,11 @@ router.beforeEach(async (to) => {
   const app = useApp(pinia);
   if (!app.user) await app.loadUser();
   if (!app.user && to.path != '/login') return '/login';
+  if (
+    ['/reviews', '/duplicates'].includes(to.path) &&
+    !['baobei_manager', 'baobei_director'].includes(app.user?.role || '')
+  )
+    return '/';
   if (app.user && to.path === '/login') return '/';
   if ((to.path === '/new' || to.path.endsWith('/edit')) && app.user?.role !== 'baobei_sales')
     return '/';

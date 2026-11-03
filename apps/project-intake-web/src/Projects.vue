@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { Search, SlidersHorizontal, ArrowUpRight } from 'lucide-vue-next';
+import { Search, SlidersHorizontal, ArrowUpRight } from '@lucide/vue';
 import { useApp } from './store';
 import { type Project, statuses, stages, when } from './model';
 import ActionButton from './ActionButton.vue';

@@ -49,6 +49,16 @@ export interface Activity {
   nextFollowupAt: string;
 }
 export interface Project extends Input {
+  protectedUntil: string | null;
+  nextReviewAt: string | null;
+  governanceHistory?: {
+    actor: string;
+    action: string;
+    reason: string;
+    fromOwner?: string;
+    toOwner?: string;
+    at: string;
+  }[];
   id: string;
   registrationNo: string;
   ownerSubject: string;
@@ -61,7 +71,13 @@ export interface Project extends Input {
   nextFollowupAt: string | null;
   nextAction: string;
   activities?: Activity[];
-  audit?: { action: string; revision: number; createdAt: string }[];
+  audit?: {
+    action: string;
+    revision: number;
+    createdAt: string;
+    subject: string;
+    details: Record<string, unknown>;
+  }[];
 }
 export interface User {
   subject: string;

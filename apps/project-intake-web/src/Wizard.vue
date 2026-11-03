@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { reactive, ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
-import { Check, ShieldCheck } from 'lucide-vue-next';
+import { Check, ShieldCheck } from '@lucide/vue';
 import { useApp } from './store';
 import {
   blank,
