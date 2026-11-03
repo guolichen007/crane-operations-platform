@@ -1018,12 +1018,19 @@ export class MapSceneManager {
       maxX = Math.max(...points.map((p) => p.x)),
       minY = Math.min(...points.map((p) => p.y)),
       maxY = Math.max(...points.map((p) => p.y));
+    const pickStart = performance.now();
+    this.interaction.picker.snapshot();
+    const pickMs = performance.now() - pickStart;
     return {
       quality: this.quality.tier,
       renderMode: this.scheduler.current,
+      dpr: this.quality.pixelRatio,
       memory: { ...this.renderer.info.memory },
       drawCalls: this.renderer.info.render.calls,
       triangles: this.renderer.info.render.triangles,
+      labelLayoutMs: this.labels.lastLayoutMs,
+      pickMs,
+      labels: this.labels.labels.length,
       camera: {
         fov: this.rig.camera.fov,
         elevation: this.rig.elevation,

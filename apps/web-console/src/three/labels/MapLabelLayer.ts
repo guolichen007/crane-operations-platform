@@ -23,6 +23,8 @@ const HUD_SELECTOR =
 export class MapLabelLayer {
   renderer = new CSS2DRenderer();
   labels: Label[] = [];
+  /** Last label layout duration in ms, for the perf diagnostics hook. */
+  lastLayoutMs = 0;
   private temp = new Vector3();
   private dragging = false;
   // HUD bounds are cached and only re-read on resize/layout change, never per frame.
@@ -129,6 +131,7 @@ export class MapLabelLayer {
     this.dragging = dragging;
   }
   render(scene: Scene, camera: Camera, width: number, height: number) {
+    const layoutStart = performance.now();
     if (this.boundsDirty) this.refreshBounds();
     const occupied: Rect[] = [...this.hudBounds];
     const priority = (l: Label) =>
@@ -201,6 +204,7 @@ export class MapLabelLayer {
       );
       if (chosen) occupied.push({ x: x + chosen[0], y: y + chosen[1], w, h });
     }
+    this.lastLayoutMs = performance.now() - layoutStart;
     this.renderer.render(scene, camera);
   }
   dispose() {
