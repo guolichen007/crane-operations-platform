@@ -61,6 +61,7 @@ async function switchSceneMode(mode: 'region' | 'fleet' | 'alarm') {
 const store = useOperations();
 const { source, status, selected, selectedProject, visibleProjects, visibleDevices } =
   storeToRefs(store);
+const isApiMode = sceneProvider.mode === 'api';
 const host = ref<HTMLElement>();
 const stack = ref<MapLevel[]>([countryLevel]),
   children = ref<RegionEntry[]>([]),
@@ -79,8 +80,12 @@ const totals = computed(() => aggregate(visibleProjects.value));
 const online = computed(
   () => visibleDevices.value.filter((d) => d.dataSource === 'demo' && d.status !== 'OFFLINE').length
 );
-const demoCount = devices.value.filter((d) => d.dataSource === 'demo').length;
-const alarmCount = devices.value.filter((d) => d.status === 'ALARM').length;
+const demoCount = computed(() => devices.value.filter((d) => d.dataSource === 'demo').length);
+const alarmCount = computed(() => devices.value.filter((d) => d.status === 'ALARM').length);
+const runningCount = computed(() => devices.value.filter((d) => d.status === 'RUNNING').length);
+const standbyCount = computed(() => devices.value.filter((d) => d.status === 'STANDBY').length);
+const offlineCount = computed(() => devices.value.filter((d) => d.status === 'OFFLINE').length);
+const notCommissionedCount = computed(() => devices.value.filter((d) => d.status === 'NOT_COMMISSIONED').length);
 const realCraneTotal = computed(() => realProjects.value.reduce((s, p) => s + p.quantity, 0));
 const realProvinceCount = computed(() => new Set(realProjects.value.map((p) => p.province)).size);
 const statuses: DeviceStatus[] = ['RUNNING', 'STANDBY', 'ALARM', 'OFFLINE', 'MAINTENANCE'];
@@ -118,18 +123,6 @@ function openProject(id: string) {
   const p = realProjects.value.find((p) => p.id === id) ?? visibleProjects.value.find((p) => p.id === id);
   if (p) void scene?.focusProject(p);
 }
-function locateAsset(e: Event) {
-  const deviceId = (e as CustomEvent<{ deviceId: string }>).detail?.deviceId;
-  if (!deviceId) return;
-  const d = devices.value.find((d) => d.deviceId === deviceId);
-  if (d) select(deviceId);
-}
-function locateProject(e: Event) {
-  const projectId = (e as CustomEvent<{ projectId: string }>).detail?.projectId;
-  if (!projectId) return;
-  openProject(projectId);
-}
-
 async function enter(code: number) {
   stop();
   regionSearch.value = '';
@@ -171,37 +164,41 @@ watch([selected, selectedProject], () =>
 watch([visibleProjects, visibleDevices], () =>
   scene?.setFilter(visibleProjects.value, visibleDevices.value)
 );
-// Deep link: /overview?project= | ?asset= | ?region= restores the context once data is ready.
-let deepLinkHandled = false;
-watch([visibleProjects, visibleDevices, loading], ([projects, devs, pending]) => {
-  if (pending || deepLinkHandled) return;
-  const q = route.query;
-  if (typeof q.asset === 'string') {
-    const d = devs.find((d) => d.deviceId === q.asset);
-    if (d) {
-      deepLinkHandled = true;
-      select(d.deviceId);
+// Deep link: /overview?project= | ?asset= | ?region= restores context whenever the
+// query changes (no permanent handled flag), waiting for scene + provider data.
+watch(
+  () => ({
+    asset: route.query.asset,
+    project: route.query.project,
+    region: route.query.region,
+    ready: !loading.value && !sceneProvider.loading.value,
+    devs: visibleDevices.value,
+    projects: visibleProjects.value,
+  }),
+  ({ asset, project, region, ready, devs, projects }) => {
+    if (!ready) return;
+    if (typeof asset === 'string') {
+      if (selected.value?.deviceId !== asset) {
+        const d = devs.find((d) => d.deviceId === asset);
+        if (d) select(d.deviceId);
+      }
+    } else if (typeof project === 'string') {
+      if (selectedProject.value?.id !== project) {
+        const p = projects.find((p) => p.id === project);
+        if (p) openProject(p.id);
+      }
+    } else if (typeof region === 'string') {
+      const code = Number(region);
+      if (Number.isFinite(code) && code > 0 && stack.value[stack.value.length - 1]?.adcode !== code)
+        void enter(code);
     }
-  } else if (typeof q.project === 'string') {
-    const p = projects.find((p) => p.id === q.project);
-    if (p) {
-      deepLinkHandled = true;
-      openProject(p.id);
-    }
-  } else if (typeof q.region === 'string') {
-    const code = Number(q.region);
-    if (Number.isFinite(code) && code > 0) {
-      deepLinkHandled = true;
-      void enter(code);
-    }
-  }
-});
+  },
+  { immediate: true }
+);
 onMounted(async () => {
-  void sceneProvider.refresh();
+  void sceneProvider.ensureLoaded();
   window.addEventListener('keydown', handleKey);
   window.addEventListener('start-tour', play);
-  window.addEventListener('locate-asset', locateAsset);
-  window.addEventListener('locate-project', locateProject);
   document.addEventListener('pointerdown', userStop, true);
   try {
     scene = new MapSceneManager(host.value!, {
@@ -235,19 +232,21 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
-  tour = new DemoTourController(
-    [
-      {
-        at: 0,
-        title: '全国设备网络 · 资产全景',
-        action: async () => {
-          source.value = 'all';
-          status.value = 'all';
-          store.select(null);
-          await scene?.back(0);
-          if (tour?.running) scene?.setTour(true);
+  // The demo tour is demo-only; API mode never assumes demo project IDs/counts.
+  if (sceneProvider.mode === 'demo')
+    tour = new DemoTourController(
+      [
+        {
+          at: 0,
+          title: '全国设备网络 · 资产全景',
+          action: async () => {
+            source.value = 'all';
+            status.value = 'all';
+            store.select(null);
+            await scene?.back(0);
+            if (tour?.running) scene?.setTour(true);
+          },
         },
-      },
       {
         at: 4,
         title: '6 个匿名登记项目 · 10 台计划设备',
@@ -306,20 +305,18 @@ onMounted(async () => {
           if (tour?.running) scene?.setTour(true);
         },
       },
-    ],
-    (r, p, title, value) => {
-      touring.value = r;
-      paused.value = p;
-      tourTitle.value = title;
-      progress.value = value;
-    }
-  );
+      ],
+      (r, p, title, value) => {
+        touring.value = r;
+        paused.value = p;
+        tourTitle.value = title;
+        progress.value = value;
+      }
+    );
 });
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKey);
   window.removeEventListener('start-tour', play);
-  window.removeEventListener('locate-asset', locateAsset);
-  window.removeEventListener('locate-project', locateProject);
   document.removeEventListener('pointerdown', userStop, true);
   tour?.dispose();
   scene?.dispose();
@@ -340,38 +337,72 @@ onUnmounted(() => {
         <div class="eyebrow"><span class="live-dot"></span>NATIONAL OPERATIONS / 全国</div>
         <h1>全国设备运营态势<span>空间资产 · 协同运营</span></h1>
       </div>
-      <div class="view-description">本地模拟数据 <span>/</span> 匿名登记项目按实施计划展示</div>
+      <div class="view-description">
+        {{ isApiMode ? 'Cloud API 实时运行态 · 无遥测设备显示尚未投运' : '本地模拟数据 / 匿名登记项目按实施计划展示' }}
+      </div>
     </div>
     <CloudRuntime v-if="cloudMode" />
-    <div class="kpi-strip" aria-label="登记与演示空间资产">
-      <div>
-        <span>登记项目</span><strong>{{ realProjects.length }}<small>项</small></strong
-        ><em>覆盖 {{ realProvinceCount }} 个省级区域</em>
-      </div>
-      <div>
-        <span>登记行车</span><strong>{{ realCraneTotal }}<small>台</small></strong
-        ><em class="gold">全部处于实施计划阶段</em>
-      </div>
-      <div>
-        <span>演示设备</span><strong>{{ demoCount }}<small>台</small></strong
-        ><em>{{ demoCount ? '演示项目' : 'API 模式无演示设备' }}</em>
-      </div>
-      <div>
-        <span>演示资产在线 <b class="tiny-badge">DEMO</b></span
-        ><strong
-          >{{ devices.filter((d) => d.dataSource === 'demo' && d.status !== 'OFFLINE').length
-          }}<small>台</small></strong
-        ><em class="green">连接率 95.5%</em>
-      </div>
-      <div>
-        <span>模拟告警 <b class="tiny-badge">DEMO</b></span
-        ><strong class="coral">{{ alarmCount }}<small>项</small></strong
-        ><em>固定模拟告警</em>
-      </div>
-      <div>
-        <span>运行中</span><strong>{{ devices.filter((d) => d.status === 'RUNNING').length }}<small>台</small></strong
-        ><em>无 Runtime Binding 不显示绿色</em>
-      </div>
+    <div class="kpi-strip" :aria-label="isApiMode ? '云端行车运行态势' : '登记与演示空间资产'">
+      <template v-if="!isApiMode">
+        <div>
+          <span>登记项目</span><strong>{{ realProjects.length }}<small>项</small></strong
+          ><em>覆盖 {{ realProvinceCount }} 个省级区域</em>
+        </div>
+        <div>
+          <span>登记行车</span><strong>{{ realCraneTotal }}<small>台</small></strong
+          ><em class="gold">全部处于实施计划阶段</em>
+        </div>
+        <div>
+          <span>演示设备</span><strong>{{ demoCount }}<small>台</small></strong
+          ><em>22 个演示项目</em>
+        </div>
+        <div>
+          <span>演示资产在线 <b class="tiny-badge">DEMO</b></span
+          ><strong
+            >{{ devices.filter((d) => d.dataSource === 'demo' && d.status !== 'OFFLINE').length
+            }}<small>台</small></strong
+          ><em class="green">模拟运行态</em>
+        </div>
+        <div>
+          <span>模拟告警 <b class="tiny-badge">DEMO</b></span
+          ><strong class="coral">{{ alarmCount }}<small>项</small></strong
+          ><em>固定模拟告警</em>
+        </div>
+        <div>
+          <span>运行中</span><strong>{{ runningCount }}<small>台</small></strong
+          ><em>无 Runtime Binding 不显示绿色</em>
+        </div>
+      </template>
+      <template v-else>
+        <div>
+          <span>项目</span><strong>{{ realProjects.length }}<small>项</small></strong
+          ><em>覆盖 {{ realProvinceCount }} 个省级区域</em>
+        </div>
+        <div>
+          <span>资产</span><strong>{{ devices.length }}<small>台</small></strong
+          ><em>登记行车 {{ realCraneTotal }} 台</em>
+        </div>
+        <div>
+          <span>运行中</span><strong class="green">{{ runningCount }}<small>台</small></strong
+          ><em>实时遥测 · LIVE</em>
+        </div>
+        <div>
+          <span>待机</span><strong>{{ standbyCount }}<small>台</small></strong
+          ><em>已连接 · SILENT</em>
+        </div>
+        <div>
+          <span>告警</span><strong class="coral">{{ alarmCount }}<small>项</small></strong
+          ><em>实时告警态</em>
+        </div>
+        <div>
+          <span>离线</span><strong>{{ offlineCount }}<small>台</small></strong
+          ><em>连接中断</em>
+        </div>
+        <div>
+          <span>尚未投运</span><strong class="gold">{{ notCommissionedCount }}<small>台</small></strong
+          ><em>无 Runtime Binding</em>
+        </div>
+      </template>
     </div>
     <div class="sandbox-stage">
       <div

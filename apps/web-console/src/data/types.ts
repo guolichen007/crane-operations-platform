@@ -27,15 +27,19 @@ export type Project = {
   /** API projects carry an admin code instead of exact coordinates. */
   adminCode?: number;
 };
+export type TelemetrySource = 'demo' | 'cloud' | 'none';
 export type Device = Project & {
-  telemetrySource: 'demo';
+  telemetrySource: TelemetrySource;
   commissioningStatus: 'NOT_COMMISSIONED' | 'OPERATIONAL';
-  grab: '闭合' | '打开';
-  mode: '自动' | '手动';
+  /** null = 未知（无遥测时禁止伪造“闭合/打开”）。 */
+  grab: '闭合' | '打开' | null;
+  /** null = 未知（无遥测时禁止伪造“自动/手动”）。 */
+  mode: '自动' | '手动' | null;
   fault: string;
   deviceId: string;
   deviceName: string;
   status: DeviceStatus;
+  /** NaN = 未知，禁止用 0 伪造。 */
   todayHours: number;
   totalHours: number;
   load: number;

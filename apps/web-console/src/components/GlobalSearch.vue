@@ -56,6 +56,8 @@ function openSearch() {
   open.value = true;
   query.value = '';
   selectedIndex.value = 0;
+  // Provider is globally available: any route can open search with real data.
+  void sceneProvider.ensureLoaded();
 }
 
 function close() {
@@ -64,16 +66,13 @@ function close() {
 }
 
 function choose(result: Result) {
+  // Canonical deep link, not event-before-navigation: works even if Overview is
+  // not yet mounted (Overview restores the context from the query on mount).
   if (result.kind === 'device' && result.device) {
-    window.dispatchEvent(
-      new CustomEvent('locate-asset', { detail: { deviceId: result.device.deviceId } })
-    );
+    void router.push({ path: '/overview', query: { asset: result.device.deviceId } });
   } else if (result.kind === 'project' && result.projectId) {
-    window.dispatchEvent(
-      new CustomEvent('locate-project', { detail: { projectId: result.projectId } })
-    );
+    void router.push({ path: '/overview', query: { project: result.projectId } });
   }
-  void router.push('/overview');
   close();
 }
 

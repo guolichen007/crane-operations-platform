@@ -1,12 +1,9 @@
 import { computed, shallowRef, type ComputedRef, type Ref } from 'vue';
-import type { Project, Device, DeviceStatus, Lifecycle } from '../data/types';
+import type { Project, Device, Lifecycle } from '../data/types';
 import { projects as demoAllProjects, devices as demoAllDevices, events as demoEvents, realProjects as demoRealProjects } from '../data';
 import { listProjects, listAssets, listDevices, listAlarms } from '../cloud/api';
-import type {
-  InventoryProject,
-  AssetDevice,
-  Shadow,
-} from '../../../../contracts/typescript/types.gen';
+import { mapApiDevice } from './device-status';
+import type { InventoryProject } from '../../../../contracts/typescript/types.gen';
 
 export type SceneEvent = { time: string; kind: string; text: string; color: string };
 
@@ -23,6 +20,8 @@ export interface SceneDataProvider {
   readonly realProjects: ComputedRef<Project[]>;
   readonly loading: Ref<boolean>;
   readonly error: Ref<string>;
+  /** Idempotent load: concurrent calls dedup; a failed load can be retried. */
+  ensureLoaded(): Promise<void>;
   refresh(): Promise<void>;
 }
 
@@ -31,15 +30,7 @@ function lifecycleMap(l: InventoryProject['lifecycle']): Lifecycle {
   return l === 'COMPLETED' ? 'OPERATIONAL' : l;
 }
 
-function apiAssetStatus(a: AssetDevice, shadows: Shadow[]): DeviceStatus {
-  // No runtime binding / no telemetry -> PLANNED / NO_RUNTIME, never RUNNING green.
-  if (!a.runtimeDeviceId) return 'NOT_COMMISSIONED';
-  const shadow = shadows.find((s) => s.deviceId === a.runtimeDeviceId);
-  if (!shadow) return 'OFFLINE';
-  return shadow.presence.connectivity === 'MQTT_CONNECTED' ? 'RUNNING' : 'OFFLINE';
-}
-
-function createDemoProvider(): SceneDataProvider {
+function demoProvider(): SceneDataProvider {
   return {
     mode: 'demo',
     projects: shallowRef(demoAllProjects),
@@ -48,18 +39,21 @@ function createDemoProvider(): SceneDataProvider {
     realProjects: computed(() => demoRealProjects),
     loading: shallowRef(false),
     error: shallowRef(''),
+    async ensureLoaded() {},
     async refresh() {},
   };
 }
 
-function createApiProvider(): SceneDataProvider {
+function apiProvider(): SceneDataProvider {
   const projects = shallowRef<Project[]>([]);
   const devices = shallowRef<Device[]>([]);
   const events = shallowRef<SceneEvent[]>([]);
   const loading = shallowRef(true);
   const error = shallowRef('');
+  let loaded = false;
+  let inFlight: Promise<void> | null = null;
 
-  async function refresh() {
+  async function load() {
     loading.value = true;
     try {
       const [rawProjects, rawAssets, rawShadows, rawAlarms] = await Promise.all([
@@ -92,31 +86,12 @@ function createApiProvider(): SceneDataProvider {
         adminCode: p.adminCode ?? undefined,
       }));
       const byProject = new Map(mappedProjects.map((p) => [p.id, p]));
+      const shadowByDevice = new Map(rawShadows.map((s) => [s.deviceId, s]));
       const mappedDevices: Device[] = rawAssets.flatMap((a) => {
         const base = byProject.get(a.projectId);
         if (!base) return [];
-        const status = apiAssetStatus(a, rawShadows);
-        return [
-          {
-            ...base,
-            telemetrySource: 'demo' as const,
-            commissioningStatus: 'NOT_COMMISSIONED' as const,
-            grab: '闭合' as const,
-            mode: '自动' as const,
-            fault: '无活动故障',
-            deviceId: a.assetDeviceId,
-            deviceName: a.displayName,
-            status,
-            todayHours: 0,
-            totalHours: 0,
-            load: 0,
-            x: 0,
-            y: 0,
-            z: 0,
-            heartbeat: '',
-            craneModel: a.craneModel ?? base.craneModel,
-          },
-        ];
+        const shadow = a.runtimeDeviceId ? shadowByDevice.get(a.runtimeDeviceId) : undefined;
+        return [mapApiDevice(a, base, shadow)];
       });
       projects.value = mappedProjects;
       devices.value = mappedDevices;
@@ -127,8 +102,10 @@ function createApiProvider(): SceneDataProvider {
         color: '#ff665f',
       }));
       error.value = '';
+      loaded = true;
     } catch (e) {
       error.value = (e as Error).message;
+      throw e;
     } finally {
       loading.value = false;
     }
@@ -142,9 +119,16 @@ function createApiProvider(): SceneDataProvider {
     realProjects: computed(() => projects.value.filter((p) => p.dataSource === 'real')),
     loading,
     error,
-    refresh,
+    ensureLoaded() {
+      if (loaded) return Promise.resolve();
+      if (!inFlight) inFlight = load().finally(() => (inFlight = null));
+      return inFlight;
+    },
+    refresh() {
+      return load();
+    },
   };
 }
 
 export const sceneProvider: SceneDataProvider =
-  import.meta.env.VITE_DATA_MODE === 'api' ? createApiProvider() : createDemoProvider();
+  import.meta.env.VITE_DATA_MODE === 'api' ? apiProvider() : demoProvider();
