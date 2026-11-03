@@ -31,7 +31,10 @@ import { CountryOuterGlow } from '../effects/CountryOuterGlow';
 import { sceneTime } from '../materials/MapSideMaterial';
 import { createPostProcessing } from '../effects/PostProcessing';
 import { projectMarker } from '../markers/ProjectMarker';
-import { provinceDeviceCounts } from '../markers/MarkerCluster';
+import { provinceDeviceCounts, provinceFleetSummary } from '../markers/MarkerCluster';
+import { ProvinceFleetBeacon } from '../markers/ProvinceFleetBeacon';
+import { CraneGlyphLayer, type GlyphItem } from '../markers/CraneGlyphLayer';
+import { CraneSelectionOverlay } from '../markers/CraneSelectionOverlay';
 import { RunningWave } from '../markers/RunningWave';
 import { statusColor } from '../../data/types';
 import { AlarmPulse } from '../markers/AlarmPulse';
@@ -97,6 +100,10 @@ export class MapSceneManager {
   private scheduler = new RenderScheduler();
   private perf = new PerfRecorder();
   private tourActive = false;
+  private glyphLayer?: CraneGlyphLayer;
+  private overlay?: CraneSelectionOverlay;
+  private glyphPositions = new Map<string, [number, number, number]>();
+  private hoveredAssetId: string | null = null;
   constructor(
     private host: HTMLElement,
     private callbacks: SceneCallbacks,
@@ -252,6 +259,9 @@ export class MapSceneManager {
     if (this.alive) this.notify();
   }
   private notify() {
+    // Any state change (including a drill transition start) must wake the
+    // render loop so camera-controls keeps updating during camera frames.
+    this.scheduler.invalidate();
     this.callbacks.change(
       [...this.drill.stack],
       this.loader.childrenEntries(this.drill.current.adcode),
@@ -267,12 +277,22 @@ export class MapSceneManager {
       for (const g of this.country.children as Group[])
         this.outline(g, 'selected', p?.adminPath[0] === g.userData.adcode ? 0.68 : 0);
     }
+    this.updateOverlay();
   }
   private hoverAsset(id: string | null) {
+    this.hoveredAssetId = id;
     for (const marker of this.markers.children)
       marker.userData.hovered =
         id !== null &&
         (marker.userData.device?.deviceId === id || marker.userData.project?.id === id);
+    this.updateOverlay();
+  }
+  private updateOverlay() {
+    if (!this.overlay) return;
+    const selectedPos = this.selectedAsset ? this.glyphPositions.get(this.selectedAsset) : undefined;
+    const hoverPos =
+      !selectedPos && this.hoveredAssetId ? this.glyphPositions.get(this.hoveredAssetId) : undefined;
+    this.overlay.set(selectedPos ?? hoverPos ?? null, !!selectedPos, !!hoverPos);
   }
   private hover(g: Group | null) {
     if (this.drill.busy) return;
@@ -552,16 +572,74 @@ export class MapSceneManager {
       }
     };
     // The national scene contains one summary per province, never individual cases.
+    const glyphItems: GlyphItem[] = [];
+    this.glyphPositions.clear();
     if (country) {
-      // Province anchors and counts are created with the geographic labels below.
+      // Province anchors and fleet beacons are created with the geographic labels below.
     } else {
       for (const p of relevant) {
-        if (current.level === 'province' && !this.focusedProjectId) place(p);
-        else {
-          this.shownDevices.filter((d) => d.id === p.id).forEach((d, i) => place(p, d, i));
-          const [x, z] = project(p.approximateLng, p.approximateLat);
+        if (current.level === 'province' && !this.focusedProjectId) {
+          place(p);
+        } else {
+          const [px, pz] = project(p.approximateLng, p.approximateLat);
+          this.shownDevices
+            .filter((d) => d.id === p.id)
+            .forEach((d, i) => {
+              const angle = i * 2.1;
+              const offset = p.quantity > 1 ? scale * 2.1 : 0;
+              const dx = px + Math.cos(angle) * offset;
+              const dz = pz + Math.sin(angle) * offset;
+              const anchor = new Group();
+              anchor.position.set(dx, top, dz);
+              anchor.userData.device = d;
+              anchor.userData.displayStatus = d.status;
+              // Invisible reference geometry keeps focus/selection framing intact
+              // while the visible glyphs are instanced.
+              const ref = new Mesh(
+                new SphereGeometry(0.05, 4, 4),
+                new MeshBasicMaterial({ transparent: true, opacity: 0 })
+              );
+              ref.visible = false;
+              anchor.add(ref);
+              this.markers.add(anchor);
+              glyphItems.push({
+                assetId: d.deviceId,
+                projectId: p.id,
+                position: [dx, top, dz],
+                status: d.status,
+                color: statusColor[d.status],
+              });
+              this.glyphPositions.set(d.deviceId, [dx, top, dz]);
+              this.pickTargets.push({
+                kind: 'device',
+                id: d.deviceId,
+                object: anchor,
+                radius: 40,
+                centerY: 0,
+                spanY: [0, scale * 1.2],
+              });
+              const nameLabel = this.labels.add(
+                anchor,
+                `${String.fromCharCode(65 + i)}机`,
+                (p.dataSource === 'real' ? 'map-project real' : 'map-project demo') + ' instance',
+                scale * 1.7,
+                d.status === 'ALARM' ? 25 : 15,
+                () =>
+                  this.activateLabel({
+                    kind: 'device',
+                    id: d.deviceId,
+                    distancePx: 0,
+                  })
+              );
+              nameLabel.userData.assetId = d.deviceId;
+              if (d.status === 'ALARM') {
+                const pulse = new AlarmPulse(scale);
+                anchor.add(pulse.group);
+                this.pulses.push(pulse);
+              }
+            });
           const anchor = new Group();
-          anchor.position.set(x, top + scale * 4, z);
+          anchor.position.set(px, top + scale * 4, pz);
           this.markers.add(anchor);
           this.labels.add(
             anchor,
@@ -573,10 +651,25 @@ export class MapSceneManager {
         }
       }
     }
+    if (glyphItems.length) {
+      this.glyphLayer?.dispose();
+      this.glyphLayer = new CraneGlyphLayer(scale);
+      this.glyphLayer.setItems(glyphItems);
+      this.scene.add(this.glyphLayer.group);
+      this.overlay?.dispose();
+      this.overlay = new CraneSelectionOverlay(scale);
+      this.scene.add(this.overlay.group);
+    } else {
+      this.glyphLayer?.dispose();
+      this.glyphLayer = undefined;
+      this.overlay?.dispose();
+      this.overlay = undefined;
+    }
     const regions = country
       ? (this.country.children as Group[])
       : (this.detail.children as Group[]);
     const provinceCounts = provinceDeviceCounts(this.shownDevices);
+    const provinceFleets = provinceFleetSummary(this.shownDevices, this.shownProjects);
     for (const g of regions) {
       const e = this.loader.manifest[g.userData.adcode];
       if (!e?.center) continue;
@@ -591,24 +684,21 @@ export class MapSceneManager {
         ''
       );
       if (country && count > 0) {
-        const dot = new Mesh(
-          new SphereGeometry(0.075, 8, 6),
-          new MeshBasicMaterial({
-            color: '#88bbc5',
-            transparent: true,
-            opacity: 0.65,
-            depthWrite: false,
-          })
-        );
-        dot.position.y = 0.04;
-        anchor.add(dot);
-        this.pickTargets.push({
-          kind: 'cluster',
-          id: String(e.adcode),
-          object: anchor,
-          radius: 24,
-          centerY: 0.04,
-        });
+        // Province Fleet Beacon: segmented status ring + central total label.
+        const fleet = provinceFleets.get(e.adcode);
+        if (fleet) {
+          const beacon = new ProvinceFleetBeacon(fleet, 0.16);
+          beacon.group.userData.fleetBeacon = true;
+          beacon.group.userData.adcode = e.adcode;
+          anchor.add(beacon.group);
+          this.pickTargets.push({
+            kind: 'cluster',
+            id: String(e.adcode),
+            object: anchor,
+            radius: 26,
+            centerY: 0.06,
+          });
+        }
       }
       const regionLabel = this.labels.add(
         anchor,
@@ -1038,6 +1128,8 @@ export class MapSceneManager {
     if (!this.reduced) {
       for (const p of this.pulses) p.update(t);
       for (const wave of this.runningWaves) wave.update(t);
+      this.glyphLayer?.update(t, this.reduced);
+      this.overlay?.update(t, this.reduced);
       for (const marker of this.markers.children) {
         const beacon = marker.userData.crane?.userData.beacon as
           | import('three').Mesh<
@@ -1117,6 +1209,8 @@ export class MapSceneManager {
     this.labels.dispose();
     this.loader.dispose();
     this.post.dispose();
+    this.glyphLayer?.dispose();
+    this.overlay?.dispose();
     disposeObject(this.scene);
     this.renderer.dispose();
     this.renderer.forceContextLoss();

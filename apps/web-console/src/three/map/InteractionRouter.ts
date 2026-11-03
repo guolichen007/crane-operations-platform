@@ -51,18 +51,16 @@ export class InteractionRouter {
     return this.ray.intersectObjects(this.regions(), true).find((h) => h.object.userData.region)
       ?.object.userData.region as Group | undefined;
   }
-  /** pointermove is rAF-throttled: at most one pick per frame. */
+  /** pointermove is rAF-throttled: coalesce events, process the latest once per frame. */
   private move = (e: PointerEvent) => {
     if (e.buttons && Math.hypot(e.clientX - this.down.x, e.clientY - this.down.y) > 5)
       this.setDragging(true);
-    if (this.rafPending) {
-      this.queuedMove = e;
-      return;
-    }
+    this.queuedMove = e;
+    if (this.rafPending) return;
     this.rafPending = true;
     const process = () => {
       this.rafPending = false;
-      const event = this.queuedMove ?? null;
+      const event = this.queuedMove;
       this.queuedMove = null;
       if (event) this.processMove(event);
     };
