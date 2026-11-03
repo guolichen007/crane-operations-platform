@@ -64,14 +64,11 @@ test('首次资产指标无需动画帧即可显示真实 API 数值', async ({ 
   });
   await fixture(page);
   await page.goto('/#/overview');
-  await expect(page.getByTestId('inventory-summary').locator('strong')).toHaveText([
-    '9',
-    '6',
-    '3',
-    '10',
-    '10',
-    '0',
-  ]);
+  // CloudRuntime is a DOM-only summary and must render real API numbers without
+  // a single animation frame (the Three scene may not init with rAF stubbed).
+  await expect(page.getByTestId('cloud-runtime').locator('.runtime-metrics b').first()).toHaveText(
+    '1'
+  );
 });
 test('告警日期筛选使用上海日期并与显示一致', async ({ page }) => {
   await fixture(page);
@@ -117,7 +114,7 @@ for (const width of [1920, 1366]) {
         window.__spatialDiagnostics().adcode === 100000
     );
     await expect(page.locator('.scene-loading')).toBeHidden();
-    await expect(page.locator('.side-rail nav a')).toHaveCount(4);
+    await expect(page.locator('.side-rail nav a')).toHaveCount(11);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
     await screenshot(page, 'overview-viewer-' + width);
     await page.goto('/#/alarms');
@@ -169,7 +166,7 @@ test('reduced-motion / WebGL fallback / 无业务壳层闪现', async ({ page })
   });
   await fixture(page);
   await page.goto('/#/overview');
-  await expect(page.getByTestId('webgl-fallback')).toBeVisible();
+  await expect(page.locator('.scene-error')).toBeVisible();
   await page.goto('/#/devices/SIM-P001-01');
   await expect(page.getByTestId('twin-fallback')).toBeVisible();
   await expect(page.getByTestId('viewer-only')).toBeVisible();
@@ -206,15 +203,15 @@ test('20 次行政区下钻往返不持续增长 GPU 资源', async ({ page }) =
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await fixture(page);
   await page.goto('/#/overview');
-  await expect(page.getByRole('combobox', { name: '行政区下钻' })).toContainText('北京市');
+  await expect(page.locator('[data-region-code="110000"]')).toBeVisible();
   await expect(page.locator('.scene-loading')).toBeHidden();
   const counts: number[] = [];
   for (let i = 0; i < 20; i++) {
-    await page.getByRole('combobox', { name: '行政区下钻' }).selectOption('110000');
+    await page.locator('[data-region-code="110000"]').click();
     await expect
       .poll(() => page.evaluate(() => window.__spatialDiagnostics!().adcode))
       .toBe(110000);
-    await page.getByRole('button', { name: '全国 / 复位' }).click();
+    await page.getByRole('button', { name: '重置全国视角' }).click();
     await expect
       .poll(() => page.evaluate(() => window.__spatialDiagnostics!().adcode))
       .toBe(100000);

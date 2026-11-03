@@ -24,6 +24,8 @@ export type Project = {
   coordinateAccuracy: 'city_center_demo' | 'county_center_demo';
   milestones?: { date: string; name: string }[];
   adminPath: number[];
+  /** API projects carry an admin code instead of exact coordinates. */
+  adminCode?: number;
 };
 export type Device = Project & {
   telemetrySource: 'demo';

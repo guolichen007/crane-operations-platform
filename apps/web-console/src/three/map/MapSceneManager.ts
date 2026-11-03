@@ -41,7 +41,6 @@ import { AlarmPulse } from '../markers/AlarmPulse';
 import { NetworkLayer } from '../network/NetworkLayer';
 import { project } from './GeoProjection';
 import { disposeObject } from '../utils/dispose';
-import { projects, devices } from '../../data';
 import type { Project, Device } from '../../data/types';
 import type { InventoryProject } from '../../../../../contracts/typescript/types.gen';
 
@@ -81,8 +80,8 @@ export class MapSceneManager {
   private focusedProjectId: string | null = null;
   private focusedDeviceId: string | null = null;
   private inventoryProjects: InventoryProject[] = [];
-  private shownProjects = projects;
-  private shownDevices = devices;
+  private shownProjects: Project[] = [];
+  private shownDevices: Device[] = [];
   private visibleGroups: Group[] = [];
   private lastStats = 0;
   private frames = 0;
@@ -128,7 +127,7 @@ export class MapSceneManager {
     });
     addAtmosphere(this.scene);
     this.scene.add(this.background.mesh, this.country, this.detail, this.markers, this.floor.group);
-    this.network = new NetworkLayer(inventoryOnly ? [] : projects);
+    this.network = new NetworkLayer([]);
     this.scene.add(this.network.group);
     this.post = createPostProcessing(this.renderer, this.scene, this.rig.camera);
     this.post.setQuality(this.quality.tier);
@@ -198,7 +197,7 @@ export class MapSceneManager {
       return;
     }
     if (target.kind === 'device') {
-      const device = devices.find((d) => d.deviceId === target.id);
+      const device = this.shownDevices.find((d) => d.deviceId === target.id);
       if (device) void this.focusDevice(device);
       return;
     }
@@ -234,7 +233,7 @@ export class MapSceneManager {
       const center = new Vector3();
       let total = 0;
       for (const p of this.shownProjects) {
-        const [x, z] = project(p.approximateLng, p.approximateLat);
+        const [x, z] = this.projectOf(p);
         center.addScaledVector(new Vector3(x, 0, z), p.quantity);
         total += p.quantity;
       }
@@ -272,8 +271,10 @@ export class MapSceneManager {
     this.selectedAsset = id;
     if (this.drill.current.level === 'country' && !this.focusedProjectId) {
       const p =
-        projects.find((p) => p.id === id) ??
-        projects.find((p) => p.id === devices.find((d) => d.deviceId === id)?.id);
+        this.shownProjects.find((p) => p.id === id) ??
+        this.shownProjects.find(
+          (p) => p.id === this.shownDevices.find((d) => d.deviceId === id)?.id
+        );
       for (const g of this.country.children as Group[])
         this.outline(g, 'selected', p?.adminPath[0] === g.userData.adcode ? 0.68 : 0);
     }
@@ -469,6 +470,14 @@ export class MapSceneManager {
         this.reduced
       );
   }
+  /** Resolve a project/device to map coordinates; API projects carry adminCode. */
+  private projectOf(p: Project): [number, number] {
+    if (p.approximateLng !== 0 || p.approximateLat !== 0)
+      return project(p.approximateLng, p.approximateLat);
+    const code = p.adminCode ?? p.adminPath[p.adminPath.length - 1];
+    const region = code !== undefined ? this.loader.manifest[code] : undefined;
+    return region?.center ? project(...region.center) : [0, 0];
+  }
   private refreshLabelsAndMarkers() {
     this.labels.clear();
     disposeObject(this.markers);
@@ -581,7 +590,7 @@ export class MapSceneManager {
         if (current.level === 'province' && !this.focusedProjectId) {
           place(p);
         } else {
-          const [px, pz] = project(p.approximateLng, p.approximateLat);
+          const [px, pz] = this.projectOf(p);
           this.shownDevices
             .filter((d) => d.id === p.id)
             .forEach((d, i) => {
@@ -789,7 +798,7 @@ export class MapSceneManager {
         this.notify();
         return;
       }
-      const [fx, fz] = project(p.approximateLng, p.approximateLat);
+      const [fx, fz] = this.projectOf(p);
       this.floor.setFocus(fx, fz);
       this.focusedProjectId = p.id;
       this.focusedDeviceId = null;
@@ -850,7 +859,7 @@ export class MapSceneManager {
     const center = new Vector3();
     let total = 0;
     for (const p of this.shownProjects) {
-      const [x, z] = project(p.approximateLng, p.approximateLat);
+      const [x, z] = this.projectOf(p);
       center.addScaledVector(new Vector3(x, 0, z), p.quantity);
       total += p.quantity;
     }

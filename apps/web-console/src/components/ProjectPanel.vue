@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { X, ChevronRight, LocateFixed, MapPin } from 'lucide-vue-next';
-import { devices } from '../data';
+import { sceneProvider } from '../scene/provider';
 import { statusText, statusColor, lifecycleText, type Project } from '../data/types';
 const props = defineProps<{ project: Project }>();
 const emit = defineEmits<{ close: []; select: [id: string]; focus: [] }>();
-const instances = computed(() => devices.filter((d) => d.id === props.project.id));
+const instances = computed(() => sceneProvider.devices.value.filter((d) => d.id === props.project.id));
 </script>
 <template>
   <section class="project-context" data-testid="project-panel" :data-project-id="project.id">

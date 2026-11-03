@@ -13,8 +13,10 @@ import {
   SlidersHorizontal,
   Info,
 } from 'lucide-vue-next';
+import { useRoute } from 'vue-router';
 import { useOperations } from '../stores/operations';
-import { realProjects, devices, aggregate, events } from '../data';
+import { aggregate } from '../data';
+import { sceneProvider } from '../scene/provider';
 import { statusText, statusColor, type DeviceStatus, type Project } from '../data/types';
 import { MapSceneManager } from '../three/map/MapSceneManager';
 import { countryLevel, type MapLevel } from '../three/map/DrilldownController';
@@ -24,7 +26,12 @@ import DevicePanel from '../components/DevicePanel.vue';
 import ProjectPanel from '../components/ProjectPanel.vue';
 import CloudRuntime from '../components/CloudRuntime.vue';
 import { cloudMode } from '../cloud/api';
+// Reactive scene data (Demo vs API provider) — the only mode-dependent layer.
+const devices = computed(() => sceneProvider.devices.value);
+const realProjects = computed(() => sceneProvider.realProjects.value);
+const events = computed(() => sceneProvider.events.value);
 const isDev = import.meta.env.DEV;
+const route = useRoute();
 const observation = ref<'operations' | 'cinematic'>('operations');
 async function switchObservation(mode: 'operations' | 'cinematic') {
   stop();
@@ -72,8 +79,10 @@ const totals = computed(() => aggregate(visibleProjects.value));
 const online = computed(
   () => visibleDevices.value.filter((d) => d.dataSource === 'demo' && d.status !== 'OFFLINE').length
 );
-const demoCount = devices.filter((d) => d.dataSource === 'demo').length;
-const alarmCount = devices.filter((d) => d.status === 'ALARM').length;
+const demoCount = devices.value.filter((d) => d.dataSource === 'demo').length;
+const alarmCount = devices.value.filter((d) => d.status === 'ALARM').length;
+const realCraneTotal = computed(() => realProjects.value.reduce((s, p) => s + p.quantity, 0));
+const realProvinceCount = computed(() => new Set(realProjects.value.map((p) => p.province)).size);
 const statuses: DeviceStatus[] = ['RUNNING', 'STANDBY', 'ALARM', 'OFFLINE', 'MAINTENANCE'];
 const counts = computed(() =>
   statuses.map((s) => ({
@@ -85,7 +94,7 @@ const navigation = computed(() =>
   children.value
     .filter((c) => c.name.includes(regionSearch.value))
     .sort((a, b) => {
-      const realCode = (n: number) => realProjects.some((p) => p.adminPath.includes(n));
+      const realCode = (n: number) => realProjects.value.some((p) => p.adminPath.includes(n));
       return Number(realCode(b.adcode)) - Number(realCode(a.adcode));
     })
 );
@@ -100,19 +109,19 @@ async function focus(p: Project) {
 function select(id: string) {
   stop();
   store.select(id);
-  const d = devices.find((d) => d.deviceId === id);
+  const d = devices.value.find((d) => d.deviceId === id);
   if (d) void scene?.focusDevice(d);
 }
 function openProject(id: string) {
   stop();
   store.selectProject(id);
-  const p = realProjects.find((p) => p.id === id) ?? visibleProjects.value.find((p) => p.id === id);
+  const p = realProjects.value.find((p) => p.id === id) ?? visibleProjects.value.find((p) => p.id === id);
   if (p) void scene?.focusProject(p);
 }
 function locateAsset(e: Event) {
   const deviceId = (e as CustomEvent<{ deviceId: string }>).detail?.deviceId;
   if (!deviceId) return;
-  const d = devices.find((d) => d.deviceId === deviceId);
+  const d = devices.value.find((d) => d.deviceId === deviceId);
   if (d) select(deviceId);
 }
 function locateProject(e: Event) {
@@ -162,7 +171,33 @@ watch([selected, selectedProject], () =>
 watch([visibleProjects, visibleDevices], () =>
   scene?.setFilter(visibleProjects.value, visibleDevices.value)
 );
+// Deep link: /overview?project= | ?asset= | ?region= restores the context once data is ready.
+let deepLinkHandled = false;
+watch([visibleProjects, visibleDevices, loading], ([projects, devs, pending]) => {
+  if (pending || deepLinkHandled) return;
+  const q = route.query;
+  if (typeof q.asset === 'string') {
+    const d = devs.find((d) => d.deviceId === q.asset);
+    if (d) {
+      deepLinkHandled = true;
+      select(d.deviceId);
+    }
+  } else if (typeof q.project === 'string') {
+    const p = projects.find((p) => p.id === q.project);
+    if (p) {
+      deepLinkHandled = true;
+      openProject(p.id);
+    }
+  } else if (typeof q.region === 'string') {
+    const code = Number(q.region);
+    if (Number.isFinite(code) && code > 0) {
+      deepLinkHandled = true;
+      void enter(code);
+    }
+  }
+});
 onMounted(async () => {
+  void sceneProvider.refresh();
   window.addEventListener('keydown', handleKey);
   window.addEventListener('start-tour', play);
   window.addEventListener('locate-asset', locateAsset);
@@ -241,7 +276,7 @@ onMounted(async () => {
         at: 20,
         title: 'Project-A · 2026 年 11 月实施',
         action: () => {
-          store.selectProject(realProjects[0]!.id);
+          store.selectProject(realProjects.value[0]!.id);
         },
       },
       {
@@ -257,7 +292,7 @@ onMounted(async () => {
         at: 32,
         title: 'Project-F · 3 台行车与两阶段里程碑',
         action: async () => {
-          await scene?.focusProject(realProjects[5]!, () => !!tour?.running);
+          await scene?.focusProject(realProjects.value[5]!, () => !!tour?.running);
           if (tour?.running) scene?.setTour(true);
         },
       },
@@ -308,18 +343,18 @@ onUnmounted(() => {
       <div class="view-description">本地模拟数据 <span>/</span> 匿名登记项目按实施计划展示</div>
     </div>
     <CloudRuntime v-if="cloudMode" />
-    <div class="kpi-strip" aria-label="匿名登记与演示空间资产">
+    <div class="kpi-strip" aria-label="登记与演示空间资产">
       <div>
-        <span>匿名登记项目</span><strong>6<small>项</small></strong
-        ><em>覆盖 5 个省级区域</em>
+        <span>登记项目</span><strong>{{ realProjects.length }}<small>项</small></strong
+        ><em>覆盖 {{ realProvinceCount }} 个省级区域</em>
       </div>
       <div>
-        <span>登记行车</span><strong>10<small>台</small></strong
+        <span>登记行车</span><strong>{{ realCraneTotal }}<small>台</small></strong
         ><em class="gold">全部处于实施计划阶段</em>
       </div>
       <div>
         <span>演示设备</span><strong>{{ demoCount }}<small>台</small></strong
-        ><em>22 个演示项目</em>
+        ><em>{{ demoCount ? '演示项目' : 'API 模式无演示设备' }}</em>
       </div>
       <div>
         <span>演示资产在线 <b class="tiny-badge">DEMO</b></span
@@ -334,8 +369,8 @@ onUnmounted(() => {
         ><em>固定模拟告警</em>
       </div>
       <div>
-        <span>未来 120 天实施</span><strong>5<small>项</small></strong
-        ><em>另 1 项于 2027 年 2 月</em>
+        <span>运行中</span><strong>{{ devices.filter((d) => d.status === 'RUNNING').length }}<small>台</small></strong
+        ><em>无 Runtime Binding 不显示绿色</em>
       </div>
     </div>
     <div class="sandbox-stage">

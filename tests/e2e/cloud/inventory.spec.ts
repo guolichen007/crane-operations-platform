@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { cloudDevice } from '../../../apps/web-console/tests/cloud-fixtures';
 const example = JSON.parse(readFileSync('deploy/inventory/inventory.example.yaml', 'utf8'));
-async function inventory(page: Page, geography = false) {
+async function inventory(page: Page) {
   const projects = example.projects.map((p: Record<string, unknown>) => ({
     ...p,
     assetDeviceCount: example.assetDevices.filter(
@@ -16,11 +16,6 @@ async function inventory(page: Page, geography = false) {
       (d: { projectId: string }) => d.projectId === p.id
     ).length,
   }));
-  if (geography) {
-    // Synthetic administrative fixtures deliberately differ from private inventory.
-    projects[0].adminCode = 110000;
-    projects[6].adminCode = 310000;
-  }
   const assets = example.assetDevices.map((a: Record<string, unknown>, i: number) => ({
     ...a,
     runtimeSource: 'SIMULATION',
@@ -48,44 +43,24 @@ async function inventory(page: Page, geography = false) {
     return route.fulfill({ status: result ? 200 : 404, json: result ?? {} });
   });
 }
-test('Inventory homepage is 9 projects / 10 planned assets / 10 simulated online / 0 real', async ({
+
+test('API mode flagship home is the Twin Cockpit, not the legacy inventory layout', async ({
   page,
 }) => {
   await inventory(page);
   await page.goto('/#/overview');
-  await expect(page.getByTestId('inventory-summary').locator('strong')).toHaveText([
-    '9',
-    '6',
-    '3',
-    '10',
-    '10',
-    '0',
-  ]);
-  await expect(page.getByTestId('cloud-runtime')).toContainText(
-    '模拟运行源在线 10 · 真实运行源在线 0'
-  );
-  await expect(page.locator('.scene-loading')).toBeHidden();
+  // The unified flagship renders the same scene + HUD + scene dock + rail as demo.
+  await expect(page.locator('.province-summary')).toHaveCount(34);
+  await expect(page.locator('.scene-mode-dock')).toBeVisible();
+  await expect(page.locator('.left-context')).toBeVisible();
+  await expect(page.locator('.right-context')).toBeVisible();
+  await expect(page.locator('.side-rail')).toBeVisible();
+  await expect(page.getByTestId('cloud-runtime')).toBeVisible();
+  // The legacy InventoryOverview layout must not be served on the home route.
+  await expect(page.getByTestId('inventory-summary')).toHaveCount(0);
   await expect(page.locator('.inventory-project-marker')).toHaveCount(0);
-  await page.locator('[data-project-id="P007"]').click();
-  await expect(page.getByTestId('inventory-selection')).toContainText(
-    '已完成 · 待接入Cloud · 设备档案待补充'
-  );
-  await expect(page.getByTestId('inventory-selection')).not.toContainText('OFFLINE');
 });
-test('only configured administrative centers become project markers, with lifecycle distinctions', async ({
-  page,
-}) => {
-  await inventory(page, true);
-  await page.goto('/#/overview');
-  await expect(page.locator('.scene-loading')).toBeHidden();
-  await expect(page.locator('.inventory-project-marker')).toHaveCount(2);
-  await expect(page.locator('.inventory-project-marker.planned')).toHaveCount(1);
-  await expect(page.locator('.inventory-project-marker.awaiting')).toHaveCount(1);
-  await expect(page.locator('.inventory-project-marker').first()).toHaveAttribute(
-    'title',
-    '行政区级定位 · 非现场精确坐标'
-  );
-});
+
 test('three completed projects have no invented device, model or telemetry', async ({ page }) => {
   await inventory(page);
   await page.goto('/#/projects');

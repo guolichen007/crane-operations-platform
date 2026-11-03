@@ -7,7 +7,6 @@ import { queryClient } from './cloud/queryClient';
 const Overview = () => import('./views/Overview.vue');
 const Workspace = () => import('./views/Workspace.vue');
 const CloudDevices = () => import('./views/CloudDevices.vue');
-const InventoryOverview = () => import('./views/InventoryOverview.vue');
 const InventoryProjects = () => import('./views/InventoryProjects.vue');
 const InventoryDevices = () => import('./views/InventoryDevices.vue');
 const AlarmCenter = () => import('./views/AlarmCenter.vue');
@@ -41,7 +40,7 @@ createApp(App)
       history: createWebHashHistory(),
       routes: [
         { path: '/', redirect: '/overview' },
-        { path: '/overview', component: cloudMode ? InventoryOverview : Overview },
+        { path: '/overview', component: Overview },
         { path: '/runtime', component: CloudDevices },
         ...routes,
         { path: '/devices/:id', component: CloudDevices },

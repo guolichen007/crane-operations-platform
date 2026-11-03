@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { X, ArrowUpRight, MapPin, ArrowLeft } from 'lucide-vue-next';
-import { devices } from '../data';
+import { sceneProvider } from '../scene/provider';
 import { statusText, statusColor, lifecycleText, type Device } from '../data/types';
 import CraneTwin from './CraneTwin.vue';
 const props = defineProps<{ device: Device }>();
 const emit = defineEmits<{ close: []; select: [id: string]; project: [id: string] }>();
-const siblings = computed(() => devices.filter((d) => d.id === props.device.id));
+const siblings = computed(() => sceneProvider.devices.value.filter((d) => d.id === props.device.id));
 </script>
 <template>
   <section

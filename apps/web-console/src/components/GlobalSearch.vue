@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { Search, CornerDownLeft } from 'lucide-vue-next';
-import { devices, projects } from '../data';
+import { sceneProvider } from '../scene/provider';
 import { statusText, type Device } from '../data/types';
 
 type Result = {
@@ -25,7 +25,7 @@ const results = computed<Result[]>(() => {
   const match = (...values: (string | undefined)[]) =>
     values.some((v) => v && v.toLowerCase().includes(q));
   const out: Result[] = [];
-  for (const d of devices) {
+  for (const d of sceneProvider.devices.value) {
     if (
       match(d.deviceId, d.deviceName, d.projectName, d.province, d.city ?? undefined, d.craneModel, statusText[d.status])
     ) {
@@ -38,7 +38,7 @@ const results = computed<Result[]>(() => {
       });
     }
   }
-  for (const p of projects) {
+  for (const p of sceneProvider.projects.value) {
     if (match(p.id, p.projectName, p.province, p.city ?? undefined, p.craneModel)) {
       out.push({
         key: 'p:' + p.id,

@@ -70,10 +70,11 @@ async function browserCheck() {
       const box = await fleetCards.filter({ hasText: id }).boundingBox();
       assert.ok(box && bar && box.y >= 60 && box.y + box.height <= bar.y, `${id} clears CloudStatus`);
     }
-    await page.getByRole('link', { name: '总览', exact: true }).click();
+    await page.getByRole('link', { name: '数字沙盘', exact: true }).click();
+    await expect(page).toHaveURL(/#\/overview/);
     const runtime = page.getByTestId('cloud-runtime');
     await expect(runtime.locator('.runtime-metrics b').first()).toHaveText(String((await api('devices')).length));
-    await expect(runtime).toContainText('未配置时不生成地图点');
+    await expect(runtime).toContainText('位置元数据未配置');
     await expect(runtime).toContainText('SIM 为模拟设备');
     record('S3.5 real Cloud runtime summary and 1920x1080 grid safe area');
     await page.getByRole('link', { name: '告警', exact: true }).click();
@@ -302,7 +303,10 @@ async function assetModeCheck() {
     await page.goto((process.env.PHASE0_WEB_URL || `http://127.0.0.1:${config.WEB_PORT || 18080}`) + '/#/overview');
     await page.getByLabel('本地开发凭据', { exact: true }).fill(token);
     await page.getByRole('button', { name: '连接云端', exact: true }).click();
-    await expect(page.getByTestId('inventory-summary').locator('strong')).toHaveText(['9','6','3','10','10','0']);
+    // Unified flagship: API mode renders the same Twin Cockpit scene as demo.
+    await expect(page.locator('.province-summary')).toHaveCount(34);
+    await expect(page.getByTestId('cloud-runtime')).toBeVisible();
+    await expect(page.locator('.scene-mode-dock')).toBeVisible();
     await page.getByRole('link', { name: '项目', exact: true }).click();
     await expect(page.getByTestId('inventory-project')).toHaveCount(9);
     const completed = page.getByTestId('inventory-project').filter({ hasText: '已完成' });
