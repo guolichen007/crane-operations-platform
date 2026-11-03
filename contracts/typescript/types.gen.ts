@@ -198,13 +198,15 @@ export interface AssetMasterData {
   applicationType: string | null;
   controlMode: string | null;
   version: number;
+  specialEquipmentCode: string | null;
+  useRegistrationNo: string | null;
 }
 export interface AssetLocation {
   id: string;
   projectId: string;
   parentId: string | null;
   kind: "SITE" | "PLANT" | "WORKSHOP" | "BAY" | "RUNWAY" | "OTHER";
-  code: string;
+  code: string | null;
   name: string;
   province: string;
   city: string;
@@ -215,6 +217,7 @@ export interface AssetLocation {
   coordinateSource: "MANUAL" | "SURVEY" | "IMPORTED" | "SITE_CENTER";
   status: "ACTIVE" | "DISABLED";
   version: number;
+  address: string;
 }
 export interface EquipmentInstallation {
   id: string;

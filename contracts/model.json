@@ -971,6 +971,16 @@
       "version": {
         "type": "integer",
         "minimum": 1
+      },
+      "specialEquipmentCode": {
+        "type": "string",
+        "maxLength": 160,
+        "nullable": true
+      },
+      "useRegistrationNo": {
+        "type": "string",
+        "maxLength": 160,
+        "nullable": true
       }
     },
     "AssetLocation": {
@@ -1000,7 +1010,8 @@
       },
       "code": {
         "type": "string",
-        "maxLength": 160
+        "maxLength": 160,
+        "nullable": true
       },
       "name": {
         "type": "string",
@@ -1054,6 +1065,10 @@
       "version": {
         "type": "integer",
         "minimum": 1
+      },
+      "address": {
+        "type": "string",
+        "maxLength": 240
       }
     },
     "EquipmentInstallation": {

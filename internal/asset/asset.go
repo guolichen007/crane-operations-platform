@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
 	"github.com/guolichen007/crane-operations-platform/internal/auditlog"
@@ -90,7 +91,10 @@ func CreateAsset(ctx context.Context, db *sql.DB, in contract.AssetMasterData, a
 			return in, ErrIdempotencyKey
 		}
 	}
-	displayName := in.AssetCode
+	displayName := ""
+	if in.AssetCode != nil {
+		displayName = strings.TrimSpace(*in.AssetCode)
+	}
 	if displayName == "" {
 		displayName = in.ProjectId + "-asset"
 	}
@@ -186,16 +190,15 @@ func CreateLocation(ctx context.Context, db *sql.DB, in contract.AssetLocation, 
 	if in.Id == "" {
 		in.Id = platform.ID()
 	}
-	if in.Code == "" {
-		in.Code = ""
-	}
-	var code any = in.Code
-	if in.Code == "" {
+	var code any
+	if in.Code != nil && strings.TrimSpace(*in.Code) != "" {
+		code = *in.Code
+	} else {
 		code = nil
 	}
 	in.Version = 1
 	_, err := db.ExecContext(ctx, `INSERT INTO asset_locations(id,project_id,parent_id,kind,code,name,address,province,city,county,longitude,latitude,coordinate_system,coordinate_source,status,version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
-		in.Id, in.ProjectId, in.ParentId, in.Kind, code, in.Name, in.Province, in.City, in.County, in.Longitude, in.Latitude, in.CoordinateSystem, in.CoordinateSource, in.Status, in.Version)
+		in.Id, in.ProjectId, in.ParentId, in.Kind, code, in.Name, in.Address, in.Province, in.City, in.County, in.Longitude, in.Latitude, in.CoordinateSystem, in.CoordinateSource, in.Status, in.Version)
 	if err != nil {
 		return in, err
 	}

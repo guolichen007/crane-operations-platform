@@ -20,7 +20,9 @@
     "liftingHeightM",
     "applicationType",
     "controlMode",
-    "version"
+    "version",
+    "specialEquipmentCode",
+    "useRegistrationNo"
   ],
   "properties": {
     "id": {
@@ -158,6 +160,28 @@
     "version": {
       "type": "integer",
       "minimum": 1
+    },
+    "specialEquipmentCode": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 160
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "useRegistrationNo": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 160
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "$defs": {}
