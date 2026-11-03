@@ -1,0 +1,58 @@
+import { api } from './client';
+import type {
+  PortfolioScope,
+  ProjectIntake,
+  ProjectIntakeInput,
+  Resource,
+  ResourceReservation,
+  ScheduleItem,
+  ScheduleConflict,
+  ScheduleDependency,
+  ScheduleBaseline,
+} from '../../../../contracts/typescript/types.gen';
+
+export const listScopes = () => api<PortfolioScope[]>('portfolio/scopes');
+
+export const listIntakes = () => api<ProjectIntake[]>('portfolio/intakes');
+export const getIntake = (id: string) => api<ProjectIntake>(`portfolio/intakes/${encodeURIComponent(id)}`);
+export const createIntake = (input: ProjectIntakeInput) =>
+  api<ProjectIntake>('portfolio/intakes', { method: 'POST', body: input });
+export const transitionIntake = (id: string, status: string, reason: string) =>
+  api<{ status: string }>(`portfolio/intakes/${encodeURIComponent(id)}/transitions`, {
+    method: 'POST',
+    body: { status, reason },
+  });
+export const approveIntake = (id: string) =>
+  api<{ projectId: string }>(`portfolio/intakes/${encodeURIComponent(id)}/approve`, { method: 'POST', body: {} });
+
+export const listResources = () => api<Resource[]>('portfolio/resources');
+export const createResource = (input: Resource) =>
+  api<Resource>('portfolio/resources', { method: 'POST', body: input });
+export const getResourceCalendar = (id: string) =>
+  api<{ timezone: string; rules: unknown[] }>(`portfolio/resources/${encodeURIComponent(id)}/calendar`);
+export const putResourceCalendar = (id: string, timezone: string, version: number, rules: unknown[]) =>
+  api<{ status: string }>(`portfolio/resources/${encodeURIComponent(id)}/calendar`, {
+    method: 'PUT',
+    body: { timezone, version, rules },
+  });
+
+export const listScheduleItems = () => api<ScheduleItem[]>('portfolio/schedule/items');
+export const createScheduleItem = (input: ScheduleItem) =>
+  api<ScheduleItem>('portfolio/schedule/items', { method: 'POST', body: input });
+export const createReservation = (itemId: string, input: ResourceReservation) =>
+  api<ResourceReservation>(`portfolio/schedule/items/${encodeURIComponent(itemId)}/reservations`, {
+    method: 'POST',
+    body: input,
+  });
+export const approveSchedule = (itemIds: string[]) =>
+  api<{ status: string }>('portfolio/schedule/approve', { method: 'POST', body: { itemIds } });
+
+export const listDependencies = () => api<ScheduleDependency[]>('portfolio/schedule/dependencies');
+export const createDependency = (input: ScheduleDependency) =>
+  api<ScheduleDependency>('portfolio/schedule/dependencies', { method: 'POST', body: input });
+
+export const listConflicts = () => api<ScheduleConflict[]>('portfolio/conflicts');
+export const overrideConflict = (id: number, reason: string) =>
+  api<{ status: string }>(`portfolio/conflicts/${id}/override`, { method: 'POST', body: { reason } });
+
+export const listBaselines = () => api<ScheduleBaseline[]>('portfolio/baselines');

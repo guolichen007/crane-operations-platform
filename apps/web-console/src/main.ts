@@ -11,11 +11,11 @@ const InventoryOverview = () => import('./views/InventoryOverview.vue');
 const InventoryProjects = () => import('./views/InventoryProjects.vue');
 const InventoryDevices = () => import('./views/InventoryDevices.vue');
 const AlarmCenter = () => import('./views/AlarmCenter.vue');
-const WorkspacePlaceholder = () => import('./views/WorkspacePlaceholder.vue');
 const AssetCenter = () => import('./views/AssetCenter.vue');
 const AssetDetail = () => import('./views/AssetDetail.vue');
 const LocationCenter = () => import('./views/LocationCenter.vue');
 const CatalogCenter = () => import('./views/CatalogCenter.vue');
+const PortfolioWorkspace = () => import('./views/PortfolioWorkspace.vue');
 const cloudMode = import.meta.env.VITE_DATA_MODE === 'api';
 const productionAuth = import.meta.env.VITE_AUTH_MODE === 'oidc';
 import './styles.css';
@@ -47,11 +47,7 @@ createApp(App)
         { path: '/devices/:id', component: CloudDevices },
         { path: '/assets', component: AssetCenter },
         { path: '/assets/:id', component: AssetDetail },
-        {
-          path: '/portfolio',
-          component: WorkspacePlaceholder,
-          props: { title: '项目组合', description: '项目登记 / 资源 / 排期 / 冲突。' },
-        },
+        { path: '/portfolio', component: PortfolioWorkspace },
         { path: '/locations', component: LocationCenter },
         { path: '/catalog', component: CatalogCenter },
         ...(productionAuth ? [] : [{ path: '/system', component: Workspace }]),
