@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ProjectIntakeTransferV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "sourceSystem",
+    "sourceIntakeId",
+    "registrationNo",
+    "sourceRevision",
+    "snapshotAt",
+    "payloadHash",
+    "project",
+    "parties",
+    "location",
+    "requirements",
+    "plannedEquipment",
+    "selectedDocuments",
+    "salesOwnerReference"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0"
+    },
+    "sourceSystem": {
+      "const": "baobei"
+    },
+    "sourceIntakeId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "registrationNo": {
+      "type": "string",
+      "pattern": "^BB-[0-9]{4}-[0-9]{6}$"
+    },
+    "sourceRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "snapshotAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "payloadHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "project": {
+      "type": "object",
+      "required": [
+        "projectName"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "projectName": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "parties": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "role",
+          "name"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "role": {
+            "enum": [
+              "END_CUSTOMER",
+              "EPC",
+              "DESIGN_INSTITUTE",
+              "CRANE_MANUFACTURER",
+              "SYSTEM_INTEGRATOR",
+              "AGENT",
+              "OTHER"
+            ]
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "province": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "city": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "district": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "industrialPark": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "factoryName": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "workshop": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "addressDetail": {
+          "type": "string",
+          "maxLength": 300
+        }
+      }
+    },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "plannedEquipment": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "equipmentType",
+          "quantity"
+        ],
+        "properties": {
+          "kind": {
+            "const": "PLANNED"
+          },
+          "equipmentType": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "manufacturer": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "selectedDocuments": {
+      "type": "array",
+      "maxItems": 0
+    },
+    "salesOwnerReference": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

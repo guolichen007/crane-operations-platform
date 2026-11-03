@@ -1,0 +1,1638 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Project Intake API",
+    "version": "1.0.0-b1",
+    "description": "B1: create/update/submit/activities/duplicates; reviews and transfer governance remain future contract."
+  },
+  "servers": [
+    {
+      "url": "https://baobei.youdaozd.com"
+    }
+  ],
+  "paths": {
+    "/api/v1/me": {
+      "get": {
+        "operationId": "me",
+        "summary": "me",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "输入错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "403": {
+            "description": "权限或CSRF不允许"
+          },
+          "404": {
+            "description": "不可见或不存在"
+          },
+          "409": {
+            "description": "版本或状态冲突"
+          },
+          "501": {
+            "description": "后续批次，仅契约"
+          }
+        }
+      }
+    },
+    "/api/v1/projects": {
+      "get": {
+        "operationId": "projects.list",
+        "summary": "projects.list",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "输入错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "403": {
+            "description": "权限或CSRF不允许"
+          },
+          "404": {
+            "description": "不可见或不存在"
+          },
+          "409": {
+            "description": "版本或状态冲突"
+          },
+          "501": {
+            "description": "后续批次，仅契约"
+          }
+        },
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "stage",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "province",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "updatedAfter",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "due",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "operationId": "projects.create",
+        "summary": "projects.create",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "projectName": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "customer": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "location": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "province": {
+                        "type": "string",
+                        "maxLength": 300
+                      },
+                      "city": {
+                        "type": "string",
+                        "maxLength": 300
+                      },
+                      "district": {
+                        "type": "string",
+                        "maxLength": 300
+                      },
+                      "industrialPark": {
+                        "type": "string",
+                        "maxLength": 300
+                      },
+                      "factoryName": {
+                        "type": "string",
+                        "maxLength": 300
+                      },
+                      "workshop": {
+                        "type": "string",
+                        "maxLength": 300
+                      },
+                      "addressDetail": {
+                        "type": "string",
+                        "maxLength": 300
+                      }
+                    }
+                  },
+                  "salesStage": {
+                    "type": "string",
+                    "enum": [
+                      "L0_LEAD",
+                      "L1_REQUIREMENT",
+                      "L2_TECHNICAL",
+                      "L3_SITE_SURVEY",
+                      "L4_SOLUTION",
+                      "L5_QUOTATION",
+                      "L6_TENDER",
+                      "L7_COMMERCIAL",
+                      "L8_PENDING_CONTRACT",
+                      "WON",
+                      "LOST",
+                      "HOLD"
+                    ]
+                  },
+                  "projectType": {
+                    "type": "string"
+                  },
+                  "informationSource": {
+                    "type": "string"
+                  },
+                  "confidenceLevel": {
+                    "type": "string"
+                  },
+                  "estimatedAmount": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "expectedPurchaseDate": {
+                    "type": "string"
+                  },
+                  "requirements": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "requirementNotes": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "plannedEquipment": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "parties": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "tenderNo": {
+                    "type": "string"
+                  },
+                  "notes": {
+                    "type": "string",
+                    "maxLength": 4000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "输入错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "403": {
+            "description": "权限或CSRF不允许"
+          },
+          "404": {
+            "description": "不可见或不存在"
+          },
+          "409": {
+            "description": "版本或状态冲突"
+          },
+          "501": {
+            "description": "后续批次，仅契约"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}": {
+      "get": {
+        "operationId": "projects.detail",
+        "summary": "projects.detail",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "输入错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "403": {
+            "description": "权限或CSRF不允许"
+          },
+          "404": {
+            "description": "不可见或不存在"
+          },
+          "409": {
+            "description": "版本或状态冲突"
+          },
+          "501": {
+            "description": "后续批次，仅契约"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "projects.update",
+        "summary": "projects.update",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "projectName": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "customer": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "location": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "province": {
+                        "type": "string",
+                        "maxLength": 300
+                      },
+                      "city": {
+                        "type": "string",
+                        "maxLength": 300
+                      },
+                      "district": {
+                        "type": "string",
+                        "maxLength": 300
+                      },
+                      "industrialPark": {
+                        "type": "string",
+                        "maxLength": 300
+                      },
+                      "factoryName": {
+                        "type": "string",
+                        "maxLength": 300
+                      },
+                      "workshop": {
+                        "type": "string",
+                        "maxLength": 300
+                      },
+                      "addressDetail": {
+                        "type": "string",
+                        "maxLength": 300
+                      }
+                    }
+                  },
+                  "salesStage": {
+                    "type": "string",
+                    "enum": [
+                      "L0_LEAD",
+                      "L1_REQUIREMENT",
+                      "L2_TECHNICAL",
+                      "L3_SITE_SURVEY",
+                      "L4_SOLUTION",
+                      "L5_QUOTATION",
+                      "L6_TENDER",
+                      "L7_COMMERCIAL",
+                      "L8_PENDING_CONTRACT",
+                      "WON",
+                      "LOST",
+                      "HOLD"
+                    ]
+                  },
+                  "projectType": {
+                    "type": "string"
+                  },
+                  "informationSource": {
+                    "type": "string"
+                  },
+                  "confidenceLevel": {
+                    "type": "string"
+                  },
+                  "estimatedAmount": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "expectedPurchaseDate": {
+                    "type": "string"
+                  },
+                  "requirements": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "requirementNotes": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "plannedEquipment": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "parties": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "tenderNo": {
+                    "type": "string"
+                  },
+                  "notes": {
+                    "type": "string",
+                    "maxLength": 4000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "输入错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "403": {
+            "description": "权限或CSRF不允许"
+          },
+          "404": {
+            "description": "不可见或不存在"
+          },
+          "409": {
+            "description": "版本或状态冲突"
+          },
+          "501": {
+            "description": "后续批次，仅契约"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/submit": {
+      "post": {
+        "operationId": "projects.submit",
+        "summary": "projects.submit",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "version"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "version": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "输入错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "403": {
+            "description": "权限或CSRF不允许"
+          },
+          "404": {
+            "description": "不可见或不存在"
+          },
+          "409": {
+            "description": "版本或状态冲突"
+          },
+          "501": {
+            "description": "后续批次，仅契约"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/duplicates": {
+      "get": {
+        "operationId": "projects.duplicates",
+        "summary": "projects.duplicates",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "输入错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "403": {
+            "description": "权限或CSRF不允许"
+          },
+          "404": {
+            "description": "不可见或不存在"
+          },
+          "409": {
+            "description": "版本或状态冲突"
+          },
+          "501": {
+            "description": "后续批次，仅契约"
+          }
+        }
+      }
+    },
+    "/api/v1/duplicate-checks": {
+      "post": {
+        "operationId": "duplicate.check",
+        "summary": "duplicate.check",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "projectName": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "customer": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "location": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "province": {
+                        "type": "string",
+                        "maxLength": 300
+                      },
+                      "city": {
+                        "type": "string",
+                        "maxLength": 300
+                      },
+                      "district": {
+                        "type": "string",
+                        "maxLength": 300
+                      },
+                      "industrialPark": {
+                        "type": "string",
+                        "maxLength": 300
+                      },
+                      "factoryName": {
+                        "type": "string",
+                        "maxLength": 300
+                      },
+                      "workshop": {
+                        "type": "string",
+                        "maxLength": 300
+                      },
+                      "addressDetail": {
+                        "type": "string",
+                        "maxLength": 300
+                      }
+                    }
+                  },
+                  "salesStage": {
+                    "type": "string",
+                    "enum": [
+                      "L0_LEAD",
+                      "L1_REQUIREMENT",
+                      "L2_TECHNICAL",
+                      "L3_SITE_SURVEY",
+                      "L4_SOLUTION",
+                      "L5_QUOTATION",
+                      "L6_TENDER",
+                      "L7_COMMERCIAL",
+                      "L8_PENDING_CONTRACT",
+                      "WON",
+                      "LOST",
+                      "HOLD"
+                    ]
+                  },
+                  "projectType": {
+                    "type": "string"
+                  },
+                  "informationSource": {
+                    "type": "string"
+                  },
+                  "confidenceLevel": {
+                    "type": "string"
+                  },
+                  "estimatedAmount": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "expectedPurchaseDate": {
+                    "type": "string"
+                  },
+                  "requirements": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "requirementNotes": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "plannedEquipment": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "parties": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "tenderNo": {
+                    "type": "string"
+                  },
+                  "notes": {
+                    "type": "string",
+                    "maxLength": 4000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "输入错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "403": {
+            "description": "权限或CSRF不允许"
+          },
+          "404": {
+            "description": "不可见或不存在"
+          },
+          "409": {
+            "description": "版本或状态冲突"
+          },
+          "501": {
+            "description": "后续批次，仅契约"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/activities": {
+      "post": {
+        "operationId": "activities.create",
+        "summary": "activities.create",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "version",
+                  "type",
+                  "occurredAt",
+                  "summary"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "version": {
+                    "type": "integer"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "occurredAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "summary": {
+                    "type": "string"
+                  },
+                  "result": {
+                    "type": "string"
+                  },
+                  "nextAction": {
+                    "type": "string"
+                  },
+                  "nextFollowupAt": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "输入错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "403": {
+            "description": "权限或CSRF不允许"
+          },
+          "404": {
+            "description": "不可见或不存在"
+          },
+          "409": {
+            "description": "版本或状态冲突"
+          },
+          "501": {
+            "description": "后续批次，仅契约"
+          }
+        }
+      }
+    },
+    "/api/v1/reviews": {
+      "get": {
+        "operationId": "reviews.list",
+        "summary": "reviews.list",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "输入错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "403": {
+            "description": "权限或CSRF不允许"
+          },
+          "404": {
+            "description": "不可见或不存在"
+          },
+          "409": {
+            "description": "版本或状态冲突"
+          },
+          "501": {
+            "description": "后续批次，仅契约"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/approve": {
+      "post": {
+        "operationId": "projects.approve",
+        "summary": "projects.approve",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "targetSubject": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "输入错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "403": {
+            "description": "权限或CSRF不允许"
+          },
+          "404": {
+            "description": "不可见或不存在"
+          },
+          "409": {
+            "description": "版本或状态冲突"
+          },
+          "501": {
+            "description": "后续批次，仅契约"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/return": {
+      "post": {
+        "operationId": "projects.return",
+        "summary": "projects.return",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "targetSubject": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "输入错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "403": {
+            "description": "权限或CSRF不允许"
+          },
+          "404": {
+            "description": "不可见或不存在"
+          },
+          "409": {
+            "description": "版本或状态冲突"
+          },
+          "501": {
+            "description": "后续批次，仅契约"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/reject": {
+      "post": {
+        "operationId": "projects.reject",
+        "summary": "projects.reject",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "targetSubject": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "输入错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "403": {
+            "description": "权限或CSRF不允许"
+          },
+          "404": {
+            "description": "不可见或不存在"
+          },
+          "409": {
+            "description": "版本或状态冲突"
+          },
+          "501": {
+            "description": "后续批次，仅契约"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/ownership-transfer": {
+      "post": {
+        "operationId": "projects.ownership-transfer",
+        "summary": "projects.ownership-transfer",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "targetSubject": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "输入错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "403": {
+            "description": "权限或CSRF不允许"
+          },
+          "404": {
+            "description": "不可见或不存在"
+          },
+          "409": {
+            "description": "版本或状态冲突"
+          },
+          "501": {
+            "description": "后续批次，仅契约"
+          }
+        }
+      }
+    },
+    "/api/v1/reference-values": {
+      "get": {
+        "operationId": "reference.values",
+        "summary": "reference.values",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "输入错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "403": {
+            "description": "权限或CSRF不允许"
+          },
+          "404": {
+            "description": "不可见或不存在"
+          },
+          "409": {
+            "description": "版本或状态冲突"
+          },
+          "501": {
+            "description": "后续批次，仅契约"
+          }
+        }
+      }
+    },
+    "/health/live": {
+      "get": {
+        "operationId": "health.live",
+        "summary": "health.live",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "输入错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "403": {
+            "description": "权限或CSRF不允许"
+          },
+          "404": {
+            "description": "不可见或不存在"
+          },
+          "409": {
+            "description": "版本或状态冲突"
+          },
+          "501": {
+            "description": "后续批次，仅契约"
+          }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "operationId": "health.ready",
+        "summary": "health.ready",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "输入错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "403": {
+            "description": "权限或CSRF不允许"
+          },
+          "404": {
+            "description": "不可见或不存在"
+          },
+          "409": {
+            "description": "版本或状态冲突"
+          },
+          "501": {
+            "description": "后续批次，仅契约"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-baobei_session"
+      }
+    },
+    "schemas": {
+      "ProjectInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "projectName": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "customer": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "location": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "province": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "city": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "district": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "industrialPark": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "factoryName": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "workshop": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "addressDetail": {
+                "type": "string",
+                "maxLength": 300
+              }
+            }
+          },
+          "salesStage": {
+            "type": "string",
+            "enum": [
+              "L0_LEAD",
+              "L1_REQUIREMENT",
+              "L2_TECHNICAL",
+              "L3_SITE_SURVEY",
+              "L4_SOLUTION",
+              "L5_QUOTATION",
+              "L6_TENDER",
+              "L7_COMMERCIAL",
+              "L8_PENDING_CONTRACT",
+              "WON",
+              "LOST",
+              "HOLD"
+            ]
+          },
+          "projectType": {
+            "type": "string"
+          },
+          "informationSource": {
+            "type": "string"
+          },
+          "confidenceLevel": {
+            "type": "string"
+          },
+          "estimatedAmount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "expectedPurchaseDate": {
+            "type": "string"
+          },
+          "requirements": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "requirementNotes": {
+            "type": "string",
+            "maxLength": 4000
+          },
+          "plannedEquipment": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "parties": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "tenderNo": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 4000
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "requestId",
+          "details"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "details": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  }
+}
