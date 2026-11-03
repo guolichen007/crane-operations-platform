@@ -186,6 +186,12 @@ onMounted(async () => {
     if (import.meta.env.DEV)
       (window as unknown as { __spatialDiagnostics: () => unknown }).__spatialDiagnostics = () =>
         scene?.diagnostics();
+    // Perf evidence hook: __perfRecorder() samples FPS / 1% low / frame P95/P99.
+    (window as unknown as { __perfRecorder: () => { start: () => void; stop: () => unknown } }).__perfRecorder =
+      () => ({
+        start: () => scene?.startPerfRecording(),
+        stop: () => scene?.stopPerfRecording(),
+      });
     await scene.init();
     if (!document.contains(host.value!)) return;
     scene.setFilter(visibleProjects.value, visibleDevices.value);
