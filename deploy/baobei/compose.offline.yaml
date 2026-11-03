@@ -1,0 +1,7 @@
+services:
+  baobei-api:
+    build:
+      args:
+        BAOBEI_DEPS: offline
+      additional_contexts:
+        baobei_go_cache: ../../local-private/baobei/go-download-cache

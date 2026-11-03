@@ -74,7 +74,22 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Project"
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    }
+                  }
                 }
               }
             }
@@ -306,7 +321,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/Project"
                 }
               }
             }
@@ -336,7 +351,18 @@
           "501": {
             "description": "后续批次，仅契约"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "GET /api/v1/me 的会话绑定 CSRF；同时需要同源 Origin"
+          }
+        ]
       }
     },
     "/api/v1/projects/{id}": {
@@ -365,7 +391,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/Project"
                 }
               }
             }
@@ -414,6 +440,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "GET /api/v1/me 的会话绑定 CSRF；同时需要同源 Origin"
           }
         ],
         "requestBody": {
@@ -543,7 +578,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/Project"
                 }
               }
             }
@@ -594,6 +629,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "GET /api/v1/me 的会话绑定 CSRF；同时需要同源 Origin"
           }
         ],
         "requestBody": {
@@ -621,7 +665,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/Project"
                 }
               }
             }
@@ -680,7 +724,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/DuplicateCandidate"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -849,7 +901,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/DuplicateCandidate"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -879,7 +939,18 @@
           "501": {
             "description": "后续批次，仅契约"
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "GET /api/v1/me 的会话绑定 CSRF；同时需要同源 Origin"
+          }
+        ]
       }
     },
     "/api/v1/projects/{id}/activities": {
@@ -900,6 +971,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "GET /api/v1/me 的会话绑定 CSRF；同时需要同源 Origin"
           }
         ],
         "requestBody": {
@@ -949,7 +1029,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/Project"
                 }
               }
             }
@@ -1048,6 +1128,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "GET /api/v1/me 的会话绑定 CSRF；同时需要同源 Origin"
           }
         ],
         "requestBody": {
@@ -1128,6 +1217,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "GET /api/v1/me 的会话绑定 CSRF；同时需要同源 Origin"
           }
         ],
         "requestBody": {
@@ -1208,6 +1306,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "GET /api/v1/me 的会话绑定 CSRF；同时需要同源 Origin"
           }
         ],
         "requestBody": {
@@ -1288,6 +1395,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "GET /api/v1/me 的会话绑定 CSRF；同时需要同源 Origin"
           }
         ],
         "requestBody": {
@@ -1564,7 +1680,13 @@
             ]
           },
           "projectType": {
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "",
+              "NEW_BUILD",
+              "RETROFIT",
+              "EXPANSION"
+            ]
           },
           "informationSource": {
             "type": "string"
@@ -1591,14 +1713,16 @@
           },
           "plannedEquipment": {
             "type": "array",
+            "maxItems": 30,
             "items": {
-              "type": "object"
+              "$ref": "#/components/schemas/PlannedEquipment"
             }
           },
           "parties": {
             "type": "array",
+            "maxItems": 30,
             "items": {
-              "type": "object"
+              "$ref": "#/components/schemas/Party"
             }
           },
           "tenderNo": {
@@ -1630,6 +1754,352 @@
           },
           "details": {
             "type": "object"
+          }
+        }
+      },
+      "Location": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "province": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "city": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "district": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "industrialPark": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "factoryName": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "workshop": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "addressDetail": {
+            "type": "string",
+            "maxLength": 300
+          }
+        }
+      },
+      "Party": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role",
+          "name"
+        ],
+        "properties": {
+          "role": {
+            "enum": [
+              "EPC",
+              "DESIGN_INSTITUTE",
+              "CRANE_MANUFACTURER",
+              "SYSTEM_INTEGRATOR",
+              "AGENT",
+              "OTHER"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        }
+      },
+      "PlannedEquipment": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "equipmentType": {
+            "type": "string"
+          },
+          "manufacturer": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "controlMode": {
+            "type": "string"
+          },
+          "plcBrand": {
+            "type": "string"
+          },
+          "plcModel": {
+            "type": "string"
+          },
+          "driveBrand": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "confidenceLevel": {
+            "type": "string"
+          },
+          "capacityTons": {
+            "type": "number",
+            "minimum": 0
+          },
+          "spanM": {
+            "type": "number",
+            "minimum": 0
+          },
+          "liftHeightM": {
+            "type": "number",
+            "minimum": 0
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000
+          }
+        },
+        "required": [
+          "equipmentType",
+          "quantity"
+        ]
+      },
+      "Project": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "registrationNo",
+          "ownerSubject",
+          "createdBySubject",
+          "intakeStatus",
+          "version",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "projectName": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "customer": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "location": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "province": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "city": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "district": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "industrialPark": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "factoryName": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "workshop": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "addressDetail": {
+                "type": "string",
+                "maxLength": 300
+              }
+            }
+          },
+          "salesStage": {
+            "type": "string",
+            "enum": [
+              "L0_LEAD",
+              "L1_REQUIREMENT",
+              "L2_TECHNICAL",
+              "L3_SITE_SURVEY",
+              "L4_SOLUTION",
+              "L5_QUOTATION",
+              "L6_TENDER",
+              "L7_COMMERCIAL",
+              "L8_PENDING_CONTRACT",
+              "WON",
+              "LOST",
+              "HOLD"
+            ]
+          },
+          "projectType": {
+            "type": "string",
+            "enum": [
+              "",
+              "NEW_BUILD",
+              "RETROFIT",
+              "EXPANSION"
+            ]
+          },
+          "informationSource": {
+            "type": "string"
+          },
+          "confidenceLevel": {
+            "type": "string"
+          },
+          "estimatedAmount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "expectedPurchaseDate": {
+            "type": "string"
+          },
+          "requirements": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "requirementNotes": {
+            "type": "string",
+            "maxLength": 4000
+          },
+          "plannedEquipment": {
+            "type": "array",
+            "maxItems": 30,
+            "items": {
+              "$ref": "#/components/schemas/PlannedEquipment"
+            }
+          },
+          "parties": {
+            "type": "array",
+            "maxItems": 30,
+            "items": {
+              "$ref": "#/components/schemas/Party"
+            }
+          },
+          "tenderNo": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 4000
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "registrationNo": {
+            "type": "string",
+            "pattern": "^BB-[0-9]{4}-[0-9]{6}$"
+          },
+          "ownerSubject": {
+            "type": "string"
+          },
+          "createdBySubject": {
+            "type": "string"
+          },
+          "teamId": {
+            "type": "string"
+          },
+          "protectionStatus": {
+            "type": "string"
+          },
+          "nextAction": {
+            "type": "string"
+          },
+          "intakeStatus": {
+            "enum": [
+              "DRAFT",
+              "SUBMITTED",
+              "UNDER_REVIEW",
+              "APPROVED",
+              "RETURNED",
+              "REJECTED",
+              "EXPIRED",
+              "CANCELLED",
+              "CONVERTED"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastActivityAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "nextFollowupAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "activities": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "audit": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "DuplicateCandidate": {
+        "type": "object",
+        "properties": {
+          "risk": {
+            "enum": [
+              "WARN",
+              "HIGH"
+            ]
+          },
+          "score": {
+            "type": "integer"
+          },
+          "region": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "salesStage": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "candidateId": {
+            "type": "string",
+            "description": "仅全局 director 可见"
+          },
+          "projectName": {
+            "type": "string",
+            "description": "仅全局 director 可见"
           }
         }
       }

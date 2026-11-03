@@ -1,0 +1,405 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/cookiejar"
+	"net/http/httptest"
+	"net/url"
+	"os"
+	"regexp"
+	"sync"
+	"testing"
+	"time"
+
+	jose "github.com/go-jose/go-jose/v4"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+type testClient struct {
+	client       *http.Client
+	origin, csrf string
+	t            *testing.T
+}
+
+func (c testClient) call(method, path string, body any) (int, []byte) {
+	c.t.Helper()
+	var b []byte
+	if body != nil {
+		b, _ = json.Marshal(body)
+	}
+	req, e := http.NewRequest(method, c.origin+path, bytes.NewReader(b))
+	if e != nil {
+		c.t.Fatal(e)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", c.origin)
+	req.Header.Set("X-CSRF-Token", c.csrf)
+	resp, e := c.client.Do(req)
+	if e != nil {
+		c.t.Fatal(e)
+	}
+	defer resp.Body.Close()
+	raw, e := io.ReadAll(resp.Body)
+	if e != nil {
+		c.t.Fatal(e)
+	}
+	return resp.StatusCode, raw
+}
+func expect(t *testing.T, got, want int, b []byte) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("HTTP %d want %d: %s", got, want, b)
+	}
+}
+func projectFrom(t *testing.T, status int, b []byte) Project {
+	t.Helper()
+	expect(t, status, 200, b)
+	var p Project
+	if e := json.Unmarshal(b, &p); e != nil {
+		t.Fatal(e)
+	}
+	return p
+}
+func login(t *testing.T, server *httptest.Server, subject string) testClient {
+	t.Helper()
+	jar, _ := cookiejar.New(nil)
+	c := testClient{&http.Client{Jar: jar, Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, server.URL, "", t}
+	s, b := c.call("POST", "/auth/dev", map[string]string{"subject": subject})
+	expect(t, s, 200, b)
+	s, b = c.call("GET", "/api/v1/me", nil)
+	expect(t, s, 200, b)
+	var u User
+	_ = json.Unmarshal(b, &u)
+	c.csrf = u.CSRF
+	return c
+}
+func TestDatabase(t *testing.T) {
+	dsn := os.Getenv("BAOBEI_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("NOT_RUN: BAOBEI_TEST_DATABASE_URL required")
+	}
+	cfg, e := pgxpool.ParseConfig(dsn)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if cfg.ConnConfig.Host != "127.0.0.1" && cfg.ConnConfig.Host != "localhost" {
+		t.Fatal("test DB must be local loopback")
+	}
+	ctx := context.Background()
+	admin, e := pgxpool.NewWithConfig(ctx, cfg.Copy())
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer admin.Close()
+	schema := "baobei_test_" + hash(randomToken())[:16]
+	if !regexp.MustCompile(`^baobei_test_[a-f0-9]{16}$`).MatchString(schema) {
+		t.Fatal("unsafe schema")
+	}
+	if _, e = admin.Exec(ctx, `CREATE SCHEMA `+schema); e != nil {
+		t.Fatal(e)
+	}
+	defer func() {
+		_, err := admin.Exec(ctx, `DROP SCHEMA `+schema+` CASCADE`)
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+	cfg.ConnConfig.RuntimeParams["search_path"] = schema + ",public"
+	db, e := pgxpool.NewWithConfig(ctx, cfg)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	if e = migrate(ctx, db); e != nil {
+		t.Fatal(e)
+	}
+	if e = migrate(ctx, db); e != nil {
+		t.Fatal("idempotent migration", e)
+	}
+	if e = seed(ctx, db); e != nil {
+		t.Fatal(e)
+	}
+	var trgm float64
+	if e = db.QueryRow(ctx, `SELECT similarity('synthetic','synthetic')`).Scan(&trgm); e != nil || trgm != 1 {
+		t.Fatal("pg_trgm", e)
+	}
+	a, e := newApp(ctx, db, Config{Env: "development", Dev: true})
+	if e != nil {
+		t.Fatal(e)
+	}
+	server := httptest.NewServer(a.handler())
+	defer server.Close()
+	a.cfg.Origin = server.URL
+	ca, cb := login(t, server, "synthetic-a"), login(t, server, "synthetic-b")
+	t.Run("authentication-csrf", func(t *testing.T) {
+		req, _ := http.NewRequest("POST", server.URL+"/api/v1/projects", bytes.NewBufferString(`{}`))
+		req.Header.Set("Content-Type", "application/json")
+		r, err := ca.client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Body.Close()
+		if r.StatusCode != 403 {
+			t.Fatal(r.StatusCode)
+		}
+		req, _ = http.NewRequest("GET", server.URL+"/api/v1/me", nil)
+		r, err = http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Body.Close()
+		if r.StatusCode != 401 {
+			t.Fatal(r.StatusCode)
+		}
+		s, b := ca.call("POST", "/api/v1/projects", map[string]any{"ownerSubject": "synthetic-b"})
+		expect(t, s, 400, b)
+	})
+	var p Project
+	t.Run("draft-edit-submit-ownership-version", func(t *testing.T) {
+		s, b := ca.call("POST", "/api/v1/projects", Input{})
+		p = projectFrom(t, s, b)
+		if p.OwnerSubject != "synthetic-a" || p.CreatedBySubject != "synthetic-a" || !regexp.MustCompile(`^BB-\d{4}-\d{6}$`).MatchString(p.RegistrationNo) {
+			t.Fatal("ownership or number", p)
+		}
+		s, b = ca.call("POST", "/api/v1/projects/"+p.ID+"/submit", map[string]int{"version": p.Version})
+		expect(t, s, 400, b)
+		in := sample("合成闭环项目")
+		in.Version = p.Version
+		s, b = ca.call("PATCH", "/api/v1/projects/"+p.ID, in)
+		p = projectFrom(t, s, b)
+		if p.Version != 2 {
+			t.Fatal(p.Version)
+		}
+		s, b = ca.call("PATCH", "/api/v1/projects/"+p.ID, in)
+		expect(t, s, 409, b)
+		s, b = ca.call("POST", "/api/v1/projects/"+p.ID+"/submit", map[string]int{"version": p.Version})
+		p = projectFrom(t, s, b)
+		if p.IntakeStatus != "SUBMITTED" {
+			t.Fatal(p.IntakeStatus)
+		}
+		s, b = ca.call("PATCH", "/api/v1/projects/"+p.ID, p.Input)
+		expect(t, s, 409, b)
+	})
+	t.Run("sales-isolation-guess-uuid", func(t *testing.T) {
+		for _, path := range []string{"", "/duplicates"} {
+			s, b := cb.call("GET", "/api/v1/projects/"+p.ID+path, nil)
+			expect(t, s, 404, b)
+		}
+		s, b := cb.call("PATCH", "/api/v1/projects/"+p.ID, p.Input)
+		expect(t, s, 404, b)
+		s, b = cb.call("POST", "/api/v1/projects/"+p.ID+"/activities", Activity{Version: p.Version})
+		expect(t, s, 404, b)
+		s, b = cb.call("GET", "/api/v1/projects?q=合成闭环项目", nil)
+		expect(t, s, 200, b)
+		var out struct {
+			Total int `json:"total"`
+		}
+		_ = json.Unmarshal(b, &out)
+		if out.Total != 0 {
+			t.Fatal("leaked project")
+		}
+		s, b = cb.call("POST", "/api/v1/projects/"+p.ID+"/approve", map[string]int{"version": p.Version})
+		expect(t, s, 403, b)
+	})
+	t.Run("followup-transaction-and-occ", func(t *testing.T) {
+		act := Activity{Version: p.Version, Type: "PHONE", OccurredAt: time.Now().UTC(), Summary: "Synthetic 电话沟通", Result: "需求确认", NextAction: "准备 synthetic 方案", NextFollowupAt: time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339)}
+		s, b := ca.call("POST", "/api/v1/projects/"+p.ID+"/activities", act)
+		p = projectFrom(t, s, b)
+		s, b = ca.call("POST", "/api/v1/projects/"+p.ID+"/activities", act)
+		expect(t, s, 409, b)
+		s, b = ca.call("GET", "/api/v1/projects/"+p.ID, nil)
+		p = projectFrom(t, s, b)
+		if len(p.Activities) != 1 || p.NextAction != act.NextAction || p.LastActivityAt == nil || len(p.Audit) != 4 {
+			t.Fatal("followup/audit", p)
+		}
+		var n int
+		if e = db.QueryRow(ctx, `SELECT count(*) FROM project_activities WHERE project_id=$1`, p.ID).Scan(&n); e != nil || n != 1 {
+			t.Fatal("duplicate activity", n, e)
+		}
+	})
+	t.Run("duplicate-redaction-and-alias", func(t *testing.T) {
+		in := sample("合成闭环项目")
+		s, b := cb.call("POST", "/api/v1/duplicate-checks", in)
+		expect(t, s, 200, b)
+		var out struct {
+			Items []Duplicate `json:"items"`
+		}
+		_ = json.Unmarshal(b, &out)
+		if len(out.Items) != 1 || out.Items[0].CandidateID != "" || out.Items[0].ProjectName != "" || bytes.Contains(b, []byte(p.ID)) {
+			t.Fatal("privacy", string(b))
+		}
+		_, e = db.Exec(ctx, `INSERT INTO organization_aliases(normalized_alias,organization_id) SELECT $1,id FROM organizations WHERE normalized_name=$2`, normalize("Synthetic Alias"), normalize(in.Customer))
+		if e != nil {
+			t.Fatal(e)
+		}
+		in.Customer = "Synthetic Alias"
+		s, b = cb.call("POST", "/api/v1/duplicate-checks", in)
+		expect(t, s, 200, b)
+		_ = json.Unmarshal(b, &out)
+		if len(out.Items) != 1 {
+			t.Fatal("alias not scored")
+		}
+	})
+	t.Run("concurrent-submissions-no-double-ownership", func(t *testing.T) {
+		in := sample("另一个合成并发项目")
+		in.Customer = "Synthetic Concurrency"
+		in.TenderNo = "SYNTHETIC-CONCURRENT-ONLY"
+		s, b := ca.call("POST", "/api/v1/projects", in)
+		pa := projectFrom(t, s, b)
+		s, b = cb.call("POST", "/api/v1/projects", in)
+		pb := projectFrom(t, s, b)
+		var wg sync.WaitGroup
+		results := make(chan string, 2)
+		for _, pair := range []struct {
+			c testClient
+			p Project
+		}{{ca, pa}, {cb, pb}} {
+			wg.Add(1)
+			go func(c testClient, p Project) {
+				defer wg.Done()
+				s, b := c.call("POST", "/api/v1/projects/"+p.ID+"/submit", map[string]int{"version": p.Version})
+				var out Project
+				_ = json.Unmarshal(b, &out)
+				results <- fmt.Sprintf("%d:%s", s, out.IntakeStatus)
+			}(pair.c, pair.p)
+		}
+		wg.Wait()
+		close(results)
+		counts := map[string]int{}
+		for r := range results {
+			counts[r]++
+		}
+		if counts["200:SUBMITTED"] != 1 || counts["200:UNDER_REVIEW"] != 1 {
+			t.Fatal(counts)
+		}
+		if pa.RegistrationNo == pb.RegistrationNo {
+			t.Fatal("number reused")
+		}
+	})
+	t.Run("manager-team-scope", func(t *testing.T) {
+		m := login(t, server, "synthetic-manager")
+		s, b := m.call("GET", "/api/v1/projects/"+p.ID, nil)
+		expect(t, s, 200, b)
+		s, b = m.call("PATCH", "/api/v1/projects/"+p.ID, p.Input)
+		expect(t, s, 403, b)
+		_, e = db.Exec(ctx, `UPDATE app_users SET team_id=NULL WHERE subject='synthetic-manager'`)
+		if e != nil {
+			t.Fatal(e)
+		}
+		s, b = m.call("GET", "/api/v1/projects/"+p.ID, nil)
+		expect(t, s, 404, b)
+	})
+	t.Run("logout", func(t *testing.T) {
+		s, b := ca.call("POST", "/auth/logout", map[string]bool{})
+		expect(t, s, 200, b)
+		s, b = ca.call("GET", "/api/v1/me", nil)
+		expect(t, s, 401, b)
+	})
+	t.Run("oidc-real-signature-state-pkce-nonce", func(t *testing.T) { testOIDC(t, db) })
+}
+func testOIDC(t *testing.T, db *pgxpool.Pool) {
+	key, e := rsa.GenerateKey(rand.Reader, 2048)
+	if e != nil {
+		t.Fatal(e)
+	}
+	signer, e := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: key}, (&jose.SignerOptions{}).WithType("JWT").WithHeader("kid", "synthetic"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	var issuer, nonce, challenge string
+	badNonce := false
+	pkceChecked := false
+	idp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			respond(w, 200, map[string]any{"issuer": issuer, "authorization_endpoint": issuer + "/authorize", "token_endpoint": issuer + "/token", "jwks_uri": issuer + "/keys", "id_token_signing_alg_values_supported": []string{"RS256"}})
+		case "/keys":
+			respond(w, 200, jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: &key.PublicKey, KeyID: "synthetic", Use: "sig", Algorithm: "RS256"}}})
+		case "/token":
+			_ = r.ParseForm()
+			h := sha256.Sum256([]byte(r.Form.Get("code_verifier")))
+			if base64.RawURLEncoding.EncodeToString(h[:]) != challenge {
+				respond(w, 400, map[string]string{"error": "invalid_grant"})
+				return
+			}
+			pkceChecked = true
+			n := nonce
+			if badNonce {
+				n = "wrong"
+			}
+			claims := map[string]any{"iss": issuer, "aud": "baobei-web", "sub": "synthetic-a", "exp": time.Now().Add(time.Hour).Unix(), "iat": time.Now().Unix(), "nonce": n, "realm_access": map[string]any{"roles": []string{"baobei_sales"}}}
+			b, _ := json.Marshal(claims)
+			obj, _ := signer.Sign(b)
+			token, _ := obj.CompactSerialize()
+			respond(w, 200, map[string]any{"access_token": "synthetic-only", "token_type": "Bearer", "id_token": token})
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer idp.Close()
+	issuer = idp.URL
+	app, e := newApp(context.Background(), db, Config{Env: "development", Issuer: issuer, ClientID: "baobei-web"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	server := httptest.NewServer(app.handler())
+	defer server.Close()
+	app.cfg.Origin = server.URL
+	app.oauth.RedirectURL = server.URL + "/auth/callback"
+	jar, _ := cookiejar.New(nil)
+	c := testClient{&http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, server.URL, "", t}
+	start := func() string {
+		r, e := c.client.Get(server.URL + "/auth/login")
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer r.Body.Close()
+		if r.StatusCode != 302 {
+			t.Fatal(r.StatusCode)
+		}
+		u, e := url.Parse(r.Header.Get("Location"))
+		if e != nil {
+			t.Fatal(e)
+		}
+		nonce = u.Query().Get("nonce")
+		challenge = u.Query().Get("code_challenge")
+		if nonce == "" || challenge == "" || u.Query().Get("code_challenge_method") != "S256" {
+			t.Fatal("missing nonce/PKCE")
+		}
+		return u.Query().Get("state")
+	}
+	state := start()
+	s, b := c.call("GET", "/auth/callback?code=synthetic&state=wrong", nil)
+	expect(t, s, 400, b)
+	// The invalid state attempt clears the binding cookie; start a fresh flow.
+	state = start()
+	s, b = c.call("GET", "/auth/callback?code=synthetic&state="+url.QueryEscape(state), nil)
+	expect(t, s, 303, b)
+	if !pkceChecked {
+		t.Fatal("PKCE not verified")
+	}
+	s, b = c.call("GET", "/api/v1/me", nil)
+	expect(t, s, 200, b)
+	s, b = c.call("GET", "/auth/callback?code=synthetic&state="+url.QueryEscape(state), nil)
+	expect(t, s, 400, b)
+	badNonce = true
+	state = start()
+	s, b = c.call("GET", "/auth/callback?code=synthetic&state="+url.QueryEscape(state), nil)
+	expect(t, s, 401, b)
+	production := &App{cfg: Config{Env: "production"}}
+	rec := httptest.NewRecorder()
+	production.cookie(rec, production.cookieName(), "synthetic-only", 28800)
+	cookies := rec.Result().Cookies()
+	if len(cookies) != 1 || cookies[0].Name != "__Host-baobei_session" || !cookies[0].Secure || !cookies[0].HttpOnly || cookies[0].SameSite != http.SameSiteLaxMode || cookies[0].Path != "/" || cookies[0].Domain != "" {
+		t.Fatal("production cookie attributes")
+	}
+}
