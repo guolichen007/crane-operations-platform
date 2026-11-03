@@ -38,6 +38,19 @@ async function switchCountryView(mode: 'overview' | 'assets') {
   countryView.value = mode;
   await scene?.setCountryView(mode);
 }
+const sceneMode = ref<'region' | 'fleet' | 'alarm'>('region');
+async function switchSceneMode(mode: 'region' | 'fleet' | 'alarm') {
+  stop();
+  sceneMode.value = mode;
+  source.value = 'all';
+  if (mode === 'alarm') {
+    status.value = 'ALARM';
+    await scene?.back(0);
+  } else {
+    status.value = 'all';
+    await scene?.setCountryView(mode === 'fleet' ? 'assets' : 'overview');
+  }
+}
 const store = useOperations();
 const { source, status, selected, selectedProject, visibleProjects, visibleDevices } =
   storeToRefs(store);
@@ -96,6 +109,17 @@ function openProject(id: string) {
   const p = realProjects.find((p) => p.id === id) ?? visibleProjects.value.find((p) => p.id === id);
   if (p) void scene?.focusProject(p);
 }
+function locateAsset(e: Event) {
+  const deviceId = (e as CustomEvent<{ deviceId: string }>).detail?.deviceId;
+  if (!deviceId) return;
+  const d = devices.find((d) => d.deviceId === deviceId);
+  if (d) select(deviceId);
+}
+function locateProject(e: Event) {
+  const projectId = (e as CustomEvent<{ projectId: string }>).detail?.projectId;
+  if (!projectId) return;
+  openProject(projectId);
+}
 
 async function enter(code: number) {
   stop();
@@ -141,6 +165,8 @@ watch([visibleProjects, visibleDevices], () =>
 onMounted(async () => {
   window.addEventListener('keydown', handleKey);
   window.addEventListener('start-tour', play);
+  window.addEventListener('locate-asset', locateAsset);
+  window.addEventListener('locate-project', locateProject);
   document.addEventListener('pointerdown', userStop, true);
   try {
     scene = new MapSceneManager(host.value!, {
@@ -251,6 +277,8 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKey);
   window.removeEventListener('start-tour', play);
+  window.removeEventListener('locate-asset', locateAsset);
+  window.removeEventListener('locate-project', locateProject);
   document.removeEventListener('pointerdown', userStop, true);
   tour?.dispose();
   scene?.dispose();
@@ -492,6 +520,17 @@ onUnmounted(() => {
           @click="switchObservation('cinematic')"
         >
           立体视角
+        </button>
+      </div>
+      <div v-if="cameraPreset.startsWith('COUNTRY_')" class="scene-mode-dock" aria-label="场景模式">
+        <button :class="{ selected: sceneMode === 'region' }" @click="switchSceneMode('region')">
+          行政区
+        </button>
+        <button :class="{ selected: sceneMode === 'fleet' }" @click="switchSceneMode('fleet')">
+          资产
+        </button>
+        <button :class="{ selected: sceneMode === 'alarm' }" @click="switchSceneMode('alarm')">
+          告警
         </button>
       </div>
       <div v-if="cameraPreset.startsWith('COUNTRY_')" class="south-sea-inset-note">

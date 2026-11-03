@@ -1494,3 +1494,95 @@
 .premium-overview .scene-loading.skeleton-panel i:last-child {
   width: 45%;
 }
+
+/* ---- B4 global search (Ctrl+K) ---- */
+.global-search-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 14vh;
+  background: rgba(4, 12, 24, 0.55);
+  backdrop-filter: blur(2px);
+}
+.global-search {
+  width: min(680px, calc(100vw - 48px));
+  border: 1px solid rgba(90, 140, 190, 0.28);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #0d1f36 0%, #0a1830 100%);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+.global-search-input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(90, 140, 190, 0.18);
+  color: #7fb2d8;
+}
+.global-search-input input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: #eaf4ff;
+  font-size: 15px;
+  outline: none;
+}
+.global-search-input input::placeholder { color: #5d7691; }
+.global-search-input kbd {
+  font-family: inherit;
+  font-size: 11px;
+  color: #7c95b0;
+  border: 1px solid rgba(120, 160, 200, 0.28);
+  border-radius: 5px;
+  padding: 2px 7px;
+}
+.global-search-results { max-height: 46vh; overflow-y: auto; padding: 8px; }
+.global-search-empty { color: #5d7691; font-size: 13px; padding: 14px 10px; }
+.global-search-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #cddef2;
+  cursor: pointer;
+}
+.global-search-item:hover, .global-search-item.selected { background: rgba(66, 130, 200, 0.18); }
+.global-search-label { flex: 0 0 auto; font-weight: 600; }
+.global-search-hint { flex: 1; color: #6d87a2; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- B4 scene mode dock ---- */
+.scene-mode-dock {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  gap: 4px;
+  padding: 5px;
+  border: 1px solid rgba(90, 140, 190, 0.25);
+  border-radius: 12px;
+  background: rgba(8, 22, 40, 0.72);
+  backdrop-filter: blur(6px);
+}
+.scene-mode-dock button {
+  border: 0;
+  background: transparent;
+  color: #8fa9c4;
+  font-size: 13px;
+  padding: 7px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.scene-mode-dock button:hover { color: #d8e8f8; }
+.scene-mode-dock button.selected { background: rgba(56, 225, 255, 0.16); color: #5fe0ff; }
