@@ -136,8 +136,18 @@ test('深链连续切换：同页面 asset A→B 不刷新也生效', async ({ p
   await page.goto('/#/overview?asset=A1');
   await expect(page.getByTestId('device-panel')).toHaveAttribute('data-device-id', 'A1');
   // Same-document hash navigation (no full reload) must re-run the deep link.
+  await page.evaluate(() => {
+    (window as unknown as { __noReload?: boolean }).__noReload = true;
+  });
   await page.goto('/#/overview?asset=A2');
-  await expect(page).toHaveURL(/#\/overview\?asset=A2/);
+  // Wait for the router (not just the browser URL) to reflect the new query.
+  await page.waitForFunction(() => {
+    const q = (window as unknown as { __routeQuery?: () => Record<string, unknown> }).__routeQuery?.();
+    return q?.asset === 'A2';
+  });
+  expect(await page.evaluate(() => (window as unknown as { __noReload?: boolean }).__noReload)).toBe(
+    true
+  );
   await expect(page.getByTestId('device-panel')).toHaveAttribute('data-device-id', 'A2');
 });
 

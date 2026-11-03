@@ -100,6 +100,7 @@ export class MapSceneManager {
   private perf = new PerfRecorder();
   private tourActive = false;
   private transitioning = false;
+  private focusGeneration = 0;
   private glyphLayer?: CraneGlyphLayer;
   private overlay?: CraneSelectionOverlay;
   private glyphPositions = new Map<string, [number, number, number]>();
@@ -844,8 +845,14 @@ export class MapSceneManager {
     }
   }
   async focusDevice(device: Device) {
+    // Bump the focus generation even when busy: a newer selection must never be
+    // overwritten by a stale focusDevice continuation (rapid deep-link switches).
+    const generation = ++this.focusGeneration;
     if (this.drill.busy) return;
-    if (this.focusedProjectId !== device.id) await this.focusProject(device, () => true, false);
+    if (this.focusedProjectId !== device.id) {
+      await this.focusProject(device, () => true, false);
+      if (!this.alive || generation !== this.focusGeneration) return;
+    }
     if (!this.alive) return;
     const marker = this.markers.children.find(
       (g) => g.userData.device?.deviceId === device.deviceId

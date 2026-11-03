@@ -215,9 +215,11 @@ onMounted(async () => {
       error: (m) => (error.value = m),
       stats: (s) => (stats.value = s),
     });
-    if (import.meta.env.DEV)
+    if (import.meta.env.DEV) {
       (window as unknown as { __spatialDiagnostics: () => unknown }).__spatialDiagnostics = () =>
         scene?.diagnostics();
+      (window as unknown as { __routeQuery?: () => unknown }).__routeQuery = () => route.query;
+    }
     // Perf evidence hook: __perfRecorder() samples FPS / 1% low / frame P95/P99.
     (window as unknown as { __perfRecorder: () => { start: () => void; stop: () => unknown } }).__perfRecorder =
       () => ({
@@ -434,7 +436,7 @@ onUnmounted(() => {
               <b>{{ totals.cranes }}</b
               ><span>行车数量</span>
             </div>
-            <div>
+            <div v-if="!isApiMode">
               <b
                 >{{
                   visibleDevices.filter((d) => d.dataSource === 'demo').length
@@ -446,11 +448,14 @@ onUnmounted(() => {
                 }}<small>%</small></b
               ><span>演示设备在线率</span>
             </div>
+            <div v-else>
+              <b>{{ notCommissionedCount }}</b><span>尚未投运</span>
+            </div>
           </div>
         </section>
         <section>
           <div class="panel-title">
-            <h3>模拟运行态</h3>
+            <h3>{{ isApiMode ? '设备运行状态' : '模拟运行态' }}</h3>
             <span>{{ totals.cranes }} UNITS</span>
           </div>
           <div class="stacked-bar">
@@ -471,7 +476,9 @@ onUnmounted(() => {
               ><b>{{ c.count }}</b>
             </div>
           </div>
-          <p class="simulation-note">DEMO TELEMETRY · 真实档案 10 台尚未投运</p>
+          <p class="simulation-note">{{
+            isApiMode ? 'CLOUD TELEMETRY · 实时运行态' : 'DEMO TELEMETRY · 真实档案 10 台尚未投运'
+          }}</p>
         </section>
         <section>
           <div class="panel-title">
@@ -634,7 +641,7 @@ onUnmounted(() => {
       </div>
       <div class="map-legend">
         <span><i class="green-dot"></i>省级设备数量</span
-        ><span><i class="green-dot"></i>演示设备网络</span
+        ><span><i class="green-dot"></i>{{ isApiMode ? '设备网络' : '演示设备网络' }}</span
         >
       </div>
       <aside class="right-context" :class="{ 'overview-summary': !selectedProject && !selected }">
@@ -656,9 +663,12 @@ onUnmounted(() => {
           <section class="project-plan">
             <div class="panel-title">
               <h3>近期实施计划</h3>
-              <span class="gold">6 项目</span>
+              <span class="gold">{{ realProjects.length }} 项目</span>
             </div>
-            <p class="muted small">2026.11 — 2027.02 <span class="plan-caption">匿名登记项目</span></p>
+            <p class="muted small">
+              <template v-if="!isApiMode">2026.11 — 2027.02 </template
+              ><span class="plan-caption">匿名登记项目</span>
+            </p>
             <button
               v-for="(p, i) in realProjects"
               :key="p.id"
@@ -680,7 +690,11 @@ onUnmounted(() => {
             </button>
           </section>
           <div class="right-note">
-            <Info :size="13" /><span>匿名登记项目尚未投运<br />金色连接表示计划接入</span>
+            <Info :size="13" /><span>{{
+              isApiMode
+                ? 'Cloud 实时运行态 · 无遥测设备显示尚未投运'
+                : '匿名登记项目尚未投运'
+            }}<template v-if="!isApiMode"><br />金色连接表示计划接入</template></span>
           </div>
         </template>
       </aside>
@@ -708,7 +722,8 @@ onUnmounted(() => {
     </div>
     <div class="event-strip">
       <div class="event-label">
-        <span class="live-dot"></span><strong>全国事件流</strong><small>DEMO / 模拟事件</small>
+        <span class="live-dot"></span><strong>全国事件流</strong
+        ><small>{{ isApiMode ? 'CLOUD / 实时事件' : 'DEMO / 模拟事件' }}</small>
       </div>
       <div v-for="event in events" :key="event.time" class="event-item">
         <time>{{ event.time }}</time
