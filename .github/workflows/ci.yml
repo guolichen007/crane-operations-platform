@@ -144,7 +144,7 @@ jobs:
     # local candidate build). Feature/fix branch pushes keep their security,
     # build, integration and E2E verification jobs but must never release.
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    needs: [repository-contract, backend, edge, frontend, integration, security, a1-security]
+    needs: [repository-contract, backend, edge, r2-db-test, frontend, integration, security, a1-security]
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:

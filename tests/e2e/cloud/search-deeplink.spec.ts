@@ -162,6 +162,30 @@ test('无遥测资产不伪造 0/自动/闭合/无故障', async ({ page }) => {
   await expect(panel).not.toContainText('无活动故障');
   await expect(panel).not.toContainText('0.00 m');
   await expect(panel).not.toContainText('闭合');
+  // 无遥测 Twin 显示结构示意姿态，绝不运行演示动画。
+  await expect(page.getByTestId('crane-twin').locator('.twin-hud small')).toContainText(
+    '结构示意 · 最近同步姿态'
+  );
+  await expect(page.getByTestId('crane-twin').locator('.twin-hud small')).not.toContainText(
+    '演示动画'
+  );
+});
+
+test('Cloud SIMULATION twin 保留来源标识并显示结构示意，不被演示动画覆盖', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/#/overview?asset=A1');
+  const panel = page.getByTestId('device-panel');
+  await expect(panel).toHaveAttribute('data-device-id', 'A1');
+  await expect(panel.getByTestId('device-source-badge')).toContainText(
+    'REAL ASSET · SIMULATION TELEMETRY'
+  );
+  // SIMULATION 即使有 MQTT Shadow 也不得运行本地 demo 正弦动画。
+  await expect(page.getByTestId('crane-twin').locator('.twin-hud small')).toContainText(
+    '结构示意 · 最近同步姿态'
+  );
+  await expect(page.getByTestId('crane-twin').locator('.twin-hud small')).not.toContainText(
+    '演示动画'
+  );
 });
 
 test('API 城市项目按省市区逐级钻取保持可见，且不跨省泄漏', async ({ page }) => {
