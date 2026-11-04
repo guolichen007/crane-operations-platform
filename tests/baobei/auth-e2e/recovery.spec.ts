@@ -52,11 +52,15 @@ test('生产模式授权登录、刷新、后退及回调重放', async ({ page 
   await page.reload();
   await workspace(page);
   await page.goBack();
+  await expect(page).toHaveURL(url => url.hostname === 'localhost' && url.pathname === '/authorize');
+  await expect(page.getByRole('heading', { name: '隔离企业认证' })).toBeVisible();
   expect(await metrics(page)).toEqual(previous);
-  await page.goto(callback!);
-  await expect(page).toHaveURL('/login?error=LOGIN_STATE_INVALID');
-  await expect(page.getByRole('alert')).toContainText('已使用');
-  expect(await metrics(page)).toEqual(previous);
+  // Keep the callback replay independent of Chromium's in-flight history traversal.
+  const replay = await page.context().newPage();
+  await replay.goto(callback!);
+  await expect(replay).toHaveURL('/login?error=LOGIN_STATE_INVALID');
+  await expect(replay.getByRole('alert')).toContainText('已使用');
+  expect(await metrics(replay)).toEqual(previous);
 });
 
 test('取消登录消耗状态并允许重新登录', async ({ page }) => {
