@@ -23,7 +23,12 @@ const route = useRoute();
 const router = useRouter();
 const queryClient = useQueryClient();
 const id = computed(() => route.params.id as string);
-const canWrite = computed(() => canWriteProject(webSession.value, asset.value?.projectId ?? ''));
+// Authorization and business lifecycle are combined: a RETIRED asset is terminal,
+// so even a platform_admin must not be offered edit / move / retire / install
+// entry points (the backend refuses them anyway).
+const canWrite = computed(
+  () => canWriteProject(webSession.value, asset.value?.projectId ?? '') && asset.value?.assetStatus !== 'RETIRED',
+);
 
 const assetQuery = useQuery({
   queryKey: ['asset', id],
