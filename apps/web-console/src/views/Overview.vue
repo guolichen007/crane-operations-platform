@@ -340,7 +340,7 @@ onUnmounted(() => {
         <h1>全国设备运营态势<span>空间资产 · 协同运营</span></h1>
       </div>
       <div class="view-description">
-        {{ isApiMode ? 'Cloud API 实时运行态 · 无遥测设备显示尚未投运' : '本地模拟数据 / 匿名登记项目按实施计划展示' }}
+        {{ isApiMode ? 'Cloud API 最近同步运行态 · 无遥测设备显示尚未投运' : '本地模拟数据 / 匿名登记项目按实施计划展示' }}
       </div>
     </div>
     <CloudRuntime v-if="cloudMode" />
@@ -386,15 +386,15 @@ onUnmounted(() => {
         </div>
         <div>
           <span>运行中</span><strong class="green">{{ runningCount }}<small>台</small></strong
-          ><em>实时遥测 · LIVE</em>
+          ><em>最近同步 · LIVE</em>
         </div>
         <div>
           <span>待机</span><strong>{{ standbyCount }}<small>台</small></strong
-          ><em>已连接 · SILENT</em>
+          ><em>最近同步 · SILENT</em>
         </div>
         <div>
           <span>告警</span><strong class="coral">{{ alarmCount }}<small>项</small></strong
-          ><em>实时告警态</em>
+          ><em>最近同步告警</em>
         </div>
         <div>
           <span>离线</span><strong>{{ offlineCount }}<small>台</small></strong
@@ -477,7 +477,7 @@ onUnmounted(() => {
             </div>
           </div>
           <p class="simulation-note">{{
-            isApiMode ? 'CLOUD TELEMETRY · 实时运行态' : 'DEMO TELEMETRY · 真实档案 10 台尚未投运'
+            isApiMode ? 'CLOUD TELEMETRY · 最近同步运行态' : 'DEMO TELEMETRY · 真实档案 10 台尚未投运'
           }}</p>
         </section>
         <section>
@@ -692,7 +692,7 @@ onUnmounted(() => {
           <div class="right-note">
             <Info :size="13" /><span>{{
               isApiMode
-                ? 'Cloud 实时运行态 · 无遥测设备显示尚未投运'
+                ? 'Cloud 最近同步运行态 · 无遥测设备显示尚未投运'
                 : '匿名登记项目尚未投运'
             }}<template v-if="!isApiMode"><br />金色连接表示计划接入</template></span>
           </div>
@@ -723,7 +723,7 @@ onUnmounted(() => {
     <div class="event-strip">
       <div class="event-label">
         <span class="live-dot"></span><strong>全国事件流</strong
-        ><small>{{ isApiMode ? 'CLOUD / 实时事件' : 'DEMO / 模拟事件' }}</small>
+        ><small>{{ isApiMode ? 'CLOUD / 最近同步事件' : 'DEMO / 模拟事件' }}</small>
       </div>
       <div v-for="event in events" :key="event.time" class="event-item">
         <time>{{ event.time }}</time

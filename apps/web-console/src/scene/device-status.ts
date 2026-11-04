@@ -41,6 +41,7 @@ export function mapApiDevice(a: AssetDevice, base: Project, shadow: Shadow | und
   return {
     ...base,
     telemetrySource: apiTelemetrySource(a, shadow),
+    runtimeSource: a.runtimeSource,
     commissioningStatus:
       base.lifecycle === 'OPERATIONAL' && a.runtimeDeviceId ? 'OPERATIONAL' : 'NOT_COMMISSIONED',
     grab: null, // no grab contract from Shadow — unknown.
@@ -56,6 +57,13 @@ export function mapApiDevice(a: AssetDevice, base: Project, shadow: Shadow | und
     y: pos?.y ?? Number.NaN,
     z: pos?.z ?? Number.NaN,
     heartbeat: presence?.lastSeenAt ?? '',
-    craneModel: a.craneModel ?? base.craneModel,
+    // Technical metadata is authored on the AssetDevice, never inherited from a
+    // project default; missing values stay NaN/'' so the UI renders '—', not
+    // a fabricated "0 t / 0 m / A8".
+    craneModel: a.craneModel ?? '',
+    ratedCapacityT: a.ratedCapacityT ?? Number.NaN,
+    spanM: a.spanM ?? Number.NaN,
+    workClass: a.workClass ?? '',
+    grabType: a.grabType ?? '',
   };
 }

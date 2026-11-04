@@ -11,7 +11,13 @@ const siblings = computed(() => sceneProvider.devices.value.filter((d) => d.id =
 const sourceLabel = computed(() => {
   switch (props.device.telemetrySource) {
     case 'cloud':
-      return 'REAL ASSET · CLOUD TELEMETRY';
+      return props.device.runtimeSource === 'REAL'
+        ? 'REAL ASSET · CLOUD TELEMETRY'
+        : props.device.runtimeSource === 'SIMULATION'
+          ? 'REAL ASSET · SIMULATION TELEMETRY'
+          : props.device.runtimeSource === 'TEST'
+            ? 'REAL ASSET · TEST TELEMETRY'
+            : 'REAL ASSET · CLOUD TELEMETRY';
     case 'none':
       return 'REAL ASSET · NO TELEMETRY';
     default:
@@ -23,7 +29,7 @@ const sourceLabel = computed(() => {
 const disclosureLabel = computed(() => {
   switch (props.device.telemetrySource) {
     case 'cloud':
-      return '云端运行态';
+      return props.device.runtimeSource === 'REAL' ? '云端运行态' : '模拟运行态';
     case 'none':
       return '未接入运行数据';
     default:
@@ -33,14 +39,20 @@ const disclosureLabel = computed(() => {
 const disclosureCopy = computed(() => {
   switch (props.device.telemetrySource) {
     case 'cloud':
-      return '运行参数来自 Cloud 实时遥测，非演示数据。';
+      return props.device.runtimeSource === 'REAL'
+        ? '运行参数来自 Cloud 最近同步遥测，非演示数据。'
+        : '运行参数来自 Cloud 的模拟/测试运行源，非现场真实采集。';
     case 'none':
-      return '该资产尚未接入运行数据，无实时遥测。';
+      return '该资产尚未接入运行数据，无遥测。';
     default:
-      return '运行参数仅为演示，非现场实时采集。';
+      return '运行参数仅为演示，非现场真实采集。';
   }
 });
-const twinDemo = computed(() => props.device.telemetrySource === 'demo');
+const twinDemo = computed(() => {
+  if (props.device.telemetrySource === 'demo') return true;
+  if (props.device.telemetrySource === 'cloud') return props.device.runtimeSource !== 'REAL';
+  return false; // none → static structure
+});
 const fmt = (v: number | null | undefined, digits = 2) =>
   v === null || v === undefined || Number.isNaN(v) ? '—' : v.toFixed(digits);
 const grabText = computed(() => props.device.grab ?? '—');
@@ -70,10 +82,10 @@ const faultText = computed(() => props.device.fault || '暂无数据');
       <p><MapPin :size="12" />{{ device.locationLabel }}</p>
     </div>
     <div class="detail-model">
-      {{ device.craneModel
+      {{ device.craneModel || '—'
       }}<span
-        >{{ device.grabType }} · {{ device.ratedCapacityT }} t / {{ device.spanM }} m /
-        {{ device.workClass }}</span
+        >{{ device.grabType || '—' }} · {{ fmt(device.ratedCapacityT, 1) }} t /
+        {{ fmt(device.spanM, 1) }} m / {{ device.workClass || '—' }}</span
       >
     </div>
     <div class="telemetry-disclosure">
@@ -117,7 +129,14 @@ const faultText = computed(() => props.device.fault || '暂无数据');
       </div>
     </div>
     <div class="device-heartbeat">
-      <span>最后心跳 · {{ device.telemetrySource === 'demo' ? 'DEMO' : 'CLOUD' }}</span
+      <span>最后心跳 ·
+        {{
+          device.telemetrySource === 'cloud'
+            ? 'CLOUD'
+            : device.telemetrySource === 'demo'
+              ? 'DEMO'
+              : '未接入'
+        }}</span
       ><time>{{ device.heartbeat || '—' }}</time>
       <p>{{ faultText }}</p>
     </div>

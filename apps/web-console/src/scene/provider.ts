@@ -30,6 +30,39 @@ function lifecycleMap(l: InventoryProject['lifecycle']): Lifecycle {
   return l === 'COMPLETED' ? 'OPERATIONAL' : l;
 }
 
+// The scene's drill-down filters a project by whether its adminPath contains the
+// current adcode. A city/county project must therefore carry its full ancestor
+// path (province → prefecture → county), not just its own adcode, or province
+// drill-down drops it. The parent chain comes from the same geo-manifest the
+// MapSceneManager loads for drill-down, so the two stay consistent.
+let adminParents: Map<number, number> | undefined;
+
+async function loadAdminParents(): Promise<Map<number, number>> {
+  if (adminParents) return adminParents;
+  const map = new Map<number, number>();
+  try {
+    const res = await fetch(`${import.meta.env.BASE_URL}geo/geo-manifest.json`);
+    if (res.ok) {
+      const manifest = (await res.json()) as Record<string, { adcode: number; parent: number | null }>;
+      for (const r of Object.values(manifest)) if (r.parent !== null) map.set(r.adcode, r.parent);
+    }
+  } catch {
+    // Fall through: an empty parent map yields [adminCode] as the path.
+  }
+  adminParents = map;
+  return map;
+}
+
+function adminPathFor(code: number, parents: Map<number, number>): number[] {
+  const path: number[] = [];
+  let cur: number | undefined = code;
+  while (cur !== undefined && cur !== 100000) {
+    path.unshift(cur);
+    cur = parents.get(cur);
+  }
+  return path;
+}
+
 function demoProvider(): SceneDataProvider {
   return {
     mode: 'demo',
@@ -56,11 +89,18 @@ function apiProvider(): SceneDataProvider {
   async function load() {
     loading.value = true;
     try {
-      const [rawProjects, rawAssets, rawShadows, rawAlarms] = await Promise.all([
+      // Data-source boundary: the flagship sandbox is driven by the INVENTORY
+      // API (projects + assetDevices + runtime Shadow), not the formal Asset
+      // center API (AssetMasterData). Only inventory projects carry adminCode,
+      // so only they can be spatially located. Formal assets have no spatial
+      // association yet and must not be painted into the sandbox as if they do.
+      // Future association: formal Asset → Runtime Binding → spatial project.
+      const [rawProjects, rawAssets, rawShadows, rawAlarms, adminParentsMap] = await Promise.all([
         listProjects(),
         listAssets(),
         listDevices(),
         listAlarms(),
+        loadAdminParents(),
       ]);
       const mappedProjects: Project[] = rawProjects.map((p) => ({
         id: p.id,
@@ -82,7 +122,7 @@ function apiProvider(): SceneDataProvider {
         plannedImplementation: '',
         scheduleText: p.scheduleText,
         coordinateAccuracy: 'city_center_demo',
-        adminPath: p.adminCode ? [p.adminCode] : [],
+        adminPath: p.adminCode ? adminPathFor(p.adminCode, adminParentsMap) : [],
         adminCode: p.adminCode ?? undefined,
       }));
       const byProject = new Map(mappedProjects.map((p) => [p.id, p]));

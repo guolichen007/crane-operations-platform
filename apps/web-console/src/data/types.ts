@@ -28,8 +28,12 @@ export type Project = {
   adminCode?: number;
 };
 export type TelemetrySource = 'demo' | 'cloud' | 'none';
+/** Site source: REAL=真实现场, SIMULATION=模拟, TEST=测试, null=无运行身份. */
+export type RuntimeSource = 'REAL' | 'SIMULATION' | 'TEST' | null;
 export type Device = Project & {
   telemetrySource: TelemetrySource;
+  /** 现场来源独立于遥测来源：SIMULATION 即使有 Shadow 也绝不当真实现场。 */
+  runtimeSource: RuntimeSource;
   commissioningStatus: 'NOT_COMMISSIONED' | 'OPERATIONAL';
   /** null = 未知（无遥测时禁止伪造“闭合/打开”）。 */
   grab: '闭合' | '打开' | null;

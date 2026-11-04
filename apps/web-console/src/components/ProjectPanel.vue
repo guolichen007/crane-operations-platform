@@ -61,7 +61,7 @@ const disclosure = computed(() => {
         {{ project.dataSource === 'real' ? '匿名登记项目档案' : '演示项目档案' }} ·
         {{ lifecycleText[project.lifecycle] }}
       </h3>
-      <span v-if="project.dataSource === 'real'" class="archive-warning"
+      <span v-if="project.dataSource === 'real' && project.lifecycle !== 'OPERATIONAL'" class="archive-warning"
         >尚未投运 · 不代表现场已接入</span
       >
       <p>{{ project.scheduleText }}</p>

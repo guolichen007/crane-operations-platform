@@ -23,6 +23,7 @@ export function expandProjects(items: Project[]): Device[] {
         ...p,
         deviceId,
         telemetrySource: 'demo' as const,
+        runtimeSource: null,
         commissioningStatus:
           p.dataSource === 'real' ? ('NOT_COMMISSIONED' as const) : ('OPERATIONAL' as const),
         grab: '闭合' as const,
