@@ -140,6 +140,10 @@ jobs:
         run: sudo env PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/ops -v
       - run: node tools/task.mjs a1-test
   production-release:
+    # Production images are only published on an explicit main push (or a PR's
+    # local candidate build). Feature/fix branch pushes keep their security,
+    # build, integration and E2E verification jobs but must never release.
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     needs: [repository-contract, backend, edge, frontend, integration, security, a1-security]
     runs-on: ubuntu-latest
     timeout-minutes: 40

@@ -312,11 +312,20 @@ async function assetModeCheck() {
     const completed = page.getByTestId('inventory-project').filter({ hasText: '已完成' });
     await expect(completed).toHaveCount(3);
     for (const card of await completed.all()) { await expect(card).toContainText('待接入Cloud'); await expect(card).not.toContainText('OFFLINE'); }
-    await page.getByRole('link', { name: '设备', exact: true }).click();
+    // The legacy Inventory /devices page is no longer a sidebar entry (the sidebar
+    // now exposes the formal asset center /assets), so reach it directly to keep
+    // its 10 simulated-device counter-assertion intact.
+    await page.goto('/#/devices');
     await expect(page.getByTestId('inventory-asset')).toHaveCount(10);
     await expect(page.getByTestId('inventory-asset').first()).toContainText('规划模拟 · 模拟在线');
-    await page.screenshot({ path: root + '/asset-mode.png', fullPage: true });
-    record('A0 real browser inventory summary, planned simulation labels and completed-awaiting semantics');
+    await page.screenshot({ path: root + '/inventory-devices.png', fullPage: true });
+    record('A0 legacy Inventory /devices keeps 10 simulated devices with planned-simulation labels');
+    // The formal asset center /assets consumes the Asset API domain (separate from
+    // the Inventory API feeding the flagship) and must render via its own nav.
+    await page.getByRole('link', { name: '资产', exact: true }).click();
+    await expect(page.getByTestId('asset-center')).toBeVisible();
+    await page.screenshot({ path: root + '/asset-center.png', fullPage: true });
+    record('A0 formal asset center /assets renders through the 资产 nav (Asset API domain)');
   } finally {
     await browser?.close();
     assetCompose(['stop', 'cloud-api', 'device-simulator']);
