@@ -6,12 +6,15 @@ import { Search, Plus, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-vue-n
 import { listAssets, createAsset } from '../cloud/asset';
 import { ApiError } from '../cloud/client';
 import { webSession } from '../cloud/session';
-import { isViewerOnly } from '../cloud/auth-state';
+import { writableProjects } from '../cloud/auth-state';
 import type { AssetMasterData } from '../../../../contracts/typescript/types.gen';
 
 const router = useRouter();
 const queryClient = useQueryClient();
-const canCreate = computed(() => !isViewerOnly(webSession.value));
+// The create entry exists only when the caller holds at least one project with
+// asset_master_write (platform_admin); the form selects among those projects.
+const writable = computed(() => writableProjects(webSession.value));
+const canCreate = computed(() => writable.value.length > 0);
 
 const q = ref('');
 const status = ref('');
@@ -163,7 +166,14 @@ const statusText: Record<string, string> = {
         @submit.prevent="createMutation.mutate(newAsset as AssetMasterData)"
       >
         <h2>新建资产</h2>
-        <label>项目 ID<input v-model="newAsset.projectId" required placeholder="Project-A" /></label>
+        <label>授权项目
+          <select v-model="newAsset.projectId" required aria-label="授权项目选择">
+            <option value="" disabled>选择授权项目</option>
+            <option v-for="p in writable" :key="p.projectId" :value="p.projectId">
+              {{ p.projectName }}（{{ p.projectId }}）
+            </option>
+          </select>
+        </label>
         <label>资产编号<input v-model="newAsset.assetCode" placeholder="CRN-001" /></label>
         <label>类型
           <select v-model="newAsset.assetType">

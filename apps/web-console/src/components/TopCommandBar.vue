@@ -42,7 +42,12 @@ async function fullscreen() {
 }
 function changeScope(event: Event) {
   const project = (event.target as HTMLSelectElement).value;
-  void router.push({ path: '/projects', query: project ? { project } : {} });
+  // Preserve the current business page: only the ?project= scope changes, so
+  // switching projects never forces a jump back to /projects.
+  const query = { ...route.query };
+  if (project) query.project = project;
+  else delete query.project;
+  void router.push({ path: route.path, query });
 }
 async function tour() {
   await router.push('/overview');
