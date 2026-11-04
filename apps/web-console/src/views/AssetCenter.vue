@@ -5,10 +5,13 @@ import { useRouter } from 'vue-router';
 import { Search, Plus, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-vue-next';
 import { listAssets, createAsset } from '../cloud/asset';
 import { ApiError } from '../cloud/client';
+import { webSession } from '../cloud/session';
+import { isViewerOnly } from '../cloud/auth-state';
 import type { AssetMasterData } from '../../../../contracts/typescript/types.gen';
 
 const router = useRouter();
 const queryClient = useQueryClient();
+const canCreate = computed(() => !isViewerOnly(webSession.value));
 
 const q = ref('');
 const status = ref('');
@@ -79,7 +82,7 @@ const statusText: Record<string, string> = {
         <h1>资产台账</h1>
         <p>服务端分页、搜索、状态与类型筛选 · If-Match 乐观并发 · 幂等创建</p>
       </div>
-      <button class="primary-action" data-testid="asset-create" @click="openCreate">
+      <button v-if="canCreate" class="primary-action" data-testid="asset-create" @click="openCreate">
         <Plus :size="15" />新建资产
       </button>
     </header>

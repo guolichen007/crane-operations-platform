@@ -10,3 +10,10 @@ export function isViewerOnly(session: WebSession | null): boolean {
     !!session && session.projects.length > 0 && session.projects.every((p) => p.role === 'viewer')
   );
 }
+// Server-side ProjectGrant is the only authority: the frontend merely reflects the
+// granted role. A viewer (read-only) never gets asset write/move/retire actions.
+export function canWriteProject(session: WebSession | null, projectId: string): boolean {
+  if (!session) return false;
+  const role = session.projects.find((p) => p.projectId === projectId)?.role;
+  return role === 'operator' || role === 'maintainer' || role === 'platform_admin';
+}

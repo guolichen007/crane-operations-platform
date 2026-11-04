@@ -131,7 +131,9 @@ for (const width of [1920, 1366]) {
         window.__spatialDiagnostics().adcode === 100000
     );
     await expect(page.locator('.scene-loading')).toBeHidden();
-    await expect(page.locator('.side-rail nav a')).toHaveCount(11);
+    // Only implemented business pages are exposed: the demo /analytics link and
+    // the 收藏/最近/设置/帮助 placeholders are no longer reachable entries.
+    await expect(page.locator('.side-rail nav a')).toHaveCount(6);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
     await screenshot(page, 'overview-viewer-' + width);
     await page.goto('/#/alarms');

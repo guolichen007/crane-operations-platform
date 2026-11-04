@@ -90,6 +90,12 @@ func ifMatchVersion(r *http.Request) (int64, bool) {
 	return n, err == nil && n > 0
 }
 
+// requestID threads the caller's X-Request-Id through entity revisions and the
+// audit log. It never records credentials, cookies or tokens.
+func requestID(r *http.Request) string {
+	return strings.TrimSpace(r.Header.Get("X-Request-Id"))
+}
+
 func decodeStrict(r *http.Request, v any) error {
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
@@ -179,7 +185,7 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 		if !h.authorizeProjectCapability(w, r, in.ProjectId, identity.CapAssetMasterWrite) {
 			return
 		}
-		out, err := asset.CreateAsset(r.Context(), h.db, in, currentPrincipal(r).user, "", r.Header.Get("Idempotency-Key"))
+		out, err := asset.CreateAsset(r.Context(), h.db, in, currentPrincipal(r).user, requestID(r), r.Header.Get("Idempotency-Key"))
 		if err != nil {
 			if errors.Is(err, asset.ErrIdempotencyKey) {
 				respondAPI(w, 409, map[string]string{"error": "idempotency conflict"})
@@ -231,7 +237,7 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 			return
 		}
 		in.Id = id
-		out, err := asset.UpdateAsset(r.Context(), h.db, in, expected, currentPrincipal(r).user, "")
+		out, err := asset.UpdateAsset(r.Context(), h.db, in, expected, currentPrincipal(r).user, requestID(r))
 		if err != nil {
 			switch {
 			case errors.Is(err, asset.ErrNotFound):
@@ -264,7 +270,7 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 			respondAPI(w, 428, map[string]string{"error": "precondition required"})
 			return
 		}
-		if err := asset.RetireAsset(r.Context(), h.db, id, expected, currentPrincipal(r).user, ""); err != nil {
+		if err := asset.RetireAsset(r.Context(), h.db, id, expected, currentPrincipal(r).user, requestID(r)); err != nil {
 			switch {
 			case errors.Is(err, asset.ErrNotFound):
 				respondAPI(w, 404, map[string]string{"error": "not found"})
@@ -300,7 +306,7 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 			respondAPI(w, 400, map[string]string{"error": "invalid body"})
 			return
 		}
-		if err := asset.MoveAsset(r.Context(), h.db, id, in.LocationId, expected, currentPrincipal(r).user, ""); err != nil {
+		if err := asset.MoveAsset(r.Context(), h.db, id, in.LocationId, expected, currentPrincipal(r).user, requestID(r)); err != nil {
 			switch {
 			case errors.Is(err, asset.ErrNotFound), errors.Is(err, asset.ErrCrossProject), errors.Is(err, asset.ErrDisabledLocation):
 				respondAPI(w, 404, map[string]string{"error": err.Error()})
@@ -339,7 +345,7 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 			return
 		}
 		in.ProjectId = projectID
-		out, err := asset.CreateLocation(r.Context(), h.db, in, currentPrincipal(r).user, "")
+		out, err := asset.CreateLocation(r.Context(), h.db, in, currentPrincipal(r).user, requestID(r))
 		if err != nil {
 			respondAPI(w, 503, map[string]string{"error": "database unavailable"})
 			return
@@ -385,7 +391,7 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 			return
 		}
 		in.Id = id
-		out, err := asset.UpdateLocation(r.Context(), h.db, in, expected, currentPrincipal(r).user, "")
+		out, err := asset.UpdateLocation(r.Context(), h.db, in, expected, currentPrincipal(r).user, requestID(r))
 		if err != nil {
 			switch {
 			case errors.Is(err, asset.ErrNotFound):
@@ -416,7 +422,7 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 			respondAPI(w, 428, map[string]string{"error": "precondition required"})
 			return
 		}
-		if err := asset.DisableLocation(r.Context(), h.db, id, expected, currentPrincipal(r).user, ""); err != nil {
+		if err := asset.DisableLocation(r.Context(), h.db, id, expected, currentPrincipal(r).user, requestID(r)); err != nil {
 			switch {
 			case errors.Is(err, asset.ErrNotFound):
 				respondAPI(w, 404, map[string]string{"error": "not found"})
@@ -458,7 +464,7 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 		if !h.authorizeProjectCapability(w, r, *in.ProjectId, identity.CapCatalogWrite) {
 			return
 		}
-		out, err := asset.CreateManufacturer(r.Context(), h.db, in, currentPrincipal(r).user, "")
+		out, err := asset.CreateManufacturer(r.Context(), h.db, in, currentPrincipal(r).user, requestID(r))
 		if err != nil {
 			respondAPI(w, 503, map[string]string{"error": "database unavailable"})
 			return
@@ -511,7 +517,7 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 			return
 		}
 		in.Id = id
-		out, err := asset.UpdateManufacturer(r.Context(), h.db, in, expected, currentPrincipal(r).user, "")
+		out, err := asset.UpdateManufacturer(r.Context(), h.db, in, expected, currentPrincipal(r).user, requestID(r))
 		if err != nil {
 			switch {
 			case errors.Is(err, asset.ErrNotFound):
@@ -546,7 +552,7 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 			respondAPI(w, 428, map[string]string{"error": "precondition required"})
 			return
 		}
-		if err := asset.DisableManufacturer(r.Context(), h.db, id, expected, currentPrincipal(r).user, ""); err != nil {
+		if err := asset.DisableManufacturer(r.Context(), h.db, id, expected, currentPrincipal(r).user, requestID(r)); err != nil {
 			switch {
 			case errors.Is(err, asset.ErrNotFound):
 				respondAPI(w, 404, map[string]string{"error": "not found"})
@@ -588,7 +594,7 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 		if !h.authorizeProjectCapability(w, r, *in.ProjectId, identity.CapCatalogWrite) {
 			return
 		}
-		out, err := asset.CreateCatalogItem(r.Context(), h.db, in, currentPrincipal(r).user, "")
+		out, err := asset.CreateCatalogItem(r.Context(), h.db, in, currentPrincipal(r).user, requestID(r))
 		if err != nil {
 			respondAPI(w, 503, map[string]string{"error": "database unavailable"})
 			return
@@ -641,7 +647,7 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 			return
 		}
 		in.Id = id
-		out, err := asset.UpdateCatalogItem(r.Context(), h.db, in, expected, currentPrincipal(r).user, "")
+		out, err := asset.UpdateCatalogItem(r.Context(), h.db, in, expected, currentPrincipal(r).user, requestID(r))
 		if err != nil {
 			switch {
 			case errors.Is(err, asset.ErrNotFound):
@@ -676,7 +682,7 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 			respondAPI(w, 428, map[string]string{"error": "precondition required"})
 			return
 		}
-		if err := asset.DisableCatalogItem(r.Context(), h.db, id, expected, currentPrincipal(r).user, ""); err != nil {
+		if err := asset.DisableCatalogItem(r.Context(), h.db, id, expected, currentPrincipal(r).user, requestID(r)); err != nil {
 			switch {
 			case errors.Is(err, asset.ErrNotFound):
 				respondAPI(w, 404, map[string]string{"error": "not found"})
@@ -725,7 +731,7 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 			return
 		}
 		in.AssetId = assetID
-		out, err := asset.CreateEquipment(r.Context(), h.db, in.EquipmentInstallation, in.Spec, currentPrincipal(r).user, "")
+		out, err := asset.CreateEquipment(r.Context(), h.db, in.EquipmentInstallation, in.Spec, currentPrincipal(r).user, requestID(r))
 		if err != nil {
 			respondAPI(w, 400, map[string]string{"error": err.Error()})
 			return
@@ -771,7 +777,7 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 			return
 		}
 		in.Id = id
-		out, err := asset.UpdateEquipment(r.Context(), h.db, in, expected, currentPrincipal(r).user, "")
+		out, err := asset.UpdateEquipment(r.Context(), h.db, in, expected, currentPrincipal(r).user, requestID(r))
 		if err != nil {
 			switch {
 			case errors.Is(err, asset.ErrNotFound):
@@ -802,7 +808,7 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 			respondAPI(w, 428, map[string]string{"error": "precondition required"})
 			return
 		}
-		if err := asset.RemoveEquipment(r.Context(), h.db, id, expected, currentPrincipal(r).user, ""); err != nil {
+		if err := asset.RemoveEquipment(r.Context(), h.db, id, expected, currentPrincipal(r).user, requestID(r)); err != nil {
 			switch {
 			case errors.Is(err, asset.ErrNotFound):
 				respondAPI(w, 404, map[string]string{"error": "not found"})
@@ -851,7 +857,7 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 			return
 		}
 		in.AssetId = assetID
-		out, err := asset.CreateRelation(r.Context(), h.db, in, currentPrincipal(r).user, "")
+		out, err := asset.CreateRelation(r.Context(), h.db, in, currentPrincipal(r).user, requestID(r))
 		if err != nil {
 			respondAPI(w, 400, map[string]string{"error": err.Error()})
 			return
@@ -875,7 +881,7 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 			respondAPI(w, 428, map[string]string{"error": "precondition required"})
 			return
 		}
-		if err := asset.RemoveRelation(r.Context(), h.db, id, expected, currentPrincipal(r).user, ""); err != nil {
+		if err := asset.RemoveRelation(r.Context(), h.db, id, expected, currentPrincipal(r).user, requestID(r)); err != nil {
 			switch {
 			case errors.Is(err, asset.ErrNotFound):
 				respondAPI(w, 404, map[string]string{"error": "not found"})
