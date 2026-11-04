@@ -146,7 +146,7 @@ func TestAssetRetireWithActiveBindingRejected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	eq, err := CreateEquipment(ctx, db, contract.EquipmentInstallation{AssetId: out.Id, EquipmentCode: "EQ-1", TypeCode: "MOTOR", Criticality: "MEDIUM"}, json.RawMessage(`{"rated_power_kw": 7.5, "rated_speed_rpm": 1450, "brake_integrated": true}`), "actor", "req-2")
+	eq, err := CreateEquipment(ctx, db, contract.EquipmentInstallation{AssetId: out.Id, EquipmentCode: "EQ-1", TypeCode: "MOTOR", Criticality: "MEDIUM"}, json.RawMessage(`{"rated_power_kw": 7.5, "rated_speed_rpm": 1450, "brake_integrated": true}`), "actor", "req-2", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +278,7 @@ func TestCatalogGlobalReadAndCrossProjectReject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := CreateEquipment(ctx, db, contract.EquipmentInstallation{AssetId: out.Id, EquipmentCode: "EQ-X", TypeCode: "MOTOR", CatalogItemId: &scoped.Id, Criticality: "MEDIUM"}, json.RawMessage(`{"rated_power_kw": 7.5, "rated_speed_rpm": 1450, "brake_integrated": true}`), "actor", "req-4"); err == nil {
+	if _, err := CreateEquipment(ctx, db, contract.EquipmentInstallation{AssetId: out.Id, EquipmentCode: "EQ-X", TypeCode: "MOTOR", CatalogItemId: &scoped.Id, Criticality: "MEDIUM"}, json.RawMessage(`{"rated_power_kw": 7.5, "rated_speed_rpm": 1450, "brake_integrated": true}`), "actor", "req-4", ""); err == nil {
 		t.Fatal("cross-project catalog reference accepted")
 	}
 }
@@ -292,10 +292,10 @@ func TestEquipmentSpecValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := CreateEquipment(ctx, db, contract.EquipmentInstallation{AssetId: out.Id, EquipmentCode: "EQ-1", TypeCode: "MOTOR"}, json.RawMessage(`{"nonsense": 1}`), "actor", "req-2"); err == nil {
+	if _, err := CreateEquipment(ctx, db, contract.EquipmentInstallation{AssetId: out.Id, EquipmentCode: "EQ-1", TypeCode: "MOTOR"}, json.RawMessage(`{"nonsense": 1}`), "actor", "req-2", ""); err == nil {
 		t.Fatal("invalid spec accepted")
 	}
-	if _, err := CreateEquipment(ctx, db, contract.EquipmentInstallation{AssetId: out.Id, EquipmentCode: "EQ-2", TypeCode: "MOTOR"}, json.RawMessage(`{"rated_power_kw": 7.5, "rated_speed_rpm": 1450, "brake_integrated": true}`), "actor", "req-3"); err != nil {
+	if _, err := CreateEquipment(ctx, db, contract.EquipmentInstallation{AssetId: out.Id, EquipmentCode: "EQ-2", TypeCode: "MOTOR"}, json.RawMessage(`{"rated_power_kw": 7.5, "rated_speed_rpm": 1450, "brake_integrated": true}`), "actor", "req-3", ""); err != nil {
 		t.Fatalf("valid spec rejected: %v", err)
 	}
 }
@@ -309,7 +309,7 @@ func TestEquipmentActiveBindingRemoveRejected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	eq, err := CreateEquipment(ctx, db, contract.EquipmentInstallation{AssetId: out.Id, EquipmentCode: "EQ-1", TypeCode: "MOTOR"}, json.RawMessage(`{"rated_power_kw": 7.5, "rated_speed_rpm": 1450, "brake_integrated": true}`), "actor", "req-2")
+	eq, err := CreateEquipment(ctx, db, contract.EquipmentInstallation{AssetId: out.Id, EquipmentCode: "EQ-1", TypeCode: "MOTOR"}, json.RawMessage(`{"rated_power_kw": 7.5, "rated_speed_rpm": 1450, "brake_integrated": true}`), "actor", "req-2", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,11 +328,11 @@ func TestRelationCrossAssetRejected(t *testing.T) {
 	seedEquipmentType(t, db, "MOTOR")
 	a1, _ := CreateAsset(ctx, db, contract.AssetMasterData{ProjectId: "Project-A", AssetType: "CRANE"}, "actor", "req-1", "")
 	a2, _ := CreateAsset(ctx, db, contract.AssetMasterData{ProjectId: "Project-A", AssetType: "CRANE"}, "actor", "req-2", "")
-	e1, err := CreateEquipment(ctx, db, contract.EquipmentInstallation{AssetId: a1.Id, EquipmentCode: "EQ-1", TypeCode: "MOTOR"}, json.RawMessage(`{"rated_power_kw": 7.5, "rated_speed_rpm": 1450, "brake_integrated": true}`), "actor", "req-3")
+	e1, err := CreateEquipment(ctx, db, contract.EquipmentInstallation{AssetId: a1.Id, EquipmentCode: "EQ-1", TypeCode: "MOTOR"}, json.RawMessage(`{"rated_power_kw": 7.5, "rated_speed_rpm": 1450, "brake_integrated": true}`), "actor", "req-3", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	e2, err := CreateEquipment(ctx, db, contract.EquipmentInstallation{AssetId: a2.Id, EquipmentCode: "EQ-2", TypeCode: "MOTOR"}, json.RawMessage(`{"rated_power_kw": 7.5, "rated_speed_rpm": 1450, "brake_integrated": true}`), "actor", "req-4")
+	e2, err := CreateEquipment(ctx, db, contract.EquipmentInstallation{AssetId: a2.Id, EquipmentCode: "EQ-2", TypeCode: "MOTOR"}, json.RawMessage(`{"rated_power_kw": 7.5, "rated_speed_rpm": 1450, "brake_integrated": true}`), "actor", "req-4", "")
 	if err != nil {
 		t.Fatal(err)
 	}
