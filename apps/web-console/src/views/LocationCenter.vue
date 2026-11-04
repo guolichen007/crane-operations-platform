@@ -19,10 +19,23 @@ const projectId = computed(() => {
   return webSession.value?.projects?.[0]?.projectId ?? '';
 });
 
+// Fetch every location node by paging through the server's 100-item window (no
+// server-side filter), so a project with more than 100 nodes is fully browsable
+// instead of silently truncated. The full flat list is the source for the tree.
+async function fetchAllLocations(projectId: string) {
+  const all: AssetLocation[] = [];
+  const pageSize = 100;
+  for (let offset = 0; ; offset += pageSize) {
+    const page = await listLocations(projectId, { limit: pageSize, offset, sort: 'name' });
+    all.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return all;
+}
+
 const locationsQuery = useQuery({
-  queryKey: ['locations', projectId, q, kind, status],
-  queryFn: () =>
-    listLocations(projectId.value, { q: q.value, kind: kind.value, status: status.value, sort: 'name' }),
+  queryKey: ['locations', projectId],
+  queryFn: () => fetchAllLocations(projectId.value),
   enabled: computed(() => !!projectId.value),
 });
 
@@ -35,7 +48,7 @@ type LocationNode = AssetLocation & { children: LocationNode[] };
 // Full hierarchy (SITE → PLANT → WORKSHOP → BAY → RUNWAY): build the nested tree
 // from the flat parentId list, so every level is expressed instead of a flat
 // two-level "lazy tree".
-const tree = computed<LocationNode[]>(() => {
+const fullTree = computed<LocationNode[]>(() => {
   const items = (locationsQuery.data.value ?? []) as LocationNode[];
   const byId = new Map<string, LocationNode>();
   for (const l of items) byId.set(l.id, { ...l, children: [] });
@@ -45,6 +58,25 @@ const tree = computed<LocationNode[]>(() => {
     else roots.push(node);
   }
   return roots;
+});
+// Client-side filter with ancestor preservation: a node is kept when it matches
+// (name/code + kind + status) or when any descendant matches, so a matching BAY
+// never masquerades as a top-level SITE after filtering.
+const tree = computed<LocationNode[]>(() => {
+  const ql = q.value.trim().toLowerCase();
+  const match = (n: AssetLocation) =>
+    (kind.value === '' || n.kind === kind.value) &&
+    (status.value === '' || n.status === status.value) &&
+    (ql === '' || n.name.toLowerCase().includes(ql) || (n.code ?? '').toLowerCase().includes(ql));
+  const prune = (nodes: LocationNode[]): LocationNode[] => {
+    const out: LocationNode[] = [];
+    for (const n of nodes) {
+      const children = prune(n.children);
+      if (match(n) || children.length > 0) out.push({ ...n, children });
+    }
+    return out;
+  };
+  return prune(fullTree.value);
 });
 const flattened = computed(() => {
   const out: { node: LocationNode; depth: number }[] = [];

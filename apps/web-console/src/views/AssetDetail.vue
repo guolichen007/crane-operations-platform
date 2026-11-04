@@ -104,6 +104,7 @@ const equipmentDraft = ref<EquipmentInstallation>({
   criticality: 'MEDIUM',
   administrativeState: 'IN_SERVICE',
   version: 0,
+  removedAt: null,
 });
 // Optional spec fields are left empty rather than inventing device parameters.
 const equipmentSpec = ref<Record<string, unknown>>({});
@@ -123,6 +124,7 @@ function openEquipmentAdd() {
     criticality: 'MEDIUM',
     administrativeState: 'IN_SERVICE',
     version: 0,
+    removedAt: null,
   };
   equipmentSpec.value = {};
   equipmentIdemKey = crypto.randomUUID();
@@ -246,23 +248,23 @@ const statusText: Record<string, string> = {
               <td>{{ e.equipmentCode }}</td>
               <td>{{ e.typeCode }}</td>
               <td>{{ e.criticality }}</td>
-              <td>{{ e.administrativeState }}</td>
+              <td>
+                {{ e.administrativeState }}
+                <span v-if="e.removedAt" class="tiny-badge">已拆卸</span>
+              </td>
               <td>v{{ e.version }}</td>
               <td v-if="canWrite">
-                <button
-                  v-if="e.administrativeState !== 'OUT_OF_SERVICE'"
-                  class="ghost-action"
-                  @click="openEquipmentEdit(e)"
-                >
-                  编辑
-                </button>
-                <button
-                  class="danger-action"
-                  :disabled="removeEquipmentMutation.isPending.value"
-                  @click="removingId = e.id; removeConfirm = true"
-                >
-                  拆卸
-                </button>
+                <!-- 已拆卸设备（removedAt 非空）不可再编辑或拆卸。 -->
+                <template v-if="!e.removedAt">
+                  <button class="ghost-action" @click="openEquipmentEdit(e)">编辑</button>
+                  <button
+                    class="danger-action"
+                    :disabled="removeEquipmentMutation.isPending.value"
+                    @click="removingId = e.id; removeConfirm = true"
+                  >
+                    拆卸
+                  </button>
+                </template>
               </td>
             </tr>
           </tbody>
