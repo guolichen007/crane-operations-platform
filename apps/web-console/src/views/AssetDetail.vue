@@ -2,15 +2,27 @@
 import { computed, ref } from 'vue';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query';
 import { useRoute, useRouter } from 'vue-router';
-import { Pencil, Move, Archive, ArrowLeft } from 'lucide-vue-next';
-import { getAsset, updateAsset, retireAsset, moveAsset, listEquipment, listLocations } from '../cloud/asset';
+import { Pencil, Move, Archive, ArrowLeft, Plus } from 'lucide-vue-next';
+import {
+  getAsset,
+  updateAsset,
+  retireAsset,
+  moveAsset,
+  listEquipment,
+  createEquipment,
+  removeEquipment,
+  listLocations,
+} from '../cloud/asset';
 import { ApiError } from '../cloud/client';
-import type { AssetMasterData, AssetLocation } from '../../../../contracts/typescript/types.gen';
+import { webSession } from '../cloud/session';
+import { canWriteProject } from '../cloud/auth-state';
+import type { AssetMasterData, AssetLocation, EquipmentInstallation } from '../../../../contracts/typescript/types.gen';
 
 const route = useRoute();
 const router = useRouter();
 const queryClient = useQueryClient();
 const id = computed(() => route.params.id as string);
+const canWrite = computed(() => canWriteProject(webSession.value, asset.value?.projectId ?? ''));
 
 const assetQuery = useQuery({
   queryKey: ['asset', id],
@@ -63,6 +75,57 @@ const moveMutation = useMutation({
   onError: (e) => (actionError.value = e instanceof ApiError ? e.message : '移动失败'),
 });
 
+// ---- Equipment install / remove (asset-scoped, never a second master data
+// set). Removal closes the validity interval; an active runtime binding is
+// refused by the backend. ----
+const equipmentAdding = ref(false);
+const equipmentDraft = ref<EquipmentInstallation>({
+  id: '',
+  assetId: '',
+  equipmentCode: '',
+  typeCode: '',
+  catalogItemId: null,
+  serialNumber: null,
+  semanticSlot: null,
+  positionLabel: null,
+  criticality: 'MEDIUM',
+  administrativeState: 'IN_SERVICE',
+  version: 0,
+});
+function openEquipmentAdd() {
+  equipmentDraft.value = {
+    id: '',
+    assetId: '',
+    equipmentCode: '',
+    typeCode: '',
+    catalogItemId: null,
+    serialNumber: null,
+    semanticSlot: null,
+    positionLabel: null,
+    criticality: 'MEDIUM',
+    administrativeState: 'IN_SERVICE',
+    version: 0,
+  };
+  equipmentAdding.value = true;
+}
+const createEquipmentMutation = useMutation({
+  mutationFn: () =>
+    createEquipment({ ...equipmentDraft.value, assetId: id.value }, crypto.randomUUID()),
+  onSuccess: async () => {
+    equipmentAdding.value = false;
+    await queryClient.invalidateQueries({ queryKey: ['equipment', id] });
+  },
+  onError: (e) => (actionError.value = e instanceof ApiError ? e.message : '安装失败'),
+});
+const removeEquipmentMutation = useMutation({
+  mutationFn: (equipmentId: string) =>
+    removeEquipment(equipmentId, equipmentQuery.data.value!.find((x) => x.id === equipmentId)!.version),
+  onSuccess: async () => {
+    await queryClient.invalidateQueries({ queryKey: ['equipment', id] });
+  },
+  onError: (e) => (actionError.value = e instanceof ApiError ? e.message : '拆卸失败'),
+});
+
 const asset = computed(() => assetQuery.data.value);
 const statusText: Record<string, string> = {
   DRAFT: '草稿',
@@ -84,7 +147,7 @@ const statusText: Record<string, string> = {
         <h1>{{ asset.assetCode ?? asset.id }}</h1>
         <p>{{ asset.assetType }} · {{ asset.manufacturerSnapshot || '未关联制造商' }} · v{{ asset.version }}</p>
       </div>
-      <div class="detail-actions">
+      <div v-if="canWrite" class="detail-actions">
         <button class="ghost-action" @click="openEdit"><Pencil :size="14" />编辑</button>
         <button class="ghost-action" @click="moving = true"><Move :size="14" />移动</button>
         <button class="danger-action" @click="retiring = true"><Archive :size="14" />退役</button>
@@ -114,11 +177,18 @@ const statusText: Record<string, string> = {
       </div>
 
       <div v-else-if="tab === 'equipment'">
+        <div class="equipment-toolbar">
+          <button v-if="canWrite" class="primary-action" @click="openEquipmentAdd">
+            <Plus :size="14" />安装 Equipment
+          </button>
+        </div>
         <p v-if="equipmentQuery.isLoading.value">加载设备…</p>
         <p v-else-if="!equipmentQuery.data.value?.length" class="workspace-empty">该资产暂无 Equipment。</p>
         <table v-else class="data-table">
           <thead>
-            <tr><th>Equipment 编号</th><th>类型</th><th>关键度</th><th>行政状态</th></tr>
+            <tr>
+              <th>Equipment 编号</th><th>类型</th><th>关键度</th><th>行政状态</th><th>版本</th><th v-if="canWrite">操作</th>
+            </tr>
           </thead>
           <tbody>
             <tr v-for="e in equipmentQuery.data.value" :key="e.id" class="data-row">
@@ -126,6 +196,16 @@ const statusText: Record<string, string> = {
               <td>{{ e.typeCode }}</td>
               <td>{{ e.criticality }}</td>
               <td>{{ e.administrativeState }}</td>
+              <td>v{{ e.version }}</td>
+              <td v-if="canWrite">
+                <button
+                  class="danger-action"
+                  :disabled="removeEquipmentMutation.isPending.value"
+                  @click="removeEquipmentMutation.mutate(e.id)"
+                >
+                  拆卸
+                </button>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -177,6 +257,29 @@ const statusText: Record<string, string> = {
           <button class="danger-action" @click="retireMutation.mutate()">确认退役</button>
         </div>
       </div>
+    </div>
+
+    <div v-if="equipmentAdding" class="modal-backdrop" @click.self="equipmentAdding = false">
+      <form class="workspace-modal" data-testid="equipment-create-form" @submit.prevent="createEquipmentMutation.mutate()">
+        <h2>安装 Equipment</h2>
+        <label>类型代码<input v-model="equipmentDraft.typeCode" required placeholder="CRANE_BRIDGE" /></label>
+        <label>Equipment 编号<input v-model="equipmentDraft.equipmentCode" required /></label>
+        <label>序列号<input v-model="equipmentDraft.serialNumber" /></label>
+        <label>关键度
+          <select v-model="equipmentDraft.criticality">
+            <option value="LOW">低</option>
+            <option value="MEDIUM">中</option>
+            <option value="HIGH">高</option>
+            <option value="SAFETY_CRITICAL">安全关键</option>
+          </select>
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="ghost-action" @click="equipmentAdding = false">取消</button>
+          <button type="submit" class="primary-action" :disabled="createEquipmentMutation.isPending.value">
+            安装
+          </button>
+        </div>
+      </form>
     </div>
   </section>
 </template>
