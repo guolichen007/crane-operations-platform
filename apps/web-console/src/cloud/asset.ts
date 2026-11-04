@@ -9,7 +9,14 @@ import type {
   EquipmentRelation,
 } from '../../../../contracts/typescript/types.gen';
 
-export type AssetListParams = { limit?: number; offset?: number; sort?: string; q?: string };
+export type AssetListParams = {
+  limit?: number;
+  offset?: number;
+  sort?: string;
+  q?: string;
+  status?: string;
+  type?: string;
+};
 export type LocationListParams = {
   limit?: number;
   offset?: number;
@@ -22,7 +29,13 @@ export type LocationListParams = {
 
 // ---- Asset master ----
 export const listAssets = (params: AssetListParams = {}) =>
-  api<AssetMasterData[]>('assets', { query: pageQuery(params.limit ?? 50, params.offset ?? 0, params.sort, params.q) });
+  api<AssetMasterData[]>('assets', {
+    query: {
+      ...pageQuery(params.limit ?? 50, params.offset ?? 0, params.sort, params.q),
+      status: params.status,
+      type: params.type,
+    },
+  });
 export const getAsset = (id: string) => api<AssetMasterData>(`assets/${encodeURIComponent(id)}`);
 export const createAsset = (input: AssetMasterData, idempotencyKey: string) =>
   api<AssetMasterData>('assets', { method: 'POST', body: input, idempotencyKey });

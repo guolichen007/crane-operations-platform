@@ -78,6 +78,18 @@ const moveMutation = useMutation({
 // ---- Equipment install / remove (asset-scoped, never a second master data
 // set). Removal closes the validity interval; an active runtime binding is
 // refused by the backend. ----
+// Registered equipment type codes, mirroring internal/equipment specFileFor. The
+// install form never offers an unregistered code (e.g. CRANE_BRIDGE).
+const equipmentTypeCodes = [
+  'MOTOR', 'PLC', 'SAFETY_PLC', 'VFD', 'SERVO_DRIVE',
+  'LIDAR_3D', 'LIDAR_2D', 'CAMERA_RGB', 'CAMERA_DEPTH', 'CAMERA_STEREO', 'CAMERA_THERMAL',
+  'INDUSTRIAL_PC', 'EDGE_GATEWAY', 'INDUSTRIAL_SWITCH', 'POE_SWITCH',
+  'LOAD_CELL', 'IMU', 'REDUCER', 'BRAKE', 'DRUM', 'HOOK', 'GRAB', 'WHEEL', 'COUPLING',
+  'PLC_IO', 'RELAY', 'CONTACTOR', 'REMOTE_CONTROLLER', 'ENCODER', 'ROPE_ENCODER',
+  'LIMIT_SWITCH', 'PROXIMITY_SENSOR', 'ANTI_COLLISION_SENSOR', 'WIND_SENSOR',
+  'TEMPERATURE_SENSOR', 'VIBRATION_SENSOR', 'GPU', 'ROUTER', 'MEDIA_CONVERTER',
+  'POWER_SUPPLY', 'UPS', 'TRANSFORMER', 'CONDUCTOR_RAIL',
+];
 const equipmentAdding = ref(false);
 const equipmentDraft = ref<EquipmentInstallation>({
   id: '',
@@ -92,6 +104,11 @@ const equipmentDraft = ref<EquipmentInstallation>({
   administrativeState: 'IN_SERVICE',
   version: 0,
 });
+// Optional spec fields are left empty rather than inventing device parameters.
+const equipmentSpec = ref<Record<string, unknown>>({});
+// The idempotency key stays stable across retries of one submit; a fresh key is
+// only generated when (re)opening the form or after a successful install.
+let equipmentIdemKey = '';
 function openEquipmentAdd() {
   equipmentDraft.value = {
     id: '',
@@ -106,21 +123,31 @@ function openEquipmentAdd() {
     administrativeState: 'IN_SERVICE',
     version: 0,
   };
+  equipmentSpec.value = {};
+  equipmentIdemKey = crypto.randomUUID();
   equipmentAdding.value = true;
 }
 const createEquipmentMutation = useMutation({
   mutationFn: () =>
-    createEquipment({ ...equipmentDraft.value, assetId: id.value }, crypto.randomUUID()),
+    createEquipment(
+      { ...equipmentDraft.value, assetId: id.value, spec: equipmentSpec.value },
+      equipmentIdemKey
+    ),
   onSuccess: async () => {
     equipmentAdding.value = false;
+    equipmentIdemKey = '';
     await queryClient.invalidateQueries({ queryKey: ['equipment', id] });
   },
   onError: (e) => (actionError.value = e instanceof ApiError ? e.message : '安装失败'),
 });
+const removingId = ref('');
+const removeConfirm = ref(false);
 const removeEquipmentMutation = useMutation({
   mutationFn: (equipmentId: string) =>
     removeEquipment(equipmentId, equipmentQuery.data.value!.find((x) => x.id === equipmentId)!.version),
   onSuccess: async () => {
+    removeConfirm.value = false;
+    removingId.value = '';
     await queryClient.invalidateQueries({ queryKey: ['equipment', id] });
   },
   onError: (e) => (actionError.value = e instanceof ApiError ? e.message : '拆卸失败'),
@@ -201,7 +228,7 @@ const statusText: Record<string, string> = {
                 <button
                   class="danger-action"
                   :disabled="removeEquipmentMutation.isPending.value"
-                  @click="removeEquipmentMutation.mutate(e.id)"
+                  @click="removingId = e.id; removeConfirm = true"
                 >
                   拆卸
                 </button>
@@ -262,7 +289,12 @@ const statusText: Record<string, string> = {
     <div v-if="equipmentAdding" class="modal-backdrop" @click.self="equipmentAdding = false">
       <form class="workspace-modal" data-testid="equipment-create-form" @submit.prevent="createEquipmentMutation.mutate()">
         <h2>安装 Equipment</h2>
-        <label>类型代码<input v-model="equipmentDraft.typeCode" required placeholder="CRANE_BRIDGE" /></label>
+        <label>设备类型
+          <select v-model="equipmentDraft.typeCode" required aria-label="设备类型选择">
+            <option value="" disabled>选择已注册类型</option>
+            <option v-for="t in equipmentTypeCodes" :key="t" :value="t">{{ t }}</option>
+          </select>
+        </label>
         <label>Equipment 编号<input v-model="equipmentDraft.equipmentCode" required /></label>
         <label>序列号<input v-model="equipmentDraft.serialNumber" /></label>
         <label>关键度
@@ -273,6 +305,7 @@ const statusText: Record<string, string> = {
             <option value="SAFETY_CRITICAL">安全关键</option>
           </select>
         </label>
+        <p class="muted small">规格字段按后端版本化 Schema 校验，未知参数留空，不凭空填写设备参数。</p>
         <div class="modal-actions">
           <button type="button" class="ghost-action" @click="equipmentAdding = false">取消</button>
           <button type="submit" class="primary-action" :disabled="createEquipmentMutation.isPending.value">
@@ -280,6 +313,23 @@ const statusText: Record<string, string> = {
           </button>
         </div>
       </form>
+    </div>
+
+    <div v-if="removeConfirm" class="modal-backdrop" @click.self="removeConfirm = false">
+      <div class="workspace-modal">
+        <h2>确认拆卸 Equipment</h2>
+        <p>拆卸将关闭安装有效期并保留历史记录，不会硬删除。存在活动 Runtime Binding 时后端将拒绝。</p>
+        <div class="modal-actions">
+          <button class="ghost-action" @click="removeConfirm = false">取消</button>
+          <button
+            class="danger-action"
+            :disabled="removeEquipmentMutation.isPending.value"
+            @click="removeEquipmentMutation.mutate(removingId)"
+          >
+            确认拆卸
+          </button>
+        </div>
+      </div>
     </div>
   </section>
 </template>
