@@ -231,6 +231,7 @@ export interface EquipmentInstallation {
   criticality: "LOW" | "MEDIUM" | "HIGH" | "SAFETY_CRITICAL";
   administrativeState: "IN_SERVICE" | "MAINTENANCE" | "OUT_OF_SERVICE" | "FAULT_REPORTED";
   version: number;
+  removedAt: string | null;
 }
 export interface EquipmentCatalogItem {
   id: string;

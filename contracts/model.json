@@ -1129,6 +1129,11 @@
       "version": {
         "type": "integer",
         "minimum": 1
+      },
+      "removedAt": {
+        "type": "string",
+        "format": "date-time",
+        "nullable": true
       }
     },
     "EquipmentCatalogItem": {

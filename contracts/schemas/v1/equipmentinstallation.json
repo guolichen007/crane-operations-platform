@@ -14,7 +14,8 @@
     "positionLabel",
     "criticality",
     "administrativeState",
-    "version"
+    "version",
+    "removedAt"
   ],
   "properties": {
     "id": {
@@ -98,6 +99,17 @@
     "version": {
       "type": "integer",
       "minimum": 1
+    },
+    "removedAt": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "date-time"
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "$defs": {}

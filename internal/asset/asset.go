@@ -1006,24 +1006,35 @@ func DisableCatalogItem(ctx context.Context, db *sql.DB, catalogID string, expec
 // ---------------------------------------------------------------------------
 // Equipment installation.
 // ---------------------------------------------------------------------------
-const equipmentColumns = `id,asset_id,equipment_code,type_code,catalog_item_id,serial_number,semantic_slot,position_label,criticality,administrative_state,version`
+const equipmentColumns = `id,asset_id,equipment_code,type_code,catalog_item_id,serial_number,semantic_slot,position_label,criticality,administrative_state,version,removed_at`
 
 func scanEquipment(row interface{ Scan(...any) error }) (contract.EquipmentInstallation, error) {
 	var v contract.EquipmentInstallation
-	err := row.Scan(&v.Id, &v.AssetId, &v.EquipmentCode, &v.TypeCode, &v.CatalogItemId, &v.SerialNumber, &v.SemanticSlot, &v.PositionLabel, &v.Criticality, &v.AdministrativeState, &v.Version)
+	err := row.Scan(&v.Id, &v.AssetId, &v.EquipmentCode, &v.TypeCode, &v.CatalogItemId, &v.SerialNumber, &v.SemanticSlot, &v.PositionLabel, &v.Criticality, &v.AdministrativeState, &v.Version, &v.RemovedAt)
 	return v, err
 }
 
 // resolveSpecSchemaVersion derives the spec schema version from the catalog item
-// when present, otherwise from the registered equipment type. It never hardcodes
-// "1".
-func resolveSpecSchemaVersion(ctx context.Context, tx *sql.Tx, typeCode string, catalogItemID *string) (string, error) {
+// when present, otherwise from the registered equipment type. When a catalog is
+// referenced it must be type-consistent, enabled, and global or same-project.
+// It never hardcodes "1".
+func resolveSpecSchemaVersion(ctx context.Context, tx *sql.Tx, assetProjectID, typeCode string, catalogItemID *string) (string, error) {
 	if catalogItemID != nil && *catalogItemID != "" {
-		var v string
-		if err := tx.QueryRowContext(ctx, `SELECT spec_schema_version FROM equipment_catalog_items WHERE id=$1`, *catalogItemID).Scan(&v); err != nil {
+		var catType, catStatus, schemaVersion string
+		var catProject *string
+		if err := tx.QueryRowContext(ctx, `SELECT type_code,status,spec_schema_version,project_id FROM equipment_catalog_items WHERE id=$1`, *catalogItemID).Scan(&catType, &catStatus, &schemaVersion, &catProject); err != nil {
 			return "", fmt.Errorf("catalog spec version: %w", err)
 		}
-		return v, nil
+		if catType != typeCode {
+			return "", fmt.Errorf("catalog type %q does not match equipment type %q", catType, typeCode)
+		}
+		if catStatus != "ACTIVE" {
+			return "", fmt.Errorf("catalog item %q is disabled", *catalogItemID)
+		}
+		if catProject != nil && *catProject != assetProjectID {
+			return "", ErrCrossProject
+		}
+		return schemaVersion, nil
 	}
 	var v string
 	if err := tx.QueryRowContext(ctx, `SELECT spec_schema_version FROM equipment_types WHERE type_code=$1`, typeCode).Scan(&v); err != nil {
@@ -1059,8 +1070,8 @@ func CreateEquipment(ctx context.Context, db *sql.DB, in contract.EquipmentInsta
 		}
 	}
 	// A retired asset can never receive a new equipment installation.
-	var assetStatus string
-	if err := tx.QueryRowContext(ctx, `SELECT asset_status FROM asset_devices WHERE id=$1 FOR UPDATE`, in.AssetId).Scan(&assetStatus); err != nil {
+	var assetStatus, projectID string
+	if err := tx.QueryRowContext(ctx, `SELECT asset_status, project_id FROM asset_devices WHERE id=$1 FOR UPDATE`, in.AssetId).Scan(&assetStatus, &projectID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return in, ErrNotFound
 		}
@@ -1069,7 +1080,7 @@ func CreateEquipment(ctx context.Context, db *sql.DB, in contract.EquipmentInsta
 	if assetStatus == "RETIRED" {
 		return in, ErrRetired
 	}
-	schemaVersion, err := resolveSpecSchemaVersion(ctx, tx, in.TypeCode, in.CatalogItemId)
+	schemaVersion, err := resolveSpecSchemaVersion(ctx, tx, projectID, in.TypeCode, in.CatalogItemId)
 	if err != nil {
 		return in, err
 	}
@@ -1089,10 +1100,6 @@ func CreateEquipment(ctx context.Context, db *sql.DB, in contract.EquipmentInsta
 	_, err = tx.ExecContext(ctx, `INSERT INTO asset_equipment_installations(id,asset_id,equipment_code,type_code,catalog_item_id,manufacturer_snapshot,brand_snapshot,model_snapshot,serial_number,semantic_slot,position_label,criticality,administrative_state,valid_from,version) VALUES($1,$2,$3,$4,$5,'','','',$6,$7,$8,$9,$10,now(),$11)`,
 		in.Id, in.AssetId, in.EquipmentCode, in.TypeCode, in.CatalogItemId, in.SerialNumber, in.SemanticSlot, in.PositionLabel, in.Criticality, in.AdministrativeState, in.Version)
 	if err != nil {
-		return in, err
-	}
-	var projectID string
-	if err := tx.QueryRowContext(ctx, `SELECT project_id FROM asset_devices WHERE id=$1`, in.AssetId).Scan(&projectID); err != nil {
 		return in, err
 	}
 	if err := revision(ctx, tx, projectID, in.AssetId, "equipment", in.Id, actor, requestID, []string{"created"}, in); err != nil {
@@ -1176,18 +1183,29 @@ func UpdateEquipment(ctx context.Context, db *sql.DB, in contract.EquipmentInsta
 	if version != expectedVersion {
 		return in, ErrVersionConflict
 	}
-	// The updated type must stay a registered equipment type; a catalog reference,
-	// when supplied, must resolve to an existing catalog item.
+	// The updated type must stay a registered equipment type.
 	if !equipment.ValidTypeCode(in.TypeCode) {
 		return in, fmt.Errorf("unsupported equipment type_code %q", in.TypeCode)
 	}
+	var projectID string
+	if err := tx.QueryRowContext(ctx, `SELECT project_id FROM asset_devices WHERE id=$1`, assetID).Scan(&projectID); err != nil {
+		return in, err
+	}
+	// A catalog reference, when supplied, must be type-consistent and in-scope.
 	if in.CatalogItemId != nil && *in.CatalogItemId != "" {
-		var one int
-		if err := tx.QueryRowContext(ctx, `SELECT 1 FROM equipment_catalog_items WHERE id=$1`, *in.CatalogItemId).Scan(&one); err != nil {
+		var catType string
+		var catProject *string
+		if err := tx.QueryRowContext(ctx, `SELECT type_code,project_id FROM equipment_catalog_items WHERE id=$1`, *in.CatalogItemId).Scan(&catType, &catProject); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return in, fmt.Errorf("catalog item %q not found", *in.CatalogItemId)
 			}
 			return in, err
+		}
+		if catType != in.TypeCode {
+			return in, fmt.Errorf("catalog type %q does not match equipment type %q", catType, in.TypeCode)
+		}
+		if catProject != nil && *catProject != projectID {
+			return in, ErrCrossProject
 		}
 	}
 	result, err := tx.ExecContext(ctx, `UPDATE asset_equipment_installations SET equipment_code=$2,type_code=$3,catalog_item_id=$4,serial_number=$5,semantic_slot=$6,position_label=$7,criticality=$8,administrative_state=$9,version=version+1,updated_at=now() WHERE id=$1 AND version=$10`,
@@ -1200,10 +1218,6 @@ func UpdateEquipment(ctx context.Context, db *sql.DB, in contract.EquipmentInsta
 	}
 	in.Version = version + 1
 	in.AssetId = assetID
-	var projectID string
-	if err := tx.QueryRowContext(ctx, `SELECT project_id FROM asset_devices WHERE id=$1`, assetID).Scan(&projectID); err != nil {
-		return in, err
-	}
 	if err := revision(ctx, tx, projectID, assetID, "equipment", in.Id, actor, requestID, []string{"updated"}, in); err != nil {
 		return in, err
 	}
