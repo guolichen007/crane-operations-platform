@@ -90,9 +90,12 @@ func ifMatchVersion(r *http.Request) (int64, bool) {
 	return n, err == nil && n > 0
 }
 
-// requestID threads the caller's X-Request-Id through entity revisions and the
+// requestID threads the validated request id through entity revisions and the
 // audit log. It never records credentials, cookies or tokens.
 func requestID(r *http.Request) string {
+	if id, ok := r.Context().Value(requestIDKey{}).(string); ok && id != "" {
+		return id
+	}
 	return strings.TrimSpace(r.Header.Get("X-Request-Id"))
 }
 

@@ -51,6 +51,36 @@ func currentPrincipal(r *http.Request) principal {
 	return p
 }
 
+type requestIDKey struct{}
+
+// validRequestID accepts a caller-supplied trace id only when it is short and
+// alphanumeric (plus - / _). Anything else is treated as absent.
+func validRequestID(id string) bool {
+	if id == "" || len(id) > 64 {
+		return false
+	}
+	for _, c := range id {
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+// ensureRequestID guarantees a legal, non-empty trace id for every request. A
+// valid client id is kept (it is a tracked input, never trusted for auth); an
+// invalid/missing one is replaced by a fresh id. The chosen id is echoed on the
+// response header and stored in the request context.
+func ensureRequestID(w http.ResponseWriter, r *http.Request) *http.Request {
+	id := strings.TrimSpace(r.Header.Get("X-Request-Id"))
+	if !validRequestID(id) {
+		id = platform.ID()
+	}
+	w.Header().Set("X-Request-Id", id)
+	return r.WithContext(context.WithValue(r.Context(), requestIDKey{}, id))
+}
+
 func respondAPI(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
@@ -424,6 +454,7 @@ func (h *apiHandler) register(mux *http.ServeMux) error {
 		if stateChanging(r.Method) {
 			r.Body = http.MaxBytesReader(w, r.Body, 16384)
 		}
+		r = ensureRequestID(w, r)
 		api.ServeHTTP(w, r)
 	})
 	if h.web != nil {

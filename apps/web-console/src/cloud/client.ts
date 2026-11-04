@@ -36,6 +36,12 @@ const STATUS_CODE: Record<number, string> = {
 
 const STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
+// A fresh, short trace id per write request. It is a tracking input only; the
+// server validates and falls back to its own id when this one is invalid.
+function requestId(): string {
+  return crypto.randomUUID().replace(/-/g, '').slice(0, 20);
+}
+
 /**
  * Unified workspace API client: JSON + CSRF + 401/403 handling + If-Match +
  * Idempotency-Key + stable API error codes + pagination query serialization.
@@ -47,7 +53,12 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   if (options.body !== undefined) headers['Content-Type'] = 'application/json';
   if (options.ifMatch !== undefined) headers['If-Match'] = `"${options.ifMatch}"`;
   if (options.idempotencyKey) headers['Idempotency-Key'] = options.idempotencyKey;
-  if (STATE_CHANGING.has(method)) Object.assign(headers, await csrfHeader());
+  if (STATE_CHANGING.has(method)) {
+    Object.assign(headers, await csrfHeader());
+    // Trace id: a short caller-supplied id used only for audit correlation. The
+    // server validates it and falls back to its own id when missing/invalid.
+    headers['X-Request-Id'] = requestId();
+  }
 
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(options.query ?? {}))
