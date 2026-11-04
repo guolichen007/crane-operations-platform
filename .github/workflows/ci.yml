@@ -139,12 +139,43 @@ jobs:
       - name: 隔离运维与证书故障回滚反证（不访问真实CA）
         run: sudo env PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/ops -v
       - run: node tools/task.mjs a1-test
+  b4-business-acceptance:
+    # Real Keycloak + real PostgreSQL + real cloud-api/web-console + Playwright
+    # browser business acceptance. Runs on every branch (fix/feature/main/PR);
+    # SKIP / NOT_RUN are never counted as PASS because the fixture refuses skips.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
+        with: { go-version: '1.27.3', cache: true }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with: { node-version: '24.19.0', cache: npm }
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: 构建本地生产候选镜像（隔离，不发布）
+        run: |
+          docker build --build-arg SOURCE_SHA="$GITHUB_SHA" -f deploy/Dockerfile.backend -t crane-a1-cloud:local .
+          docker build --build-arg SOURCE_SHA="$GITHUB_SHA" -f deploy/Dockerfile.web-production -t crane-a1-web:local .
+      - name: 真实 Keycloak + PostgreSQL 浏览器业务验收
+        run: B4_BUSINESS=1 node tools/task.mjs a1-production-test
+      - name: 归档 B4 视觉与失败证据
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: b4-business-evidence-${{ github.sha }}
+          if-no-files-found: ignore
+          path: |
+            test-results/b4-visual/**/*.png
+            test-results/**/*.png
+            playwright-report/b4/**
   production-release:
     # Production images are only published on an explicit main push (or a PR's
     # local candidate build). Feature/fix branch pushes keep their security,
     # build, integration and E2E verification jobs but must never release.
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    needs: [repository-contract, backend, edge, r2-db-test, frontend, integration, security, a1-security]
+    needs: [repository-contract, backend, edge, r2-db-test, frontend, integration, security, a1-security, b4-business-acceptance]
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:

@@ -81,6 +81,16 @@ try {
   if (state.some(name => /simulator|remote|pointcloud/.test(name))) throw Error('Unexpected production fixture service');
   const npm = process.platform === 'win32' ? [process.execPath, [join(dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js'), 'exec', '--', 'playwright', 'test', '--config', 'playwright.auth.config.ts']] : ['npx', ['playwright', 'test', '--config', 'playwright.auth.config.ts']];
   run(npm[0], npm[1], { A1_WEB_ORIGIN: webOrigin, A1_AUTH_ORIGIN: authOrigin, A1_BROWSER_PASSWORD_FILE: join(directory, 'secrets/browser_test_password') });
+  if (process.env.B4_BUSINESS === '1') {
+    // B4 real-Keycloak browser business acceptance (asset/equipment CRUD, RBAC,
+    // CSRF, 1280 visual) on the same isolated environment. The fixture seed
+    // always provisions the B4 identities, so this never touches production.
+    const b4Args = [...npm[1]];
+    b4Args[b4Args.indexOf('--config') + 1] = 'playwright.b4.config.ts';
+    run(npm[0], b4Args, { A1_WEB_ORIGIN: webOrigin, A1_AUTH_ORIGIN: authOrigin, A1_BROWSER_PASSWORD_FILE: join(directory, 'secrets/browser_test_password') });
+    run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-tool', '--operation', 'verify-b4-state']);
+    console.log('B4_BUSINESS_ACCEPTANCE=PASS KEYCLOAK=REAL E2E_BROWSER_CRUD=REAL RBAC=REAL DB_STATE=VERIFIED');
+  }
   // Backup CLI uses the same isolated project through a generated resolved Compose file; no secrets are emitted.
   const resolvedFile = join(directory, 'resolved.yml'); writeFileSync(resolvedFile, run(docker, [...compose, 'config'], {}, true), { mode: 0o600 });
   const python = process.platform === 'win32' ? 'python' : 'python3';
