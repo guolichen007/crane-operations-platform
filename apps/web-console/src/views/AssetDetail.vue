@@ -10,6 +10,7 @@ import {
   moveAsset,
   listEquipment,
   createEquipment,
+  updateEquipment,
   removeEquipment,
   listLocations,
 } from '../cloud/asset';
@@ -153,6 +154,29 @@ const removeEquipmentMutation = useMutation({
   onError: (e) => (actionError.value = e instanceof ApiError ? e.message : '拆卸失败'),
 });
 
+// ---- Equipment update (If-Match) — only editable business fields; a removed
+// equipment cannot be edited; TELEMETRY_OWNED data is never sent. ----
+const equipmentEditing = ref<EquipmentInstallation | null>(null);
+const equipmentEditError = ref('');
+function openEquipmentEdit(e: EquipmentInstallation) {
+  equipmentEditing.value = { ...e };
+  equipmentEditError.value = '';
+}
+const updateEquipmentMutation = useMutation({
+  mutationFn: (draft: EquipmentInstallation) => updateEquipment(draft.id, draft, equipmentEditing.value!.version),
+  onSuccess: async () => {
+    equipmentEditing.value = null;
+    await queryClient.invalidateQueries({ queryKey: ['equipment', id] });
+  },
+  onError: (e) => {
+    if (e instanceof ApiError && e.status === 409) {
+      equipmentEditError.value = '版本冲突：该 Equipment 已被他人修改，请刷新后重试。';
+    } else {
+      equipmentEditError.value = e instanceof ApiError ? e.message : '更新失败';
+    }
+  },
+});
+
 const asset = computed(() => assetQuery.data.value);
 const statusText: Record<string, string> = {
   DRAFT: '草稿',
@@ -225,6 +249,13 @@ const statusText: Record<string, string> = {
               <td>{{ e.administrativeState }}</td>
               <td>v{{ e.version }}</td>
               <td v-if="canWrite">
+                <button
+                  v-if="e.administrativeState !== 'OUT_OF_SERVICE'"
+                  class="ghost-action"
+                  @click="openEquipmentEdit(e)"
+                >
+                  编辑
+                </button>
                 <button
                   class="danger-action"
                   :disabled="removeEquipmentMutation.isPending.value"
@@ -310,6 +341,34 @@ const statusText: Record<string, string> = {
           <button type="button" class="ghost-action" @click="equipmentAdding = false">取消</button>
           <button type="submit" class="primary-action" :disabled="createEquipmentMutation.isPending.value">
             安装
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <div v-if="equipmentEditing" class="modal-backdrop" @click.self="equipmentEditing = null">
+      <form
+        class="workspace-modal"
+        data-testid="equipment-edit-form"
+        @submit.prevent="updateEquipmentMutation.mutate(equipmentEditing)"
+      >
+        <h2>编辑 Equipment（If-Match v{{ equipmentEditing.version }}）</h2>
+        <label>Equipment 编号<input v-model="equipmentEditing.equipmentCode" required /></label>
+        <label>序列号<input v-model="equipmentEditing.serialNumber" /></label>
+        <label>关键度
+          <select v-model="equipmentEditing.criticality">
+            <option value="LOW">低</option>
+            <option value="MEDIUM">中</option>
+            <option value="HIGH">高</option>
+            <option value="SAFETY_CRITICAL">安全关键</option>
+          </select>
+        </label>
+        <p class="muted small">设备类型、Catalog 与 Spec 在此不修改（后端边界一致）。</p>
+        <p v-if="equipmentEditError" class="form-error" role="alert">{{ equipmentEditError }}</p>
+        <div class="modal-actions">
+          <button type="button" class="ghost-action" @click="equipmentEditing = null">取消</button>
+          <button type="submit" class="primary-action" :disabled="updateEquipmentMutation.isPending.value">
+            保存
           </button>
         </div>
       </form>
