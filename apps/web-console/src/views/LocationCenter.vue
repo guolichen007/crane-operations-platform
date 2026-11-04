@@ -3,7 +3,7 @@ import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { useQuery } from '@tanstack/vue-query';
 import { Search, MapPin } from 'lucide-vue-next';
-import { listLocations } from '../cloud/asset';
+import { listAllLocations } from '../cloud/asset';
 import { webSession } from '../cloud/session';
 import type { AssetLocation } from '../../../../contracts/typescript/types.gen';
 
@@ -19,23 +19,9 @@ const projectId = computed(() => {
   return webSession.value?.projects?.[0]?.projectId ?? '';
 });
 
-// Fetch every location node by paging through the server's 100-item window (no
-// server-side filter), so a project with more than 100 nodes is fully browsable
-// instead of silently truncated. The full flat list is the source for the tree.
-async function fetchAllLocations(projectId: string) {
-  const all: AssetLocation[] = [];
-  const pageSize = 100;
-  for (let offset = 0; ; offset += pageSize) {
-    const page = await listLocations(projectId, { limit: pageSize, offset, sort: 'name' });
-    all.push(...page);
-    if (page.length < pageSize) break;
-  }
-  return all;
-}
-
 const locationsQuery = useQuery({
   queryKey: ['locations', projectId],
-  queryFn: () => fetchAllLocations(projectId.value),
+  queryFn: () => listAllLocations(projectId.value, { sort: 'name' }),
   enabled: computed(() => !!projectId.value),
 });
 
@@ -118,6 +104,9 @@ const flattened = computed(() => {
     </div>
 
     <p v-if="locationsQuery.isLoading.value" class="skeleton table-skeleton" aria-busy="true"></p>
+    <p v-else-if="locationsQuery.isError.value" class="workspace-error" role="alert">
+      位置加载失败：{{ (locationsQuery.error.value as Error).message }}
+    </p>
     <p v-else-if="!projectId" class="workspace-empty">请先在顶部选择项目范围。</p>
     <p v-else-if="!flattened.length" class="workspace-empty">暂无位置数据。</p>
     <div v-else class="data-table-wrap">

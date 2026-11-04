@@ -12,7 +12,7 @@ import {
   createEquipment,
   updateEquipment,
   removeEquipment,
-  listLocations,
+  listAllLocations,
 } from '../cloud/asset';
 import { ApiError } from '../cloud/client';
 import { webSession } from '../cloud/session';
@@ -33,9 +33,12 @@ const equipmentQuery = useQuery({
   queryKey: ['equipment', id],
   queryFn: () => listEquipment(id.value),
 });
+// Move-target candidates use a distinct cache entry from the LocationCenter tree
+// (which also keys on ['locations', projectId]) and fetch every ACTIVE
+// same-project location, so the picker never omits a legal target past page one.
 const locationsQuery = useQuery({
-  queryKey: ['locations', assetQuery.data.value?.projectId],
-  queryFn: () => listLocations(assetQuery.data.value?.projectId ?? ''),
+  queryKey: ['asset-move-locations', assetQuery.data.value?.projectId],
+  queryFn: () => listAllLocations(assetQuery.data.value?.projectId ?? '', { status: 'ACTIVE' }),
   enabled: computed(() => !!assetQuery.data.value?.projectId),
 });
 

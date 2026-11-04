@@ -56,6 +56,19 @@ export const listLocations = (projectId: string, params: LocationListParams = {}
       parentId: params.parentId,
     },
   });
+// listAllLocations pages through the server's 100-item window so a project with
+// more than 100 nodes is fully browsable instead of silently truncated. Used by
+// both the location tree and the asset move-target picker.
+export async function listAllLocations(projectId: string, params: LocationListParams = {}): Promise<AssetLocation[]> {
+  const all: AssetLocation[] = [];
+  const pageSize = 100;
+  for (let offset = 0; ; offset += pageSize) {
+    const page = await listLocations(projectId, { ...params, limit: pageSize, offset });
+    all.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return all;
+}
 export const getLocation = (id: string) => api<AssetLocation>(`locations/${encodeURIComponent(id)}`);
 export const createLocation = (input: AssetLocation) =>
   api<AssetLocation>(`projects/${encodeURIComponent(input.projectId)}/locations`, { method: 'POST', body: input });
