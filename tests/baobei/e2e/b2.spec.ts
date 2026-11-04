@@ -8,7 +8,11 @@ const action = (p: Page, id: string) => p.locator(`[data-action-id="${id}"]:visi
 async function login(p: Page, subject: string) {
   await p.goto('/login');
   await p.locator('select').selectOption(subject);
-  await action(p, 'auth.dev-login').click();
+  const [response] = await Promise.all([
+    p.waitForResponse((r) => new URL(r.url()).pathname === '/auth/dev' && r.request().method() === 'POST'),
+    action(p, 'auth.dev-login').click(),
+  ]);
+  expect(response.status()).toBe(200);
   await expect(p.getByRole('heading', { name: '工作台', exact: true })).toBeVisible();
 }
 async function api(p: Page, path: string, method = 'GET', body?: unknown) {

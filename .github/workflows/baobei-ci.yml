@@ -129,6 +129,7 @@ jobs:
           cache-dependency-path: services/project-intake-api/go.sum
       - run: npx playwright install --with-deps chromium
         working-directory: apps/project-intake-web
+      - run: npm run build --prefix apps/project-intake-web
       - name: Start synthetic application
         env:
           APP_ENV: development
@@ -138,7 +139,7 @@ jobs:
           DATABASE_URL: postgres://baobei@127.0.0.1:55439/baobei_test?sslmode=disable
         run: |
           (cd services/project-intake-api && go run .) > /tmp/baobei-api.log 2>&1 &
-          npm run dev --prefix apps/project-intake-web > /tmp/baobei-web.log 2>&1 &
+          (cd apps/project-intake-web && node node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port 5188 --strictPort --configLoader runner) > /tmp/baobei-web.log 2>&1 &
           for attempt in $(seq 1 60); do
             if curl --fail --silent http://127.0.0.1:8088/health/ready && curl --fail --silent http://127.0.0.1:5188/auth/config; then exit 0; fi
             sleep 1
