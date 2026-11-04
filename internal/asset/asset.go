@@ -582,7 +582,9 @@ func ListLocations(ctx context.Context, db *sql.DB, projectID string, opts ListO
 		return nil, 0, err
 	}
 	args = append(args, limit, offset)
-	rows, err := db.QueryContext(ctx, `SELECT `+locationColumns+` FROM asset_locations WHERE `+where+` ORDER BY `+order+` LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
+	// id is the stable secondary sort key so pagination never reorders or drops
+	// rows when names collide across page boundaries.
+	rows, err := db.QueryContext(ctx, `SELECT `+locationColumns+` FROM asset_locations WHERE `+where+` ORDER BY `+order+`, id ASC LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1097,8 +1099,14 @@ func CreateEquipment(ctx context.Context, db *sql.DB, in contract.EquipmentInsta
 	if in.Criticality == "" {
 		in.Criticality = "MEDIUM"
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO asset_equipment_installations(id,asset_id,equipment_code,type_code,catalog_item_id,manufacturer_snapshot,brand_snapshot,model_snapshot,serial_number,semantic_slot,position_label,criticality,administrative_state,valid_from,version) VALUES($1,$2,$3,$4,$5,'','','',$6,$7,$8,$9,$10,now(),$11)`,
-		in.Id, in.AssetId, in.EquipmentCode, in.TypeCode, in.CatalogItemId, in.SerialNumber, in.SemanticSlot, in.PositionLabel, in.Criticality, in.AdministrativeState, in.Version)
+	// removedAt is server-managed: a client can never forge the uninstall time on
+	// creation (the installation starts active).
+	in.RemovedAt = nil
+	if len(spec) == 0 {
+		spec = json.RawMessage(`{}`)
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO asset_equipment_installations(id,asset_id,equipment_code,type_code,catalog_item_id,manufacturer_snapshot,brand_snapshot,model_snapshot,serial_number,semantic_slot,position_label,criticality,administrative_state,valid_from,version,spec_json) VALUES($1,$2,$3,$4,$5,'','','',$6,$7,$8,$9,$10,now(),$11,$12::jsonb)`,
+		in.Id, in.AssetId, in.EquipmentCode, in.TypeCode, in.CatalogItemId, in.SerialNumber, in.SemanticSlot, in.PositionLabel, in.Criticality, in.AdministrativeState, in.Version, string(spec))
 	if err != nil {
 		return in, err
 	}
@@ -1167,10 +1175,10 @@ func UpdateEquipment(ctx context.Context, db *sql.DB, in contract.EquipmentInsta
 		return in, err
 	}
 	defer tx.Rollback()
-	var assetID string
+	var assetID, existingType string
 	var version int64
 	var validTo sql.NullTime
-	if err := tx.QueryRowContext(ctx, `SELECT asset_id,version,valid_to FROM asset_equipment_installations WHERE id=$1 FOR UPDATE`, in.Id).Scan(&assetID, &version, &validTo); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT asset_id,version,valid_to,type_code FROM asset_equipment_installations WHERE id=$1 FOR UPDATE`, in.Id).Scan(&assetID, &version, &validTo, &existingType); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return in, ErrNotFound
 		}
@@ -1183,10 +1191,13 @@ func UpdateEquipment(ctx context.Context, db *sql.DB, in contract.EquipmentInsta
 	if version != expectedVersion {
 		return in, ErrVersionConflict
 	}
-	// The updated type must stay a registered equipment type.
-	if !equipment.ValidTypeCode(in.TypeCode) {
-		return in, fmt.Errorf("unsupported equipment type_code %q", in.TypeCode)
+	// typeCode is part of the installation identity and stays stable: to change
+	// it, remove the old instance and install a new one.
+	if in.TypeCode != existingType {
+		return in, fmt.Errorf("equipment type_code is immutable (%s → %s); remove and reinstall to change type", existingType, in.TypeCode)
 	}
+	// removedAt is server-managed; a client can never forge it on update.
+	in.RemovedAt = nil
 	var projectID string
 	if err := tx.QueryRowContext(ctx, `SELECT project_id FROM asset_devices WHERE id=$1`, assetID).Scan(&projectID); err != nil {
 		return in, err
