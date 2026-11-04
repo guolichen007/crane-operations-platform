@@ -1016,6 +1016,15 @@ func scanEquipment(row interface{ Scan(...any) error }) (contract.EquipmentInsta
 	return v, err
 }
 
+// equipmentSnapshot records the validated instance spec alongside the
+// installation so spec content is traceable through entity_revisions, not only
+// stored on the row. The equipment field is flattened; spec is added as an
+// explicit sibling key.
+type equipmentSnapshot struct {
+	contract.EquipmentInstallation
+	Spec json.RawMessage `json:"spec,omitempty"`
+}
+
 // resolveSpecSchemaVersion derives the spec schema version from the catalog item
 // when present, otherwise from the registered equipment type. When a catalog is
 // referenced it must be type-consistent, enabled, and global or same-project.
@@ -1110,7 +1119,7 @@ func CreateEquipment(ctx context.Context, db *sql.DB, in contract.EquipmentInsta
 	if err != nil {
 		return in, err
 	}
-	if err := revision(ctx, tx, projectID, in.AssetId, "equipment", in.Id, actor, requestID, []string{"created"}, in); err != nil {
+	if err := revision(ctx, tx, projectID, in.AssetId, "equipment", in.Id, actor, requestID, []string{"created"}, equipmentSnapshot{EquipmentInstallation: in, Spec: spec}); err != nil {
 		return in, err
 	}
 	if err := auditlog.Write(ctx, tx, auditlog.Event{Actor: actor, Project: projectID, Action: "equipment_created", Result: "success", RequestID: requestID}); err != nil {
@@ -1176,9 +1185,11 @@ func UpdateEquipment(ctx context.Context, db *sql.DB, in contract.EquipmentInsta
 	}
 	defer tx.Rollback()
 	var assetID, existingType string
+	var existingCatalog sql.NullString
+	var existingSpecText string
 	var version int64
 	var validTo sql.NullTime
-	if err := tx.QueryRowContext(ctx, `SELECT asset_id,version,valid_to,type_code FROM asset_equipment_installations WHERE id=$1 FOR UPDATE`, in.Id).Scan(&assetID, &version, &validTo, &existingType); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT asset_id,version,valid_to,type_code,catalog_item_id,spec_json::text FROM asset_equipment_installations WHERE id=$1 FOR UPDATE`, in.Id).Scan(&assetID, &version, &validTo, &existingType, &existingCatalog, &existingSpecText); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return in, ErrNotFound
 		}
@@ -1196,28 +1207,19 @@ func UpdateEquipment(ctx context.Context, db *sql.DB, in contract.EquipmentInsta
 	if in.TypeCode != existingType {
 		return in, fmt.Errorf("equipment type_code is immutable (%s → %s); remove and reinstall to change type", existingType, in.TypeCode)
 	}
+	// catalogItemId is part of the installation identity too, for the same reason:
+	// the persisted spec_json was validated against the linked catalog's schema at
+	// install time. Re-linking to a different (or missing) catalog would silently
+	// orphan that validation, and this update path accepts no new spec to revalidate.
+	// To change the catalog, remove the instance and reinstall with the new catalog.
+	if strOrEmpty(in.CatalogItemId) != existingCatalog.String {
+		return in, fmt.Errorf("equipment catalog_item_id is immutable (%q → %q); remove and reinstall to change catalog", existingCatalog.String, strOrEmpty(in.CatalogItemId))
+	}
 	// removedAt is server-managed; a client can never forge it on update.
 	in.RemovedAt = nil
 	var projectID string
 	if err := tx.QueryRowContext(ctx, `SELECT project_id FROM asset_devices WHERE id=$1`, assetID).Scan(&projectID); err != nil {
 		return in, err
-	}
-	// A catalog reference, when supplied, must be type-consistent and in-scope.
-	if in.CatalogItemId != nil && *in.CatalogItemId != "" {
-		var catType string
-		var catProject *string
-		if err := tx.QueryRowContext(ctx, `SELECT type_code,project_id FROM equipment_catalog_items WHERE id=$1`, *in.CatalogItemId).Scan(&catType, &catProject); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return in, fmt.Errorf("catalog item %q not found", *in.CatalogItemId)
-			}
-			return in, err
-		}
-		if catType != in.TypeCode {
-			return in, fmt.Errorf("catalog type %q does not match equipment type %q", catType, in.TypeCode)
-		}
-		if catProject != nil && *catProject != projectID {
-			return in, ErrCrossProject
-		}
 	}
 	result, err := tx.ExecContext(ctx, `UPDATE asset_equipment_installations SET equipment_code=$2,type_code=$3,catalog_item_id=$4,serial_number=$5,semantic_slot=$6,position_label=$7,criticality=$8,administrative_state=$9,version=version+1,updated_at=now() WHERE id=$1 AND version=$10`,
 		in.Id, in.EquipmentCode, in.TypeCode, in.CatalogItemId, in.SerialNumber, in.SemanticSlot, in.PositionLabel, in.Criticality, in.AdministrativeState, expectedVersion)
@@ -1229,7 +1231,7 @@ func UpdateEquipment(ctx context.Context, db *sql.DB, in contract.EquipmentInsta
 	}
 	in.Version = version + 1
 	in.AssetId = assetID
-	if err := revision(ctx, tx, projectID, assetID, "equipment", in.Id, actor, requestID, []string{"updated"}, in); err != nil {
+	if err := revision(ctx, tx, projectID, assetID, "equipment", in.Id, actor, requestID, []string{"updated"}, equipmentSnapshot{EquipmentInstallation: in, Spec: json.RawMessage(existingSpecText)}); err != nil {
 		return in, err
 	}
 	if err := auditlog.Write(ctx, tx, auditlog.Event{Actor: actor, Project: projectID, Action: "equipment_updated", Result: "success", RequestID: requestID}); err != nil {

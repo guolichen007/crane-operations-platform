@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
@@ -160,5 +161,57 @@ func TestCreateEquipmentCatalogTypeMismatchRejected(t *testing.T) {
 	in.EquipmentCode = "EQ-2"
 	if _, err := CreateEquipment(ctx, db, in, json.RawMessage(`{}`), "actor", "req-2", ""); err == nil {
 		t.Fatal("install referencing a disabled catalog must be rejected")
+	}
+}
+
+func TestUpdateEquipmentCatalogImmutability(t *testing.T) {
+	db := testsupport.Database(t)
+	ctx := context.Background()
+	seedProject(t, db, "Project-A")
+	seedEquipmentType(t, db, "MOTOR")
+	// Two same-type MOTOR catalogs in the same project: re-linking from one to the
+	// other must be refused because the persisted spec was validated against the
+	// original catalog's schema.
+	catA, err := CreateCatalogItem(ctx, db, contract.EquipmentCatalogItem{ProjectId: strPtr("Project-A"), Name: "MOTOR-A", TypeCode: "MOTOR"}, "actor", "req-ca")
+	if err != nil {
+		t.Fatal(err)
+	}
+	catB, err := CreateCatalogItem(ctx, db, contract.EquipmentCatalogItem{ProjectId: strPtr("Project-A"), Name: "MOTOR-B", TypeCode: "MOTOR"}, "actor", "req-cb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	asset, _ := CreateAsset(ctx, db, testAsset("Project-A"), "actor", "req-0", "")
+	in := equipmentInput(asset.Id, "EQ-1")
+	in.CatalogItemId = &catA.Id
+	eq, err := CreateEquipment(ctx, db, in, motorSpec, "actor", "req-1", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Re-linking to a different same-type catalog must be rejected.
+	relink := eq
+	relink.CatalogItemId = &catB.Id
+	if _, err := UpdateEquipment(ctx, db, relink, eq.Version, "actor", "req-2"); err == nil {
+		t.Fatal("re-linking equipment to a different catalog must be rejected")
+	}
+	// Unlinking the catalog entirely must be rejected too.
+	unlink := eq
+	unlink.CatalogItemId = nil
+	if _, err := UpdateEquipment(ctx, db, unlink, eq.Version, "actor", "req-3"); err == nil {
+		t.Fatal("unlinking equipment catalog must be rejected")
+	}
+	// Keeping the same catalog is allowed for ordinary field edits.
+	keep := eq
+	keep.Criticality = "HIGH"
+	if _, err := UpdateEquipment(ctx, db, keep, eq.Version, "actor", "req-4"); err != nil {
+		t.Fatalf("update with unchanged catalog = %v, want nil", err)
+	}
+	// The created revision snapshot must record the validated spec content.
+	var snapshot string
+	if err := db.QueryRow(`SELECT snapshot_json::text FROM entity_revisions WHERE entity_type='equipment' AND entity_id=$1 ORDER BY revision ASC LIMIT 1`, eq.Id).Scan(&snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(snapshot, `"rated_power_kw"`) {
+		t.Fatalf("created revision snapshot does not record spec content: %s", snapshot)
 	}
 }
