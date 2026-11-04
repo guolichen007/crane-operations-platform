@@ -131,3 +131,34 @@ func TestUpdateEquipmentTypeAndCatalogGuard(t *testing.T) {
 		t.Fatal("update to unknown catalog item must fail")
 	}
 }
+
+func TestCreateEquipmentCatalogTypeMismatchRejected(t *testing.T) {
+	db := testsupport.Database(t)
+	ctx := context.Background()
+	seedProject(t, db, "Project-A")
+	seedEquipmentType(t, db, "MOTOR")
+	seedEquipmentType(t, db, "PLC")
+	// A same-project PLC catalog item.
+	plcCatalog, err := CreateCatalogItem(ctx, db, contract.EquipmentCatalogItem{ProjectId: strPtr("Project-A"), Name: "PLC-1", TypeCode: "PLC"}, "actor", "req-c")
+	if err != nil {
+		t.Fatal(err)
+	}
+	asset, _ := CreateAsset(ctx, db, testAsset("Project-A"), "actor", "req-0", "")
+	// MOTOR equipment referencing a PLC catalog must be rejected.
+	in := equipmentInput(asset.Id, "EQ-1")
+	in.CatalogItemId = &plcCatalog.Id
+	if _, err := CreateEquipment(ctx, db, in, motorSpec, "actor", "req-1", ""); err == nil {
+		t.Fatal("MOTOR equipment with PLC catalog must be rejected")
+	}
+	// Disabled catalog must not be used for a new install.
+	// (disable is project-scoped through DisableCatalogItem)
+	if err := DisableCatalogItem(ctx, db, plcCatalog.Id, plcCatalog.Version, "actor", "req-d"); err != nil {
+		t.Fatal(err)
+	}
+	// Same type but now-disabled catalog: still must be rejected.
+	in.TypeCode = "PLC"
+	in.EquipmentCode = "EQ-2"
+	if _, err := CreateEquipment(ctx, db, in, json.RawMessage(`{}`), "actor", "req-2", ""); err == nil {
+		t.Fatal("install referencing a disabled catalog must be rejected")
+	}
+}
