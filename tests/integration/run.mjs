@@ -300,7 +300,10 @@ async function assetModeCheck() {
     const { chromium, expect } = await import('@playwright/test');
     browser = await chromium.launch(win ? { channel: 'chrome' } : { headless: true });
     const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
-    await page.goto((process.env.PHASE0_WEB_URL || `http://127.0.0.1:${config.WEB_PORT || 18080}`) + '/#/overview');
+    // Single absolute Web origin shared by every navigation: the raw browser has
+    // no baseURL, so a bare '/#/...' would be an invalid URL.
+    const webUrl = process.env.PHASE0_WEB_URL || `http://127.0.0.1:${config.WEB_PORT || 18080}`;
+    await page.goto(webUrl + '/#/overview');
     await page.getByLabel('本地开发凭据', { exact: true }).fill(token);
     await page.getByRole('button', { name: '连接云端', exact: true }).click();
     // Unified flagship: API mode renders the same Twin Cockpit scene as demo.
@@ -315,17 +318,23 @@ async function assetModeCheck() {
     // The legacy Inventory /devices page is no longer a sidebar entry (the sidebar
     // now exposes the formal asset center /assets), so reach it directly to keep
     // its 10 simulated-device counter-assertion intact.
-    await page.goto('/#/devices');
+    await page.goto(webUrl + '/#/devices');
     await expect(page.getByTestId('inventory-asset')).toHaveCount(10);
     await expect(page.getByTestId('inventory-asset').first()).toContainText('规划模拟 · 模拟在线');
     await page.screenshot({ path: root + '/inventory-devices.png', fullPage: true });
     record('A0 legacy Inventory /devices keeps 10 simulated devices with planned-simulation labels');
     // The formal asset center /assets consumes the Asset API domain (separate from
-    // the Inventory API feeding the flagship) and must render via its own nav.
+    // the Inventory API feeding the flagship) and must really request it — not just
+    // render its container.
+    const assetApiRequest = page.waitForRequest(
+      (req) => new URL(req.url()).pathname === '/api/v1/assets' && req.method() === 'GET',
+      { timeout: 10000 }
+    );
     await page.getByRole('link', { name: '资产', exact: true }).click();
+    assert.equal(new URL((await assetApiRequest).url()).pathname, '/api/v1/assets');
     await expect(page.getByTestId('asset-center')).toBeVisible();
     await page.screenshot({ path: root + '/asset-center.png', fullPage: true });
-    record('A0 formal asset center /assets renders through the 资产 nav (Asset API domain)');
+    record('A0 formal asset center /assets renders through the 资产 nav and loads from the Asset API');
   } finally {
     await browser?.close();
     assetCompose(['stop', 'cloud-api', 'device-simulator']);
