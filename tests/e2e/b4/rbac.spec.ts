@@ -60,6 +60,18 @@ test('RBAC：P002 用户不能越权写 P001', async ({ page }) => {
   expect(status).toBe(404);
 });
 
+test('RBAC：P001 用户直接读取 P002 资产隐藏为 404', async ({ page }) => {
+  await login(page, 'b4-admin');
+  const status = await page.evaluate(async () => (await fetch('/api/v1/assets/b4-p002-asset')).status);
+  expect(status).toBe(404);
+});
+
+test('RBAC：P002 用户可读取本项目固定反证资产', async ({ page }) => {
+  await login(page, 'b4-p002');
+  const status = await page.evaluate(async () => (await fetch('/api/v1/assets/b4-p002-asset')).status);
+  expect(status).toBe(200);
+});
+
 test('CSRF：缺失或错误 CSRF 不能写入', async ({ page }) => {
   await login(page, 'b4-admin');
   const [missing, wrong] = await page.evaluate(async () => {

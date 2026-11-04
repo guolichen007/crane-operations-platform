@@ -19,17 +19,19 @@ test('真实 Keycloak 浏览器：资产与 Equipment 完整业务 CRUD（新建
   await createForm.getByPlaceholder('CRN-001').fill(assetCode);
   await createForm.getByRole('button', { name: '创建' }).click();
 
-  // 3. 进入资产详情。
+  // 3. 进入资产详情（版本 v1；权威版本终态由 verify-b4-state 从 PG 断言）。
   await expect(page.getByTestId('asset-detail')).toBeVisible();
   await expect(page.getByTestId('asset-detail')).toContainText(assetCode);
+  await expect(page.getByTestId('asset-detail')).toContainText('v1');
   const assetId = new URL(page.url()).hash.replace('#/assets/', '');
 
-  // 4. 修改资产：改类型（保留编号供 PG 终态核对）。
+  // 4. 修改资产：改类型（保留编号供 PG 终态核对），版本递增到 v2。
   await page.getByRole('button', { name: '编辑', exact: true }).click();
   const editForm = page.locator('.workspace-modal');
   await editForm.getByLabel('类型').fill('GANTRY');
   await editForm.getByRole('button', { name: '保存' }).click();
   await expect(page.getByTestId('asset-detail')).toContainText('GANTRY');
+  await expect(page.getByTestId('asset-detail')).toContainText('v2');
 
   // 5-7. 选择合法位置并移动（P001 已由 fixture 种入 ACTIVE 位置）。
   await page.getByRole('button', { name: '移动', exact: true }).click();

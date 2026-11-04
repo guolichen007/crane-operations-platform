@@ -38,6 +38,11 @@ const b3Packages = [
     'TestEquipmentActiveBindingRemoveRejected',
     'TestRevisionAndAuditWritten',
   ]],
+  ['migrations', './deploy/postgres/migrations', [
+    'TestMigrationUpFromEmptyAppliesSpec',
+    'TestMigrationDownRefusedKeepsVersionConsistent',
+    'TestMigrationUpFromOldDatabase',
+  ]],
 ];
 function run(command, args, extra = {}, capture = false) {
   const result = spawnSync(command, args, { encoding: 'utf8', stdio: capture ? 'pipe' : 'inherit', env: { ...environment, ...extra } });

@@ -260,7 +260,9 @@ func seed(ctx context.Context) error {
 			return err
 		}
 	}
-	if _, err = asset.CreateAsset(ctx, db, contract.AssetMasterData{ProjectId: "P002", AssetType: "CRANE", AssetCode: strp("CRN-P002-01")}, fixtureActor, fixtureReq, ""); err != nil {
+	// A fixed-id P002 asset is the cross-project read counter-proof target: a P001
+	// principal must get 404 (never a leak) when reading it directly.
+	if _, err = db.ExecContext(ctx, `INSERT INTO asset_devices(id,project_id,display_name,lifecycle,asset_code,asset_type,asset_status,version) VALUES('b4-p002-asset','P002','CRN-P002-01','PLANNED','CRN-P002-01','CRANE','ACTIVE',1) ON CONFLICT (id) DO NOTHING`); err != nil {
 		return err
 	}
 	document, err := inventory.Load("/fixture/inventory.json")
@@ -342,6 +344,15 @@ func verifyB4State(ctx context.Context) error {
 	var orphanAudits int
 	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM audit_logs WHERE project_id='P001' AND action IN ('asset_created','asset_updated','asset_moved','asset_retired','equipment_created','equipment_updated','equipment_removed') AND result='success' AND (request_id IS NULL OR request_id='')`).Scan(&orphanAudits); err != nil || orphanAudits != 0 {
 		return fmt.Errorf("b4 success audits missing request_id = %d, want 0", orphanAudits)
+	}
+	// Exact request-id correlation: every asset/equipment revision must have a
+	// matching audit row carrying the same request id (no orphaned revision).
+	var orphanRevisions int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM entity_revisions r WHERE r.entity_type='asset' AND r.entity_id=$1 AND r.request_id<>'' AND NOT EXISTS (SELECT 1 FROM audit_logs a WHERE a.request_id=r.request_id)`, assetID).Scan(&orphanRevisions); err != nil || orphanRevisions != 0 {
+		return fmt.Errorf("b4 asset revisions without matching audit = %d, want 0", orphanRevisions)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM entity_revisions r WHERE r.entity_type='equipment' AND r.entity_id=$1 AND r.request_id<>'' AND NOT EXISTS (SELECT 1 FROM audit_logs a WHERE a.request_id=r.request_id)`, eqID).Scan(&orphanRevisions); err != nil || orphanRevisions != 0 {
+		return fmt.Errorf("b4 equipment revisions without matching audit = %d, want 0", orphanRevisions)
 	}
 	fmt.Println("B4_BUSINESS_DB_STATE=PASS ASSET=RETIRED EQUIPMENT=REMOVED REVISIONS_AND_AUDIT_CORRELATED")
 	return nil
