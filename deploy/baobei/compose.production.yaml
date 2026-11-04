@@ -28,8 +28,8 @@ services:
       OIDC_ISSUER: https://crane.youdaozd.com/realms/crane
       OIDC_CLIENT_ID: baobei-web
       OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
-      DATABASE_URL_FILE: /run/secrets/database_url
-    secrets: [oidc_client_secret, database_url]
+      DATABASE_URL_FILE: /run/secrets/runtime_database_url
+    secrets: [oidc_client_secret, runtime_database_url]
     networks: [internal, egress]
     read_only: true
     tmpfs: [/tmp]
@@ -40,14 +40,16 @@ services:
     image: postgres:18.4-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
     restart: unless-stopped
     environment:
-      POSTGRES_USER: baobei
+      POSTGRES_USER: baobei_bootstrap
       POSTGRES_DB: baobei
       POSTGRES_PASSWORD_FILE: /run/secrets/db_password
     secrets: [db_password]
     networks: [internal]
-    volumes: [baobei-production-data:/var/lib/postgresql]
+    volumes:
+      - baobei-production-data:/var/lib/postgresql
+      - ./db/initialize.sql:/docker-entrypoint-initdb.d/10-baobei-roles.sql:ro
     healthcheck:
-      test: [CMD-SHELL, pg_isready -U baobei -d baobei]
+      test: [CMD-SHELL, pg_isready -U baobei_bootstrap -d baobei]
       interval: 5s
       timeout: 3s
       retries: 30
@@ -64,8 +66,8 @@ networks:
 secrets:
   oidc_client_secret:
     file: ${BAOBEI_SECRETS_DIR:?External secret directory}/oidc_client_secret
-  database_url:
-    file: ${BAOBEI_SECRETS_DIR:?External secret directory}/database_url
+  runtime_database_url:
+    file: ${BAOBEI_SECRETS_DIR:?External secret directory}/runtime_database_url
   db_password:
     file: ${BAOBEI_SECRETS_DIR:?External secret directory}/db_password
 configs:

@@ -5,7 +5,7 @@ BAOBEI_MAIN_MERGE=FORBIDDEN
 BAOBEI_R2_MERGE=FORBIDDEN
 BASE_SHA=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18
 BRANCH=product/baobei-v1
-CURRENT_BATCH=BB-B2-R1
+CURRENT_BATCH=BB-B2-R2
 STOP_AFTER_BB_B2=YES
 
 目标：快速报项目、识别重复、明确归属并跟进。独立产品，永不合并 main/R2。
@@ -49,3 +49,10 @@ S1B_PUBLIC_DEPLOY=NOT_AUTHORIZED；GHCR_PUBLISHED=NO；ACME_SERVER_APPLIED=NO。
 完成本地验证并 push product/baobei-v1、等待原八门后 STOP_AFTER_BB_B2_R1=YES；发布工作流只交付机制，不触发。main/R2/真实生产保持禁止修改。
 
 本地验证证据：[07-BB-B2-R1验收报告](07-BB-B2-R1验收报告.md)。
+
+## BB-B2-R2 首次发布机制与数据库权限
+
+START_HEAD=89000c3ee1508c64f44369d97767e19f9b97cf09，基线 CI Run 41611873351 八门通过。
+生产部署契约已记录一次性 release ref、人工审批及 PostgreSQL 角色。此次交付范围为产品分支和验证，release ref、发布和生产操作等待负责人独立授权。
+
+验证记录见 [08-BB-B2-R2验收报告](08-BB-B2-R2验收报告.md)。

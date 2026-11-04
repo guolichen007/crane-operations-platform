@@ -13,6 +13,9 @@ import urllib.request
 
 REPOSITORY = 'guolichen007/crane-operations-platform'
 SOURCE = 'https://github.com/' + REPOSITORY
+API = 'https://api.github.com/repos/' + REPOSITORY
+ENVIRONMENT = 'baobei-ghcr-publish'
+RELEASE_PREFIX = 'refs/heads/release/baobei-publish-'
 BRANCH = 'product/baobei-v1'
 IMAGES = {k: 'ghcr.io/guolichen007/baobei-' + k for k in ('web', 'api')}
 GATES = {'baobei-' + k for k in ('contract', 'web-quality', 'api-test', 'db-test', 'e2e', 'security', 'compose', 'build')}
@@ -48,6 +51,70 @@ def verify_ci(sha, fetch=get_json):
         raise ClosureError('All eight gates must succeed in the same run attempt')
     return latest['id']
 
+def release_branch(sha, env, event):
+    ref = RELEASE_PREFIX + sha
+    if (not re.fullmatch(r'[a-f0-9]{40}', sha)
+            or env.get('GITHUB_SHA') != sha or env.get('GITHUB_REF') != ref
+            or env.get('GITHUB_REPOSITORY') != REPOSITORY or env.get('GITHUB_EVENT_NAME') != 'push'
+            or env.get('GITHUB_RUN_ATTEMPT') != '1'
+            or not re.fullmatch(r'[0-9]+', env.get('GITHUB_RUN_ID', ''))
+            or event.get('ref') != ref or event.get('after') != sha
+            or event.get('created') is not True or event.get('forced') is not False
+            or event.get('deleted') is not False):
+        raise ClosureError('RELEASE_REF_DENIED')
+    return ref.removeprefix('refs/heads/')
+
+
+def verify_environment(branch, fetch, run_id=None, actor_id=None):
+    url = API + '/environments/' + ENVIRONMENT
+    try:
+        settings = fetch(url)
+        rules = settings['protection_rules']
+        reviewers = [r for r in rules if r['type'] == 'required_reviewers']
+        policies = fetch(url + '/deployment-branch-policies?per_page=100')
+        if (settings['name'] != ENVIRONMENT or type(settings['id']) is not int
+                or len(reviewers) != 1 or not reviewers[0]['reviewers']
+                or reviewers[0].get('prevent_self_review') is not True
+                or settings['deployment_branch_policy'] != {
+                    'protected_branches': False, 'custom_branch_policies': True}
+                or policies['total_count'] != 1 or len(policies['branch_policies']) != 1
+                or policies['branch_policies'][0]['name'] != branch
+                or policies['branch_policies'][0]['type'] != 'branch'):
+            raise ValueError('Environment protection mismatch')
+        reviewer_ids = {
+            item['reviewer']['id'] for item in reviewers[0]['reviewers']
+            if item['type'] == 'User' and type(item['reviewer']['id']) is int
+        }
+        if len(reviewer_ids) != len(reviewers[0]['reviewers']):
+            raise ValueError('Direct user reviewers required')
+        if run_id is not None:
+            reviews = fetch(API + '/actions/runs/' + run_id + '/approvals')
+            if not actor_id or not any(
+                review['state'] == 'approved'
+                and review['user']['id'] in reviewer_ids
+                and str(review['user']['id']) != actor_id
+                and any(e['id'] == settings['id'] and e['name'] == ENVIRONMENT
+                        for e in review['environments'])
+                for review in reviews
+            ):
+                raise ValueError('Human approval missing')
+    except Exception as error:
+        raise ClosureError('RELEASE_ENV_NOT_VERIFIED') from error
+
+
+def verify_release(sha, env, event, execute, fetch, *, require_approval):
+    branch = release_branch(sha, env, event)
+    if execute(['git', 'rev-parse', 'HEAD']).strip() != sha:
+        raise ClosureError('Checkout must match source SHA')
+    execute(['git', 'merge-base', '--is-ancestor', sha, 'origin/' + BRANCH])
+    if execute(['git', 'status', '--porcelain', '--untracked-files=normal']).strip():
+        raise ClosureError('Clean checkout required')
+    ci_run = verify_ci(sha, fetch)
+    verify_environment(branch, fetch, env['GITHUB_RUN_ID'] if require_approval else None,
+                       env.get('GITHUB_ACTOR_ID'))
+    return ci_run
+
+
 def registry_digest(output):
     matches = re.findall(r'^Digest:\s+(sha256:[a-f0-9]{64})\s*$', output, re.MULTILINE)
     if len(matches) != 1:
@@ -79,21 +146,16 @@ def atomic_json(path, data):
         if os.path.exists(temp):
             os.unlink(temp)
 
-def publish(root, sha, run_id, token, actor, execute=run, fetch=get_json):
-    if not re.fullmatch(r'[a-f0-9]{40}', sha) or not re.fullmatch(r'[0-9]+-[0-9]+', run_id):
-        raise ClosureError('Invalid release identity')
+def publish(root, sha, env, event, token, actor, execute=run, fetch=get_json):
+    release_branch(sha, env, event)
+    run_id = env['GITHUB_RUN_ID'] + '-' + env['GITHUB_RUN_ATTEMPT']
     root = Path(root)
     out = root / 'local-private/baobei/registry-release' / sha
     out.mkdir(parents=True, exist_ok=True)
     manifest_path = out / 'deployment-manifest.json'
     manifest_path.unlink(missing_ok=True)
     atomic_json(out / 'publish-status.json', {'READY_FOR_PRODUCTION': 'NO', 'S1B_PUBLIC_DEPLOY': 'NOT_AUTHORIZED', 'registry_published': False})
-    if execute(['git', 'rev-parse', 'HEAD']).strip() != sha:
-        raise ClosureError('Checkout must match source SHA')
-    execute(['git', 'merge-base', '--is-ancestor', sha, 'origin/' + BRANCH])
-    if execute(['git', 'status', '--porcelain', '--untracked-files=normal']).strip():
-        raise ClosureError('Clean checkout required')
-    ci_run = verify_ci(sha, fetch)
+    ci_run = verify_release(sha, env, event, execute, fetch, require_approval=True)
     # No credential can reach Docker build args/context or build subprocess environment.
     clean_env = {k: v for k, v in os.environ.items() if k not in ('GITHUB_TOKEN', 'GH_TOKEN', 'NODE_AUTH_TOKEN', 'DOCKER_AUTH_CONFIG')}
     tags = {kind: name + ':sha-' + sha + '-run-' + run_id for kind, name in IMAGES.items()}
@@ -118,11 +180,15 @@ def publish(root, sha, run_id, token, actor, execute=run, fetch=get_json):
                 ref = name + '@' + digest
                 execute(['docker', 'pull', '--platform', 'linux/amd64', ref], env=auth_env)
                 verify_image(json.loads(execute(['docker', 'image', 'inspect', ref], env=auth_env)), ref, sha)
-                # Fails closed for a private first package. Owner must set Public and retry,
-                # or approve a separate read-only server credential design before deployment.
-                execute(['docker', 'pull', '--platform', 'linux/amd64', ref], env=public_env)
-                verify_image(json.loads(execute(['docker', 'image', 'inspect', ref], env=public_env)), ref, sha)
                 refs[kind] = (ref, digest)
+            # Verify public access after both packages have been pushed. A first
+            # release can create both private packages for the owner to review.
+            for ref, _ in refs.values():
+                try:
+                    execute(['docker', 'pull', '--platform', 'linux/amd64', ref], env=public_env)
+                except ClosureError as error:
+                    raise ClosureError('PUBLIC_PULL_NOT_VERIFIED') from error
+                verify_image(json.loads(execute(['docker', 'image', 'inspect', ref], env=public_env)), ref, sha)
         finally:
             try:
                 execute(['docker', 'logout', 'ghcr.io'], env=auth_env)
@@ -148,15 +214,24 @@ def publish(root, sha, run_id, token, actor, execute=run, fetch=get_json):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--source-sha', required=True)
+    parser.add_argument('--preflight', action='store_true')
     args = parser.parse_args()
     try:
-        if os.environ.get('GITHUB_EVENT_NAME') != 'workflow_dispatch' or os.environ.get('GITHUB_REPOSITORY') != REPOSITORY or os.environ.get('GITHUB_REF') != 'refs/heads/' + BRANCH:
-            raise ClosureError('Manual product branch workflow only')
-        publish(Path.cwd(), args.source_sha, os.environ['GITHUB_RUN_ID'] + '-' + os.environ['GITHUB_RUN_ATTEMPT'], os.environ.get('GITHUB_TOKEN', ''), os.environ['GITHUB_ACTOR'])
+        event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text(encoding='utf-8'))
+        if args.preflight:
+            verify_release(args.source_sha, os.environ, event, run, get_json, require_approval=False)
+            print('RELEASE_PREFLIGHT=PASS')
+            return
+        publish(Path.cwd(), args.source_sha, os.environ, event,
+                os.environ.get('GITHUB_TOKEN', ''), os.environ['GITHUB_ACTOR'])
         print('REGISTRY_MANIFEST_VERIFIED=YES READY_FOR_PRODUCTION=NO S1B_PUBLIC_DEPLOY=NOT_AUTHORIZED')
-    except Exception:
-        # Subprocess output and credential-bearing exceptions never enter logs/artifacts.
-        raise SystemExit('GHCR publish failed; no production readiness granted. READY_FOR_PRODUCTION=NO')
+    except Exception as error:
+        if isinstance(error, ClosureError) and str(error) in {
+            'RELEASE_ENV_NOT_VERIFIED', 'PUBLIC_PULL_NOT_VERIFIED',
+        }:
+            raise SystemExit(str(error) + ' STOP') from None
+        raise SystemExit('GHCR release rejected. READY_FOR_PRODUCTION=NO') from None
+
 
 if __name__ == '__main__':
     main()

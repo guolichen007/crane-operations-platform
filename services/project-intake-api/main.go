@@ -2,9 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"embed"
-	"encoding/hex"
 	"fmt"
 	"log"
 	"net"
@@ -17,53 +14,6 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
-
-//go:embed migrations/*.sql
-var migrations embed.FS
-
-func migrate(ctx context.Context, pool *pgxpool.Pool) error {
-	tx, e := pool.Begin(ctx)
-	if e != nil {
-		return e
-	}
-	defer tx.Rollback(ctx)
-	if _, e = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(727101)`); e != nil {
-		return e
-	}
-	if _, e = tx.Exec(ctx, `CREATE TABLE IF NOT EXISTS baobei_migrations(name text PRIMARY KEY, checksum text NOT NULL)`); e != nil {
-		return e
-	}
-	entries, e := migrations.ReadDir("migrations")
-	if e != nil {
-		return e
-	}
-	for _, f := range entries {
-		b, e := migrations.ReadFile("migrations/" + f.Name())
-		if e != nil {
-			return e
-		}
-		h := sha256.Sum256(b)
-		checksum := hex.EncodeToString(h[:])
-		var prior string
-		e = tx.QueryRow(ctx, `SELECT checksum FROM baobei_migrations WHERE name=$1`, f.Name()).Scan(&prior)
-		if e == nil {
-			if prior != checksum {
-				return fmt.Errorf("migration checksum mismatch")
-			}
-			continue
-		}
-		if e.Error() != "no rows in result set" {
-			return e
-		}
-		if _, e = tx.Exec(ctx, string(b)); e != nil {
-			return e
-		}
-		if _, e = tx.Exec(ctx, `INSERT INTO baobei_migrations VALUES($1,$2)`, f.Name(), checksum); e != nil {
-			return e
-		}
-	}
-	return tx.Commit(ctx)
-}
 
 type Config struct {
 	Env, Addr, Origin, Issuer, ClientID, Secret string
@@ -93,39 +43,68 @@ func config() (Config, error) {
 	return c, nil
 }
 func main() {
-	c, e := config()
-	if e != nil {
-		log.Fatal(e)
+	command := ""
+	if len(os.Args) > 1 {
+		switch {
+		case len(os.Args) >= 3 && os.Args[1] == "maintenance" && os.Args[2] == "identity-apply":
+			command = "identity-apply"
+		case len(os.Args) == 3 && os.Args[1] == "maintenance" && (os.Args[2] == "migrate" || os.Args[2] == "protection-sweep"):
+			command = os.Args[2]
+		default:
+			log.Fatal("unknown maintenance command")
+		}
+	}
+	c := Config{Env: os.Getenv("APP_ENV")}
+	if c.Env != "development" && c.Env != "production" {
+		log.Fatal("explicit APP_ENV required")
+	}
+	var e error
+	if command == "" {
+		c, e = config()
+		if e != nil {
+			log.Fatal(e)
+		}
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if envSecret("DATABASE_URL") == "" {
+	dsn := envSecret("DATABASE_URL")
+	if dsn == "" {
 		log.Fatal("explicit DATABASE_URL required")
 	}
-	pool, e := pgxpool.New(ctx, envSecret("DATABASE_URL"))
+	database, e := pgxpool.ParseConfig(dsn)
+	if e != nil {
+		log.Fatal("database configuration failed")
+	}
+	if c.Env == "production" {
+		database.ConnConfig.RuntimeParams["search_path"] = "public"
+	}
+	pool, e := pgxpool.NewWithConfig(ctx, database)
 	if e != nil {
 		log.Fatal("database configuration failed")
 	}
 	defer pool.Close()
-	if e = migrate(ctx, pool); e != nil {
-		log.Fatal("database migration failed")
+	check, cancel := context.WithTimeout(ctx, time.Minute)
+	e = prepareDatabase(check, pool, c.Env, command)
+	cancel()
+	if e != nil {
+		log.Fatal("database role, migration or schema verification failed")
 	}
-	if len(os.Args) > 1 {
-		if len(os.Args) >= 3 && os.Args[1] == "maintenance" && os.Args[2] == "identity-apply" {
-			if e = identityCommand(ctx, pool, os.Args[3:], os.Stdout); e != nil {
-				log.Fatal(e)
-			}
-			return
+	switch command {
+	case "migrate":
+		fmt.Println("database schema verified")
+		return
+	case "identity-apply":
+		if e = identityCommand(ctx, pool, os.Args[3:], os.Stdout); e != nil {
+			log.Fatal(e)
 		}
-		if len(os.Args) == 3 && os.Args[1] == "maintenance" && os.Args[2] == "protection-sweep" {
-			n, e := (&App{db: pool, cfg: c}).protectionSweep(ctx, time.Now().UTC())
-			if e != nil {
-				log.Fatal("protection sweep failed")
-			}
-			fmt.Printf("protection sweep updated=%d\n", n)
-			return
+		return
+	case "protection-sweep":
+		n, e := (&App{db: pool, cfg: c}).protectionSweep(ctx, time.Now().UTC())
+		if e != nil {
+			log.Fatal("protection sweep failed")
 		}
-		log.Fatal("unknown maintenance command")
+		fmt.Printf("protection sweep updated=%d\n", n)
+		return
 	}
 	a, e := newApp(ctx, pool, c)
 	if e != nil {

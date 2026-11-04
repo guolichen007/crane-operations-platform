@@ -1,6 +1,6 @@
 # 项目报备中心工程入口
 
-仅适用于 product/baobei-v1 独立 worktree。当前阶段 BB-B2-R1 Production Closure；负责人 BB_B2_CODE_REVIEW=PASS，START_HEAD=06d911007b01fe3fda10a1bc3a6687984376fa21。仅生产收口，不开发新销售功能；完成本地验证后仅 push 产品分支、等待原八门 CI，然后 STOP。S1B_PUBLIC_DEPLOY=NOT_AUTHORIZED；禁止 workflow_dispatch 发布镜像、真实身份/证书/生产操作。
+仅适用于 product/baobei-v1 独立 worktree。当前阶段 BB-B2-R2，START_HEAD=89000c3ee1508c64f44369d97767e19f9b97cf09。完成首次发布机制和数据库权限收口后，仅提交并 push 产品分支，等待原八门 CI，再 STOP。S1B_PUBLIC_DEPLOY=NOT_AUTHORIZED。真实 release ref、GHCR、服务器和生产操作需要负责人后续单独授权。
 唯一事实源：docs/项目报备中心/00-项目总览与SSOT.md；UI 动作事实源：交互动作矩阵.md。
 固定基线 29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18；永久产品分支 product/baobei-v1。
 禁止合并 main / R2，禁止修改既有 Crane 代码、生产服务器、DNS、TLS、真实账号及现场数据。

@@ -1,6 +1,7 @@
 **
 !go.mod
 !go.sum
+!database-grants.sql
 !*.go
 !migrations
 !migrations/*.sql

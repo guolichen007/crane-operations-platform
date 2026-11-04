@@ -89,6 +89,7 @@ jobs:
           cache-dependency-path: services/project-intake-api/go.sum
       - run: node tools/task.mjs baobei race
       - run: node tools/task.mjs baobei integration
+      - run: node tools/task.mjs baobei db-privileges
       - name: Root-only identity CLI ownership and database fixture
         run: |
           docker run --rm --network host -e BAOBEI_TEST_DATABASE_URL \

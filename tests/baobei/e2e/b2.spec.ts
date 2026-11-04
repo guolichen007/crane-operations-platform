@@ -63,6 +63,7 @@ test('B2 manager approve return reject duplicate comparison and transfer', async
   const distinct = await create(page, prefix + '重复', prefix + '重复客户');
   void base;
   await action(page, 'auth.logout').click();
+  await expect(page).toHaveURL('/login');
   await login(page, 'synthetic-manager');
   await page.getByRole('button', { name: '报备审核', exact: true }).click();
   for (const [p, op] of [
@@ -101,6 +102,7 @@ test('B2 manager approve return reject duplicate comparison and transfer', async
   await expect(page.locator('.detail-body')).toContainText('Synthetic主管转移归属');
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
   await action(page, 'auth.logout').click();
+  await expect(page).toHaveURL('/login');
   await login(page, 'synthetic-b');
   await page.goto('/projects/' + approve.id);
   await action(page, 'project.stage-change').click();

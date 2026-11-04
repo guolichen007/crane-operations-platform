@@ -35,6 +35,12 @@ export function validateProduction(c) {
   assert.equal(env.OIDC_ISSUER, 'https://crane.youdaozd.com/realms/crane');
   assert(env.OIDC_CLIENT_SECRET_FILE && !env.OIDC_CLIENT_SECRET);
   assert(!env.DATABASE_URL);
+  assert.equal(env.DATABASE_URL_FILE, '/run/secrets/runtime_database_url');
+  assert.deepEqual(s['baobei-api'].secrets.map(secret => secret.source).sort(),
+    ['oidc_client_secret', 'runtime_database_url']);
+  assert.equal(s['baobei-postgres'].environment.POSTGRES_USER, 'baobei_bootstrap');
+  assert(s['baobei-postgres'].volumes.some(volume =>
+    volume.target === '/docker-entrypoint-initdb.d/10-baobei-roles.sql' && volume.read_only));
   for (const name of ['baobei-web', 'baobei-api'])
     assert(new RegExp('^ghcr\\.io/guolichen007/' + name + '@sha256:[a-f0-9]{64}$').test(s[name].image), 'fixed GHCR registry digest required');
   assert.equal(s['baobei-postgres'].image,'postgres:18.4-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15');
@@ -65,6 +71,8 @@ if (r.status) throw Error(r.stderr);
 const c = JSON.parse(r.stdout);
 validateProduction(c);
 for (const mutate of [
+  (x) => (x.services['baobei-api'].environment.DATABASE_URL_FILE = '/run/secrets/migrator_database_url'),
+  (x) => (x.services['baobei-api'].secrets.push({source:'maintenance_database_url'})),
   (x) => (x.services['baobei-api'].ports = [{ target: 8088, published: '8088' }]),
   (x) => (x.services['baobei-web'].networks.crane = {}),
   (x) => (x.services['baobei-postgres'].networks.egress = {}),

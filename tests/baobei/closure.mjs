@@ -44,9 +44,15 @@ export function validateClosure(x){
   assert(x.service.includes('ProtectSystem=strict')&&x.service.includes('PrivateTmp=true')&&x.service.includes('/srv/u-dao/secrets/baobei/acme'));
   assert(x.timer.includes('Unit=u-dao-baobei-cert-renew.service')&&x.timer.includes('Persistent=true'));
   for(const value of ['VERSION=3.1.6','verify-tag','807da6498377ee5e0cf43a78091f46f12dc59a89','c7d68b021cfd6380ea83a82962abde5b484779fee0b97d38681dfa1396bbc8d7'])assert(x.provision.includes(value));
-  const workflow=parse(x.publish);assert.deepEqual(Object.keys(workflow.on),['workflow_dispatch']);
-  assert.equal(workflow.on.workflow_dispatch.inputs.source_sha.required,true);
-  assert.deepEqual(workflow.permissions,{contents:'read',packages:'write'});
+  const workflow = parse(x.publish);
+  assert.deepEqual(Object.keys(workflow.on), ['push']);
+  assert.deepEqual(workflow.on.push.branches, ['release/baobei-publish-' + '[0-9a-f]'.repeat(40)]);
+  assert.deepEqual(workflow.permissions, {contents:'read'});
+  assert.deepEqual(workflow.jobs.publish.permissions, {contents:'read', packages:'write'});
+  assert.equal(workflow.jobs.publish.environment, 'baobei-ghcr-publish');
+  assert.equal(workflow.jobs.publish.needs, 'preflight');
+  assert(workflow.jobs.preflight.steps.at(-1).run.endsWith('--preflight'));
+  assert.equal(workflow.env.SOURCE_SHA, '$' + '{{ github.sha }}');
   for(const f of ['.github/workflows/baobei-ci.yml','.github/workflows/baobei-publish.yml'])
     for(const [,ref] of read(f).matchAll(/uses:\s*([^\s#]+)/g))assert.match(ref,/@[a-f0-9]{40}$/);
   assert.equal(Object.keys(parse(read('.github/workflows/baobei-ci.yml')).jobs).length,8);
@@ -66,9 +72,11 @@ for(const [name,mutate]of [
  ['ACME-cross-product',x=>x.cert=x.cert.replace('secrets/baobei/acme','secrets/crane-ops/acme')],
  ['ACME-unit-cross-product',x=>x.service=x.service.replace('u-dao-baobei-cert-renew','u-dao-crane-cert-renew')],
  ['full-scope-ON',x=>x.keycloak=x.keycloak.replace('Full Scope Allowed | OFF','Full Scope Allowed | ON')],
- ['push-publish',x=>x.publish=x.publish.replace('  workflow_dispatch:','  push: {}\n  workflow_dispatch:')],
+ ['product-push-publish', x => x.publish = x.publish.replace("'release/baobei-publish-", "'product/baobei-")],
+ ['missing-environment', x => x.publish = x.publish.replace('environment: baobei-ghcr-publish', 'environment: unprotected')],
+ ['missing-preflight', x => x.publish = x.publish.replace('needs: preflight', 'needs: []')],
 ]){const x=structuredClone(input);mutate(x);assert.throws(()=>validateClosure(x),name);}
 console.log('WEB_CONTAINER_PORT=8080 SHARED_INGRESS_UPSTREAM=baobei-web:8080');
 console.log('WEB_IMAGE_REQUIRES_REGISTRY_DIGEST=YES API_IMAGE_REQUIRES_REGISTRY_DIGEST=YES POSTGRES_PINNED_DIGEST=YES PRODUCTION_POSTGRES_PINNED=YES');
 console.log('REALM_ROLE_AUTHORIZED=NO CLIENT_ROLE_ID_TOKEN_REQUIRED=YES PRODUCTION_IDENTITY_AUTO_PROVISION=NO IDENTITY_APPLY_AVAILABLE=YES BAOBEI_ACME_ISOLATED_FROM_CRANE=YES');
-console.log('Production closure and 12 negative contracts PASS');
+console.log('Production closure and 14 negative contracts PASS');

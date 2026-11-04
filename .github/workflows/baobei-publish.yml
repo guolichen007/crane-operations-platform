@@ -1,46 +1,67 @@
 name: Baobei GHCR Publish
 on:
-  workflow_dispatch:
-    inputs:
-      source_sha:
-        description: '完整产品提交 SHA；必须已通过 Baobei CI 八门'
-        type: string
-        required: true
+  push:
+    branches:
+      - 'release/baobei-publish-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'
 permissions:
   contents: read
-  packages: write
 concurrency:
-  group: baobei-publish-${{ inputs.source_sha }}
+  group: baobei-publish-${{ github.sha }}
   cancel-in-progress: false
+env:
+  SOURCE_SHA: ${{ github.sha }}
 jobs:
-  publish:
-    if: github.repository == 'guolichen007/crane-operations-platform' && github.ref == 'refs/heads/product/baobei-v1'
+  preflight:
+    if: github.repository == 'guolichen007/crane-operations-platform' && github.event.created && !github.event.deleted && !github.event.forced
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      SOURCE_SHA: ${{ inputs.source_sha }}
+    timeout-minutes: 5
     steps:
-      - name: Validate exact input
-        shell: bash
-        run: '[[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]'
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ inputs.source_sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Prove product ancestry before executing source
+      - name: Verify release ref and product ancestry
         shell: bash
         run: |
+          [[ "$GITHUB_REF" =~ ^refs/heads/release/baobei-publish-([0-9a-f]{40})$ ]]
+          test "${BASH_REMATCH[1]}" = "$SOURCE_SHA"
+          test "$GITHUB_SHA" = "$SOURCE_SHA"
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           git fetch --no-tags origin refs/heads/product/baobei-v1:refs/remotes/origin/product/baobei-v1
           git merge-base --is-ancestor "$SOURCE_SHA" origin/product/baobei-v1
-      - name: Verify eight gates, build, publish and verify anonymous digest pulls
+      - name: Verify CI and pre-existing environment protection
+        run: python3 deploy/baobei/publish/publish.py --source-sha "$SOURCE_SHA" --preflight
+  publish:
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: baobei-ghcr-publish
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify release ref and product ancestry
+        shell: bash
+        run: |
+          [[ "$GITHUB_REF" =~ ^refs/heads/release/baobei-publish-([0-9a-f]{40})$ ]]
+          test "${BASH_REMATCH[1]}" = "$SOURCE_SHA"
+          test "$GITHUB_SHA" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          git fetch --no-tags origin refs/heads/product/baobei-v1:refs/remotes/origin/product/baobei-v1
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/product/baobei-v1
+      - name: Verify human approval and publish verified digests
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 deploy/baobei/publish/publish.py --source-sha "$SOURCE_SHA"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: baobei-registry-deployment-${{ inputs.source_sha }}
-          path: local-private/baobei/registry-release/${{ inputs.source_sha }}/deployment-manifest.json
+          name: baobei-registry-deployment-${{ github.sha }}
+          path: local-private/baobei/registry-release/${{ github.sha }}/deployment-manifest.json
           if-no-files-found: error
           retention-days: 30
