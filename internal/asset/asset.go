@@ -548,6 +548,20 @@ func ListLocations(ctx context.Context, db *sql.DB, projectID string, opts ListO
 		args = append(args, "%"+opts.Q+"%")
 		where += fmt.Sprintf(" AND (name ILIKE $%d OR code ILIKE $%d)", len(args), len(args))
 	}
+	// Allowlisted location filters: kind / status / parent are column conditions,
+	// never raw client SQL.
+	if opts.LocationKind != "" {
+		args = append(args, opts.LocationKind)
+		where += fmt.Sprintf(" AND kind=$%d", len(args))
+	}
+	if opts.LocationStatus != "" {
+		args = append(args, opts.LocationStatus)
+		where += fmt.Sprintf(" AND status=$%d", len(args))
+	}
+	if opts.LocationParent != "" {
+		args = append(args, opts.LocationParent)
+		where += fmt.Sprintf(" AND parent_id=$%d", len(args))
+	}
 	var total int
 	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM asset_locations WHERE `+where, args...).Scan(&total); err != nil {
 		return nil, 0, err

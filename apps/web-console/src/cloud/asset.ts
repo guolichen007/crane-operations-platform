@@ -10,7 +10,15 @@ import type {
 } from '../../../../contracts/typescript/types.gen';
 
 export type AssetListParams = { limit?: number; offset?: number; sort?: string; q?: string };
-export type LocationListParams = { limit?: number; offset?: number; sort?: string; q?: string };
+export type LocationListParams = {
+  limit?: number;
+  offset?: number;
+  sort?: string;
+  q?: string;
+  kind?: string;
+  status?: string;
+  parentId?: string;
+};
 
 // ---- Asset master ----
 export const listAssets = (params: AssetListParams = {}) =>
@@ -28,7 +36,12 @@ export const moveAsset = (id: string, locationId: string, version: number) =>
 // ---- Location ----
 export const listLocations = (projectId: string, params: LocationListParams = {}) =>
   api<AssetLocation[]>(`projects/${encodeURIComponent(projectId)}/locations`, {
-    query: pageQuery(params.limit ?? 100, params.offset ?? 0, params.sort, params.q),
+    query: {
+      ...pageQuery(params.limit ?? 100, params.offset ?? 0, params.sort, params.q),
+      kind: params.kind,
+      status: params.status,
+      parentId: params.parentId,
+    },
   });
 export const getLocation = (id: string) => api<AssetLocation>(`locations/${encodeURIComponent(id)}`);
 export const createLocation = (input: AssetLocation) =>

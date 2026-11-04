@@ -1,18 +1,28 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { useRoute } from 'vue-router';
 import { useQuery } from '@tanstack/vue-query';
 import { Search, MapPin } from 'lucide-vue-next';
 import { listLocations } from '../cloud/asset';
 import { webSession } from '../cloud/session';
+import type { AssetLocation } from '../../../../contracts/typescript/types.gen';
 
+const route = useRoute();
 const q = ref('');
 const kind = ref('');
 const status = ref('');
-const projectId = computed(() => webSession.value?.projects?.[0]?.projectId ?? '');
+// The project scope follows the top command bar (?project=), falling back to the
+// first authorized project — never silently only the first one.
+const projectId = computed(() => {
+  const scoped = typeof route.query.project === 'string' ? route.query.project : '';
+  if (scoped) return scoped;
+  return webSession.value?.projects?.[0]?.projectId ?? '';
+});
 
 const locationsQuery = useQuery({
   queryKey: ['locations', projectId, q, kind, status],
-  queryFn: () => listLocations(projectId.value, { q: q.value, sort: 'name' }),
+  queryFn: () =>
+    listLocations(projectId.value, { q: q.value, kind: kind.value, status: status.value, sort: 'name' }),
   enabled: computed(() => !!projectId.value),
 });
 
@@ -21,13 +31,31 @@ const kindText: Record<string, string> = {
   SITE: '场地', PLANT: '厂区', WORKSHOP: '车间', BAY: '工位', RUNWAY: '轨道', OTHER: '其他',
 };
 
-// Lazy tree: group children under their parent for a two-level hierarchy.
-const tree = computed(() => {
-  const items = locationsQuery.data.value ?? [];
-  const roots = items.filter((l) => !l.parentId);
-  const children = new Map<string, typeof items>();
-  for (const l of items) if (l.parentId) children.set(l.parentId, [...(children.get(l.parentId) ?? []), l]);
-  return roots.map((r) => ({ root: r, children: children.get(r.id) ?? [] }));
+type LocationNode = AssetLocation & { children: LocationNode[] };
+// Full hierarchy (SITE → PLANT → WORKSHOP → BAY → RUNWAY): build the nested tree
+// from the flat parentId list, so every level is expressed instead of a flat
+// two-level "lazy tree".
+const tree = computed<LocationNode[]>(() => {
+  const items = (locationsQuery.data.value ?? []) as LocationNode[];
+  const byId = new Map<string, LocationNode>();
+  for (const l of items) byId.set(l.id, { ...l, children: [] });
+  const roots: LocationNode[] = [];
+  for (const node of byId.values()) {
+    if (node.parentId && byId.has(node.parentId)) byId.get(node.parentId)!.children.push(node);
+    else roots.push(node);
+  }
+  return roots;
+});
+const flattened = computed(() => {
+  const out: { node: LocationNode; depth: number }[] = [];
+  const walk = (nodes: LocationNode[], depth: number) => {
+    for (const n of nodes) {
+      out.push({ node: n, depth });
+      walk(n.children, depth + 1);
+    }
+  };
+  walk(tree.value, 0);
+  return out;
 });
 </script>
 <template>
@@ -36,7 +64,7 @@ const tree = computed(() => {
       <div>
         <span class="eyebrow">LOCATION CENTER / 位置中心</span>
         <h1>位置层级</h1>
-        <p>SITE → PLANT → WORKSHOP → BAY → RUNWAY · 按需展开的懒加载树</p>
+        <p>SITE → PLANT → WORKSHOP → BAY → RUNWAY · 完整层级</p>
       </div>
       <MapPin :size="20" />
     </header>
@@ -59,27 +87,18 @@ const tree = computed(() => {
 
     <p v-if="locationsQuery.isLoading.value" class="skeleton table-skeleton" aria-busy="true"></p>
     <p v-else-if="!projectId" class="workspace-empty">请先在顶部选择项目范围。</p>
-    <p v-else-if="!tree.length" class="workspace-empty">暂无位置数据。</p>
+    <p v-else-if="!flattened.length" class="workspace-empty">暂无位置数据。</p>
     <div v-else class="data-table-wrap">
       <table class="data-table">
         <thead><tr><th>名称</th><th>编号</th><th>类型</th><th>状态</th><th>地址</th></tr></thead>
         <tbody>
-          <template v-for="node in tree" :key="node.root.id">
-            <tr class="data-row tree-root">
-              <td>{{ node.root.name }}</td>
-              <td>{{ node.root.code ?? '—' }}</td>
-              <td>{{ kindText[node.root.kind] ?? node.root.kind }}</td>
-              <td>{{ node.root.status }}</td>
-              <td>{{ node.root.address || '—' }}</td>
-            </tr>
-            <tr v-for="child in node.children" :key="child.id" class="data-row tree-child">
-              <td>└ {{ child.name }}</td>
-              <td>{{ child.code ?? '—' }}</td>
-              <td>{{ kindText[child.kind] ?? child.kind }}</td>
-              <td>{{ child.status }}</td>
-              <td>{{ child.address || '—' }}</td>
-            </tr>
-          </template>
+          <tr v-for="row in flattened" :key="row.node.id" class="data-row" :class="row.depth ? 'tree-child' : 'tree-root'">
+            <td :style="{ paddingLeft: 12 + row.depth * 16 + 'px' }">{{ row.depth ? '└ ' : '' }}{{ row.node.name }}</td>
+            <td>{{ row.node.code ?? '—' }}</td>
+            <td>{{ kindText[row.node.kind] ?? row.node.kind }}</td>
+            <td>{{ row.node.status }}</td>
+            <td>{{ row.node.address || '—' }}</td>
+          </tr>
         </tbody>
       </table>
     </div>

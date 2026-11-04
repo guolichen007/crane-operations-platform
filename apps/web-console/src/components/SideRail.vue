@@ -8,15 +8,15 @@ import {
   Gauge,
   TriangleAlert,
   ChartColumn,
-  Star,
-  Clock,
-  Settings,
-  CircleHelp,
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-vue-next';
+import { productionAuth } from '../cloud/session';
 
 type NavItem = { path: string; name: string; icon: typeof Map };
+// Only real, implemented business pages are exposed. The /analytics demo page is
+// absent from the production route table, so hide it there instead of linking to
+// a route that falls through to the overview redirect.
 const primary: NavItem[] = [
   { path: '/overview', name: '数字沙盘', icon: Map },
   { path: '/portfolio', name: '项目组合', icon: FolderKanban },
@@ -24,15 +24,7 @@ const primary: NavItem[] = [
   { path: '/assets', name: '资产', icon: Container },
   { path: '/runtime', name: '运营', icon: Gauge },
   { path: '/alarms', name: '告警', icon: TriangleAlert },
-  { path: '/analytics', name: '分析', icon: ChartColumn },
-];
-const recent: NavItem[] = [
-  { path: '/overview', name: '收藏', icon: Star },
-  { path: '/overview', name: '最近', icon: Clock },
-];
-const meta: NavItem[] = [
-  { path: '/overview', name: '设置', icon: Settings },
-  { path: '/overview', name: '帮助', icon: CircleHelp },
+  ...(productionAuth ? [] : [{ path: '/analytics', name: '分析', icon: ChartColumn }] as NavItem[]),
 ];
 
 const STORAGE_KEY = 'crane.rail.collapsed';
@@ -65,29 +57,7 @@ watch(collapsed, (v) => localStorage.setItem(STORAGE_KEY, v ? '1' : '0'));
           n.name
         }}</span></RouterLink
       >
-      <div class="rail-sep"></div>
-      <RouterLink
-        v-for="n in recent"
-        :key="n.name"
-        :to="n.path"
-        active-class="active"
-        :title="n.name"
-        ><component :is="n.icon" :size="18" :stroke-width="1.6" /><span>{{
-          n.name
-        }}</span></RouterLink
-      >
-      <div class="rail-sep"></div>
-      <RouterLink
-        v-for="n in meta"
-        :key="n.name"
-        :to="n.path"
-        active-class="active"
-        :title="n.name"
-        ><component :is="n.icon" :size="18" :stroke-width="1.6" /><span>{{
-          n.name
-        }}</span></RouterLink
-      >
     </nav>
-    <div class="rail-foot"><CircleHelp :size="18" /><small v-if="!collapsed">A1.1</small></div>
+    <div class="rail-foot"><span class="rail-version-dot"></span><small v-if="!collapsed">A1.1</small></div>
   </aside>
 </template>

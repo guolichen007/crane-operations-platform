@@ -405,9 +405,16 @@ button {
   flex-direction: column;
   gap: 23px;
   pointer-events: none;
+  /* Clip overflowing panels at reduced heights (1366×768 / 1280×720) so the
+     sidebar never spills over the event strip or map canvas. */
+  overflow: hidden;
 }
 .left-context > * {
   pointer-events: auto;
+  /* Let fixed-height sections shrink so the region tree keeps the remaining
+     space instead of pushing its chips off-screen. */
+  min-height: 0;
+  flex-shrink: 1;
 }
 .panel-title {
   display: flex;
