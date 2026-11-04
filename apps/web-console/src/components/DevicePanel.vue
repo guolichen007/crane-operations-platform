@@ -48,11 +48,19 @@ const disclosureCopy = computed(() => {
       return '运行参数仅为演示，非现场真实采集。';
   }
 });
-const twinDemo = computed(() => {
-  if (props.device.telemetrySource === 'demo') return true;
-  if (props.device.telemetrySource === 'cloud') return props.device.runtimeSource !== 'REAL';
-  return false; // none → static structure
-});
+// Only the pure demo fixture runs the programmatic sine animation. Cloud
+// SIMULATION/TEST keep their source label but render the Cloud Shadow axes
+// (never overridden by a local demo animation); none → static structure pose.
+const twinDemo = computed(() => props.device.telemetrySource === 'demo');
+// Unknown axes (NaN) and unknown grab (null) are passed as undefined so the
+// twin renders a neutral schematic pose instead of a fabricated field position.
+const twinAxes = computed(() => ({
+  x: Number.isFinite(props.device.x) ? props.device.x : undefined,
+  y: Number.isFinite(props.device.y) ? props.device.y : undefined,
+  z: Number.isFinite(props.device.z) ? props.device.z : undefined,
+  grab:
+    props.device.grab === '打开' ? 1 : props.device.grab === '闭合' ? 0 : undefined,
+}));
 const fmt = (v: number | null | undefined, digits = 2) =>
   v === null || v === undefined || Number.isNaN(v) ? '—' : v.toFixed(digits);
 const grabText = computed(() => props.device.grab ?? '—');
@@ -79,7 +87,7 @@ const faultText = computed(() => props.device.fault || '暂无数据');
         sourceLabel
       }}</span>
       <h2>{{ device.deviceName.replace(' · ', ' / ') }}</h2>
-      <p><MapPin :size="12" />{{ device.locationLabel }}</p>
+      <p><MapPin :size="12" />{{ device.locationLabel || '无空间定位信息' }}</p>
     </div>
     <div class="detail-model">
       {{ device.craneModel || '—'
@@ -99,7 +107,7 @@ const faultText = computed(() => props.device.fault || '暂无数据');
     <div class="telemetry-grid">
       <CraneTwin
         :key="device.deviceId"
-        :axes="{ x: device.x, y: device.y, z: device.z, grab: device.grab === '打开' ? 1 : 0 }"
+        :axes="twinAxes"
         :demo="twinDemo"
         :alarm="device.status === 'ALARM'"
       />

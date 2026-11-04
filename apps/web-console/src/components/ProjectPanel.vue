@@ -7,10 +7,23 @@ const props = defineProps<{ project: Project }>();
 const emit = defineEmits<{ close: []; select: [id: string]; focus: [] }>();
 const instances = computed(() => sceneProvider.devices.value.filter((d) => d.id === props.project.id));
 const disclosure = computed(() => {
-  if (instances.value.some((d) => d.telemetrySource === 'cloud'))
-    return { title: 'CLOUD TELEMETRY', copy: '以下运行态来自 Cloud 实时遥测。' };
+  const cloud = instances.value.filter((d) => d.telemetrySource === 'cloud');
+  const real = cloud.filter((d) => d.runtimeSource === 'REAL');
+  const simulated = cloud.filter((d) => d.runtimeSource !== 'REAL');
+  if (real.length && !simulated.length)
+    return { title: 'CLOUD TELEMETRY', copy: '以下运行态来自 Cloud 最近同步的真实现场遥测。' };
+  if (real.length)
+    return {
+      title: 'CLOUD TELEMETRY · 含模拟',
+      copy: '真实现场遥测与模拟/测试运行源并存，模拟数量单独标注。',
+    };
+  if (simulated.length)
+    return {
+      title: 'SIMULATION / TEST TELEMETRY',
+      copy: '以下运行态来自 Cloud 最近同步的模拟/测试运行源，非现场真实采集。',
+    };
   if (instances.value.length && instances.value.every((d) => d.telemetrySource === 'none'))
-    return { title: 'NO TELEMETRY', copy: '尚未接入运行数据，无实时遥测。' };
+    return { title: 'NO TELEMETRY', copy: '尚未接入运行数据，无遥测。' };
   return { title: 'DEMO TELEMETRY', copy: '以下运行态为固定模拟，匿名登记项目档案与实施计划保持不变。' };
 });
 </script>
@@ -28,7 +41,7 @@ const disclosure = computed(() => {
     <h2>
       {{ project.projectName }}<small>{{ project.quantity }} 台行车</small>
     </h2>
-    <p class="project-location"><MapPin :size="12" />{{ project.locationLabel }}</p>
+    <p class="project-location"><MapPin :size="12" />{{ project.locationLabel || '无空间定位信息' }}</p>
     <p class="archive-model">
       {{ project.craneModel }}<span>{{ project.grabType }}</span>
     </p>

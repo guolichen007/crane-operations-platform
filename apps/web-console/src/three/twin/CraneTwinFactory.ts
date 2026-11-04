@@ -26,8 +26,8 @@ export class CraneTwinFactory {
   hoistZGroup = new Group();
   grabGGroup = new Group();
   private ropes = new Group();
-  private leftJaw = new Group();
-  private rightJaw = new Group();
+  readonly leftJaw = new Group();
+  readonly rightJaw = new Group();
   private structural = new MeshStandardMaterial({
     color: '#efb84e',
     roughness: 0.42,
@@ -138,12 +138,15 @@ export class CraneTwinFactory {
     parent.add(batch);
   }
   setAxes(axes: Partial<TwinAxes>) {
-    const clamp = (n: number, min: number, max: number) =>
-      Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : min;
-    if (axes.x !== undefined) this.gantryXGroup.position.x = clamp(axes.x, -12, 12);
-    if (axes.y !== undefined) this.trolleyYGroup.position.z = clamp(axes.y, -5, 5);
+    // Unknown axes (undefined or NaN) fall back to a neutral schematic pose,
+    // never the clamped travel minimum — that would fake a field position at
+    // the limit and misread an unknown grab as "closed".
+    const value = (n: number | undefined, min: number, max: number, neutral: number) =>
+      n !== undefined && Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : neutral;
+    if (axes.x !== undefined) this.gantryXGroup.position.x = value(axes.x, -12, 12, 0);
+    if (axes.y !== undefined) this.trolleyYGroup.position.z = value(axes.y, -5, 5, 0);
     if (axes.z !== undefined) {
-      const height = clamp(axes.z, 1.5, 8);
+      const height = value(axes.z, 1.5, 8, 4);
       this.hoistZGroup.position.y = height;
       this.ropes.children.forEach((r) => {
         r.scale.y = 9 - height;
@@ -151,7 +154,7 @@ export class CraneTwinFactory {
       });
     }
     if (axes.grab !== undefined) {
-      const open = clamp(axes.grab, 0, 1);
+      const open = value(axes.grab, 0, 1, 0.2);
       this.leftJaw.rotation.z = -open * 0.7;
       this.rightJaw.rotation.z = open * 0.7;
     }

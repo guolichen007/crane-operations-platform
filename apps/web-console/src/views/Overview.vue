@@ -86,6 +86,15 @@ const runningCount = computed(() => devices.value.filter((d) => d.status === 'RU
 const standbyCount = computed(() => devices.value.filter((d) => d.status === 'STANDBY').length);
 const offlineCount = computed(() => devices.value.filter((d) => d.status === 'OFFLINE').length);
 const notCommissionedCount = computed(() => devices.value.filter((d) => d.status === 'NOT_COMMISSIONED').length);
+// National status is source-isolated: REAL site runtime is never conflated with
+// SIMULATION/TEST runtime. The "运行中" metric below only counts REAL devices.
+const realRunningCount = computed(
+  () => devices.value.filter((d) => d.runtimeSource === 'REAL' && d.status === 'RUNNING').length
+);
+const simulationCount = computed(
+  () => devices.value.filter((d) => d.runtimeSource === 'SIMULATION').length
+);
+const testCount = computed(() => devices.value.filter((d) => d.runtimeSource === 'TEST').length);
 const realCraneTotal = computed(() => realProjects.value.reduce((s, p) => s + p.quantity, 0));
 const realProvinceCount = computed(() => new Set(realProjects.value.map((p) => p.province)).size);
 const statuses: DeviceStatus[] = ['RUNNING', 'STANDBY', 'ALARM', 'OFFLINE', 'MAINTENANCE'];
@@ -385,8 +394,18 @@ onUnmounted(() => {
           ><em>登记行车 {{ realCraneTotal }} 台</em>
         </div>
         <div>
-          <span>运行中</span><strong class="green">{{ runningCount }}<small>台</small></strong
-          ><em>最近同步 · LIVE</em>
+          <span>真实现场运行</span><strong class="green">{{ realRunningCount }}<small>台</small></strong
+          ><em>REAL · 最近同步 LIVE</em>
+        </div>
+        <div>
+          <span>模拟运行 <b class="tiny-badge">SIM</b></span
+          ><strong>{{ simulationCount }}<small>台</small></strong
+          ><em>SIMULATION · 非现场真实</em>
+        </div>
+        <div v-if="testCount">
+          <span>测试运行 <b class="tiny-badge">TEST</b></span
+          ><strong>{{ testCount }}<small>台</small></strong
+          ><em>TEST · 非现场真实</em>
         </div>
         <div>
           <span>待机</span><strong>{{ standbyCount }}<small>台</small></strong

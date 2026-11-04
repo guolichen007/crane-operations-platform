@@ -241,8 +241,9 @@ export class MapSceneManager {
         const center = new Vector3();
         let total = 0;
         for (const p of this.shownProjects) {
-          const [x, z] = this.projectOf(p);
-          center.addScaledVector(new Vector3(x, 0, z), p.quantity);
+          const pos = this.projectOf(p);
+          if (!pos) continue; // no spatial association — never weight the origin
+          center.addScaledVector(new Vector3(pos[0], 0, pos[1]), p.quantity);
           total += p.quantity;
         }
         if (total) center.divideScalar(total);
@@ -482,12 +483,14 @@ export class MapSceneManager {
       );
   }
   /** Resolve a project/device to map coordinates; API projects carry adminCode. */
-  private projectOf(p: Project): [number, number] {
+  private projectOf(p: Project): [number, number] | null {
     if (p.approximateLng !== 0 || p.approximateLat !== 0)
       return project(p.approximateLng, p.approximateLat);
     const code = p.adminCode ?? p.adminPath[p.adminPath.length - 1];
     const region = code !== undefined ? this.loader.manifest[code] : undefined;
-    return region?.center ? project(...region.center) : [0, 0];
+    // No silent [0,0]: a project without spatial association returns null so the
+    // caller can show "无空间定位信息" instead of fabricating map coordinates.
+    return region?.center ? project(...region.center) : null;
   }
   private refreshLabelsAndMarkers() {
     this.labels.clear();
@@ -601,7 +604,9 @@ export class MapSceneManager {
         if (current.level === 'province' && !this.focusedProjectId) {
           place(p);
         } else {
-          const [px, pz] = this.projectOf(p);
+          const pos = this.projectOf(p);
+          if (!pos) continue; // no spatial association — skip drawing at origin
+          const [px, pz] = pos;
           this.shownDevices
             .filter((d) => d.id === p.id)
             .forEach((d, i) => {
@@ -801,6 +806,13 @@ export class MapSceneManager {
   }
   async focusProject(p: Project, shouldContinue: () => boolean = () => true, openPanel = true) {
     if (this.drill.busy || !shouldContinue()) return;
+    // Projects without a spatial association remain viewable in the business list
+    // but cannot be focused on the map — never fabricate coordinates or throw a
+    // cryptic region error.
+    if (!this.projectOf(p)) {
+      this.callbacks.error('无空间定位信息：该项目未配置行政区，无法在沙盘定位。');
+      return;
+    }
     this.intro?.finish();
     this.drill.state = 'DRILLING_IN';
     this.notify();
@@ -813,7 +825,7 @@ export class MapSceneManager {
         this.notify();
         return;
       }
-      const [fx, fz] = this.projectOf(p);
+      const [fx, fz] = this.projectOf(p)!;
       this.floor.setFocus(fx, fz);
       this.focusedProjectId = p.id;
       this.focusedDeviceId = null;
@@ -880,8 +892,9 @@ export class MapSceneManager {
     const center = new Vector3();
     let total = 0;
     for (const p of this.shownProjects) {
-      const [x, z] = this.projectOf(p);
-      center.addScaledVector(new Vector3(x, 0, z), p.quantity);
+      const pos = this.projectOf(p);
+      if (!pos) continue; // no spatial association — never weight the origin
+      center.addScaledVector(new Vector3(pos[0], 0, pos[1]), p.quantity);
       total += p.quantity;
     }
     if (total) center.divideScalar(total);

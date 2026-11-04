@@ -55,7 +55,7 @@ onUnmounted(() => {
     <div class="twin-hud">
       <span><i></i> CRANE DIGITAL TWIN</span
       ><small>{{
-        demo ? 'DEMO · 演示动画，非现场遥测' : '结构示意 · 最近状态，无遥测时保持静态'
+        demo ? 'DEMO · 演示动画，非现场遥测' : '结构示意 · 最近同步姿态'
       }}</small>
     </div>
     <div v-if="error" class="twin-fallback" data-testid="twin-fallback">
