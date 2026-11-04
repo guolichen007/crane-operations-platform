@@ -2,6 +2,23 @@ import { test, expect, type Page } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { cloudDevice, cloudAlarm } from '../../../apps/web-console/tests/cloud-fixtures';
 const example = JSON.parse(readFileSync('deploy/inventory/inventory.example.yaml', 'utf8'));
+
+type SpatialDiagnostics = ReturnType<NonNullable<Window['__spatialDiagnostics']>>;
+/**
+ * Type-safe diagnostics reader. It performs the runtime check before invoking
+ * `window.__spatialDiagnostics`, so the serialized function never dereferences
+ * an undefined hook. Passed directly to `page.evaluate` (self-contained).
+ */
+function readSpatialDiagnostics(): SpatialDiagnostics {
+  const fn = window.__spatialDiagnostics;
+  if (typeof fn !== 'function') throw new Error('__spatialDiagnostics unavailable');
+  return fn();
+}
+/** Self-contained wait predicate for a projected province cluster pick. */
+function hasClusterPick(adcode: string): boolean {
+  const fn = window.__spatialDiagnostics;
+  return typeof fn === 'function' && fn().picks.some((x) => x.kind === 'cluster' && x.id === adcode);
+}
 const session = {
   userId: 'synthetic-viewer',
   displayName: '示例观察员',
@@ -205,33 +222,25 @@ async function collectDrillCounts(page: Page, rounds: number) {
   );
   // The provider load + setFilter + marker rebuild land a beat after the scene
   // settles at country; wait for the 110000 cluster pick to be projected.
-  await page.waitForFunction(() =>
-    window.__spatialDiagnostics().picks.some((x) => x.kind === 'cluster' && x.id === '110000')
-  );
+  await page.waitForFunction(hasClusterPick, '110000');
   const counts: number[] = [];
   for (let i = 0; i < rounds; i++) {
     // Drill into 110000 via the map's province cluster pick — the sidebar region
     // chip can be scrolled out of the reduced viewport, so click the projected
     // pick coordinates instead.
-    const coord = await page.evaluate(() => {
-      const p = window.__spatialDiagnostics().picks.find(
-        (x) => x.kind === 'cluster' && x.id === '110000'
-      );
-      return p ? [p.x, p.y] : null;
-    });
-    expect(coord).not.toBeNull();
-    await page.mouse.click(coord![0], coord![1]);
+    const d = await page.evaluate(readSpatialDiagnostics);
+    const pick = d.picks.find((x) => x.kind === 'cluster' && x.id === '110000');
+    expect(pick).not.toBeUndefined();
+    await page.mouse.click(pick!.x, pick!.y);
     await expect
-      .poll(() => page.evaluate(() => window.__spatialDiagnostics().adcode))
+      .poll(async () => (await page.evaluate(readSpatialDiagnostics)).adcode)
       .toBe(110000);
     await page.getByRole('button', { name: '重置全国视角' }).click();
     await expect
-      .poll(() => page.evaluate(() => window.__spatialDiagnostics().adcode))
+      .poll(async () => (await page.evaluate(readSpatialDiagnostics)).adcode)
       .toBe(100000);
     await page.waitForTimeout(70);
-    counts.push(
-      await page.evaluate(() => window.__spatialDiagnostics().memory.geometries)
-    );
+    counts.push((await page.evaluate(readSpatialDiagnostics)).memory.geometries);
   }
   return counts;
 }
