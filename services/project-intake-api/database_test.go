@@ -327,6 +327,9 @@ func testOIDC(t *testing.T, db *pgxpool.Pool) {
 	var issuer, nonce, challenge string
 	badNonce := false
 	roleMode := "client"
+	authAge := time.Duration(0)
+	signedEmail := ""
+	signedVerified := false
 	pkceChecked := false
 	idp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -355,12 +358,18 @@ func testOIDC(t *testing.T, db *pgxpool.Pool) {
 			claims["exp"] = time.Now().Add(time.Hour).Unix()
 			claims["iat"] = time.Now().Unix()
 			claims["nonce"] = n
+			claims["email"] = signedEmail
+			claims["email_verified"] = signedVerified
+			claims["auth_time"] = time.Now().Add(-authAge).Unix()
 			if roleMode == "realm" {
 				delete(claims, "resource_access")
 				claims["realm_access"] = map[string]any{"roles": []string{"baobei_sales"}}
 			}
 			if roleMode == "other" {
 				claims["resource_access"] = map[string]any{"other-client": map[string]any{"roles": []string{"baobei_sales"}}}
+			}
+			if roleMode == "admin" {
+				claims["resource_access"] = map[string]any{"baobei-web": map[string]any{"roles": []string{adminRole}}}
 			}
 			b, _ := json.Marshal(claims)
 			obj, _ := signer.Sign(b)
@@ -382,8 +391,12 @@ func testOIDC(t *testing.T, db *pgxpool.Pool) {
 	app.oauth.RedirectURL = server.URL + "/auth/callback"
 	jar, _ := cookiejar.New(nil)
 	c := testClient{&http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, server.URL, "", t}
-	start := func() string {
-		r, e := c.client.Get(server.URL + "/auth/login")
+	startLogin := func(reauth bool) string {
+		path := "/auth/login"
+		if reauth {
+			path += "?reauth=1"
+		}
+		r, e := c.client.Get(server.URL + path)
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -400,8 +413,12 @@ func testOIDC(t *testing.T, db *pgxpool.Pool) {
 		if nonce == "" || challenge == "" || u.Query().Get("code_challenge_method") != "S256" {
 			t.Fatal("missing nonce/PKCE")
 		}
+		if reauth && (u.Query().Get("prompt") != "login" || u.Query().Get("max_age") != "0") {
+			t.Fatal("missing explicit Keycloak reauthentication parameters")
+		}
 		return u.Query().Get("state")
 	}
+	start := func() string { return startLogin(false) }
 	state := start()
 	s, b := c.call("GET", "/auth/callback?code=synthetic&state=wrong", nil)
 	expect(t, s, 400, b)
@@ -486,6 +503,161 @@ func testOIDC(t *testing.T, db *pgxpool.Pool) {
 	if e = db.QueryRow(context.Background(), `SELECT count(*) FROM oidc_pending_logins WHERE state_hash=$1 OR binding_hash=$1`, state).Scan(&raw); e != nil || raw != 0 {
 		t.Fatal("raw state persisted", e)
 	}
+	t.Run("staff_provision_receipt_and_signed_activation", func(t *testing.T) {
+		ctx := context.Background()
+		tx, err := db.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback(ctx)
+		actor := User{Subject: "synthetic-manager", Role: managerRole, TeamID: syntheticTeam}
+		result, err := inviteStaff(ctx, tx, actor, nil, staffProfileInput{Name: "合成已审批成员", Email: "signed-staff@example.test", Role: salesRole, TeamID: syntheticTeam, Reason: "合成开通"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := result.(staffMember)
+		if err = tx.Commit(ctx); err != nil {
+			t.Fatal(err)
+		}
+		tokenSubject = "88888888-8888-4888-8888-888888888888"
+		signedEmail = m.Email
+		signedVerified = true
+		callback := func(want int) {
+			s, b := c.call("GET", "/auth/callback?code=synthetic&state="+url.QueryEscape(start()), nil)
+			expect(t, s, want, b)
+		}
+		callback(403)
+		failed := provisionReceipt{StaffID: m.ID, Version: m.Version, Operation: "fail", Email: m.Email, ApprovalReference: "SYNTHETIC-FAILED", Reason: "未能核对"}
+		if outcome, err := applyProvisionReceipt(ctx, db, mustJSON(failed), "synthetic-operator", false); err != nil || outcome != staffFailed {
+			t.Fatal(outcome, err)
+		}
+		tx, err = db.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback(ctx)
+		m, err = readStaff(ctx, tx, actor, m.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		result, err = mutateStaff(ctx, tx, actor, nil, m, "retry", staffMutation{Version: m.Version, Reason: "重新核对"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		m = result.(staffMember)
+		if err = tx.Commit(ctx); err != nil {
+			t.Fatal(err)
+		}
+		receipt := provisionReceipt{StaffID: m.ID, Version: m.Version, Operation: "approve", Subject: fixture["sub"].(string), Email: m.Email,
+			IdentityVerified: true, UniqueEmail: true, ApprovalReference: "SYNTHETIC-APPROVED", Reason: "已确认企业账号"}
+		if _, err = applyProvisionReceipt(ctx, db, mustJSON(receipt), "synthetic-operator", false); err == nil {
+			t.Fatal("existing identity rebound")
+		}
+		receipt.Subject = tokenSubject
+		receipt.UniqueEmail = false
+		if _, err = applyProvisionReceipt(ctx, db, mustJSON(receipt), "synthetic-operator", false); err == nil {
+			t.Fatal("ambiguous email accepted")
+		}
+		receipt.UniqueEmail = true
+		if outcome, err := applyProvisionReceipt(ctx, db, mustJSON(receipt), "synthetic-operator", true); err != nil || outcome != "DRY_RUN_PENDING_ACTIVATION" {
+			t.Fatal(outcome, err)
+		}
+		callback(403)
+		if outcome, err := applyProvisionReceipt(ctx, db, mustJSON(receipt), "synthetic-operator", false); err != nil || outcome != staffActivation {
+			t.Fatal(outcome, err)
+		}
+		if outcome, err := applyProvisionReceipt(ctx, db, mustJSON(receipt), "synthetic-operator", false); err != nil || outcome != "ALREADY_APPLIED" {
+			t.Fatal(outcome, err)
+		}
+		roleMode = "other"
+		callback(403)
+		roleMode = "client"
+		signedVerified = false
+		callback(403)
+		signedVerified = true
+		signedEmail = "other@example.test"
+		callback(403)
+		signedEmail = m.Email
+		callback(303)
+		var state string
+		if err = db.QueryRow(ctx, `SELECT staff_status FROM app_users WHERE staff_id=$1`, m.ID).Scan(&state); err != nil || state != staffActive {
+			t.Fatal(state, err)
+		}
+		// Existing production emergency imports cannot bypass this managed lifecycle.
+		active := true
+		raw := mustJSON(IdentityManifest{ApprovalReference: "SYNTHETIC-LEGACY", Teams: []IdentityTeam{}, Users: []IdentityUser{
+			{Subject: tokenSubject, DisplayName: "合成", Role: salesRole, Team: syntheticTeam, Active: &active},
+		}})
+		if _, err = applyIdentity(ctx, db, raw, "synthetic-operator", false); err == nil {
+			t.Fatal("managed identity overwritten by legacy import")
+		}
+		signedEmail = "other@example.test"
+		callback(403)
+
+		changeState := func(action string) {
+			t.Helper()
+			tx, err := db.Begin(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback(ctx)
+			if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, identityLock); err != nil {
+				t.Fatal(err)
+			}
+			m, err = readStaff(ctx, tx, actor, m.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			value, err := mutateStaff(ctx, tx, actor, nil, m, action, staffMutation{Version: m.Version, Reason: "合成恢复流程"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			m = value.(staffMember)
+			if err = tx.Commit(ctx); err != nil {
+				t.Fatal(err)
+			}
+		}
+		signedEmail = m.Email
+		changeState("suspend")
+		callback(403)
+		ack := receipt
+		ack.Version, ack.Operation = m.Version, "ack-suspend"
+		if outcome, err := applyProvisionReceipt(ctx, db, mustJSON(ack), "synthetic-operator", false); err != nil || outcome != "ACKNOWLEDGED" {
+			t.Fatal(outcome, err)
+		}
+		changeState("reactivate")
+		callback(403)
+		receipt.Version = m.Version
+		if outcome, err := applyProvisionReceipt(ctx, db, mustJSON(receipt), "synthetic-operator", false); err != nil || outcome != staffActivation {
+			t.Fatal(outcome, err)
+		}
+		roleMode = "other"
+		callback(403)
+		roleMode = "client"
+		callback(303)
+	})
+	t.Run("staff_admin_requires_explicit_fresh_signed_reauthentication", func(t *testing.T) {
+		tokenSubject, roleMode = "synthetic-admin", "admin"
+		invite := staffProfileInput{Name: "合成新主管", Email: "fresh-reauth@example.test", Role: managerRole, TeamID: syntheticTeam, Reason: "核对主管任命"}
+		for _, tc := range []struct {
+			reauth bool
+			age    time.Duration
+			want   int
+		}{{false, 0, 403}, {true, time.Minute, 403}, {true, 0, 200}} {
+			authAge = tc.age
+			status, body := c.call("GET", "/auth/callback?code=synthetic&state="+url.QueryEscape(startLogin(tc.reauth)), nil)
+			expect(t, status, 303, body)
+			status, body = c.call("GET", "/api/v1/me", nil)
+			expect(t, status, 200, body)
+			var admin User
+			if err := json.Unmarshal(body, &admin); err != nil {
+				t.Fatal(err)
+			}
+			c.csrf = admin.CSRF
+			status, body = c.call("POST", "/api/v1/staff/invitations", invite)
+			expect(t, status, tc.want, body)
+		}
+	})
 	production := &App{cfg: Config{Env: "production"}}
 	rec := httptest.NewRecorder()
 	production.cookie(rec, production.cookieName(), "synthetic-only", 28800)

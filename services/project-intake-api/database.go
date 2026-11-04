@@ -119,9 +119,19 @@ func prepareDatabase(ctx context.Context, pool *pgxpool.Pool, environment, comma
 	switch command {
 	case "migrate":
 		role = "baobei_migrator"
-	case "identity-apply":
+	case "identity-apply", "staff-provision":
 		role = "baobei_maintenance"
 	}
+	if err := verifyDatabaseRole(ctx, pool, role, command == "migrate"); err != nil {
+		return err
+	}
+	if command == "migrate" {
+		return applyMigrations(ctx, pool, true)
+	}
+	return verifySchema(ctx, pool)
+}
+
+func verifyDatabaseRole(ctx context.Context, pool *pgxpool.Pool, role string, canCreate bool) error {
 	var allowed bool
 	err := pool.QueryRow(ctx, `
         SELECT current_user = $1 AND session_user = $1
@@ -131,12 +141,9 @@ func prepareDatabase(ctx context.Context, pool *pgxpool.Pool, environment, comma
             AND NOT has_database_privilege(current_database(), 'TEMP')
             AND has_schema_privilege('public', 'CREATE') = $2
         FROM pg_roles WHERE rolname = current_user
-    `, role, command == "migrate").Scan(&allowed)
+    `, role, canCreate).Scan(&allowed)
 	if err != nil || !allowed {
 		return errors.New("production database role rejected")
 	}
-	if command == "migrate" {
-		return applyMigrations(ctx, pool, true)
-	}
-	return verifySchema(ctx, pool)
+	return nil
 }

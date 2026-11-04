@@ -10,6 +10,8 @@ import {
   Plus,
   Search,
   LogOut,
+  Users,
+  Settings,
 } from '@lucide/vue';
 import ActionButton from './ActionButton.vue';
 import Modal from './Modal.vue';
@@ -26,11 +28,17 @@ const baseNav = [
   { path: '/statistics', label: '统计', icon: ChartNoAxesCombined },
 ];
 const nav = computed(() =>
-  ['baobei_manager', 'baobei_director'].includes(app.user?.role || '')
+  app.user?.role === 'baobei_admin'
+    ? [
+        { path: '/settings/users', label: '人员管理', icon: Users },
+        { path: '/settings/teams', label: '团队管理', icon: Settings },
+      ]
+    : ['baobei_manager', 'baobei_director'].includes(app.user?.role || '')
     ? [
         ...baseNav,
         { path: '/reviews', label: '报备审核', icon: FolderKanban },
         { path: '/duplicates', label: '重复处理', icon: Columns3 },
+        { path: '/team/members', label: '团队成员', icon: Users },
       ]
     : baseNav
 );
@@ -81,6 +89,8 @@ window.addEventListener('error', showError);
         <div class="top-actions">
           <ActionButton
             v-if="app.user.role === 'baobei_sales'"
+            :disabled="!app.user.permissions.includes('project.create')"
+            reason="当前账号未启用新建报备"
             action-id="project.create"
             primary
             :run="() => router.push('/new')"

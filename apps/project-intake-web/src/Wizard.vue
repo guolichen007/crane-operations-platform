@@ -371,8 +371,8 @@ onBeforeUnmount(() => {
         v-else
         action-id="project.submit"
         primary
-        :disabled="!form.informationSource || !form.confidenceLevel || !ready"
-        reason="请选择信息来源和可信度"
+        :disabled="!app.user?.permissions.includes('project.submit') || !form.informationSource || !form.confidenceLevel || !ready"
+        :reason="app.user?.permissions.includes('project.submit') ? '请选择信息来源和可信度' : '团队未授予提交报备权限'"
         :run="submit"
       >
         提交报备

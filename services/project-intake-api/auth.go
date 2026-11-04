@@ -11,9 +11,11 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/oauth2"
 )
@@ -24,6 +26,7 @@ type pendingLogin struct {
 }
 type App struct {
 	db       *pgxpool.Pool
+	staffDB  *pgxpool.Pool
 	cfg      Config
 	oauth    oauth2.Config
 	verifier *oidc.IDTokenVerifier
@@ -37,7 +40,7 @@ func newApp(ctx context.Context, db *pgxpool.Pool, c Config) (*App, error) {
 			return nil, e
 		}
 		a.verifier = p.Verifier(&oidc.Config{ClientID: c.ClientID})
-		a.oauth = oauth2.Config{ClientID: c.ClientID, ClientSecret: c.Secret, Endpoint: p.Endpoint(), RedirectURL: c.Origin + "/auth/callback", Scopes: []string{oidc.ScopeOpenID, "profile"}}
+		a.oauth = oauth2.Config{ClientID: c.ClientID, ClientSecret: c.Secret, Endpoint: p.Endpoint(), RedirectURL: c.Origin + "/auth/callback", Scopes: []string{oidc.ScopeOpenID, "profile", "email"}}
 	}
 	return a, nil
 }
@@ -64,12 +67,35 @@ func (a *App) user(r *http.Request) (User, error) {
 	if e != nil {
 		return u, e
 	}
-	e = a.db.QueryRow(r.Context(), `SELECT u.subject,u.display_name,u.role,coalesce(u.team_id::text,''),s.csrf FROM app_sessions s JOIN app_users u ON u.subject=s.subject WHERE s.token_hash=$1 AND s.expires_at>now() AND u.active`, hash(c.Value)).Scan(&u.Subject, &u.Name, &u.Role, &u.TeamID, &u.CSRF)
+	u.sessionHash = hash(c.Value)
+	var mask int
+	e = a.db.QueryRow(r.Context(), `SELECT u.subject,u.display_name,u.role,coalesce(u.team_id::text,''),s.csrf,u.staff_permissions FROM app_sessions s JOIN app_users u ON u.subject=s.subject WHERE s.token_hash=$1 AND s.expires_at>now() AND u.active`, u.sessionHash).Scan(&u.Subject, &u.Name, &u.Role, &u.TeamID, &u.CSRF, &mask)
+	u.Permissions = capabilityList(mask)
 	return u, e
 }
 func (a *App) session(w http.ResponseWriter, r *http.Request, subject string, roles ...string) error {
+	return a.sessionAt(w, r, subject, nil, nil, roles...)
+}
+
+type loginEmail struct {
+	address  string
+	verified bool
+}
+
+func (a *App) sessionAt(w http.ResponseWriter, r *http.Request, subject string, at *time.Time, email *loginEmail, roles ...string) error {
 	token, csrf := randomToken(), randomToken()
-	tx, e := a.db.Begin(r.Context())
+	var expectedRole string
+	if err := a.db.QueryRow(r.Context(), `SELECT role FROM app_users WHERE subject=$1 AND active`, subject).Scan(&expectedRole); err != nil {
+		return errIdentityDenied
+	}
+	pool := a.db
+	if staffRole(expectedRole) || email != nil {
+		pool = a.staffPool()
+		if pool == nil {
+			return errIdentityDenied
+		}
+	}
+	tx, e := pool.Begin(r.Context())
 	if e != nil {
 		return e
 	}
@@ -82,8 +108,13 @@ func (a *App) session(w http.ResponseWriter, r *http.Request, subject string, ro
 	if e = tx.QueryRow(r.Context(), `SELECT role FROM app_users WHERE subject=$1 AND active`, subject).Scan(&currentRole); e != nil {
 		return errIdentityDenied
 	}
-	if roles != nil && !contains(roles, currentRole) {
+	if currentRole != expectedRole || roles != nil && !contains(roles, currentRole) {
 		return errIdentityDenied
+	}
+	if email != nil {
+		if err := verifyManagedEmail(r.Context(), tx, subject, *email); err != nil {
+			return err
+		}
 	}
 	if old, e := r.Cookie(a.cookieName()); e == nil {
 		if _, e = tx.Exec(r.Context(), `DELETE FROM app_sessions WHERE token_hash=$1`, hash(old.Value)); e != nil {
@@ -93,7 +124,16 @@ func (a *App) session(w http.ResponseWriter, r *http.Request, subject string, ro
 	if _, e = tx.Exec(r.Context(), `DELETE FROM app_sessions WHERE expires_at<now()`); e != nil {
 		return e
 	}
-	if _, e = tx.Exec(r.Context(), `INSERT INTO app_sessions VALUES($1,$2,$3,now()+interval '8 hours')`, hash(token), subject, csrf); e != nil {
+	if _, e = tx.Exec(r.Context(), `INSERT INTO app_sessions(token_hash,subject,csrf,expires_at)
+    VALUES($1,$2,$3,now()+interval '8 hours')`, hash(token), subject, csrf); e != nil {
+		return e
+	}
+	if staffRole(currentRole) {
+		if _, e = tx.Exec(r.Context(), `INSERT INTO staff_sessions(token_hash,subject,reauthenticated_at) VALUES($1,$2,$3)`, hash(token), subject, at); e != nil {
+			return e
+		}
+	}
+	if _, e = tx.Exec(r.Context(), `UPDATE app_users SET last_login_at=now() WHERE subject=$1`, subject); e != nil {
 		return e
 	}
 	if e = tx.Commit(r.Context()); e != nil {
@@ -121,11 +161,16 @@ func (a *App) auth(w http.ResponseWriter, r *http.Request) {
 		if !decode(w, r, &b) {
 			return
 		}
-		if !contains([]string{"synthetic-a", "synthetic-b", "synthetic-manager", "synthetic-director", "synthetic-c", "synthetic-manager-other"}, b.Subject) {
+		if !contains([]string{"synthetic-a", "synthetic-b", "synthetic-manager", "synthetic-director", "synthetic-c", "synthetic-manager-other", "synthetic-admin", "synthetic-staff-desktop", "synthetic-staff-mobile"}, b.Subject) {
 			fail(w, 403, "FORBIDDEN", "测试身份不允许")
 			return
 		}
-		if e := a.session(w, r, b.Subject); e != nil {
+		at := time.Now()
+		if e := a.sessionAt(w, r, b.Subject, &at, nil); e != nil {
+			if errors.Is(e, errIdentityDenied) {
+				fail(w, 403, "FORBIDDEN", "测试身份未启用")
+				return
+			}
 			fail(w, 503, "SESSION_UNAVAILABLE", "登录暂时不可用")
 			return
 		}
@@ -136,6 +181,9 @@ func (a *App) auth(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		state, nonce, binding, verifier := randomToken(), randomToken(), randomToken(), oauth2.GenerateVerifier()
+		if r.URL.Query().Get("reauth") == "1" {
+			nonce = "reauth-" + nonce
+		}
 		if e := a.storePending(r.Context(), hash(state), pendingLogin{nonce, verifier, hash(binding), time.Now().Add(5 * time.Minute)}); e != nil {
 			if errors.Is(e, errAuthCapacity) {
 				fail(w, 429, "AUTH_BUSY", "登录繁忙，请稍后重试")
@@ -149,7 +197,11 @@ func (a *App) auth(w http.ResponseWriter, r *http.Request) {
 			loginCookie = "__Host-baobei_login"
 		}
 		a.cookie(w, loginCookie, binding, 300)
-		http.Redirect(w, r, a.oauth.AuthCodeURL(state, oidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier)), http.StatusFound)
+		options := []oauth2.AuthCodeOption{oidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier)}
+		if strings.HasPrefix(nonce, "reauth-") {
+			options = append(options, oauth2.SetAuthURLParam("prompt", "login"), oauth2.SetAuthURLParam("max_age", "0"))
+		}
+		http.Redirect(w, r, a.oauth.AuthCodeURL(state, options...), http.StatusFound)
 	case "/auth/callback":
 		if r.Method != "GET" || a.verifier == nil {
 			fail(w, 400, "OIDC_INVALID", "登录回调无效")
@@ -185,7 +237,10 @@ func (a *App) auth(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var claims struct {
-			Realm struct {
+			Email         string `json:"email"`
+			EmailVerified bool   `json:"email_verified"`
+			AuthTime      int64  `json:"auth_time"`
+			Realm         struct {
 				Roles []string `json:"roles"`
 			} `json:"realm_access"`
 			Resource map[string]struct {
@@ -199,11 +254,18 @@ func (a *App) auth(w http.ResponseWriter, r *http.Request) {
 		roles := claims.Resource[a.cfg.ClientID].Roles
 		var role string
 		e = a.db.QueryRow(ctx, `SELECT role FROM app_users WHERE subject=$1 AND active`, id.Subject).Scan(&role)
+		if errors.Is(e, pgx.ErrNoRows) && len(roles) > 0 && claims.EmailVerified {
+			e = a.confirmStaffLogin(ctx, id.Subject, roles, claims.Email, claims.EmailVerified)
+			if e == nil {
+				e = a.db.QueryRow(ctx, `SELECT role FROM app_users WHERE subject=$1 AND active`, id.Subject).Scan(&role)
+			}
+		}
 		if e != nil || !contains(roles, role) {
 			fail(w, 403, "FORBIDDEN", "报备账号未授权，请联系管理员")
 			return
 		}
-		if e = a.session(w, r, id.Subject, roles...); e != nil {
+		email := loginEmail{address: claims.Email, verified: claims.EmailVerified}
+		if e = a.sessionAt(w, r, id.Subject, reauthenticationTime(p.Nonce, claims.AuthTime, p.Until), &email, roles...); e != nil {
 			if errors.Is(e, errIdentityDenied) {
 				fail(w, 403, "FORBIDDEN", "报备账号未授权，请联系管理员")
 				return

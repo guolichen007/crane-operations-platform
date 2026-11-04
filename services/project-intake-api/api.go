@@ -23,7 +23,7 @@ func (a *App) handler() http.Handler {
 		if r.URL.Path == "/health/ready" {
 			ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 			defer cancel()
-			if a.db.Ping(ctx) != nil {
+			if a.db.Ping(ctx) != nil || a.staffDB != nil && a.staffDB.Ping(ctx) != nil {
 				fail(w, 503, "DB_UNAVAILABLE", "数据库未就绪")
 			} else {
 				respond(w, 200, map[string]bool{"ok": true})
@@ -42,7 +42,7 @@ func (a *App) handler() http.Handler {
 		if r.Method != "GET" && !a.csrf(w, r, u) {
 			return
 		}
-		if e = a.api(w, r, u); e != nil {
+		if e = a.api(w, r, u); e != nil && !staffError(w, e) {
 			fail(w, 503, "SERVICE_UNAVAILABLE", "服务暂时不可用，请保留输入并重试")
 		}
 	})
@@ -52,6 +52,9 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 	defer cancel()
 	r = r.WithContext(ctx)
 	path, method := r.URL.Path, r.Method
+	if path == "/api/v1/staff" || strings.HasPrefix(path, "/api/v1/staff/") || path == "/api/v1/teams" || strings.HasPrefix(path, "/api/v1/teams/") {
+		return a.staff(w, r, u)
+	}
 	if handled, e := a.governance(w, r, u); handled {
 		return e
 	}
@@ -118,7 +121,7 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 			if e != nil {
 				return e
 			}
-			tx, e := a.db.Begin(ctx)
+			tx, e := a.beginBusiness(ctx, u, 1)
 			if e != nil {
 				return e
 			}
@@ -232,7 +235,14 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 		fail(w, 405, "METHOD_NOT_ALLOWED", "操作不支持")
 		return nil
 	}
-	tx, e := a.db.Begin(ctx)
+	required := 0
+	if action == "submit" {
+		required = 2
+	}
+	if action == "activities" {
+		required = 4
+	}
+	tx, e := a.beginBusiness(ctx, u, required)
 	if e != nil {
 		return e
 	}

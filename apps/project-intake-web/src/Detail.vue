@@ -142,6 +142,8 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', preventUnload))
           v-if="['DRAFT', 'RETURNED'].includes(p.intakeStatus)"
           action-id="project.submit"
           primary
+          :disabled="!app.user?.permissions.includes('project.submit')"
+          reason="团队未授予提交报备权限"
           :run="submit"
         >
           提交报备
@@ -149,8 +151,8 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', preventUnload))
           v-else
           action-id="activity.open"
           primary
-          :disabled="!['SUBMITTED', 'UNDER_REVIEW', 'APPROVED'].includes(p.intakeStatus)"
-          reason="当前状态不允许跟进"
+          :disabled="!app.user?.permissions.includes('activity.create') || !['SUBMITTED', 'UNDER_REVIEW', 'APPROVED'].includes(p.intakeStatus)"
+          :reason="app.user?.permissions.includes('activity.create') ? '当前状态不允许跟进' : '团队未授予记录跟进权限'"
           :run="
             () => {
               activityOpen = true;
@@ -341,8 +343,8 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', preventUnload))
         <ActionButton action-id="dialog.cancel" :run="closeActivity">取消</ActionButton><ActionButton
           action-id="activity.create"
           primary
-          :disabled="!activity.summary.trim() || !activity.occurredAt"
-          reason="请填写跟进时间和摘要"
+          :disabled="!app.user?.permissions.includes('activity.create') || !activity.summary.trim() || !activity.occurredAt"
+          :reason="app.user?.permissions.includes('activity.create') ? '请填写跟进时间和摘要' : '团队未授予记录跟进权限'"
           :run="record"
         >
           保存跟进

@@ -36,7 +36,8 @@ services:
       OIDC_CLIENT_ID: baobei-web
       OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
       DATABASE_URL_FILE: /run/secrets/runtime_database_url
-    secrets: [oidc_client_secret, runtime_database_url]
+      STAFF_DATABASE_URL_FILE: /run/secrets/staff_database_url
+    secrets: [oidc_client_secret, runtime_database_url, staff_database_url]
     networks: [internal, egress]
     read_only: true
     tmpfs: [/tmp]
@@ -55,6 +56,7 @@ services:
     volumes:
       - baobei-production-data:/var/lib/postgresql
       - ./db/initialize.sql:/docker-entrypoint-initdb.d/10-baobei-roles.sql:ro
+      - ./db/staff-role.sql:/docker-entrypoint-initdb.d/20-baobei-staff-role.sql:ro
     healthcheck:
       test: [CMD-SHELL, pg_isready -U baobei_bootstrap -d baobei]
       interval: 5s
@@ -75,6 +77,8 @@ secrets:
     file: ${BAOBEI_SECRETS_DIR:?External secret directory}/oidc_client_secret
   runtime_database_url:
     file: ${BAOBEI_SECRETS_DIR:?External secret directory}/runtime_database_url
+  staff_database_url:
+    file: ${BAOBEI_SECRETS_DIR:?External secret directory}/staff_database_url
   db_password:
     file: ${BAOBEI_SECRETS_DIR:?External secret directory}/db_password
 configs:

@@ -170,13 +170,20 @@ func applyIdentity(ctx context.Context, db *pgxpool.Pool, b []byte, operator str
 		return sum, e
 	}
 	for _, t := range m.Teams {
-		r, e := tx.Exec(ctx, `INSERT INTO teams(id,name) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET name=excluded.name WHERE teams.name IS DISTINCT FROM excluded.name`, t.ID, t.Name)
+		r, e := tx.Exec(ctx, `INSERT INTO teams(id,name) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET name=excluded.name,staff_version=teams.staff_version+1 WHERE teams.name IS DISTINCT FROM excluded.name`, t.ID, t.Name)
 		if e != nil {
 			return sum, e
 		}
 		sum.TeamsChanged += r.RowsAffected()
 	}
 	for _, u := range m.Users {
+		var managed bool
+		if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM app_users WHERE subject=$1 AND staff_managed)`, u.Subject).Scan(&managed); e != nil {
+			return sum, e
+		}
+		if managed {
+			return sum, errIdentityDenied
+		}
 		if u.Team != "" {
 			var exists bool
 			if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM teams WHERE id=$1)`, u.Team).Scan(&exists); e != nil {

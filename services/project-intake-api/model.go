@@ -96,11 +96,13 @@ type Audit struct {
 	CreatedAt time.Time      `json:"createdAt"`
 }
 type User struct {
-	Subject string `json:"subject"`
-	Name    string `json:"name"`
-	Role    string `json:"role"`
-	TeamID  string `json:"teamId"`
-	CSRF    string `json:"csrfToken"`
+	Subject     string   `json:"subject"`
+	Name        string   `json:"name"`
+	Role        string   `json:"role"`
+	TeamID      string   `json:"teamId"`
+	CSRF        string   `json:"csrfToken"`
+	Permissions []string `json:"permissions"`
+	sessionHash string
 }
 
 var stages = strings.Fields("L0_LEAD L1_REQUIREMENT L2_TECHNICAL L3_SITE_SURVEY L4_SOLUTION L5_QUOTATION L6_TENDER L7_COMMERCIAL L8_PENDING_CONTRACT WON LOST HOLD")

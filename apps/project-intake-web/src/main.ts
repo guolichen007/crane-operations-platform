@@ -8,12 +8,18 @@ import Dashboard from './Dashboard.vue';
 import Projects from './Projects.vue';
 import Wizard from './Wizard.vue';
 import Detail from './Detail.vue';
+import StaffMembers from './StaffMembers.vue';
+import StaffTeams from './StaffTeams.vue';
 import { useApp } from './store';
 import './style.css';
 const pinia = createPinia();
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    { path: '/team/members', component: StaffMembers },
+    { path: '/team/members/:id', component: StaffMembers },
+    { path: '/settings/teams', component: StaffTeams },
+    { path: '/settings/users', component: StaffMembers },
     { path: '/reviews', component: Reviews },
     { path: '/duplicates', component: Reviews },
     { path: '/login', component: Login },
@@ -36,8 +42,13 @@ router.beforeEach(async (to) => {
     !['baobei_manager', 'baobei_director'].includes(app.user?.role || '')
   )
     return '/';
+  if (to.path.startsWith('/team/members') &&
+      !['baobei_manager', 'baobei_director', 'baobei_admin'].includes(app.user?.role ?? '')) return '/';
+  if (to.path.startsWith('/settings/') && app.user?.role !== 'baobei_admin') return '/';
   if (app.user && to.path === '/login') return '/';
   if ((to.path === '/new' || to.path.endsWith('/edit')) && app.user?.role !== 'baobei_sales')
+    return '/';
+  if (to.path === '/new' && !to.query.draft && !app.user?.permissions.includes('project.create'))
     return '/';
 });
 createApp(App).use(pinia).use(router).mount('#app');

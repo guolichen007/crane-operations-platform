@@ -26,6 +26,7 @@ const container = checked([
   '-e', 'POSTGRES_USER=baobei_bootstrap', '-e', 'POSTGRES_DB=baobei',
   '-e', 'POSTGRES_HOST_AUTH_METHOD=trust',
   '-v', resolve('deploy/baobei/db/initialize.sql') + ':/docker-entrypoint-initdb.d/10-baobei-roles.sql:ro',
+  '-v', resolve('deploy/baobei/db/staff-role.sql') + ':/docker-entrypoint-initdb.d/20-baobei-staff-role.sql:ro',
   image,
 ]);
 try {

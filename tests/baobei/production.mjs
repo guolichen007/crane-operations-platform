@@ -45,7 +45,7 @@ export function validateProduction(c) {
   ]);
   assert(!web.secrets?.length);
   assert(!s['baobei-api'].volumes?.length);
-  assert.equal(s['baobei-postgres'].volumes.length, 2);
+  assert.equal(s['baobei-postgres'].volumes.length, 3);
   assert(!s['baobei-postgres'].volumes.some(volume =>
     volume.target === '/var/www/acme' || volume.source?.endsWith('/acme-webroot')));
   const env = s['baobei-api'].environment;
@@ -56,9 +56,10 @@ export function validateProduction(c) {
   assert.equal(env.OIDC_ISSUER, 'https://crane.youdaozd.com/realms/crane');
   assert(env.OIDC_CLIENT_SECRET_FILE && !env.OIDC_CLIENT_SECRET);
   assert(!env.DATABASE_URL);
+  assert.equal(env.STAFF_DATABASE_URL_FILE, '/run/secrets/staff_database_url');
   assert.equal(env.DATABASE_URL_FILE, '/run/secrets/runtime_database_url');
   assert.deepEqual(s['baobei-api'].secrets.map(secret => secret.source).sort(),
-    ['oidc_client_secret', 'runtime_database_url']);
+    ['oidc_client_secret', 'runtime_database_url', 'staff_database_url']);
   assert.equal(s['baobei-postgres'].environment.POSTGRES_USER, 'baobei_bootstrap');
   assert(s['baobei-postgres'].volumes.some(volume =>
     volume.target === '/docker-entrypoint-initdb.d/10-baobei-roles.sql' && volume.read_only));

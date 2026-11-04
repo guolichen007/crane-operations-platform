@@ -48,6 +48,8 @@ func main() {
 		switch {
 		case len(os.Args) >= 3 && os.Args[1] == "maintenance" && os.Args[2] == "identity-apply":
 			command = "identity-apply"
+		case len(os.Args) >= 3 && os.Args[1] == "maintenance" && os.Args[2] == "staff-provision":
+			command = "staff-provision"
 		case len(os.Args) == 3 && os.Args[1] == "maintenance" && (os.Args[2] == "migrate" || os.Args[2] == "protection-sweep"):
 			command = os.Args[2]
 		default:
@@ -98,6 +100,11 @@ func main() {
 			log.Fatal(e)
 		}
 		return
+	case "staff-provision":
+		if e = provisionCommand(ctx, pool, os.Args[3:], os.Stdout); e != nil {
+			log.Fatal(e)
+		}
+		return
 	case "protection-sweep":
 		n, e := (&App{db: pool, cfg: c}).protectionSweep(ctx, time.Now().UTC())
 		if e != nil {
@@ -109,6 +116,26 @@ func main() {
 	a, e := newApp(ctx, pool, c)
 	if e != nil {
 		log.Fatal("authentication initialization failed")
+	}
+	if c.Env == "production" {
+		staffConfig, err := pgxpool.ParseConfig(envSecret("STAFF_DATABASE_URL"))
+		if err != nil || staffConfig.ConnConfig.Host != database.ConnConfig.Host ||
+			staffConfig.ConnConfig.Port != database.ConnConfig.Port ||
+			staffConfig.ConnConfig.Database != database.ConnConfig.Database {
+			log.Fatal("separate staff database credentials required")
+		}
+		staffConfig.ConnConfig.RuntimeParams["search_path"] = "public"
+		a.staffDB, err = pgxpool.NewWithConfig(ctx, staffConfig)
+		if err != nil {
+			log.Fatal("staff database unavailable")
+		}
+		defer a.staffDB.Close()
+		verify, cancel := context.WithTimeout(ctx, 10*time.Second)
+		err = verifyDatabaseRole(verify, a.staffDB, "baobei_staff_api", false)
+		cancel()
+		if err != nil {
+			log.Fatal("staff database role rejected")
+		}
 	}
 	if c.Dev {
 		if e = seed(ctx, pool); e != nil {
@@ -149,7 +176,11 @@ func seed(ctx context.Context, p *pgxpool.Pool) error {
  INSERT INTO app_users(subject,display_name,role,team_id) VALUES
  ('synthetic-c','示例销售 C','baobei_sales','22222222-2222-4222-8222-222222222222'),
  ('synthetic-manager-other','示例另一组主管','baobei_manager','22222222-2222-4222-8222-222222222222'),
- ('synthetic-director','示例总监','baobei_director',NULL) ON CONFLICT DO NOTHING`)
+ ('synthetic-director','示例总监','baobei_director',NULL),
+ ('synthetic-admin','示例管理员','baobei_admin',NULL),
+ ('synthetic-staff-desktop','交接销售桌面','baobei_sales','11111111-1111-4111-8111-111111111111'),
+ ('synthetic-staff-mobile','交接销售手机','baobei_sales','11111111-1111-4111-8111-111111111111') ON CONFLICT DO NOTHING;
+ UPDATE app_users SET work_email=subject||'@example.test' WHERE subject IN ('synthetic-a','synthetic-b','synthetic-c','synthetic-staff-desktop','synthetic-staff-mobile') AND work_email IS NULL`)
 	return e
 }
 

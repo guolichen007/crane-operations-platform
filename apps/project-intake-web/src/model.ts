@@ -84,6 +84,8 @@ export interface User {
   name: string;
   role: string;
   csrfToken: string;
+  teamId: string;
+  permissions: string[];
 }
 export interface Duplicate {
   risk: string;

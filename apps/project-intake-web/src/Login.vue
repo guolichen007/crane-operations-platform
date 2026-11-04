@@ -48,6 +48,9 @@ function enterpriseLogin() {
           <option value="synthetic-b">示例销售 B</option>
           <option value="synthetic-manager">示例主管</option>
           <option value="synthetic-director">示例总监</option>
+          <option value="synthetic-admin">示例管理员</option>
+          <option value="synthetic-staff-desktop">交接销售桌面</option>
+          <option value="synthetic-staff-mobile">交接销售手机</option>
           <option value="synthetic-c">示例销售 C</option>
           <option value="synthetic-manager-other">示例另一组主管</option>
         </select></label><ActionButton action-id="auth.dev-login" :run="login">使用开发身份进入</ActionButton>

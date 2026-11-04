@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Project Intake API",
-    "version": "1.0.0-b2",
-    "description": "B2: client-role OIDC, database pending state, reviews, duplicate decisions, ownership, protection and stages."
+    "version": "1.0.0-b3",
+    "description": "项目报备、审批与重复裁决，以及受团队、角色和业务能力约束的人员治理。"
   },
   "servers": [
     {
@@ -26,7 +26,18 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "type": "object",
+                  "required": [
+                    "permissions"
+                  ],
+                  "properties": {
+                    "permissions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/StaffCapability"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -2202,6 +2213,958 @@
           }
         ]
       }
+    },
+    "/api/v1/staff": {
+      "get": {
+        "operationId": "staff.list",
+        "summary": "分页搜索授权范围内的人员",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/StaffInvalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/StaffUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/StaffForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/StaffNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/StaffConflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/StaffMediaType"
+          },
+          "503": {
+            "$ref": "#/components/responses/StaffUnavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 254
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "PENDING_PROVISION",
+                "PENDING_ACTIVATION",
+                "ACTIVE",
+                "SUSPENDED",
+                "PROVISION_FAILED",
+                "ARCHIVED"
+              ]
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "name",
+                "email",
+                "lastLogin",
+                "projects"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/staff/invitations": {
+      "post": {
+        "operationId": "staff.invite",
+        "summary": "添加待开通人员",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffMember"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/StaffInvalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/StaffUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/StaffForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/StaffNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/StaffConflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/StaffMediaType"
+          },
+          "503": {
+            "$ref": "#/components/responses/StaffUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffInvitation"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/staff/{id}": {
+      "get": {
+        "operationId": "staff.detail",
+        "summary": "人员详情及范围内待移交项目",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/StaffInvalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/StaffUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/StaffForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/StaffNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/StaffConflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/StaffMediaType"
+          },
+          "503": {
+            "$ref": "#/components/responses/StaffUnavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "staff.edit",
+        "summary": "按版本编辑人员资料、团队或角色",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffMember"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/StaffInvalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/StaffUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/StaffForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/StaffNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/StaffConflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/StaffMediaType"
+          },
+          "503": {
+            "$ref": "#/components/responses/StaffUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffProfileChange"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/staff/{id}/permissions": {
+      "patch": {
+        "operationId": "staff.permissions",
+        "summary": "设置固定业务能力",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffMember"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/StaffInvalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/StaffUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/StaffForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/StaffNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/StaffConflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/StaffMediaType"
+          },
+          "503": {
+            "$ref": "#/components/responses/StaffUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffPermissionChange"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/staff/{id}/suspend": {
+      "post": {
+        "operationId": "staff.suspend",
+        "summary": "停用及撤销会话",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffMember"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/StaffInvalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/StaffUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/StaffForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/StaffNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/StaffConflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/StaffMediaType"
+          },
+          "503": {
+            "$ref": "#/components/responses/StaffUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffChange"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/staff/{id}/reactivate": {
+      "post": {
+        "operationId": "staff.reactivate",
+        "summary": "申请恢复账号",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffMember"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/StaffInvalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/StaffUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/StaffForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/StaffNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/StaffConflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/StaffMediaType"
+          },
+          "503": {
+            "$ref": "#/components/responses/StaffUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffChange"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/staff/{id}/retry": {
+      "post": {
+        "operationId": "staff.retry",
+        "summary": "重试身份任务",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffMember"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/StaffInvalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/StaffUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/StaffForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/StaffNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/StaffConflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/StaffMediaType"
+          },
+          "503": {
+            "$ref": "#/components/responses/StaffUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffChange"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/staff/{id}/archive": {
+      "post": {
+        "operationId": "staff.archive",
+        "summary": "归档已停用账号",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffMember"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/StaffInvalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/StaffUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/StaffForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/StaffNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/StaffConflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/StaffMediaType"
+          },
+          "503": {
+            "$ref": "#/components/responses/StaffUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffChange"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/staff/{id}/ownership-transfer-batch": {
+      "post": {
+        "operationId": "staff.transferBatch",
+        "summary": "逐项校验版本并移交项目",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffTransferResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/StaffInvalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/StaffUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/StaffForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/StaffNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/StaffConflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/StaffMediaType"
+          },
+          "503": {
+            "$ref": "#/components/responses/StaffUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffTransfer"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/staff/{id}/audit": {
+      "get": {
+        "operationId": "staff.audit",
+        "summary": "查看最近人员审计",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffAudit"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/StaffInvalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/StaffUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/StaffForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/StaffNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/StaffConflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/StaffMediaType"
+          },
+          "503": {
+            "$ref": "#/components/responses/StaffUnavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/teams": {
+      "get": {
+        "operationId": "staffTeams.list",
+        "summary": "列出当前角色可选团队",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffTeamList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/StaffInvalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/StaffUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/StaffForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/StaffNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/StaffConflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/StaffMediaType"
+          },
+          "503": {
+            "$ref": "#/components/responses/StaffUnavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "staffTeams.create",
+        "summary": "管理员创建团队",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffTeam"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/StaffInvalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/StaffUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/StaffForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/StaffNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/StaffConflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/StaffMediaType"
+          },
+          "503": {
+            "$ref": "#/components/responses/StaffUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffTeamChange"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/teams/{id}": {
+      "patch": {
+        "operationId": "staffTeams.edit",
+        "summary": "管理员按版本编辑团队",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffTeam"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/StaffInvalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/StaffUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/StaffForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/StaffNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/StaffConflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/StaffMediaType"
+          },
+          "503": {
+            "$ref": "#/components/responses/StaffUnavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffTeamChange"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -2802,6 +3765,604 @@
                   "$ref": "#/components/schemas/Project"
                 }
               }
+            }
+          }
+        }
+      },
+      "StaffCapability": {
+        "type": "string",
+        "enum": [
+          "project.create",
+          "project.submit",
+          "activity.create"
+        ]
+      },
+      "StaffInvitation": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254
+          },
+          "teamId": {
+            "type": "string",
+            "description": "销售和主管使用团队 UUID。全局角色使用空串。"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "baobei_sales",
+              "baobei_manager",
+              "baobei_director",
+              "baobei_admin"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 600
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StaffCapability"
+            },
+            "uniqueItems": true,
+            "maxItems": 3
+          }
+        },
+        "required": [
+          "name",
+          "email",
+          "teamId",
+          "role",
+          "reason"
+        ]
+      },
+      "StaffProfileChange": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254
+          },
+          "teamId": {
+            "type": "string",
+            "description": "销售和主管使用团队 UUID。全局角色使用空串。"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "baobei_sales",
+              "baobei_manager",
+              "baobei_director",
+              "baobei_admin"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 600
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "name",
+          "email",
+          "teamId",
+          "role",
+          "reason",
+          "version"
+        ]
+      },
+      "StaffChange": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 600
+          }
+        },
+        "required": [
+          "version",
+          "reason"
+        ]
+      },
+      "StaffPermissionChange": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 600
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StaffCapability"
+            },
+            "uniqueItems": true,
+            "maxItems": 3
+          }
+        },
+        "required": [
+          "version",
+          "reason",
+          "permissions"
+        ]
+      },
+      "StaffMember": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "teamId": {
+            "type": "string"
+          },
+          "team": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "baobei_sales",
+              "baobei_manager",
+              "baobei_director",
+              "baobei_admin"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING_PROVISION",
+              "PENDING_ACTIVATION",
+              "ACTIVE",
+              "SUSPENDED",
+              "PROVISION_FAILED",
+              "ARCHIVED"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "note": {
+            "type": "string"
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StaffCapability"
+            },
+            "uniqueItems": true,
+            "maxItems": 3
+          },
+          "projectCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "lastLogin": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "syncStatus": {
+            "type": "string",
+            "enum": [
+              "NONE",
+              "PENDING",
+              "ACKNOWLEDGED",
+              "FAILED",
+              "SUPERSEDED"
+            ]
+          },
+          "canManage": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "email",
+          "teamId",
+          "team",
+          "role",
+          "status",
+          "version",
+          "note",
+          "permissions",
+          "projectCount",
+          "lastLogin",
+          "syncStatus",
+          "canManage"
+        ]
+      },
+      "StaffPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StaffMember"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "pageSize"
+        ]
+      },
+      "StaffProject": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "queued": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "name",
+          "status",
+          "version",
+          "queued"
+        ]
+      },
+      "StaffDetail": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "member": {
+            "$ref": "#/components/schemas/StaffMember"
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StaffProject"
+            }
+          }
+        },
+        "required": [
+          "member",
+          "projects"
+        ]
+      },
+      "StaffAudit": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "actor": {
+                  "type": "string"
+                },
+                "action": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "required": [
+                "actor",
+                "action",
+                "reason",
+                "version",
+                "at"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "StaffTransfer": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "targetId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 600
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "version": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "required": [
+                "id",
+                "version"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "targetId",
+          "version",
+          "reason",
+          "projects"
+        ]
+      },
+      "StaffTransferResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "TRANSFERRED",
+                    "ALREADY_TRANSFERRED",
+                    "VERSION_CONFLICT",
+                    "NOT_AVAILABLE"
+                  ]
+                },
+                "version": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "required": [
+                "id",
+                "status"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "StaffTeam": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "version"
+        ]
+      },
+      "StaffTeamList": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StaffTeam"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "StaffTeamChange": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 600
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "name",
+          "reason"
+        ]
+      }
+    },
+    "responses": {
+      "StaffInvalid": {
+        "description": "输入错误",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "StaffUnauthorized": {
+        "description": "会话无效",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "StaffForbidden": {
+        "description": "超出范围或需重新认证",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "StaffNotFound": {
+        "description": "记录不存在或不可见",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "StaffConflict": {
+        "description": "版本、重复或状态冲突",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "StaffMediaType": {
+        "description": "请求格式错误",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "StaffUnavailable": {
+        "description": "暂时不可用",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
             }
           }
         }

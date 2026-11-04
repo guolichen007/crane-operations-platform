@@ -1303,3 +1303,39 @@ td small {
     font-size: 11px;
   }
 }
+
+/* Staff governance uses the shared panels, action buttons and dialog sheet. */
+.staff-page { display: grid; gap: 16px; }
+.staff-list { display: grid; gap: 8px; }
+.staff-card, .staff-row, .staff-filters { padding: 16px; }
+.staff-row, .staff-filters, .staff-title {
+  display: grid; align-items: center; gap: 12px;
+}
+.staff-row { grid-template-columns: minmax(145px, 1.3fr) minmax(95px, 1fr) auto minmax(100px, 1fr) auto; }
+.staff-filters { grid-template-columns: minmax(150px, 2fr) 1fr 1fr auto; margin-bottom: 12px; }
+.staff-title { grid-template-columns: 1fr auto; }
+.staff-name { display: grid; gap: 4px; }
+.staff-name, .staff-facts dd, .staff-audit, .staff-check { overflow-wrap: anywhere; }
+.staff-status { padding: 4px 8px; border-radius: 6px; background: #f3f5f9; color: #3d5069; font-size: 13px; width: fit-content; }
+.staff-status[data-state="ACTIVE"] { background: #e4f3eb; color: #176343; }
+.staff-status[data-state="SUSPENDED"], .staff-status[data-state="PROVISION_FAILED"] { background: #f9ece9; color: #913b2b; }
+.staff-card h2 { margin: 0 0 12px; font-size: 18px; }
+.staff-card > .actions, .staff-pagination { margin-top: 12px; flex-wrap: wrap; }
+.staff-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.staff-facts dt { font-size: 12px; color: #526176; }
+.staff-facts dd { margin: 4px 0 0; }
+.staff-audit { padding-left: 20px; }
+.staff-audit li + li { margin-top: 10px; }
+.staff-form, .staff-form > label, .staff-filters label { display: grid; gap: 6px; }
+.staff-form { margin-top: 16px; gap: 12px; }
+.staff-form :is(input, select, textarea), .staff-filters :is(input,select) { min-width: 0; width: 100%; }
+.staff-check, .staff-form .staff-check { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+.staff-check input[type="checkbox"] { width: auto; flex: none; }
+@media (max-width: 700px) {
+  .staff-row { grid-template-columns: 1fr; }
+  .staff-filters { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .staff-filters label:first-child { grid-column: 1 / -1; }
+  .staff-facts { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .staff-title { grid-template-columns: 1fr; }
+  .staff-page .page-heading .actions { flex-wrap: wrap; }
+}

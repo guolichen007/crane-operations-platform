@@ -232,7 +232,7 @@ func (a *App) governance(w http.ResponseWriter, r *http.Request, u User) (bool, 
 		fail(w, 400, "INVALID_INPUT", "请填写不超过1000字的操作原因")
 		return true, nil
 	}
-	tx, e := a.db.Begin(ctx)
+	tx, e := a.beginBusiness(ctx, u, 0)
 	if e != nil {
 		return true, e
 	}
@@ -279,11 +279,7 @@ func (a *App) governance(w http.ResponseWriter, r *http.Request, u User) (bool, 
 			return true, nil
 		}
 		var teamID string
-		// Identity updates hold the exclusive side of this transaction lock.
-		// Reading the transfer target needs no UPDATE privilege on app_users.
-		if _, e = tx.Exec(ctx, `SELECT pg_advisory_xact_lock_shared($1)`, identityLock); e != nil {
-			return true, e
-		}
+
 		e = tx.QueryRow(ctx, `SELECT coalesce(team_id::text,'') FROM app_users WHERE subject=$1 AND active AND role='baobei_sales'`, in.TargetSubject).Scan(&teamID)
 		if e != nil || in.TargetSubject == p.OwnerSubject || teamID == "" || u.Role == "baobei_manager" && teamID != u.TeamID {
 			fail(w, 400, "INVALID_TARGET", "请选择权限范围内的其他有效销售人员")

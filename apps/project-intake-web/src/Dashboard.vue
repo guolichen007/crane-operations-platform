@@ -67,6 +67,8 @@ const due = computed(() =>
       v-if="app.user?.role === 'baobei_sales'"
       action-id="project.create"
       primary
+      :disabled="!app.user.permissions.includes('project.create')"
+      reason="团队未授予新建报备权限"
       :run="() => router.push('/new')"
     >
       <Plus :size="16" />快速报备
