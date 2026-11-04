@@ -28,13 +28,17 @@ export function validateProduction(c) {
   assert.equal(c.networks.egress.name, 'u-dao-baobei-egress');
   assert(!c.networks.egress.internal);
   const web = s['baobei-web'];
-  assert.deepEqual(web.volumes, [{
+  assert.equal(web.volumes.length, 1);
+  const {bind, ...mount} = web.volumes[0];
+  assert.deepEqual(mount, {
     type: 'bind',
     source: '/srv/u-dao/platform/ingress/acme-webroot',
     target: '/var/www/acme',
     read_only: true,
-    bind: {create_host_path: false},
-  }]);
+  });
+  // Compose versions differ in whether config JSON emits false-valued bind options.
+  assert.equal(raw.services['baobei-web'].volumes[0].bind.create_host_path, false);
+  assert.equal(bind?.create_host_path ?? false, false);
   assert.deepEqual(web.configs.map(({source, target}) => [source, target]), [
     ['nginx-production', '/etc/nginx/conf.d/default.conf'],
     ['nginx-proxy', '/etc/nginx/baobei-proxy.conf'],
@@ -87,8 +91,12 @@ const r = spawnSync(
 if (r.status) throw Error(r.stderr);
 const c = JSON.parse(r.stdout);
 validateProduction(c);
+const omittedDefault = structuredClone(c);
+omittedDefault.services['baobei-web'].volumes[0].bind = {};
+validateProduction(omittedDefault);
 for (const mutate of [
   (x) => { x.services['baobei-web'].volumes[0].read_only = false; },
+  (x) => { x.services['baobei-web'].volumes[0].bind = {create_host_path: true}; },
   (x) => { x.services['baobei-web'].volumes.push({source: '/tls', target: '/etc/nginx/tls'}); },
   (x) => { x.services['baobei-web'].secrets = [{source: 'tls_private_key'}]; },
   (x) => { x.services['baobei-api'].volumes = x.services['baobei-web'].volumes; },

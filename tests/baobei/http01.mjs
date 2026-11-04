@@ -189,7 +189,8 @@ try {
   const reloaded = inspect(ingress);
   assert.equal(reloaded.Id, existingIngress.Id);
   assert.equal(reloaded.State.StartedAt, existingIngress.State.StartedAt);
-  assert.deepEqual(reloaded.Mounts, existingIngress.Mounts);
+  const mountOrder = (left, right) => left.Destination.localeCompare(right.Destination);
+  assert.deepEqual(reloaded.Mounts.sort(mountOrder), existingIngress.Mounts.sort(mountOrder));
   assert.equal(checked(firebotProbe), '204');
   const mounts = (name) => inspect(name).Mounts.filter(mount => mount.Type === 'bind');
   assert.deepEqual(mounts(ingress).map(mount => mount.Destination).sort(), [
