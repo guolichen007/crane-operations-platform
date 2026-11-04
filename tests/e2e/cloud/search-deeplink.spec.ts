@@ -163,3 +163,43 @@ test('无遥测资产不伪造 0/自动/闭合/无故障', async ({ page }) => {
   await expect(panel).not.toContainText('0.00 m');
   await expect(panel).not.toContainText('闭合');
 });
+
+test('API 城市项目按省市区逐级钻取保持可见，且不跨省泄漏', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/#/overview');
+  await expect(page.locator('.province-summary')).toHaveCount(34);
+  await expect(page.locator('.scene-loading')).toBeHidden();
+  await page.waitForFunction(() => !window.__spatialDiagnostics!().intro.active);
+  const clusterCoord = (id: string) =>
+    page.evaluate((i) => {
+      const p = window.__spatialDiagnostics!().picks.find((x) => x.kind === 'cluster' && x.id === i);
+      return p ? [p.x, p.y] : null;
+    }, id);
+  // 全国：嘉兴项目（P001, adminCode 330400）参与浙江省聚合。
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__spatialDiagnostics!().picks.some((p) => p.kind === 'cluster' && p.id === '330000')
+      )
+    )
+    .toBe(true);
+  // 进入浙江（地图拾取坐标）→ P001 项目标签仍存在（省级钻取不得过滤城市项目）。
+  const zj = await clusterCoord('330000');
+  expect(zj).not.toBeNull();
+  await page.mouse.click(zj![0], zj![1]);
+  await expect(page.locator('main')).toHaveAttribute('data-adcode', '330000');
+  await expect(page.locator('.map-project.real', { hasText: 'Project-A' })).toHaveCount(1);
+  // 进入嘉兴（点击地图嘉兴市区域标签）→ P001 仍可见。
+  await page.locator('.map-region', { hasText: '嘉兴' }).click();
+  await expect(page.locator('main')).toHaveAttribute('data-adcode', '330400');
+  await expect(page.locator('.map-project.real', { hasText: 'Project-A' })).toHaveCount(1);
+  // 返回全国 → 进入江苏 → P001 不出现，P002 出现。
+  await page.getByRole('button', { name: '重置全国视角' }).click();
+  await expect(page.locator('main')).toHaveAttribute('data-adcode', '100000');
+  const js = await clusterCoord('320000');
+  expect(js).not.toBeNull();
+  await page.mouse.click(js![0], js![1]);
+  await expect(page.locator('main')).toHaveAttribute('data-adcode', '320000');
+  await expect(page.locator('.map-project.real', { hasText: 'Project-B' })).toHaveCount(1);
+  await expect(page.locator('.map-project.real', { hasText: 'Project-A' })).toHaveCount(0);
+});

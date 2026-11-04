@@ -149,6 +149,46 @@ describe('遥测来源与 ViewModel 映射', () => {
   });
 });
 
+describe('现场来源 runtimeSource 语义', () => {
+  it('SIMULATION + shadow → runtimeSource SIMULATION 保留，telemetrySource 仍 cloud', () => {
+    const d = mapApiDevice(asset({ runtimeSource: 'SIMULATION' }), base, shadow());
+    expect(d.telemetrySource).toBe('cloud');
+    expect(d.runtimeSource).toBe('SIMULATION');
+  });
+  it('REAL + shadow → runtimeSource REAL', () => {
+    expect(mapApiDevice(asset({ runtimeSource: 'REAL' }), base, shadow()).runtimeSource).toBe('REAL');
+  });
+  it('TEST + shadow → runtimeSource TEST', () => {
+    expect(mapApiDevice(asset({ runtimeSource: 'TEST' }), base, shadow()).runtimeSource).toBe('TEST');
+  });
+  it('无 runtime → runtimeSource null', () => {
+    expect(mapApiDevice(asset({ runtimeDeviceId: null }), base, undefined).runtimeSource).toBeNull();
+  });
+});
+
+describe('技术元数据不继承项目默认值', () => {
+  it('AssetDevice 元数据缺失 → NaN/空串，不用项目默认 0 t / 0 m / A8', () => {
+    const d = mapApiDevice(asset(), base, shadow());
+    expect(d.craneModel).toBe('');
+    expect(Number.isNaN(d.ratedCapacityT)).toBe(true);
+    expect(Number.isNaN(d.spanM)).toBe(true);
+    expect(d.workClass).toBe('');
+    expect(d.grabType).toBe('');
+  });
+  it('AssetDevice 元数据存在 → 真实映射', () => {
+    const d = mapApiDevice(
+      asset({ craneModel: 'QZ16t', ratedCapacityT: 16, spanM: 28, workClass: 'A7', grabType: '液压多瓣抓斗' }),
+      base,
+      shadow()
+    );
+    expect(d.craneModel).toBe('QZ16t');
+    expect(d.ratedCapacityT).toBe(16);
+    expect(d.spanM).toBe(28);
+    expect(d.workClass).toBe('A7');
+    expect(d.grabType).toBe('液压多瓣抓斗');
+  });
+});
+
 describe('telemetrySource 判定', () => {
   it('demo→none 由 provider 层控制；此处仅 API 判定', () => {
     expect(apiTelemetrySource(asset(), shadow())).toBe('cloud');
