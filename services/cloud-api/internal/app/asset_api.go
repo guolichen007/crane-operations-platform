@@ -734,8 +734,12 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 			return
 		}
 		in.AssetId = assetID
-		out, err := asset.CreateEquipment(r.Context(), h.db, in.EquipmentInstallation, in.Spec, currentPrincipal(r).user, requestID(r))
+		out, err := asset.CreateEquipment(r.Context(), h.db, in.EquipmentInstallation, in.Spec, currentPrincipal(r).user, requestID(r), r.Header.Get("Idempotency-Key"))
 		if err != nil {
+			if errors.Is(err, asset.ErrIdempotencyKey) {
+				respondAPI(w, 409, map[string]string{"error": "idempotency conflict"})
+				return
+			}
 			respondAPI(w, 400, map[string]string{"error": err.Error()})
 			return
 		}

@@ -32,6 +32,7 @@ var (
 	ErrDisabledLocation = errors.New("disabled location cannot be an installation target")
 	ErrTerminalStatus   = errors.New("asset status is terminal")
 	ErrExpectedVersion  = errors.New("expected version is required")
+	ErrRemoved          = errors.New("equipment is already removed")
 )
 
 const maxPageSize = 100
@@ -97,6 +98,20 @@ func canonicalAssetRequest(in contract.AssetMasterData) []byte {
 	c.AssetStatus = ""
 	c.Version = 0
 	b, _ := json.Marshal(c)
+	return b
+}
+
+// canonicalEquipmentRequest strips server-managed fields (id, version) so a
+// client retry with the same equipment payload + spec hashes identically.
+func canonicalEquipmentRequest(in contract.EquipmentInstallation, spec json.RawMessage) []byte {
+	c := in
+	c.Id = ""
+	c.Version = 0
+	payload := struct {
+		Equipment contract.EquipmentInstallation `json:"equipment"`
+		Spec      json.RawMessage                `json:"spec"`
+	}{c, spec}
+	b, _ := json.Marshal(payload)
 	return b
 }
 
@@ -1018,13 +1033,42 @@ func resolveSpecSchemaVersion(ctx context.Context, tx *sql.Tx, typeCode string, 
 }
 
 // CreateEquipment installs an equipment instance on an asset, validating the
-// type-specific specification against the resolved versioned schema.
-func CreateEquipment(ctx context.Context, db *sql.DB, in contract.EquipmentInstallation, spec json.RawMessage, actor, requestID string) (contract.EquipmentInstallation, error) {
+// type-specific specification against the resolved versioned schema. Idempotency
+// is evaluated on the canonical client request before any id/version assignment;
+// a replay returns the original result without a second revision/audit row.
+func CreateEquipment(ctx context.Context, db *sql.DB, in contract.EquipmentInstallation, spec json.RawMessage, actor, requestID, idemKey string) (contract.EquipmentInstallation, error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return in, err
 	}
 	defer tx.Rollback()
+	if idemKey != "" {
+		existing, replay, err := idempotencyClaim(ctx, tx, actor, "equipment_create", idemKey, canonicalEquipmentRequest(in, spec))
+		if err != nil {
+			return in, err
+		}
+		if replay {
+			if len(existing) > 0 {
+				var out contract.EquipmentInstallation
+				if err := json.Unmarshal(existing, &out); err != nil {
+					return in, err
+				}
+				return out, nil
+			}
+			return in, ErrIdempotencyKey
+		}
+	}
+	// A retired asset can never receive a new equipment installation.
+	var assetStatus string
+	if err := tx.QueryRowContext(ctx, `SELECT asset_status FROM asset_devices WHERE id=$1 FOR UPDATE`, in.AssetId).Scan(&assetStatus); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return in, ErrNotFound
+		}
+		return in, err
+	}
+	if assetStatus == "RETIRED" {
+		return in, ErrRetired
+	}
 	schemaVersion, err := resolveSpecSchemaVersion(ctx, tx, in.TypeCode, in.CatalogItemId)
 	if err != nil {
 		return in, err
@@ -1056,6 +1100,12 @@ func CreateEquipment(ctx context.Context, db *sql.DB, in contract.EquipmentInsta
 	}
 	if err := auditlog.Write(ctx, tx, auditlog.Event{Actor: actor, Project: projectID, Action: "equipment_created", Result: "success", RequestID: requestID}); err != nil {
 		return in, err
+	}
+	if idemKey != "" {
+		resultJSON, _ := json.Marshal(in)
+		if err := idempotencyPersist(ctx, tx, actor, "equipment_create", idemKey, in.Id, resultJSON); err != nil {
+			return in, err
+		}
 	}
 	return in, tx.Commit()
 }
@@ -1112,14 +1162,33 @@ func UpdateEquipment(ctx context.Context, db *sql.DB, in contract.EquipmentInsta
 	defer tx.Rollback()
 	var assetID string
 	var version int64
-	if err := tx.QueryRowContext(ctx, `SELECT asset_id,version FROM asset_equipment_installations WHERE id=$1 FOR UPDATE`, in.Id).Scan(&assetID, &version); err != nil {
+	var validTo sql.NullTime
+	if err := tx.QueryRowContext(ctx, `SELECT asset_id,version,valid_to FROM asset_equipment_installations WHERE id=$1 FOR UPDATE`, in.Id).Scan(&assetID, &version, &validTo); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return in, ErrNotFound
 		}
 		return in, err
 	}
+	if validTo.Valid {
+		// A removed equipment can never be re-activated through a normal update.
+		return in, ErrRemoved
+	}
 	if version != expectedVersion {
 		return in, ErrVersionConflict
+	}
+	// The updated type must stay a registered equipment type; a catalog reference,
+	// when supplied, must resolve to an existing catalog item.
+	if !equipment.ValidTypeCode(in.TypeCode) {
+		return in, fmt.Errorf("unsupported equipment type_code %q", in.TypeCode)
+	}
+	if in.CatalogItemId != nil && *in.CatalogItemId != "" {
+		var one int
+		if err := tx.QueryRowContext(ctx, `SELECT 1 FROM equipment_catalog_items WHERE id=$1`, *in.CatalogItemId).Scan(&one); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return in, fmt.Errorf("catalog item %q not found", *in.CatalogItemId)
+			}
+			return in, err
+		}
 	}
 	result, err := tx.ExecContext(ctx, `UPDATE asset_equipment_installations SET equipment_code=$2,type_code=$3,catalog_item_id=$4,serial_number=$5,semantic_slot=$6,position_label=$7,criticality=$8,administrative_state=$9,version=version+1,updated_at=now() WHERE id=$1 AND version=$10`,
 		in.Id, in.EquipmentCode, in.TypeCode, in.CatalogItemId, in.SerialNumber, in.SemanticSlot, in.PositionLabel, in.Criticality, in.AdministrativeState, expectedVersion)
@@ -1157,11 +1226,16 @@ func RemoveEquipment(ctx context.Context, db *sql.DB, equipmentID string, expect
 	defer tx.Rollback()
 	var assetID string
 	var version int64
-	if err := tx.QueryRowContext(ctx, `SELECT asset_id,version FROM asset_equipment_installations WHERE id=$1 FOR UPDATE`, equipmentID).Scan(&assetID, &version); err != nil {
+	var validTo sql.NullTime
+	if err := tx.QueryRowContext(ctx, `SELECT asset_id,version,valid_to FROM asset_equipment_installations WHERE id=$1 FOR UPDATE`, equipmentID).Scan(&assetID, &version, &validTo); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
 		return err
+	}
+	if validTo.Valid {
+		// A removed equipment cannot be removed again; history is immutable.
+		return ErrRemoved
 	}
 	if version != expectedVersion {
 		return ErrVersionConflict
