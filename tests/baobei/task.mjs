@@ -44,6 +44,9 @@ function compose(...args) {
   ]);
 }
 const tasks = {
+  'direct-check'() {
+    run(process.platform === 'win32' ? 'python' : 'python3', ['-B', 'tests/baobei/direct/run.py']);
+  },
   'http01-test'() {
     run(process.execPath, ['tests/baobei/http01.mjs']);
   },
@@ -80,6 +83,8 @@ const tasks = {
     run(go, ['test', './...'], api);
     npm('test');
     run('python'+(process.platform==='win32'?'':'3'),['-m','unittest','discover','-s','tests/baobei/publish','-v']);
+    run(process.platform === 'win32' ? 'python' : 'python3',
+      ['-B', '-m', 'unittest', 'discover', '-s', 'tests/baobei/direct', '-v']);
   },
   build() {
     mkdirSync('local-private', { recursive: true });

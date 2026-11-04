@@ -1,0 +1,6 @@
+# 由 direct-deploy.py 与 compose.production.yaml 一起加载。
+services:
+  baobei-web:
+    pull_policy: never
+  baobei-api:
+    pull_policy: never

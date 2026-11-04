@@ -22,6 +22,7 @@ jobs:
       - run: npm ci --prefix apps/project-intake-web --ignore-scripts
       - run: node tools/task.mjs baobei contract
       - run: python3 -m unittest discover -s tests/baobei/publish -v
+      - run: python3 -B -m unittest discover -s tests/baobei/direct -v
   baobei-web-quality:
     if: startsWith(github.ref, 'refs/heads/product/baobei-')
     runs-on: ubuntu-latest
@@ -177,6 +178,7 @@ jobs:
           cache: npm
           cache-dependency-path: apps/project-intake-web/package-lock.json
       - run: npm ci --prefix apps/project-intake-web --ignore-scripts
+      - run: node tools/task.mjs baobei direct-check
       - run: node tools/task.mjs baobei cert-test
       - run: node tools/task.mjs baobei compose
       - run: node tools/task.mjs baobei up

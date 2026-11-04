@@ -5,8 +5,8 @@ BAOBEI_MAIN_MERGE=FORBIDDEN
 BAOBEI_R2_MERGE=FORBIDDEN
 BASE_SHA=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18
 BRANCH=product/baobei-v1
-CURRENT_BATCH=BB-B3
-STOP_AFTER_BB_B3=YES
+CURRENT_BATCH=DIRECT-D0
+STOP_AFTER_DIRECT_D0=YES
 
 目标：快速报项目、识别重复、明确归属并跟进。独立产品，永不合并 main/R2。
 
@@ -71,3 +71,9 @@ START_HEAD=0f153931e18d37eb73b752b8a86bfd3498e01023，基线 CI Run 41764142151 
 首次启用及恢复采用受控开通回执。签名企业凭证通过精确身份、已验证邮箱、客户端角色与 Baobei 人员记录的复核后，账号才会激活。完成八门 CI 后停在 BB-B3，等待负责人验收。
 
 入口：[人员治理设计](BB-B3人员治理设计.md) · [交互动作矩阵](交互动作矩阵.md) · [BB-B3 验收报告](10-BB-B3验收报告.md)。
+
+## DIRECT-D0 服务器本地构建部署
+
+首次部署默认使用直接部署入口，从核准的产品提交构建并校验本地镜像。部署清单记录引擎镜像 ID、配置哈希和上次生效版本。GHCR 发布作为可选路径保留，继续执行原有审批和验证。
+
+入口：[直接部署与回滚](直接部署与回滚.md) · [DIRECT-D0 验收报告](11-DIRECT-D0验收报告.md)。

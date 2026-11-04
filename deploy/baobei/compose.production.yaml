@@ -55,8 +55,18 @@ services:
     networks: [internal]
     volumes:
       - baobei-production-data:/var/lib/postgresql
-      - ./db/initialize.sql:/docker-entrypoint-initdb.d/10-baobei-roles.sql:ro
-      - ./db/staff-role.sql:/docker-entrypoint-initdb.d/20-baobei-staff-role.sql:ro
+      - type: bind
+        source: ./db/initialize.sql
+        target: /docker-entrypoint-initdb.d/10-baobei-roles.sql
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./db/staff-role.sql
+        target: /docker-entrypoint-initdb.d/20-baobei-staff-role.sql
+        read_only: true
+        bind:
+          create_host_path: false
     healthcheck:
       test: [CMD-SHELL, pg_isready -U baobei_bootstrap -d baobei]
       interval: 5s
