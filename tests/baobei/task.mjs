@@ -107,6 +107,10 @@ const tasks = {
   e2e() {
     npm('exec', '--', 'playwright', 'test', '--config', '../../tests/baobei/playwright.config.ts');
   },
+  'auth-e2e'() {
+    env.BAOBEI_GO = go;
+    run(process.execPath, ['tests/baobei/auth-browser.mjs']);
+  },
   security() {
     npm('audit', '--audit-level=high');
     run(process.execPath, ['tests/baobei/contract.mjs']);

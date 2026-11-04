@@ -11,6 +11,7 @@ import Detail from './Detail.vue';
 import StaffMembers from './StaffMembers.vue';
 import StaffTeams from './StaffTeams.vue';
 import { useApp } from './store';
+import { loginErrorMessage } from './login-errors';
 import './style.css';
 const pinia = createPinia();
 const router = createRouter({
@@ -35,8 +36,8 @@ const router = createRouter({
 });
 router.beforeEach(async (to) => {
   const app = useApp(pinia);
-  if (!app.user) await app.loadUser();
-  if (!app.user && to.path != '/login') return '/login';
+  if (!app.sessionChecked) await app.loadUser();
+  if (!app.user && to.path !== '/login') return { path: '/login', replace: true };
   if (
     ['/reviews', '/duplicates'].includes(to.path) &&
     !['baobei_manager', 'baobei_director'].includes(app.user?.role || '')
@@ -45,7 +46,7 @@ router.beforeEach(async (to) => {
   if (to.path.startsWith('/team/members') &&
       !['baobei_manager', 'baobei_director', 'baobei_admin'].includes(app.user?.role ?? '')) return '/';
   if (to.path.startsWith('/settings/') && app.user?.role !== 'baobei_admin') return '/';
-  if (app.user && to.path === '/login') return '/';
+  if (app.user && to.path === '/login' && !loginErrorMessage(to.query.error)) return '/';
   if ((to.path === '/new' || to.path.endsWith('/edit')) && app.user?.role !== 'baobei_sales')
     return '/';
   if (to.path === '/new' && !to.query.draft && !app.user?.permissions.includes('project.create'))

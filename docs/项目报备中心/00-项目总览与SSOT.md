@@ -5,8 +5,8 @@ BAOBEI_MAIN_MERGE=FORBIDDEN
 BAOBEI_R2_MERGE=FORBIDDEN
 BASE_SHA=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18
 BRANCH=product/baobei-v1
-CURRENT_BATCH=DIRECT-D0
-STOP_AFTER_DIRECT_D0=YES
+CURRENT_BATCH=BB-AUTH-R1
+STOP_AFTER_BB_AUTH_R1=YES
 
 目标：快速报项目、识别重复、明确归属并跟进。独立产品，永不合并 main/R2。
 
@@ -77,3 +77,9 @@ START_HEAD=0f153931e18d37eb73b752b8a86bfd3498e01023，基线 CI Run 41764142151 
 首次部署默认使用直接部署入口，从核准的产品提交构建并校验本地镜像。部署清单记录引擎镜像 ID、配置哈希和上次生效版本。GHCR 发布作为可选路径保留，继续执行原有审批和验证。
 
 入口：[直接部署与回滚](直接部署与回滚.md) · [DIRECT-D0 验收报告](11-DIRECT-D0验收报告.md)。
+
+## BB-AUTH-R1 登录可靠性
+
+浏览器登录失败返回固定错误码，登录页按原因提供中文说明和重试。会话失效与网络或会话服务故障分别处理。OIDC 客户端契约、共享 Ingress、数据库迁移及业务权限沿用既有规则。
+
+入口：[BB-AUTH-R1 验收报告](12-BB-AUTH-R1验收报告.md)。

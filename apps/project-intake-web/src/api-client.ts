@@ -1,3 +1,13 @@
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code: string = '',
+  ) {
+    super(message);
+  }
+}
+
 export async function request<T>(
   url: string,
   method = 'GET',
@@ -42,15 +52,17 @@ export async function request<T>(
         typeof value.message === 'string'
       )
         message = value.message;
-      throw new Error(message);
+      const code = value && typeof value === 'object' && 'code' in value && typeof value.code === 'string'
+        ? value.code : '';
+      throw new ApiError(message, r.status, code);
     }
     if (r.status === 204) return undefined as T;
     if (value === undefined) throw new Error('服务返回格式异常，请稍后重试');
     return value as T;
   } catch (e) {
     if (e instanceof Error && e.name === 'AbortError')
-      throw new Error('请求超时，请保留输入并重试');
-    if (e instanceof TypeError) throw new Error('网络连接失败，请检查网络后重试');
+      throw new ApiError('请求超时，请保留输入并重试', 0, 'TIMEOUT');
+    if (e instanceof TypeError) throw new ApiError('网络连接失败，请检查网络后重试', 0, 'NETWORK');
     throw e;
   } finally {
     clearTimeout(timer);

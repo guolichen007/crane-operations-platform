@@ -145,42 +145,42 @@ func provisionCommand(ctx context.Context, db *pgxpool.Pool, args []string, out 
 	return json.NewEncoder(out).Encode(map[string]string{"status": status})
 }
 
-// The caller has verified the signed ID token, its issuer, audience and nonce.
-func (a *App) confirmStaffLogin(ctx context.Context, subject string, roles []string, email string, verified bool) error {
-	pool := a.staffPool()
-	if pool == nil {
-		return errIdentityDenied
-	}
-	tx, err := pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, identityLock); err != nil {
-		return err
-	}
-	var target, role, expected string
+// The caller has verified the signed ID token and holds the identity lock.
+func authorizeOIDCSession(ctx context.Context, tx pgx.Tx, subject string, email loginEmail, roles []string, activate bool) (string, error) {
+	var target, role, status, expected string
 	var version int
-	err = tx.QueryRow(ctx, `SELECT staff_id::text,role,coalesce(work_email,''),staff_version FROM app_users
- WHERE subject=$1 AND staff_status='PENDING_ACTIVATION' AND staff_managed`, subject).Scan(&target, &role, &expected, &version)
+	var active, managed bool
+	err := tx.QueryRow(ctx, `SELECT staff_id::text,role,staff_status,coalesce(work_email,''),staff_version,active,staff_managed
+ FROM app_users WHERE subject=$1`, subject).Scan(&target, &role, &status, &expected, &version, &active, &managed)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return errIdentityDenied
+		return "", loginNotProvisioned
 	}
 	if err != nil {
-		return err
+		return "", err
 	}
-	canonical, err := normalizedEmail(email)
-	if err != nil || !verified || canonical != expected || !contains(roles, role) {
-		return errIdentityDenied
+	if status == staffSuspended || status == staffArchived {
+		return "", loginDisabled
+	}
+	if !active && !(activate && managed && status == staffActivation) {
+		return "", loginNotProvisioned
+	}
+	if !contains(roles, role) {
+		return "", loginRoleMissing
+	}
+	if managed && (expected != "" || !active) {
+		canonical, err := normalizedEmail(email.address)
+		if err != nil || !email.verified || canonical != expected {
+			return "", loginEmailMismatch
+		}
+	}
+	if active {
+		return role, nil
 	}
 	version++
 	if _, err = tx.Exec(ctx, `UPDATE app_users SET staff_status='ACTIVE',active=true,staff_version=$2 WHERE staff_id=$1`, target, version); err != nil {
-		return err
+		return "", err
 	}
-	if err = staffAudit(ctx, tx, target, subject, "staff.activate", "企业认证完成精确身份与角色校验", version); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
+	return role, staffAudit(ctx, tx, target, subject, "staff.activate", "企业认证完成精确身份与角色校验", version)
 }
 
 func reauthenticationTime(nonce string, seconds int64, expires time.Time) *time.Time {
@@ -192,20 +192,4 @@ func reauthenticationTime(nonce string, seconds int64, expires time.Time) *time.
 		return nil
 	}
 	return &at
-}
-
-func verifyManagedEmail(ctx context.Context, tx pgx.Tx, subject string, email loginEmail) error {
-	var expected string
-	if err := tx.QueryRow(ctx, `SELECT CASE WHEN staff_managed THEN coalesce(work_email,'') ELSE '' END
-      FROM app_users WHERE subject=$1 AND active`, subject).Scan(&expected); err != nil {
-		return err
-	}
-	if expected == "" {
-		return nil
-	}
-	actual, err := normalizedEmail(email.address)
-	if err != nil || !email.verified || actual != expected {
-		return errIdentityDenied
-	}
-	return nil
 }

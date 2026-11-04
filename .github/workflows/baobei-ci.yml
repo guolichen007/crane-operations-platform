@@ -147,6 +147,7 @@ jobs:
           done
           exit 1
       - run: node tools/task.mjs baobei e2e
+      - run: node tools/task.mjs baobei auth-e2e
   baobei-security:
     if: startsWith(github.ref, 'refs/heads/product/baobei-')
     runs-on: ubuntu-latest

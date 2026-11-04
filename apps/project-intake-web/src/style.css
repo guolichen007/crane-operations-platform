@@ -900,6 +900,19 @@ dd {
 .login-box > button {
   width: 100%;
 }
+.login-box > button + button {
+  margin-top: 8px;
+}
+.login-box > button + p {
+  margin: 16px 0 0;
+}
+.login-notice {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fff4eb;
+  color: #73391e;
+  line-height: 1.6;
+}
 .dev-login {
   margin-top: 25px;
   padding-top: 24px;

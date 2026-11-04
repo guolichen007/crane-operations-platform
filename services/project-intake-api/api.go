@@ -36,7 +36,7 @@ func (a *App) handler() http.Handler {
 		}
 		u, e := a.user(r)
 		if e != nil {
-			fail(w, 401, "UNAUTHENTICATED", "登录已失效，请重新登录")
+			a.sessionFailure(w, e)
 			return
 		}
 		if r.Method != "GET" && !a.csrf(w, r, u) {

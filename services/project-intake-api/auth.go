@@ -11,7 +11,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -85,15 +84,39 @@ type loginEmail struct {
 func (a *App) sessionAt(w http.ResponseWriter, r *http.Request, subject string, at *time.Time, email *loginEmail, roles ...string) error {
 	token, csrf := randomToken(), randomToken()
 	var expectedRole string
-	if err := a.db.QueryRow(r.Context(), `SELECT role FROM app_users WHERE subject=$1 AND active`, subject).Scan(&expectedRole); err != nil {
-		return errIdentityDenied
-	}
+	var pendingActivation bool
 	pool := a.db
-	if staffRole(expectedRole) || email != nil {
-		pool = a.staffPool()
-		if pool == nil {
-			return errIdentityDenied
+	lock := "pg_advisory_xact_lock_shared"
+	if email == nil {
+		if err := a.db.QueryRow(r.Context(), `SELECT role FROM app_users WHERE subject=$1 AND active`, subject).Scan(&expectedRole); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return errIdentityDenied
+			}
+			return err
 		}
+		if staffRole(expectedRole) {
+			pool = a.staffPool()
+		}
+	} else {
+		pool = a.staffPool()
+		if pool != nil {
+			// Use an exclusive identity lock only when an activation may write the account.
+			var status string
+			err := pool.QueryRow(r.Context(), `SELECT staff_status FROM app_users WHERE subject=$1`, subject).Scan(&status)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return loginNotProvisioned
+			}
+			if err != nil {
+				return err
+			}
+			pendingActivation = status == staffActivation
+			if pendingActivation {
+				lock = "pg_advisory_xact_lock"
+			}
+		}
+	}
+	if pool == nil {
+		return loginSessionUnavailable
 	}
 	tx, e := pool.Begin(r.Context())
 	if e != nil {
@@ -101,19 +124,22 @@ func (a *App) sessionAt(w http.ResponseWriter, r *http.Request, subject string, 
 	}
 	defer tx.Rollback(r.Context())
 	// Serialize authorization/session creation with explicit identity changes.
-	if _, e = tx.Exec(r.Context(), `SELECT pg_advisory_xact_lock_shared($1)`, identityLock); e != nil {
+	if _, e = tx.Exec(r.Context(), `SELECT `+lock+`($1)`, identityLock); e != nil {
 		return e
 	}
 	var currentRole string
-	if e = tx.QueryRow(r.Context(), `SELECT role FROM app_users WHERE subject=$1 AND active`, subject).Scan(&currentRole); e != nil {
-		return errIdentityDenied
-	}
-	if currentRole != expectedRole || roles != nil && !contains(roles, currentRole) {
-		return errIdentityDenied
-	}
 	if email != nil {
-		if err := verifyManagedEmail(r.Context(), tx, subject, *email); err != nil {
-			return err
+		currentRole, e = authorizeOIDCSession(r.Context(), tx, subject, *email, roles, pendingActivation)
+		if e != nil {
+			return e
+		}
+	} else {
+		e = tx.QueryRow(r.Context(), `SELECT role FROM app_users WHERE subject=$1 AND active`, subject).Scan(&currentRole)
+		if errors.Is(e, pgx.ErrNoRows) || e == nil && (currentRole != expectedRole || roles != nil && !contains(roles, currentRole)) {
+			return errIdentityDenied
+		}
+		if e != nil {
+			return e
 		}
 	}
 	if old, e := r.Cookie(a.cookieName()); e == nil {
@@ -176,108 +202,13 @@ func (a *App) auth(w http.ResponseWriter, r *http.Request) {
 		}
 		respond(w, 200, map[string]bool{"ok": true})
 	case "/auth/login":
-		if r.Method != "GET" || a.verifier == nil {
-			fail(w, 503, "OIDC_UNAVAILABLE", "企业认证未配置，请联系管理员")
-			return
-		}
-		state, nonce, binding, verifier := randomToken(), randomToken(), randomToken(), oauth2.GenerateVerifier()
-		if r.URL.Query().Get("reauth") == "1" {
-			nonce = "reauth-" + nonce
-		}
-		if e := a.storePending(r.Context(), hash(state), pendingLogin{nonce, verifier, hash(binding), time.Now().Add(5 * time.Minute)}); e != nil {
-			if errors.Is(e, errAuthCapacity) {
-				fail(w, 429, "AUTH_BUSY", "登录繁忙，请稍后重试")
-			} else {
-				fail(w, 503, "AUTH_UNAVAILABLE", "登录暂时不可用，请重试")
-			}
-			return
-		}
-		loginCookie := "baobei_login"
-		if a.cfg.Env == "production" {
-			loginCookie = "__Host-baobei_login"
-		}
-		a.cookie(w, loginCookie, binding, 300)
-		options := []oauth2.AuthCodeOption{oidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier)}
-		if strings.HasPrefix(nonce, "reauth-") {
-			options = append(options, oauth2.SetAuthURLParam("prompt", "login"), oauth2.SetAuthURLParam("max_age", "0"))
-		}
-		http.Redirect(w, r, a.oauth.AuthCodeURL(state, options...), http.StatusFound)
+		a.startLogin(w, r)
 	case "/auth/callback":
-		if r.Method != "GET" || a.verifier == nil {
-			fail(w, 400, "OIDC_INVALID", "登录回调无效")
-			return
-		}
-		state := r.URL.Query().Get("state")
-		p, pendingErr := a.consumePending(r.Context(), hash(state))
-		name := "baobei_login"
-		if a.cfg.Env == "production" {
-			name = "__Host-baobei_login"
-		}
-		binding, e := r.Cookie(name)
-		a.cookie(w, name, "", -1)
-		if pendingErr != nil || p.Until.Before(time.Now()) || e != nil || subtle.ConstantTimeCompare([]byte(p.Binding), []byte(hash(binding.Value))) != 1 {
-			fail(w, 400, "OIDC_INVALID", "登录已失效，请重新登录")
-			return
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-		defer cancel()
-		token, e := a.oauth.Exchange(ctx, r.URL.Query().Get("code"), oauth2.VerifierOption(p.Verifier))
-		if e != nil {
-			fail(w, 401, "OIDC_INVALID", "企业登录失败")
-			return
-		}
-		raw, ok := token.Extra("id_token").(string)
-		if !ok {
-			fail(w, 401, "OIDC_INVALID", "企业登录凭证无效")
-			return
-		}
-		id, e := a.verifier.Verify(ctx, raw)
-		if e != nil || id.Nonce != p.Nonce {
-			fail(w, 401, "OIDC_INVALID", "企业登录凭证验证失败")
-			return
-		}
-		var claims struct {
-			Email         string `json:"email"`
-			EmailVerified bool   `json:"email_verified"`
-			AuthTime      int64  `json:"auth_time"`
-			Realm         struct {
-				Roles []string `json:"roles"`
-			} `json:"realm_access"`
-			Resource map[string]struct {
-				Roles []string `json:"roles"`
-			} `json:"resource_access"`
-		}
-		if e = id.Claims(&claims); e != nil {
-			fail(w, 401, "OIDC_INVALID", "角色声明无效")
-			return
-		}
-		roles := claims.Resource[a.cfg.ClientID].Roles
-		var role string
-		e = a.db.QueryRow(ctx, `SELECT role FROM app_users WHERE subject=$1 AND active`, id.Subject).Scan(&role)
-		if errors.Is(e, pgx.ErrNoRows) && len(roles) > 0 && claims.EmailVerified {
-			e = a.confirmStaffLogin(ctx, id.Subject, roles, claims.Email, claims.EmailVerified)
-			if e == nil {
-				e = a.db.QueryRow(ctx, `SELECT role FROM app_users WHERE subject=$1 AND active`, id.Subject).Scan(&role)
-			}
-		}
-		if e != nil || !contains(roles, role) {
-			fail(w, 403, "FORBIDDEN", "报备账号未授权，请联系管理员")
-			return
-		}
-		email := loginEmail{address: claims.Email, verified: claims.EmailVerified}
-		if e = a.sessionAt(w, r, id.Subject, reauthenticationTime(p.Nonce, claims.AuthTime, p.Until), &email, roles...); e != nil {
-			if errors.Is(e, errIdentityDenied) {
-				fail(w, 403, "FORBIDDEN", "报备账号未授权，请联系管理员")
-				return
-			}
-			fail(w, 503, "SESSION_UNAVAILABLE", "登录暂时不可用")
-			return
-		}
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		a.finishLogin(w, r)
 	case "/auth/logout":
 		u, e := a.user(r)
 		if e != nil {
-			fail(w, 401, "UNAUTHENTICATED", "请先登录")
+			a.sessionFailure(w, e)
 			return
 		}
 		if r.Method != "POST" {

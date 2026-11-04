@@ -53,7 +53,7 @@
             }
           },
           "401": {
-            "description": "未登录"
+            "description": "缺少会话 Cookie（UNAUTHENTICATED）或会话已失效（SESSION_EXPIRED）"
           },
           "403": {
             "description": "权限或CSRF不允许"
@@ -64,8 +64,8 @@
           "409": {
             "description": "版本或状态冲突"
           },
-          "501": {
-            "description": "后续批次，仅契约"
+          "503": {
+            "description": "会话服务暂时不可用（SESSION_UNAVAILABLE）"
           }
         }
       }

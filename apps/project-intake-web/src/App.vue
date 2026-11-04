@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import {
   LayoutDashboard,
@@ -48,13 +48,17 @@ async function logout() {
   app.toast('已退出登录');
   await router.push('/login');
 }
+watch(() => app.user, (user, previous) => {
+  if (previous && !user && app.sessionIssue === 'expired' && route.path !== '/login')
+    void router.replace('/login');
+});
 function showError(event: ErrorEvent) {
   app.error = event.message;
 }
 window.addEventListener('error', showError);
 </script>
 <template>
-  <div v-if="app.user" class="shell">
+  <div v-if="app.user && route.path !== '/login'" class="shell">
     <aside class="sidebar">
       <a href="/" class="brand" data-action-id="nav.open" @click.prevent="router.push('/')"><span class="brand-mark">U</span><span>项目报备中心<small>PROJECT INTAKE</small></span></a>
       <div class="workspace-label">销售工作空间</div>
@@ -104,9 +108,9 @@ window.addEventListener('error', showError);
       <main class="content"><RouterView :key="route.path" /></main>
     </div>
   </div>
-  <RouterView v-else />
+  <RouterView v-else-if="route.path === '/login'" />
   <div v-if="app.message" class="toast" role="status">{{ app.message }}</div>
-  <div v-if="app.error" class="error-banner" role="alert">
+  <div v-if="app.error && route.path !== '/login'" class="error-banner" role="alert">
     {{ app.error }}<span> · 请重试或刷新页面；表单输入会保留。</span>
   </div>
   <Modal

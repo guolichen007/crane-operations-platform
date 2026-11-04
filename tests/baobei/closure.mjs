@@ -10,7 +10,7 @@ const input={
   common:read('deploy/baobei/ingress/baobei-http-common.conf.example'),
   nginx:read('deploy/baobei/nginx.production.conf'),
   compose:read('deploy/baobei/compose.production.yaml'),
-  auth:read('services/project-intake-api/auth.go'),
+  auth:['auth.go','auth_browser.go','staff_identity.go'].map(f=>read('services/project-intake-api/'+f)).join('\n'),
   main:read('services/project-intake-api/main.go'),
   cert:read('deploy/baobei/cert/cert-renew.sh'),
   state:read('deploy/baobei/cert/cert-state.py'),
@@ -41,9 +41,9 @@ export function validateClosure(x){
   for(const kind of ['WEB','API'])assert.match(c.services['baobei-'+kind.toLowerCase()].image,new RegExp('^\\$\\{BAOBEI_'+kind+'_IMAGE:\\?'));
   assert.match(x.auth,/roles := claims\.Resource\[a\.cfg\.ClientID\]\.Roles/);
   assert(!/roles := claims\.Realm/.test(x.auth));
-  const callback=x.auth.slice(x.auth.indexOf('case "/auth/callback":'),x.auth.indexOf('case "/auth/logout":'));
-  assert(!/INSERT\s+INTO\s+app_users/i.test(callback),'no first-login provision');
-  assert.match(callback,/WHERE subject=\$1 AND active/);
+  assert.doesNotMatch(x.auth,/INSERT\s+INTO\s+app_users/i,'no first-login provision');
+  assert.match(x.auth,/if !active && !\(activate && managed && status == staffActivation\)/);
+  assert.match(x.auth,/if !contains\(roles, role\)/);
   assert.match(x.main,/os\.Args\[2\] == "identity-apply"/);
   assert.match(read('services/project-intake-api/identity.go'),/func identityCommand\(/);
   for(const value of ['Full Scope Allowed | OFF','resource_access.${client_id}.roles','Add to ID token | true','Add to access token | true','role scope mappings'])assert(x.keycloak.includes(value),value);
@@ -80,6 +80,7 @@ for(const [name,mutate]of [
  ['tag-only-PG',x=>x.compose=x.compose.replace(PG,'postgres:18.4-alpine')],
  ['realm-role',x=>x.auth=x.auth.replace('roles := claims.Resource[a.cfg.ClientID].Roles','roles := claims.Realm.Roles')],
  ['auto-provision',x=>x.auth=x.auth.replace('case "/auth/callback":','case "/auth/callback":\n INSERT INTO app_users')],
+ ['inactive-authorized',x=>x.auth=x.auth.replace('if !active && !(activate && managed && status == staffActivation)','if false')],
  ['missing-CLI',x=>x.main=x.main.replace('"identity-apply"','"missing"')],
  ['ACME-cross-product',x=>x.cert=x.cert.replace('secrets/baobei/acme','secrets/crane-ops/acme')],
  ['ACME-unit-cross-product',x=>x.service=x.service.replace('u-dao-baobei-cert-renew','u-dao-crane-cert-renew')],
@@ -91,4 +92,4 @@ for(const [name,mutate]of [
 console.log('WEB_CONTAINER_PORT=8080 SHARED_INGRESS_UPSTREAM=baobei-web:8080');
 console.log('WEB_IMAGE_REQUIRES_REGISTRY_DIGEST=YES API_IMAGE_REQUIRES_REGISTRY_DIGEST=YES POSTGRES_PINNED_DIGEST=YES PRODUCTION_POSTGRES_PINNED=YES');
 console.log('REALM_ROLE_AUTHORIZED=NO CLIENT_ROLE_ID_TOKEN_REQUIRED=YES PRODUCTION_IDENTITY_AUTO_PROVISION=NO IDENTITY_APPLY_AVAILABLE=YES BAOBEI_ACME_ISOLATED_FROM_CRANE=YES');
-console.log('Production closure and 17 negative contracts PASS');
+console.log('Production closure and 18 negative contracts PASS');
