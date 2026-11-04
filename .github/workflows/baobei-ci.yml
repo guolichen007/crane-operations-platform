@@ -180,6 +180,7 @@ jobs:
       - run: node tools/task.mjs baobei cert-test
       - run: node tools/task.mjs baobei compose
       - run: node tools/task.mjs baobei up
+      - run: node tools/task.mjs baobei http01-test
       - run: curl --fail http://127.0.0.1:5188/health/ready
       - run: node tools/task.mjs baobei restore-test
       - if: always()

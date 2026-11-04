@@ -27,6 +27,23 @@ export function validateProduction(c) {
   assert.equal(c.networks.frontend.name, 'u-dao-baobei-frontend');
   assert.equal(c.networks.egress.name, 'u-dao-baobei-egress');
   assert(!c.networks.egress.internal);
+  const web = s['baobei-web'];
+  assert.deepEqual(web.volumes, [{
+    type: 'bind',
+    source: '/srv/u-dao/platform/ingress/acme-webroot',
+    target: '/var/www/acme',
+    read_only: true,
+    bind: {create_host_path: false},
+  }]);
+  assert.deepEqual(web.configs.map(({source, target}) => [source, target]), [
+    ['nginx-production', '/etc/nginx/conf.d/default.conf'],
+    ['nginx-proxy', '/etc/nginx/baobei-proxy.conf'],
+  ]);
+  assert(!web.secrets?.length);
+  assert(!s['baobei-api'].volumes?.length);
+  assert.equal(s['baobei-postgres'].volumes.length, 2);
+  assert(!s['baobei-postgres'].volumes.some(volume =>
+    volume.target === '/var/www/acme' || volume.source?.endsWith('/acme-webroot')));
   const env = s['baobei-api'].environment;
   assert.equal(env.APP_ENV, 'production');
   assert.equal(String(env.DEV_AUTH), '0');
@@ -71,6 +88,11 @@ if (r.status) throw Error(r.stderr);
 const c = JSON.parse(r.stdout);
 validateProduction(c);
 for (const mutate of [
+  (x) => { x.services['baobei-web'].volumes[0].read_only = false; },
+  (x) => { x.services['baobei-web'].volumes.push({source: '/tls', target: '/etc/nginx/tls'}); },
+  (x) => { x.services['baobei-web'].secrets = [{source: 'tls_private_key'}]; },
+  (x) => { x.services['baobei-api'].volumes = x.services['baobei-web'].volumes; },
+  (x) => { x.services['baobei-postgres'].volumes.push(...x.services['baobei-web'].volumes); },
   (x) => (x.services['baobei-api'].environment.DATABASE_URL_FILE = '/run/secrets/migrator_database_url'),
   (x) => (x.services['baobei-api'].secrets.push({source:'maintenance_database_url'})),
   (x) => (x.services['baobei-api'].ports = [{ target: 8088, published: '8088' }]),
@@ -100,6 +122,7 @@ console.log('WEB_IMAGE_REQUIRES_REGISTRY_DIGEST=YES API_IMAGE_REQUIRES_REGISTRY_
 const nginx = readFileSync('deploy/baobei/nginx.production.conf', 'utf8');
 assert(nginx.includes('resolver 127.0.0.11'));
 assert(!nginx.includes('127.0.0.1:8088'));
+console.log('BAOBEI_WEB_ACME_MOUNT_READ_ONLY=YES BAOBEI_WEB_NO_TLS_PRIVATE_KEY_MOUNT=YES');
 console.log('Production topology, secret-file, digest, OIDC and negative isolation gates PASS');
 
 const syntax = spawnSync(

@@ -4,6 +4,13 @@ services:
     image: ${BAOBEI_WEB_IMAGE:?Pin the approved web image digest}
     restart: unless-stopped
     networks: [frontend, internal]
+    volumes:
+      - type: bind
+        source: /srv/u-dao/platform/ingress/acme-webroot
+        target: /var/www/acme
+        read_only: true
+        bind:
+          create_host_path: false
     configs:
       - source: nginx-production
         target: /etc/nginx/conf.d/default.conf

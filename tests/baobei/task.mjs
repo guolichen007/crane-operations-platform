@@ -44,6 +44,9 @@ function compose(...args) {
   ]);
 }
 const tasks = {
+  'http01-test'() {
+    run(process.execPath, ['tests/baobei/http01.mjs']);
+  },
   'db-privileges'() {
     env.BAOBEI_GO = go;
     run(process.execPath, ['tests/baobei/db-privileges.mjs']);

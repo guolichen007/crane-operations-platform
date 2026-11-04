@@ -2,11 +2,13 @@
 
 代码/测试/模板交付；ACME_SERVER_APPLIED=NO，S1B_PUBLIC_DEPLOY=NOT_AUTHORIZED。本轮不运行 installer、bootstrap/adopt、systemctl、真实证书或服务器操作。源自 Crane O1-1 事务设计的独立副本，Crane 原实现未修改。
 
-固定 DOMAIN=baobei.youdaozd.com；ACME_HOME=/srv/u-dao/secrets/baobei/acme；WEBROOT=/srv/u-dao/platform/ingress/acme-webroot；TLS_DIR=/srv/u-dao/platform/ingress/tls/baobei（脚本内部 PRODUCTION_TLS）。单位 u-dao-baobei-cert-renew.service/.timer。仅共享 HTTP-01 静态 webroot 和 ingress 容器 u-dao-ingress-nginx-1，不读取 Crane/Firebot 证书或探测其域名。
+固定 DOMAIN=baobei.youdaozd.com；ACME_HOME=/srv/u-dao/secrets/baobei/acme；WEBROOT=/srv/u-dao/platform/ingress/acme-webroot；TLS_DIR=/srv/u-dao/platform/ingress/tls/baobei（脚本内部 PRODUCTION_TLS）。单位 u-dao-baobei-cert-renew.service/.timer。共享入口容器名为 u-dao-ingress-nginx-1。
 
 固定 acme.sh 3.1.6，official signed tag + tag object + commit + allowed_signers SHA256 + acme.sh SHA256 全部验证，独立只读 vendor /opt/u-dao/vendor/baobei/acme.sh/3.1.6。无 curl|sh、自动升级或浮动最新版。provision-acme.sh 安装前拒绝运行中的 service、启用的 timer、已持有的 renewal lock；安装只 daemon-reload，不启用、不启动、不签发、不改 TLS。
 
-未来独立授权后：先由负责人配置共享 ingress HTTP-01 webroot/TLS 挂载，准备 root-owned 私有 state/lock 与可信人工初始 live pair；installer 验证上游并安装；--bootstrap 先验证公网 HTTP-01 body/remote IP，再签发及验证到私有 stage，不直接推广；--adopt 在单独批准后推广并记录 adoption；后续 timer 仅对已 adoption 状态执行 --run。--check 只检查当前证书及服务。timer 默认不启用，adoption 和 timer 启用各自需要审批。
+宿主机 Baobei ACME 在 WEBROOT 的 `.well-known/acme-challenge/` 写入普通文件。只有 baobei-web 将 WEBROOT 只读挂载到 `/var/www/acme`，Nginx worker 读取 token 文件。共享 ingress 把 HTTP-01 路径代理至 `baobei-web:8080`，复用已有的 TLS 根挂载 `/etc/nginx/tls`。此方案无需为共享 ingress 添加 webroot Volume 或重建容器。
+
+后续部署获得独立授权后，准备宿主 webroot、root-owned 私有 state/lock 与可信的人工初始 live pair。启动 Baobei Web，在运行中的共享 ingress 接入独立 frontend 网络，验证 Nginx 配置并 reload。安装脚本验证固定版本后部署到本地。自动签发必须等域名的公网 HTTP challenge 实际可达。--bootstrap 校验临时 token 响应体及公网 IP 后才调用 CA，候选证书进入私有 stage。--adopt 经单独批准后推广，timer 的 --run 只处理已接管状态。--check 检查当前证书及服务。接管和启用 timer 分别授权。
 
 人工 TrustAsia bootstrap-fullchain.pem/bootstrap-privkey.pem 是不可覆盖的 bootstrap/emergency fallback。live 文件名仅 fullchain.pem/privkey.pem；初始复制或紧急恢复需负责人另行授权并保持 key 0600，不将 bootstrap-* 作为自动续签目标，不把 CA/key material 放入 Git。回退使用事务前 live pair 的私有备份，不覆盖人工 fallback。
 

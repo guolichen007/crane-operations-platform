@@ -7,6 +7,7 @@ const read=(p)=>readFileSync(p,'utf8');
 const PG='postgres:18.4-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15';
 const input={
   ingress:readdirSync('deploy/baobei/ingress',{recursive:true}).filter(f=>/example|template/.test(f)).map(f=>read('deploy/baobei/ingress/'+f)).join('\n'),
+  common:read('deploy/baobei/ingress/baobei-http-common.conf.example'),
   nginx:read('deploy/baobei/nginx.production.conf'),
   compose:read('deploy/baobei/compose.production.yaml'),
   auth:read('services/project-intake-api/auth.go'),
@@ -22,7 +23,15 @@ const input={
 export function validateClosure(x){
   assert.match(x.nginx,/listen\s+8080\s*;/);
   assert(!/listen\s+80\s*;/.test(x.nginx));
-  assert.match(x.ingress,/resolver\s+127\.0\.0\.11\b/);
+  assert.doesNotMatch(x.common, /^\s*resolver(?:_timeout)?\s/m);
+  for (const zone of ['baobei_ingress_login', 'baobei_ingress_callback']) {
+    assert.match(x.common, new RegExp('limit_req_zone .* zone=' + zone + ':'));
+  }
+  assert.equal([...x.ingress.matchAll(/^    resolver 127\.0\.0\.11 valid=10s ipv6=off;/gm)].length, 2);
+  assert.equal([...x.ingress.matchAll(/^    resolver_timeout 5s;/gm)].length, 2);
+  assert.doesNotMatch(x.ingress, /\/var\/www\/acme|\bacme-webroot\b/);
+  assert.match(x.ingress, /location \^~ \/\.well-known\/acme-challenge\/ \{\s*(?:#[^\n]+\n\s*)?proxy_pass \$baobei_web;/);
+  assert.match(x.nginx, /disable_symlinks on from=\/var\/www\/acme;/);
   assert.match(x.ingress,/http:\/\/baobei-web:8080\s*;/);
   // The boundary is essential: :8080 is not :80.
   assert(!/baobei-web:80(?!\d)/.test(x.ingress));
@@ -62,6 +71,9 @@ export function validateClosure(x){
 validateClosure(input);
 for(const [name,mutate]of [
  ['port80',x=>x.nginx=x.nginx.replace('listen 8080;','listen 80;')],
+ ['global-resolver', x => x.common += '\nresolver 127.0.0.11;'],
+ ['ingress-local-webroot', x => x.ingress += '\nroot /var/www/acme;'],
+ ['challenge-proxy-removed', x => x.ingress = x.ingress.replace('proxy_pass $baobei_web;', 'return 404;')],
  ['upstream80',x=>x.ingress=x.ingress.replace('baobei-web:8080','baobei-web:80')],
  ['upstream8081',x=>x.ingress=x.ingress.replace('baobei-web:8080','baobei-web:8081')],
  ['container-IP',x=>x.ingress+='\nproxy_pass http://172.19.0.7:8080;'],
@@ -79,4 +91,4 @@ for(const [name,mutate]of [
 console.log('WEB_CONTAINER_PORT=8080 SHARED_INGRESS_UPSTREAM=baobei-web:8080');
 console.log('WEB_IMAGE_REQUIRES_REGISTRY_DIGEST=YES API_IMAGE_REQUIRES_REGISTRY_DIGEST=YES POSTGRES_PINNED_DIGEST=YES PRODUCTION_POSTGRES_PINNED=YES');
 console.log('REALM_ROLE_AUTHORIZED=NO CLIENT_ROLE_ID_TOKEN_REQUIRED=YES PRODUCTION_IDENTITY_AUTO_PROVISION=NO IDENTITY_APPLY_AVAILABLE=YES BAOBEI_ACME_ISOLATED_FROM_CRANE=YES');
-console.log('Production closure and 14 negative contracts PASS');
+console.log('Production closure and 17 negative contracts PASS');

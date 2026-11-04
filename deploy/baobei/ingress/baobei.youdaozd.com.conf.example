@@ -2,18 +2,38 @@
 server {
     listen 80;
     server_name baobei.youdaozd.com;
+    resolver 127.0.0.11 valid=10s ipv6=off;
+    resolver_timeout 5s;
     access_log off;
     error_log /dev/stderr crit;
+    set $baobei_web http://baobei-web:8080;
     location ^~ /.well-known/acme-challenge/ {
-        root /var/www/acme;
-        default_type text/plain;
-        try_files $uri =404;
+        # No upstream URI: forward the original token path and query intact.
+        proxy_pass $baobei_web;
+        proxy_http_version 1.1;
+        proxy_pass_request_headers off;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header Connection "";
+        proxy_set_header Host baobei.youdaozd.com;
+        proxy_set_header X-Forwarded-Proto http;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_connect_timeout 5s;
+        proxy_send_timeout 5s;
+        proxy_read_timeout 5s;
+        proxy_cache off;
+        proxy_intercept_errors off;
     }
+    # An exact match avoids Nginx's implicit slash redirect on proxy locations.
+    location = /.well-known/acme-challenge { return 308 https://baobei.youdaozd.com$request_uri; }
     location / { return 308 https://baobei.youdaozd.com$request_uri; }
 }
 server {
     listen 443 ssl;
     server_name baobei.youdaozd.com;
+    resolver 127.0.0.11 valid=10s ipv6=off;
+    resolver_timeout 5s;
     ssl_certificate /etc/nginx/tls/baobei/fullchain.pem;
     ssl_certificate_key /etc/nginx/tls/baobei/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;

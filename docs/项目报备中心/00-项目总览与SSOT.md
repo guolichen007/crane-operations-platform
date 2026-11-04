@@ -5,7 +5,7 @@ BAOBEI_MAIN_MERGE=FORBIDDEN
 BAOBEI_R2_MERGE=FORBIDDEN
 BASE_SHA=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18
 BRANCH=product/baobei-v1
-CURRENT_BATCH=BB-B2-R2
+CURRENT_BATCH=BB-B2-R3
 STOP_AFTER_BB_B2=YES
 
 目标：快速报项目、识别重复、明确归属并跟进。独立产品，永不合并 main/R2。
@@ -56,3 +56,10 @@ START_HEAD=89000c3ee1508c64f44369d97767e19f9b97cf09，基线 CI Run 41611873351 
 生产部署契约已记录一次性 release ref、人工审批及 PostgreSQL 角色。此次交付范围为产品分支和验证，release ref、发布和生产操作等待负责人独立授权。
 
 验证记录见 [08-BB-B2-R2验收报告](08-BB-B2-R2验收报告.md)。
+
+## BB-B2-R3 无重建 Ingress 的 HTTP-01 收口
+
+START_HEAD=0f153931e18d37eb73b752b8a86bfd3498e01023，基线 CI Run 41764142151 八门通过。
+宿主机 ACME 写入 challenge，baobei-web 通过只读 webroot 提供文件，共享 ingress 代理至 baobei-web:8080 并复用现有 TLS 根挂载。Nginx resolver 放在 Baobei vhost 内。生产步骤以[生产部署契约](生产部署契约.md)为准。
+
+验证记录见 [09-BB-B2-R3验收报告](09-BB-B2-R3验收报告.md)。
