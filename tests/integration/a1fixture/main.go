@@ -28,6 +28,7 @@ import (
 
 	"github.com/eclipse/paho.golang/paho"
 	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
+	"github.com/guolichen007/crane-operations-platform/internal/asset"
 	"github.com/guolichen007/crane-operations-platform/internal/auditlog"
 	"github.com/guolichen007/crane-operations-platform/internal/fleet"
 	"github.com/guolichen007/crane-operations-platform/internal/identity"
@@ -42,6 +43,8 @@ func write(path string, data []byte) error {
 	}
 	return os.WriteFile(path, data, 0600)
 }
+
+func strp(s string) *string { return &s }
 
 func prepare(out string) error {
 	if !strings.Contains(filepath.ToSlash(out), "/runtime/") {
@@ -218,6 +221,48 @@ func seed(ctx context.Context) error {
 			return err
 		}
 	}
+	// B4 business-acceptance identities. Anonymous and isolated; the A1 users and
+	// their first-login password-change ordering are never touched (no temporary
+	// password, no UPDATE_PASSWORD action).
+	for _, item := range []struct {
+		name, project, role string
+	}{{"b4-admin", "P001", "platform_admin"}, {"b4-viewer", "P001", "viewer"}, {"b4-operator", "P001", "operator"}, {"b4-maintainer", "P001", "maintainer"}, {"b4-noauth", "", ""}, {"b4-p002", "P002", "platform_admin"}} {
+		body := map[string]any{"username": item.name, "email": item.name + "@example.test", "emailVerified": true, "enabled": true, "firstName": "Anonymous", "lastName": item.name, "credentials": []any{map[string]any{"type": "password", "value": string(userPassword), "temporary": false}}}
+		if err = request("POST", "/users", body, nil); err != nil {
+			return err
+		}
+		var users []struct {
+			ID string `json:"id"`
+		}
+		if err = request("GET", "/users?exact=true&username="+url.QueryEscape(item.name), nil, &users); err != nil || len(users) != 1 {
+			return errors.New("fixture b4 sub lookup failed")
+		}
+		event := auditlog.Event{Actor: "anonymous-a1-fixture", RequestID: platform.ID()}
+		if err = identity.Bind(ctx, db, item.name, os.Getenv("OIDC_ISSUER"), users[0].ID, "Anonymous "+item.name, true, event); err != nil {
+			return err
+		}
+		if item.project != "" {
+			if err = identity.ChangeGrant(ctx, db, item.name, item.project, item.role, false, event); err != nil {
+				return err
+			}
+		}
+	}
+	// Seed reference data and a cross-project target for the B4 business flow.
+	if _, err = db.ExecContext(ctx, `INSERT INTO equipment_types(type_code,display_name,domain,spec_schema_version,status) VALUES ('MOTOR','Motor','MECHANICAL','1','ACTIVE'),('PLC','PLC','CONTROL','1','ACTIVE') ON CONFLICT (type_code) DO NOTHING`); err != nil {
+		return err
+	}
+	fixtureActor, fixtureReq := "b4-fixture", platform.ID()
+	for _, loc := range []contract.AssetLocation{
+		{Id: platform.ID(), ProjectId: "P001", Kind: "SITE", Code: strp("B4-S1"), Name: "B4 Site 1"},
+		{Id: platform.ID(), ProjectId: "P001", Kind: "WORKSHOP", Code: strp("B4-W1"), Name: "B4 Workshop 1"},
+	} {
+		if _, err = asset.CreateLocation(ctx, db, loc, fixtureActor, fixtureReq); err != nil {
+			return err
+		}
+	}
+	if _, err = asset.CreateAsset(ctx, db, contract.AssetMasterData{ProjectId: "P002", AssetType: "CRANE", AssetCode: strp("CRN-P002-01")}, fixtureActor, fixtureReq, ""); err != nil {
+		return err
+	}
 	document, err := inventory.Load("/fixture/inventory.json")
 	if err != nil {
 		return err
@@ -249,6 +294,56 @@ func seed(ctx context.Context) error {
 			return e
 		}
 	}
+	return nil
+}
+
+// verifyB4State asserts the terminal PostgreSQL state left by the browser B4
+// business CRUD flow (fixed codes CRN-B4-CRUD / EQ-B4-CRUD), proving asset
+// retirement, equipment removal, and request-id-correlated revisions/audits.
+func verifyB4State(ctx context.Context) error {
+	dbPassword, err := platform.PrivateSecret("/fixture/secrets/app_db_password", 32)
+	if err != nil {
+		return err
+	}
+	dsn, err := platform.DatabaseWithPassword("postgres://crane_app@postgres:5432/crane_app?sslmode=disable", dbPassword)
+	if err != nil {
+		return err
+	}
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	var assetID, status string
+	var version int64
+	if err := db.QueryRowContext(ctx, `SELECT id, asset_status, version FROM asset_devices WHERE asset_code='CRN-B4-CRUD' AND project_id='P001'`).Scan(&assetID, &status, &version); err != nil {
+		return errors.New("b4 asset not found: " + err.Error())
+	}
+	if status != "RETIRED" {
+		return fmt.Errorf("b4 asset status = %s, want RETIRED", status)
+	}
+	var eqID string
+	var validTo sql.NullTime
+	if err := db.QueryRowContext(ctx, `SELECT id, valid_to, version FROM asset_equipment_installations WHERE asset_id=$1 AND equipment_code='EQ-B4-CRUD'`, assetID).Scan(&eqID, &validTo, &version); err != nil {
+		return errors.New("b4 equipment not found: " + err.Error())
+	}
+	if !validTo.Valid {
+		return errors.New("b4 equipment was not removed (valid_to is null)")
+	}
+	var assetRevCount int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM entity_revisions WHERE entity_type='asset' AND entity_id=$1 AND request_id<>''`, assetID).Scan(&assetRevCount); err != nil || assetRevCount < 3 {
+		return fmt.Errorf("b4 asset revisions = %d, want >= 3", assetRevCount)
+	}
+	var eqRevCount int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM entity_revisions WHERE entity_type='equipment' AND entity_id=$1 AND request_id<>''`, eqID).Scan(&eqRevCount); err != nil || eqRevCount < 3 {
+		return fmt.Errorf("b4 equipment revisions = %d, want >= 3", eqRevCount)
+	}
+	var orphanAudits int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM audit_logs WHERE project_id='P001' AND action IN ('asset_created','asset_updated','asset_moved','asset_retired','equipment_created','equipment_updated','equipment_removed') AND result='success' AND (request_id IS NULL OR request_id='')`).Scan(&orphanAudits); err != nil || orphanAudits != 0 {
+		return fmt.Errorf("b4 success audits missing request_id = %d, want 0", orphanAudits)
+	}
+	fmt.Println("B4_BUSINESS_DB_STATE=PASS ASSET=RETIRED EQUIPMENT=REMOVED REVISIONS_AND_AUDIT_CORRELATED")
 	return nil
 }
 
@@ -337,7 +432,7 @@ func probeHTTP01(ctx context.Context) error {
 }
 
 func main() {
-	operation := flag.String("operation", "prepare", "prepare|seed|probe-discovery|probe-topology|probe-callback-unavailable")
+	operation := flag.String("operation", "prepare", "prepare|seed|probe-discovery|probe-topology|probe-callback-unavailable|verify-b4-state")
 	out := flag.String("out", "deploy/compose/runtime/a1-production", "ignored fixture output")
 	flag.Parse()
 	var err error
@@ -347,6 +442,10 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 		err = seed(ctx)
+	} else if *operation == "verify-b4-state" {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		err = verifyB4State(ctx)
 	} else if *operation == "probe-discovery" || *operation == "probe-topology" || *operation == "probe-callback-unavailable" {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
