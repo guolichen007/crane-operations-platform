@@ -36,10 +36,14 @@ const equipmentQuery = useQuery({
 // Move-target candidates use a distinct cache entry from the LocationCenter tree
 // (which also keys on ['locations', projectId]) and fetch every ACTIVE
 // same-project location, so the picker never omits a legal target past page one.
+// The project id is a computed so the query key reacts to project/asset changes:
+// reading assetQuery.data.value?.projectId once at setup would pin the key and
+// leak one project's locations into another project's asset detail.
+const assetProjectId = computed(() => assetQuery.data.value?.projectId);
 const locationsQuery = useQuery({
-  queryKey: ['asset-move-locations', assetQuery.data.value?.projectId],
-  queryFn: () => listAllLocations(assetQuery.data.value?.projectId ?? '', { status: 'ACTIVE' }),
-  enabled: computed(() => !!assetQuery.data.value?.projectId),
+  queryKey: computed(() => ['asset-move-locations', assetProjectId.value]),
+  queryFn: () => listAllLocations(assetProjectId.value ?? '', { status: 'ACTIVE' }),
+  enabled: computed(() => !!assetProjectId.value),
 });
 
 const tab = ref<'overview' | 'equipment' | 'location'>('overview');
