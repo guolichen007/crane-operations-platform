@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query';
-import { useRouter, useRoute } from 'vue-router';
+import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router';
 import { Search, Plus, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-vue-next';
 import { listAssets, createAsset } from '../cloud/asset';
 import { ApiError } from '../cloud/client';
+import { allowClose } from '../cloud/draft';
 import { webSession, productionAuth } from '../cloud/session';
 import { writableProjects } from '../cloud/auth-state';
 import { scopeFromQuery, projectLabel, scopeKey, scopeState } from '../cloud/project-scope';
@@ -34,8 +35,10 @@ const limit = 50;
 const applied = ref({ q: '', status: '', type: '', sort: '' });
 const creating = ref(false);
 const formError = ref('');
-const newAsset = ref<Partial<AssetMasterData>>({ projectId: '', displayName: '', assetType: 'CRANE' });
+const blankAsset = (): Partial<AssetMasterData> => ({ projectId: '', displayName: '', assetType: 'CRANE' });
+const newAsset = ref<Partial<AssetMasterData>>(blankAsset());
 let idempotencyKey = crypto.randomUUID();
+let leavingAfterCreate = false;
 
 function apply() {
   applied.value = { q: q.value, status: status.value, type: type.value, sort: sort.value };
@@ -70,6 +73,9 @@ const createMutation = useMutation({
     creating.value = false;
     idempotencyKey = crypto.randomUUID();
     await queryClient.invalidateQueries({ queryKey: ['assets'] });
+    // The mutation is still "pending" while this callback runs; the guard must
+    // let this one navigation to the new asset through.
+    leavingAfterCreate = true;
     await router.push(`/assets/${created.id}`);
   },
   onError: (e) => {
@@ -80,9 +86,42 @@ const createMutation = useMutation({
 function openCreate() {
   idempotencyKey = crypto.randomUUID();
   formError.value = '';
-  newAsset.value = { projectId: '', displayName: '', assetType: 'CRANE' };
+  newAsset.value = blankAsset();
   creating.value = true;
 }
+// DirtyGuard for the create form: clean closes silently; dirty asks; while the
+// create request is in flight nothing closes (cancel, backdrop, Esc, route
+// change), and a failure keeps every input with the error shown in the form.
+const createDirty = computed(() => {
+  if (!creating.value) return false;
+  const v = newAsset.value;
+  const b = blankAsset();
+  return (v.projectId ?? '') !== b.projectId || (v.displayName ?? '') !== b.displayName || (v.assetCode ?? '') !== '' || v.assetType !== b.assetType;
+});
+function closeCreate() {
+  if (!allowClose(createDirty.value, createMutation.isPending.value)) return;
+  creating.value = false;
+  formError.value = '';
+}
+function onKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && creating.value) closeCreate();
+}
+function onBeforeUnload(event: BeforeUnloadEvent) {
+  if (createDirty.value || createMutation.isPending.value) {
+    event.preventDefault();
+    event.returnValue = '';
+  }
+}
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown);
+  window.addEventListener('beforeunload', onBeforeUnload);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown);
+  window.removeEventListener('beforeunload', onBeforeUnload);
+});
+// A successful create closes the form before navigating, so it is not dirty then.
+onBeforeRouteLeave(() => leavingAfterCreate || allowClose(createDirty.value, createMutation.isPending.value));
 
 const statusOptions = ['DRAFT', 'ACTIVE', 'OUT_OF_SERVICE', 'RETIRED'];
 const typeOptions = ['CRANE', 'GANTRY', 'BRIDGE', 'PORTAL', 'JIB'];
@@ -181,7 +220,7 @@ const statusText: Record<string, string> = {
       </button>
     </div>
 
-    <div v-if="creating" class="modal-backdrop" @click.self="creating = false">
+    <div v-if="creating" class="modal-backdrop" @click.self="closeCreate">
       <form
         class="workspace-modal"
         data-testid="asset-create-form"
@@ -205,7 +244,7 @@ const statusText: Record<string, string> = {
         </label>
         <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
         <div class="modal-actions">
-          <button type="button" class="ghost-action" @click="creating = false">取消</button>
+          <button type="button" class="ghost-action" :disabled="createMutation.isPending.value" @click="closeCreate">取消</button>
           <button type="submit" class="primary-action" :disabled="createMutation.isPending.value">
             {{ createMutation.isPending.value ? '创建中…' : '创建' }}
           </button>

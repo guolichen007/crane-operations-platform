@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { useDraftSession, allowDiscard, fieldDiff, sameData } from '../src/cloud/draft';
+import { useDraftSession, allowDiscard, allowClose, allowRebase, draftText, fieldDiff, sameData } from '../src/cloud/draft';
 
 type A = { name: string; code: string | null; version: number };
 
@@ -55,12 +55,50 @@ describe('allowDiscard（DirtyGuard）', () => {
 });
 
 describe('fieldDiff（409 字段对比）', () => {
-  it('只列出不同字段，使用中文标签', () => {
-    const d = fieldDiff<A>({ name: '我的', code: 'C1', version: 3 }, { name: '他人', code: 'C1', version: 4 }, { name: '名称', code: '编号' });
+  it('只列出不同字段，使用中文标签；忽略指定字段', () => {
+    const d = fieldDiff<A>({ name: '我的', code: 'C1', version: 3 }, { name: '他人', code: 'C1', version: 4 }, { name: '名称', code: '编号' }, ['version']);
     expect(d).toEqual([{ field: '名称', mine: '我的', theirs: '他人' }]);
+  });
+  it('未列入标签的字段变化也会报告（如后台状态变化），不会误报为无差异', () => {
+    type S = { name: string; status: string; version: number };
+    const d = fieldDiff<S>({ name: 'x', status: 'DRAFT', version: 1 }, { name: 'x', status: 'OUT_OF_SERVICE', version: 2 }, { name: '名称' }, ['version']);
+    expect(d).toEqual([{ field: 'status', mine: 'DRAFT', theirs: 'OUT_OF_SERVICE' }]);
   });
   it('sameData 区分 null 与值', () => {
     expect(sameData(null, undefined)).toBe(true);
     expect(sameData('a', null)).toBe(false);
+  });
+});
+
+describe('allowClose（提交中禁止关闭）', () => {
+  it('提交中一律拒绝且不弹确认', () => {
+    let asked = false;
+    expect(allowClose(true, true, () => { asked = true; return true; })).toBe(false);
+    expect(allowClose(false, true, () => { asked = true; return true; })).toBe(false);
+    expect(asked).toBe(false);
+  });
+  it('非提交中按 DirtyGuard 规则', () => {
+    expect(allowClose(false, false, () => false)).toBe(true);
+    expect(allowClose(true, false, () => false)).toBe(false);
+    expect(allowClose(true, false, () => true)).toBe(true);
+  });
+});
+
+describe('allowRebase（基于最新版本重新编辑）', () => {
+  it('草稿干净时无需确认', () => {
+    let asked = false;
+    expect(allowRebase(false, () => { asked = true; return false; })).toBe(true);
+    expect(asked).toBe(false);
+  });
+  it('草稿有改动时必须确认；取消则草稿与版本不变', () => {
+    const s = useDraftSession<A>();
+    s.start({ name: 'x', code: 'C1', version: 3 }, 3);
+    s.draft.value!.name = 'mine';
+    if (allowRebase(s.dirty.value, () => false)) s.rebase({ name: 'theirs', code: 'C1', version: 4 }, 4);
+    expect(s.draft.value?.name).toBe('mine');
+    expect(s.baseVersion.value).toBe(3);
+  });
+  it('draftText 生成可复制的中文草稿文本，null 显示为清空', () => {
+    expect(draftText<A>({ name: '新名', code: null }, { name: '名称', code: '编号' })).toBe('名称：新名\n编号：（清空）');
   });
 });

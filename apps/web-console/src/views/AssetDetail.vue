@@ -18,7 +18,7 @@ import {
 import { ApiError } from '../cloud/client';
 import { webSession } from '../cloud/session';
 import { canWriteProject } from '../cloud/auth-state';
-import { useDraftSession, allowDiscard, fieldDiff } from '../cloud/draft';
+import { useDraftSession, allowClose, allowRebase, draftText, fieldDiff, sameData } from '../cloud/draft';
 import type { AssetMasterData, AssetLocation, EquipmentInstallation } from '../../../../contracts/typescript/types.gen';
 
 const route = useRoute();
@@ -54,7 +54,6 @@ const locationsQuery = useQuery({
 });
 
 const tab = ref<'overview' | 'equipment' | 'location'>('overview');
-const actionError = ref('');
 
 // Each write action pins the version (and a snapshot) at the moment its dialog
 // opens. Submits always send that pinned version as If-Match — never the latest
@@ -69,11 +68,19 @@ const retireError = ref('');
 
 const editLabels: Partial<Record<keyof AssetMasterData, string>> = {
   displayName: '资产名称', assetCode: '资产编号', assetType: '类型', assetStatus: '状态',
-  manufacturerSnapshot: '制造商', brandSnapshot: '品牌', modelSnapshot: '型号', serialNumber: '序列号',
+  manufacturerId: '制造商ID', manufacturerSnapshot: '制造商', brandSnapshot: '品牌', modelSnapshot: '型号', serialNumber: '序列号',
+  manufactureDate: '出厂日期', installationDate: '安装日期', commissioningDate: '投用日期', liftingHeightM: '起升高度(m)',
+  applicationType: '应用类型', controlMode: '控制方式', specialEquipmentCode: '特种设备代码', useRegistrationNo: '使用登记证号',
 };
+// Every field is compared (not only the ones in the form), so a background change
+// such as a status change is shown rather than reported as "no difference". The
+// version is shown in the header instead.
 const conflictDiff = computed(() =>
-  edit.draft.value && edit.latest.value ? fieldDiff(edit.draft.value, edit.latest.value, editLabels) : [],
+  edit.draft.value && edit.latest.value ? fieldDiff(edit.draft.value, edit.latest.value, editLabels, ['version']) : [],
 );
+// When the user starts over from the latest version, the replaced draft is kept
+// as a read-only, copyable text so nothing typed is lost silently.
+const discardedDraft = ref('');
 
 function errorText(e: unknown, fallback: string): string {
   if (!(e instanceof ApiError)) return fallback;
@@ -90,6 +97,7 @@ function openEdit() {
   edit.start(current, current.version);
   editError.value = '';
   editConflict.value = false;
+  discardedDraft.value = '';
 }
 async function refreshForConflict() {
   // Fetch the latest server copy for side-by-side comparison; the draft is kept.
@@ -97,9 +105,19 @@ async function refreshForConflict() {
   edit.latest.value = fresh;
 }
 function rebaseOnLatest() {
-  if (edit.latest.value) edit.rebase(edit.latest.value, edit.latest.value.version);
+  const latest = edit.latest.value;
+  if (!latest || !edit.base.value || !edit.draft.value) return;
+  // Never replace a dirty draft without an explicit confirmation; cancelling
+  // leaves the draft, the conflict view and the pinned version untouched.
+  if (!allowRebase(edit.dirty.value)) return;
+  const mine = assetChanges(edit.base.value, edit.draft.value);
+  discardedDraft.value = Object.keys(mine).length ? draftText(mine, editLabels) : '';
+  edit.rebase(latest, latest.version);
   editConflict.value = false;
   editError.value = '';
+}
+async function copyDiscarded() {
+  await navigator.clipboard?.writeText(discardedDraft.value).catch(() => undefined);
 }
 async function refreshAfterWrite() {
   await Promise.all([
@@ -166,16 +184,35 @@ const retireMutation = useMutation({
 });
 
 // ---- DirtyGuard: cancel button, backdrop, Esc, route change and page unload all
-// go through the same check; clean drafts close without a prompt. ----
-const anyDirty = computed(() => edit.dirty.value || move.dirty.value || equipmentEditDirty.value);
+// go through the same check; clean drafts close without a prompt. While a submit
+// is in flight no dialog can be closed and the route cannot change: the result is
+// not known yet and must be shown in place (success closes, failure keeps input).
+const anyDirty = computed(() => edit.dirty.value || move.dirty.value || equipmentEditDirty.value || equipmentAddDirty.value);
+const anyPending = computed(
+  () =>
+    updateMutation.isPending.value ||
+    moveMutation.isPending.value ||
+    retireMutation.isPending.value ||
+    createEquipmentMutation.isPending.value ||
+    updateEquipmentMutation.isPending.value ||
+    removeEquipmentMutation.isPending.value,
+);
 function closeEdit() {
-  if (allowDiscard(edit.dirty.value)) edit.close();
+  if (allowClose(edit.dirty.value, updateMutation.isPending.value)) {
+    edit.close();
+    discardedDraft.value = '';
+  }
 }
 function closeMove() {
-  if (allowDiscard(move.dirty.value)) move.close();
+  if (allowClose(move.dirty.value, moveMutation.isPending.value)) move.close();
 }
 function closeRetire() {
-  retire.close();
+  if (allowClose(false, retireMutation.isPending.value)) retire.close();
+}
+function closeRemove() {
+  if (!allowClose(false, removeEquipmentMutation.isPending.value)) return;
+  removeConfirm.value = false;
+  removeError.value = '';
 }
 function onKeydown(event: KeyboardEvent) {
   if (event.key !== 'Escape') return;
@@ -183,9 +220,11 @@ function onKeydown(event: KeyboardEvent) {
   else if (move.open.value) closeMove();
   else if (retire.open.value) closeRetire();
   else if (equipmentEditing.value) closeEquipmentEdit();
+  else if (equipmentAdding.value) closeEquipmentAdd();
+  else if (removeConfirm.value) closeRemove();
 }
 function onBeforeUnload(event: BeforeUnloadEvent) {
-  if (anyDirty.value) {
+  if (anyDirty.value || anyPending.value) {
     event.preventDefault();
     event.returnValue = '';
   }
@@ -198,7 +237,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown);
   window.removeEventListener('beforeunload', onBeforeUnload);
 });
-onBeforeRouteLeave(() => allowDiscard(anyDirty.value));
+onBeforeRouteLeave(() => allowClose(anyDirty.value, anyPending.value));
 
 // ---- Equipment install / remove (asset-scoped, never a second master data
 // set). Removal closes the validity interval; an active runtime binding is
@@ -216,7 +255,7 @@ const equipmentTypeCodes = [
   'POWER_SUPPLY', 'UPS', 'TRANSFORMER', 'CONDUCTOR_RAIL',
 ];
 const equipmentAdding = ref(false);
-const equipmentDraft = ref<EquipmentInstallation>({
+const blankEquipment = (): EquipmentInstallation => ({
   id: '',
   assetId: '',
   equipmentCode: '',
@@ -230,29 +269,31 @@ const equipmentDraft = ref<EquipmentInstallation>({
   version: 0,
   removedAt: null,
 });
+const equipmentDraft = ref<EquipmentInstallation>(blankEquipment());
 // Optional spec fields are left empty rather than inventing device parameters.
 const equipmentSpec = ref<Record<string, unknown>>({});
+const equipmentAddError = ref('');
+// The install form is dirty once anything differs from the blank form; an empty
+// serial-number input ('') counts as blank.
+const equipmentAddDirty = computed(
+  () =>
+    equipmentAdding.value &&
+    !sameData({ ...equipmentDraft.value, serialNumber: equipmentDraft.value.serialNumber || null }, blankEquipment()),
+);
 // The idempotency key stays stable across retries of one submit; a fresh key is
 // only generated when (re)opening the form or after a successful install.
 let equipmentIdemKey = '';
 function openEquipmentAdd() {
-  equipmentDraft.value = {
-    id: '',
-    assetId: '',
-    equipmentCode: '',
-    typeCode: '',
-    catalogItemId: null,
-    serialNumber: null,
-    semanticSlot: null,
-    positionLabel: null,
-    criticality: 'MEDIUM',
-    administrativeState: 'IN_SERVICE',
-    version: 0,
-    removedAt: null,
-  };
+  equipmentDraft.value = blankEquipment();
   equipmentSpec.value = {};
+  equipmentAddError.value = '';
   equipmentIdemKey = crypto.randomUUID();
   equipmentAdding.value = true;
+}
+function closeEquipmentAdd() {
+  if (!allowClose(equipmentAddDirty.value, createEquipmentMutation.isPending.value)) return;
+  equipmentAdding.value = false;
+  equipmentAddError.value = '';
 }
 const createEquipmentMutation = useMutation({
   mutationFn: () =>
@@ -265,19 +306,26 @@ const createEquipmentMutation = useMutation({
     equipmentIdemKey = '';
     await queryClient.invalidateQueries({ queryKey: ['equipment', id] });
   },
-  onError: (e) => (actionError.value = e instanceof ApiError ? e.message : '安装失败'),
+  // The form stays open with every input kept; the error is shown inside it.
+  onError: (e) => (equipmentAddError.value = errorText(e, '安装失败')),
 });
 const removingId = ref('');
 const removeConfirm = ref(false);
+const removeError = ref('');
 const removeEquipmentMutation = useMutation({
   mutationFn: (equipmentId: string) =>
     removeEquipment(equipmentId, equipmentQuery.data.value!.find((x) => x.id === equipmentId)!.version),
   onSuccess: async () => {
     removeConfirm.value = false;
     removingId.value = '';
+    removeError.value = '';
     await queryClient.invalidateQueries({ queryKey: ['equipment', id] });
   },
-  onError: (e) => (actionError.value = e instanceof ApiError ? e.message : '拆卸失败'),
+  onError: (e) => {
+    removeError.value = e instanceof ApiError && e.status === 409
+      ? '该 Equipment 已被他人修改或存在活动 Runtime Binding，未拆卸。'
+      : errorText(e, '拆卸失败');
+  },
 });
 
 // ---- Equipment update (If-Match) — only editable business fields; a removed
@@ -294,7 +342,7 @@ function openEquipmentEdit(e: EquipmentInstallation) {
   equipmentEditError.value = '';
 }
 function closeEquipmentEdit() {
-  if (!allowDiscard(equipmentEditDirty.value)) return;
+  if (!allowClose(equipmentEditDirty.value, updateEquipmentMutation.isPending.value)) return;
   equipmentEditing.value = null;
   equipmentEditBase.value = null;
 }
@@ -316,6 +364,7 @@ const updateEquipmentMutation = useMutation({
 });
 
 const asset = computed(() => assetQuery.data.value);
+const criticalityText: Record<string, string> = { LOW: '低', MEDIUM: '中', HIGH: '高', SAFETY_CRITICAL: '安全关键' };
 const statusText: Record<string, string> = {
   DRAFT: '草稿',
   ACTIVE: '在用',
@@ -413,7 +462,6 @@ const statusText: Record<string, string> = {
       </div>
     </template>
 
-    <p v-if="actionError" class="form-error" role="alert">{{ actionError }}</p>
 
     <div v-if="edit.open.value && edit.draft.value" class="modal-backdrop" @click.self="closeEdit">
       <form class="workspace-modal" data-testid="asset-edit-form" @submit.prevent="updateMutation.mutate()">
@@ -431,13 +479,18 @@ const statusText: Record<string, string> = {
               </tbody>
             </table>
             <div class="modal-actions">
-              <button type="button" class="ghost-action" @click="refreshForConflict">重新获取最新内容</button>
-              <button type="button" class="ghost-action" :disabled="!edit.latest.value" @click="rebaseOnLatest">放弃我的修改，基于最新版本重新编辑</button>
+              <button type="button" class="ghost-action" :disabled="updateMutation.isPending.value" @click="refreshForConflict">重新获取最新内容</button>
+              <button type="button" class="ghost-action" data-testid="asset-rebase" :disabled="!edit.latest.value || updateMutation.isPending.value" @click="rebaseOnLatest">基于最新版本重新编辑…</button>
             </div>
           </template>
         </div>
+        <div v-if="discardedDraft" class="form-note" data-testid="asset-discarded-draft">
+          <p>已替换的草稿（只读，可复制后手动重新录入）：</p>
+          <textarea readonly rows="3" :value="discardedDraft" aria-label="已替换的草稿"></textarea>
+          <button type="button" class="ghost-action" @click="copyDiscarded">复制</button>
+        </div>
         <div class="modal-actions">
-          <button type="button" class="ghost-action" @click="closeEdit">取消</button>
+          <button type="button" class="ghost-action" :disabled="updateMutation.isPending.value" @click="closeEdit">取消</button>
           <button type="submit" class="primary-action" :disabled="!edit.dirty.value || updateMutation.isPending.value || editConflict">
             {{ updateMutation.isPending.value ? '保存中…' : '保存' }}
           </button>
@@ -458,8 +511,8 @@ const statusText: Record<string, string> = {
         </label>
         <p v-if="moveError" class="form-error" role="alert">{{ moveError }}</p>
         <div class="modal-actions">
-          <button type="button" class="ghost-action" @click="closeMove">取消</button>
-          <button type="submit" class="primary-action" :disabled="moveMutation.isPending.value">移动</button>
+          <button type="button" class="ghost-action" :disabled="moveMutation.isPending.value" @click="closeMove">取消</button>
+          <button type="submit" class="primary-action" :disabled="moveMutation.isPending.value">{{ moveMutation.isPending.value ? '移动中…' : '移动' }}</button>
         </div>
       </form>
     </div>
@@ -470,13 +523,13 @@ const statusText: Record<string, string> = {
         <p>退役是终态，不可恢复。存在活动 Runtime Binding 时将拒绝。</p>
         <p v-if="retireError" class="form-error" role="alert">{{ retireError }}</p>
         <div class="modal-actions">
-          <button class="ghost-action" @click="closeRetire">取消</button>
-          <button class="danger-action" :disabled="retireMutation.isPending.value" @click="retireMutation.mutate()">确认退役</button>
+          <button class="ghost-action" :disabled="retireMutation.isPending.value" @click="closeRetire">取消</button>
+          <button class="danger-action" :disabled="retireMutation.isPending.value" @click="retireMutation.mutate()">{{ retireMutation.isPending.value ? '退役中…' : '确认退役' }}</button>
         </div>
       </div>
     </div>
 
-    <div v-if="equipmentAdding" class="modal-backdrop" @click.self="equipmentAdding = false">
+    <div v-if="equipmentAdding" class="modal-backdrop" @click.self="closeEquipmentAdd">
       <form class="workspace-modal" data-testid="equipment-create-form" @submit.prevent="createEquipmentMutation.mutate()">
         <h2>安装 Equipment</h2>
         <label>设备类型
@@ -489,17 +542,15 @@ const statusText: Record<string, string> = {
         <label>序列号<input v-model="equipmentDraft.serialNumber" /></label>
         <label>关键度
           <select v-model="equipmentDraft.criticality">
-            <option value="LOW">低</option>
-            <option value="MEDIUM">中</option>
-            <option value="HIGH">高</option>
-            <option value="SAFETY_CRITICAL">安全关键</option>
+            <option v-for="(label, value) in criticalityText" :key="value" :value="value">{{ label }}</option>
           </select>
         </label>
         <p class="muted small">规格字段按后端版本化 Schema 校验，未知参数留空，不凭空填写设备参数。</p>
+        <p v-if="equipmentAddError" class="form-error" role="alert" data-testid="equipment-create-error">{{ equipmentAddError }}</p>
         <div class="modal-actions">
-          <button type="button" class="ghost-action" @click="equipmentAdding = false">取消</button>
+          <button type="button" class="ghost-action" :disabled="createEquipmentMutation.isPending.value" @click="closeEquipmentAdd">取消</button>
           <button type="submit" class="primary-action" :disabled="createEquipmentMutation.isPending.value">
-            安装
+            {{ createEquipmentMutation.isPending.value ? '安装中…' : '安装' }}
           </button>
         </div>
       </form>
@@ -516,35 +567,33 @@ const statusText: Record<string, string> = {
         <label>序列号<input v-model="equipmentEditing.serialNumber" /></label>
         <label>关键度
           <select v-model="equipmentEditing.criticality">
-            <option value="LOW">低</option>
-            <option value="MEDIUM">中</option>
-            <option value="HIGH">高</option>
-            <option value="SAFETY_CRITICAL">安全关键</option>
+            <option v-for="(label, value) in criticalityText" :key="value" :value="value">{{ label }}</option>
           </select>
         </label>
         <p class="muted small">设备类型、Catalog 与 Spec 在此不修改（后端边界一致）。</p>
         <p v-if="equipmentEditError" class="form-error" role="alert">{{ equipmentEditError }}</p>
         <div class="modal-actions">
-          <button type="button" class="ghost-action" @click="closeEquipmentEdit">取消</button>
+          <button type="button" class="ghost-action" :disabled="updateEquipmentMutation.isPending.value" @click="closeEquipmentEdit">取消</button>
           <button type="submit" class="primary-action" :disabled="updateEquipmentMutation.isPending.value">
-            保存
+            {{ updateEquipmentMutation.isPending.value ? '保存中…' : '保存' }}
           </button>
         </div>
       </form>
     </div>
 
-    <div v-if="removeConfirm" class="modal-backdrop" @click.self="removeConfirm = false">
-      <div class="workspace-modal">
+    <div v-if="removeConfirm" class="modal-backdrop" @click.self="closeRemove">
+      <div class="workspace-modal" data-testid="equipment-remove-dialog">
         <h2>确认拆卸 Equipment</h2>
         <p>拆卸将关闭安装有效期并保留历史记录，不会硬删除。存在活动 Runtime Binding 时后端将拒绝。</p>
+        <p v-if="removeError" class="form-error" role="alert">{{ removeError }}</p>
         <div class="modal-actions">
-          <button class="ghost-action" @click="removeConfirm = false">取消</button>
+          <button class="ghost-action" :disabled="removeEquipmentMutation.isPending.value" @click="closeRemove">取消</button>
           <button
             class="danger-action"
             :disabled="removeEquipmentMutation.isPending.value"
             @click="removeEquipmentMutation.mutate(removingId)"
           >
-            确认拆卸
+            {{ removeEquipmentMutation.isPending.value ? '拆卸中…' : '确认拆卸' }}
           </button>
         </div>
       </div>
