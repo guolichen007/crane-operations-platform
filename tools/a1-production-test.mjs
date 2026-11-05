@@ -87,8 +87,10 @@ try {
     // always provisions the B4 identities, so this never touches production.
     const b4Args = [...npm[1]];
     b4Args[b4Args.indexOf('--config') + 1] = 'playwright.b4.config.ts';
-    run(npm[0], b4Args, { A1_WEB_ORIGIN: webOrigin, A1_AUTH_ORIGIN: authOrigin, A1_BROWSER_PASSWORD_FILE: join(directory, 'secrets/browser_test_password') });
-    run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-tool', '--operation', 'verify-b4-state']);
+    // Pin the run id so the DB verifier can locate this run's run-unique codes.
+    const b4RunId = Math.random().toString(16).slice(2, 10).toUpperCase().padEnd(8, '0');
+    run(npm[0], b4Args, { A1_WEB_ORIGIN: webOrigin, A1_AUTH_ORIGIN: authOrigin, A1_BROWSER_PASSWORD_FILE: join(directory, 'secrets/browser_test_password'), B4_RUN_ID: b4RunId });
+    run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-tool', '--operation', 'verify-b4-state', '--b4-run-id', b4RunId]);
     console.log('B4_BUSINESS_ACCEPTANCE=PASS KEYCLOAK=REAL E2E_BROWSER_CRUD=REAL RBAC=REAL DB_STATE=VERIFIED');
   }
   // Backup CLI uses the same isolated project through a generated resolved Compose file; no secrets are emitted.

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -207,6 +208,14 @@ func (h *apiHandler) register(mux *http.ServeMux) error {
 	api := http.NewServeMux()
 	h.registerPortfolio(api)
 	h.registerAssets(api)
+	// Deployment environment sentinel: an operator-set, server-side value that a
+	// write-capable test suite reads (after login, before any write) to prove it is
+	// talking to the intended isolated environment. Unset → "" (production never
+	// sets it), so a Preview suite pointed at production refuses to write.
+	deploymentEnvironment := os.Getenv("CRANE_DEPLOYMENT_ENVIRONMENT")
+	api.HandleFunc("GET /api/v1/environment", func(w http.ResponseWriter, r *http.Request) {
+		respondAPI(w, 200, map[string]string{"environment": deploymentEnvironment})
+	})
 	api.HandleFunc("GET /api/v1/projects", func(w http.ResponseWriter, r *http.Request) {
 		scopes, err := h.scopes(r)
 		if err != nil {

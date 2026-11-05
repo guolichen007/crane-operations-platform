@@ -1,14 +1,16 @@
 import { test, expect } from '@playwright/test';
 import { login, sessionCsrf } from './login';
+import { code, assertWriteTarget } from './run';
 
-const assetCode = 'CRN-B4-CRUD';
-const equipmentCode = 'EQ-B4-CRUD';
+const assetCode = code('CRN', 'CRUD');
+const equipmentCode = code('EQ', 'CRUD');
 
 // Gate C: the full asset + equipment business lifecycle is driven by real UI
 // button/form interaction (not API-only). The authoritative PostgreSQL terminal
 // state is asserted by the fixture's `verify-b4-state` operation after this spec.
 test('真实 Keycloak 浏览器：资产与 Equipment 完整业务 CRUD（新建→改→移→装→改→拆→退役）', async ({ page }) => {
   await login(page, 'b4-admin');
+  await assertWriteTarget(page);
 
   // 1-2. 资产管理中心，选择 P001 项目并新建资产。
   await page.goto('/#/assets');
@@ -78,36 +80,39 @@ test('真实 Keycloak 浏览器：资产与 Equipment 完整业务 CRUD（新建
   expect(assetId).not.toBe('');
 });
 
-// Gate C step 11: two concurrent updates sharing one If-Match version — exactly
-// one succeeds and the second is a 409. This runs inside the authenticated
-// browser context (session cookie + CSRF), which is the correct surface for the
-// optimistic-concurrency guarantee.
-test('If-Match 并发版本更新：一次成功一次 409', async ({ page }) => {
+// Gate C step 11: two sequential updates that both carry the same (now stale)
+// If-Match version — the first succeeds, the second is a 409. This proves stale
+// version rejection, not true concurrent submission (the Go concurrency tests
+// cover real races). It runs in the authenticated browser context (session
+// cookie + CSRF).
+test('If-Match 旧版本冲突：同一版本号顺序提交两次，第二次 409', async ({ page }) => {
   await login(page, 'b4-admin');
+  await assertWriteTarget(page);
   const csrf = await sessionCsrf(page);
-  const created = await page.evaluate(async ({ csrf }) => {
+  const codes = { base: code('CRN', '409'), a: code('CRN', '409A'), b: code('CRN', '409B') };
+  const created = await page.evaluate(async ({ csrf, codes }) => {
     const res = await fetch('/api/v1/assets', {
       method: 'POST',
       headers: { 'X-CSRF-Token': csrf, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId: 'P001', assetType: 'CRANE', assetCode: 'CRN-B4-409' }),
+      body: JSON.stringify({ projectId: 'P001', assetType: 'CRANE', assetCode: codes.base }),
     });
     return (await res.json()) as { id: string; version: number };
-  }, { csrf });
+  }, { csrf, codes });
 
-  const results = await page.evaluate(async ({ id, csrf }) => {
+  const results = await page.evaluate(async ({ id, csrf, codes }) => {
     const headers = { 'X-CSRF-Token': csrf, 'Content-Type': 'application/json', 'If-Match': '"1"' };
     const first = await fetch(`/api/v1/assets/${id}`, {
       method: 'PATCH',
       headers,
-      body: JSON.stringify({ assetCode: 'CRN-B4-409-A' }),
+      body: JSON.stringify({ assetCode: codes.a }),
     });
     const second = await fetch(`/api/v1/assets/${id}`, {
       method: 'PATCH',
       headers,
-      body: JSON.stringify({ assetCode: 'CRN-B4-409-B' }),
+      body: JSON.stringify({ assetCode: codes.b }),
     });
     return { first: first.status, second: second.status };
-  }, { id: created.id, csrf });
+  }, { id: created.id, csrf, codes });
 
   expect(results.first).toBe(200);
   expect(results.second).toBe(409);

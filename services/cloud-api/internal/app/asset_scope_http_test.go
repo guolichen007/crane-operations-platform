@@ -37,3 +37,42 @@ func TestHTTPAssetProjectScopeFilter(t *testing.T) {
 		t.Fatalf("P002 scope should be empty array, got %s", p2.Body.String())
 	}
 }
+
+// The environment sentinel is server-side: unset (as in production) it reports
+// "", so a Preview UAT pointed at production refuses to write; set, it reports
+// the configured name. It requires an authenticated session.
+func TestHTTPEnvironmentSentinel(t *testing.T) {
+	t.Setenv("CRANE_DEPLOYMENT_ENVIRONMENT", "")
+	f := newSecurityFixture(t)
+	admin, _ := f.login(t, "admin")
+	if w := f.doBody(nil, "", "GET", "/api/v1/environment", nil, nil); w.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous sentinel = %d, want 401", w.Code)
+	}
+	w := f.doBody(admin, "", "GET", "/api/v1/environment", nil, nil)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"environment":""`) {
+		t.Fatalf("unset sentinel = %d %s, want empty environment", w.Code, w.Body.String())
+	}
+
+	t.Setenv("CRANE_DEPLOYMENT_ENVIRONMENT", "b4-preview")
+	g := newSecurityFixture(t)
+	admin2, _ := g.login(t, "admin")
+	w = g.doBody(admin2, "", "GET", "/api/v1/environment", nil, nil)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"environment":"b4-preview"`) {
+		t.Fatalf("set sentinel = %d %s, want b4-preview", w.Code, w.Body.String())
+	}
+}
+
+// An over-long displayName is a client error (422), not a 503, and is not stored.
+func TestHTTPAssetDisplayNameTooLong(t *testing.T) {
+	f := newSecurityFixture(t)
+	admin, info := f.login(t, "admin")
+	w := f.doBody(admin, info.CsrfToken, "POST", "/api/v1/assets", nil,
+		map[string]any{"projectId": "P001", "assetType": "CRANE", "assetCode": "CRN-LONG-HTTP", "displayName": strings.Repeat("机", 161)})
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("over-long displayName = %d, want 422 (%s)", w.Code, w.Body.String())
+	}
+	var n int
+	if err := f.db.QueryRow(`SELECT count(*) FROM asset_devices WHERE asset_code='CRN-LONG-HTTP'`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("rejected create stored %d rows (err=%v)", n, err)
+	}
+}

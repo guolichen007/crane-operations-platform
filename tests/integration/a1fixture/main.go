@@ -23,6 +23,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -300,9 +301,14 @@ func seed(ctx context.Context) error {
 }
 
 // verifyB4State asserts the terminal PostgreSQL state left by the browser B4
-// business CRUD flow (fixed codes CRN-B4-CRUD / EQ-B4-CRUD), proving asset
-// retirement, equipment removal, and request-id-correlated revisions/audits.
-func verifyB4State(ctx context.Context) error {
+// business CRUD flow (run-unique codes CRN-B4-<RUN>-CRUD / EQ-B4-<RUN>-CRUD),
+// proving asset retirement, equipment removal, and request-id-correlated
+// revisions/audits.
+func verifyB4State(ctx context.Context, runID string) error {
+	if !regexp.MustCompile(`^[A-Z0-9]{4,16}$`).MatchString(runID) {
+		return errors.New("verify-b4-state requires --b4-run-id (4-16 uppercase alphanumerics)")
+	}
+	assetCode, equipmentCode := "CRN-B4-"+runID+"-CRUD", "EQ-B4-"+runID+"-CRUD"
 	dbPassword, err := platform.PrivateSecret("/fixture/secrets/app_db_password", 32)
 	if err != nil {
 		return err
@@ -319,7 +325,7 @@ func verifyB4State(ctx context.Context) error {
 
 	var assetID, status string
 	var version int64
-	if err := db.QueryRowContext(ctx, `SELECT id, asset_status, version FROM asset_devices WHERE asset_code='CRN-B4-CRUD' AND project_id='P001'`).Scan(&assetID, &status, &version); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT id, asset_status, version FROM asset_devices WHERE asset_code=$1 AND project_id='P001'`, assetCode).Scan(&assetID, &status, &version); err != nil {
 		return errors.New("b4 asset not found: " + err.Error())
 	}
 	if status != "RETIRED" {
@@ -327,7 +333,7 @@ func verifyB4State(ctx context.Context) error {
 	}
 	var eqID string
 	var validTo sql.NullTime
-	if err := db.QueryRowContext(ctx, `SELECT id, valid_to, version FROM asset_equipment_installations WHERE asset_id=$1 AND equipment_code='EQ-B4-CRUD'`, assetID).Scan(&eqID, &validTo, &version); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT id, valid_to, version FROM asset_equipment_installations WHERE asset_id=$1 AND equipment_code=$2`, assetID, equipmentCode).Scan(&eqID, &validTo, &version); err != nil {
 		return errors.New("b4 equipment not found: " + err.Error())
 	}
 	if !validTo.Valid {
@@ -445,6 +451,7 @@ func probeHTTP01(ctx context.Context) error {
 func main() {
 	operation := flag.String("operation", "prepare", "prepare|seed|probe-discovery|probe-topology|probe-callback-unavailable|verify-b4-state")
 	out := flag.String("out", "deploy/compose/runtime/a1-production", "ignored fixture output")
+	b4RunID := flag.String("b4-run-id", "", "run id of the B4 browser suite whose records verify-b4-state checks")
 	flag.Parse()
 	var err error
 	if *operation == "prepare" {
@@ -456,7 +463,7 @@ func main() {
 	} else if *operation == "verify-b4-state" {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		err = verifyB4State(ctx)
+		err = verifyB4State(ctx, *b4RunID)
 	} else if *operation == "probe-discovery" || *operation == "probe-topology" || *operation == "probe-callback-unavailable" {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()

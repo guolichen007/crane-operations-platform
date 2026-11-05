@@ -68,6 +68,15 @@ func previewPrecheck(ctx context.Context) error {
 		return err
 	}
 	h := &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	return runPreviewPrecheck(ctx, h, base, public, realm, clientID, admin)
+}
+
+// runPreviewPrecheck performs the read-only checks against an explicit admin
+// endpoint. Apart from the admin token request it issues GET requests only.
+func runPreviewPrecheck(ctx context.Context, h *http.Client, base, public, realm, clientID string, admin []byte) error {
+	if err := validatePreviewTarget(public, realm, clientID); err != nil {
+		return err
+	}
 	form := url.Values{"grant_type": {"password"}, "client_id": {"admin-cli"}, "username": {"bootstrap-crane"}, "password": {string(admin)}}
 	r, err := http.NewRequestWithContext(ctx, "POST", base+"/realms/master/protocol/openid-connect/token", strings.NewReader(form.Encode()))
 	if err != nil {
@@ -96,7 +105,8 @@ func previewPrecheck(ctx context.Context) error {
 	if err != nil || status != 200 {
 		return errors.New("preview realm discovery unavailable")
 	}
-	if discovery.Issuer != strings.TrimSuffix(public, "/")+"/realms/"+realm {
+	origin := strings.TrimSuffix(public, "/")
+	if discovery.Issuer != origin+"/realms/"+realm {
 		return errors.New("preview issuer mismatch")
 	}
 	// Realm must already exist (read-only; no creation here).
@@ -104,7 +114,9 @@ func previewPrecheck(ctx context.Context) error {
 	if err != nil || status != 200 {
 		return errors.New("preview realm not found (precheck is read-only)")
 	}
-	// Client must exist with redirect and webOrigins for the Preview origin.
+	// Exactly one client, whose redirect URIs are exactly the Preview callback and
+	// whose web origins are exactly the Preview origin — no wildcard, no extra
+	// (e.g. production) entries.
 	var clients []struct {
 		RedirectURIs []string `json:"redirectUris"`
 		WebOrigins   []string `json:"webOrigins"`
@@ -113,8 +125,15 @@ func previewPrecheck(ctx context.Context) error {
 	if err != nil || status != 200 || len(clients) != 1 {
 		return errors.New("preview client lookup rejected")
 	}
-	if len(clients[0].RedirectURIs) == 0 || len(clients[0].WebOrigins) == 0 {
-		return errors.New("preview client redirect/webOrigins missing")
+	if !exactly(clients[0].RedirectURIs, origin+"/auth/callback") {
+		return errors.New("preview client redirect URIs must be exactly the Preview callback")
+	}
+	if !exactly(clients[0].WebOrigins, origin) {
+		return errors.New("preview client web origins must be exactly the Preview origin")
 	}
 	return nil
+}
+
+func exactly(values []string, want string) bool {
+	return len(values) == 1 && values[0] == want
 }
