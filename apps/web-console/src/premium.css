@@ -244,11 +244,64 @@
   width: 2px;
   background: var(--accent-blue);
 }
-.rail-sep {
-  height: 1px;
-  margin: 10px 12px;
-  background: var(--line-soft);
+.rail-assets {
+  padding: 2px 8px 8px;
 }
+.rail-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 8px;
+  color: var(--text-3);
+  font-size: 13px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.rail-group-toggle:hover {
+  background: var(--surface-850);
+  color: var(--text-1);
+}
+.rail-group-toggle svg.flipped {
+  transform: rotate(-90deg);
+}
+.rail-assets.collapsed .rail-group-toggle {
+  justify-content: center;
+  padding: 0;
+}
+.rail-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-left: 14px;
+  padding-left: 10px;
+  border-left: 1px solid var(--line-soft);
+}
+.rail-sub a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 7px;
+  color: var(--text-3);
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.rail-sub a:hover {
+  background: var(--surface-850);
+  color: var(--text-1);
+}
+.rail-sub a.active {
+  color: var(--accent-blue);
+  background: linear-gradient(90deg, #2c8fff20, transparent);
+}
+.rail-sep {
 .rail-foot {
   margin-top: auto;
   display: flex;
