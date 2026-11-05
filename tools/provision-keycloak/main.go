@@ -148,9 +148,25 @@ func execute(ctx context.Context) error {
 func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	if execute(ctx) != nil {
-		_, _ = os.Stderr.WriteString("Keycloak provisioning rejected; no credential or upstream response printed.\n")
+	precheck := false
+	for _, arg := range os.Args[1:] {
+		if arg == "--preview-precheck" {
+			precheck = true
+		}
+	}
+	var err error
+	if precheck {
+		err = previewPrecheck(ctx)
+	} else {
+		err = execute(ctx)
+	}
+	if err != nil {
+		_, _ = os.Stderr.WriteString("Keycloak provisioning/precheck rejected; no credential or upstream response printed.\n")
 		os.Exit(1)
 	}
-	_, _ = os.Stdout.WriteString("Keycloak realm/client provisioned; no users or project grants created.\n")
+	if precheck {
+		_, _ = os.Stdout.WriteString("Keycloak preview realm/client precheck passed; read-only, no writes.\n")
+	} else {
+		_, _ = os.Stdout.WriteString("Keycloak realm/client provisioned; no users or project grants created.\n")
+	}
 }
