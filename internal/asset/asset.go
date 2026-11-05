@@ -142,13 +142,17 @@ func CreateAsset(ctx context.Context, db *sql.DB, in contract.AssetMasterData, a
 	in.Id = platform.ID()
 	in.AssetStatus = "DRAFT"
 	in.Version = 1
-	displayName := ""
-	if in.AssetCode != nil {
+	// Business display name: an explicit client-supplied name wins; otherwise it
+	// falls back to the asset code and finally a project-scoped placeholder. It is
+	// a real editable field, never a second system id.
+	displayName := strings.TrimSpace(in.DisplayName)
+	if displayName == "" && in.AssetCode != nil {
 		displayName = strings.TrimSpace(*in.AssetCode)
 	}
 	if displayName == "" {
 		displayName = in.ProjectId + "-asset"
 	}
+	in.DisplayName = displayName
 	_, err = tx.ExecContext(ctx, `INSERT INTO asset_devices(id,project_id,asset_code,asset_type,asset_status,display_name,lifecycle,manufacturer_id,manufacturer_snapshot,brand_snapshot,model_snapshot,serial_number,manufacture_date,installation_date,commissioning_date,lifting_height_m,application_type,control_mode,special_equipment_code,use_registration_no,version) VALUES($1,$2,$3,$4,$5,$6,'PLANNED',$7,$8,$9,$10,$11,$12::date,$13::date,$14::date,$15,$16,$17,$18,$19,$20)`,
 		in.Id, in.ProjectId, in.AssetCode, in.AssetType, in.AssetStatus, displayName, in.ManufacturerId, in.ManufacturerSnapshot, in.BrandSnapshot, in.ModelSnapshot, in.SerialNumber, in.ManufactureDate, in.InstallationDate, in.CommissioningDate, in.LiftingHeightM, in.ApplicationType, in.ControlMode, in.SpecialEquipmentCode, in.UseRegistrationNo, in.Version)
 	if err != nil {
@@ -170,11 +174,11 @@ func CreateAsset(ctx context.Context, db *sql.DB, in contract.AssetMasterData, a
 }
 
 // assetColumns is the canonical asset_devices SELECT list used by readers.
-const assetColumns = `id,project_id,asset_code,asset_type,asset_status,manufacturer_id,manufacturer_snapshot,brand_snapshot,model_snapshot,serial_number,manufacture_date,installation_date,commissioning_date,lifting_height_m,application_type,control_mode,special_equipment_code,use_registration_no,version`
+const assetColumns = `id,project_id,display_name,asset_code,asset_type,asset_status,manufacturer_id,manufacturer_snapshot,brand_snapshot,model_snapshot,serial_number,manufacture_date,installation_date,commissioning_date,lifting_height_m,application_type,control_mode,special_equipment_code,use_registration_no,version`
 
 func scanAsset(row interface{ Scan(...any) error }) (contract.AssetMasterData, error) {
 	var v contract.AssetMasterData
-	err := row.Scan(&v.Id, &v.ProjectId, &v.AssetCode, &v.AssetType, &v.AssetStatus, &v.ManufacturerId, &v.ManufacturerSnapshot, &v.BrandSnapshot, &v.ModelSnapshot, &v.SerialNumber, &v.ManufactureDate, &v.InstallationDate, &v.CommissioningDate, &v.LiftingHeightM, &v.ApplicationType, &v.ControlMode, &v.SpecialEquipmentCode, &v.UseRegistrationNo, &v.Version)
+	err := row.Scan(&v.Id, &v.ProjectId, &v.DisplayName, &v.AssetCode, &v.AssetType, &v.AssetStatus, &v.ManufacturerId, &v.ManufacturerSnapshot, &v.BrandSnapshot, &v.ModelSnapshot, &v.SerialNumber, &v.ManufactureDate, &v.InstallationDate, &v.CommissioningDate, &v.LiftingHeightM, &v.ApplicationType, &v.ControlMode, &v.SpecialEquipmentCode, &v.UseRegistrationNo, &v.Version)
 	return v, err
 }
 
@@ -314,9 +318,9 @@ func UpdateAsset(ctx context.Context, db *sql.DB, in contract.AssetMasterData, e
 		return in, err
 	}
 	defer tx.Rollback()
-	var status, projectID string
+	var status, projectID, existingDisplayName string
 	var version int64
-	if err := tx.QueryRowContext(ctx, `SELECT asset_status,version,project_id FROM asset_devices WHERE id=$1 FOR UPDATE`, in.Id).Scan(&status, &version, &projectID); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT asset_status,version,project_id,display_name FROM asset_devices WHERE id=$1 FOR UPDATE`, in.Id).Scan(&status, &version, &projectID, &existingDisplayName); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return in, ErrNotFound
 		}
@@ -339,8 +343,14 @@ func UpdateAsset(ctx context.Context, db *sql.DB, in contract.AssetMasterData, e
 			return in, fmt.Errorf("invalid asset status %q", in.AssetStatus)
 		}
 	}
-	result, err := tx.ExecContext(ctx, `UPDATE asset_devices SET asset_code=$2,asset_type=$3,manufacturer_id=$4,manufacturer_snapshot=$5,brand_snapshot=$6,model_snapshot=$7,serial_number=$8,manufacture_date=$9,installation_date=$10,commissioning_date=$11,lifting_height_m=$12,application_type=$13,control_mode=$14,special_equipment_code=$15,use_registration_no=$16,asset_status=$17,version=version+1,updated_at=now() WHERE id=$1 AND version=$18`,
-		in.Id, in.AssetCode, in.AssetType, in.ManufacturerId, in.ManufacturerSnapshot, in.BrandSnapshot, in.ModelSnapshot, in.SerialNumber, in.ManufactureDate, in.InstallationDate, in.CommissioningDate, in.LiftingHeightM, in.ApplicationType, in.ControlMode, in.SpecialEquipmentCode, in.UseRegistrationNo, newStatus, expectedVersion)
+	// A blank display name keeps the existing one; an explicit name replaces it.
+	name := strings.TrimSpace(in.DisplayName)
+	if name == "" {
+		name = existingDisplayName
+	}
+	in.DisplayName = name
+	result, err := tx.ExecContext(ctx, `UPDATE asset_devices SET asset_code=$2,display_name=$3,asset_type=$4,manufacturer_id=$5,manufacturer_snapshot=$6,brand_snapshot=$7,model_snapshot=$8,serial_number=$9,manufacture_date=$10,installation_date=$11,commissioning_date=$12,lifting_height_m=$13,application_type=$14,control_mode=$15,special_equipment_code=$16,use_registration_no=$17,asset_status=$18,version=version+1,updated_at=now() WHERE id=$1 AND version=$19`,
+		in.Id, in.AssetCode, name, in.AssetType, in.ManufacturerId, in.ManufacturerSnapshot, in.BrandSnapshot, in.ModelSnapshot, in.SerialNumber, in.ManufactureDate, in.InstallationDate, in.CommissioningDate, in.LiftingHeightM, in.ApplicationType, in.ControlMode, in.SpecialEquipmentCode, in.UseRegistrationNo, newStatus, expectedVersion)
 	if err != nil {
 		return in, err
 	}
@@ -399,7 +409,7 @@ func RetireAsset(ctx context.Context, db *sql.DB, assetID string, expectedVersio
 		return ErrVersionConflict
 	}
 	var snapshot contract.AssetMasterData
-	if err := tx.QueryRowContext(ctx, `SELECT `+assetColumns+` FROM asset_devices WHERE id=$1`, assetID).Scan(&snapshot.Id, &snapshot.ProjectId, &snapshot.AssetCode, &snapshot.AssetType, &snapshot.AssetStatus, &snapshot.ManufacturerId, &snapshot.ManufacturerSnapshot, &snapshot.BrandSnapshot, &snapshot.ModelSnapshot, &snapshot.SerialNumber, &snapshot.ManufactureDate, &snapshot.InstallationDate, &snapshot.CommissioningDate, &snapshot.LiftingHeightM, &snapshot.ApplicationType, &snapshot.ControlMode, &snapshot.SpecialEquipmentCode, &snapshot.UseRegistrationNo, &snapshot.Version); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT `+assetColumns+` FROM asset_devices WHERE id=$1`, assetID).Scan(&snapshot.Id, &snapshot.ProjectId, &snapshot.DisplayName, &snapshot.AssetCode, &snapshot.AssetType, &snapshot.AssetStatus, &snapshot.ManufacturerId, &snapshot.ManufacturerSnapshot, &snapshot.BrandSnapshot, &snapshot.ModelSnapshot, &snapshot.SerialNumber, &snapshot.ManufactureDate, &snapshot.InstallationDate, &snapshot.CommissioningDate, &snapshot.LiftingHeightM, &snapshot.ApplicationType, &snapshot.ControlMode, &snapshot.SpecialEquipmentCode, &snapshot.UseRegistrationNo, &snapshot.Version); err != nil {
 		return err
 	}
 	if err := revision(ctx, tx, projectID, assetID, "asset", assetID, actor, requestID, []string{"retired"}, snapshot); err != nil {

@@ -3943,6 +3943,7 @@
         "required": [
           "id",
           "projectId",
+          "displayName",
           "assetCode",
           "assetType",
           "assetStatus",
@@ -3969,6 +3970,10 @@
           "projectId": {
             "type": "string",
             "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "displayName": {
+            "type": "string",
+            "maxLength": 160
           },
           "assetCode": {
             "anyOf": [

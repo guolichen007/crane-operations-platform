@@ -209,7 +209,7 @@ const statusText: Record<string, string> = {
         <span class="status-pill" :data-status="asset.assetStatus">{{
           statusText[asset.assetStatus] ?? asset.assetStatus
         }}</span>
-        <h1>{{ asset.assetCode ?? asset.id }}</h1>
+        <h1>{{ asset.displayName || asset.assetCode || asset.id }}</h1>
         <p>{{ asset.assetType }} · {{ asset.manufacturerSnapshot || '未关联制造商' }} · v{{ asset.version }}</p>
       </div>
       <div v-if="canWrite" class="detail-actions">
@@ -231,6 +231,7 @@ const statusText: Record<string, string> = {
       </div>
 
       <div v-if="tab === 'overview'" class="detail-grid">
+        <div class="detail-cell"><span>资产名称</span><b>{{ asset.displayName || '—' }}</b></div>
         <div class="detail-cell"><span>资产编号</span><b>{{ asset.assetCode ?? '—' }}</b></div>
         <div class="detail-cell"><span>类型</span><b>{{ asset.assetType }}</b></div>
         <div class="detail-cell"><span>制造商</span><b>{{ asset.manufacturerSnapshot || '—' }}</b></div>
@@ -284,7 +285,7 @@ const statusText: Record<string, string> = {
       </div>
 
       <div v-else class="workspace-empty">
-        当前位置与安装历史将在资产位置中心展示；移动操作用顶部「移动」。
+        暂无安装位置记录。
       </div>
     </template>
 
@@ -293,6 +294,7 @@ const statusText: Record<string, string> = {
     <div v-if="editing && editDraft" class="modal-backdrop" @click.self="editing = false">
       <form class="workspace-modal" @submit.prevent="updateMutation.mutate(editDraft)">
         <h2>编辑资产（If-Match v{{ asset?.version }}）</h2>
+        <label>资产名称<input v-model="editDraft.displayName" /></label>
         <label>资产编号<input v-model="editDraft.assetCode" /></label>
         <label>类型<input v-model="editDraft.assetType" /></label>
         <div class="modal-actions">

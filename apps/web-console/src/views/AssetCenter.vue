@@ -25,7 +25,7 @@ const limit = 50;
 const applied = ref({ q: '', status: '', type: '', sort: '' });
 const creating = ref(false);
 const formError = ref('');
-const newAsset = ref<Partial<AssetMasterData>>({ projectId: '', assetType: 'CRANE' });
+const newAsset = ref<Partial<AssetMasterData>>({ projectId: '', displayName: '', assetType: 'CRANE' });
 let idempotencyKey = crypto.randomUUID();
 
 function apply() {
@@ -63,7 +63,7 @@ const createMutation = useMutation({
 function openCreate() {
   idempotencyKey = crypto.randomUUID();
   formError.value = '';
-  newAsset.value = { projectId: '', assetType: 'CRANE' };
+  newAsset.value = { projectId: '', displayName: '', assetType: 'CRANE' };
   creating.value = true;
 }
 
@@ -122,6 +122,7 @@ const statusText: Record<string, string> = {
           <tr>
             <th>资产编号</th>
             <th>名称</th>
+            <th>项目</th>
             <th>类型</th>
             <th>状态</th>
             <th>制造商</th>
@@ -132,7 +133,8 @@ const statusText: Record<string, string> = {
         <tbody>
           <tr v-for="a in assetsQuery.data.value" :key="a.id" class="data-row" @click="router.push(`/assets/${a.id}`)">
             <td>{{ a.assetCode ?? '—' }}</td>
-            <td>{{ a.id }}</td>
+            <td>{{ a.displayName || a.assetCode || '—' }}</td>
+            <td>{{ a.projectId }}</td>
             <td>{{ a.assetType }}</td>
             <td>
               <span class="status-pill" :data-status="a.assetStatus">{{ statusText[a.assetStatus] ?? a.assetStatus }}</span>
@@ -174,6 +176,7 @@ const statusText: Record<string, string> = {
             </option>
           </select>
         </label>
+        <label>资产名称<input v-model="newAsset.displayName" placeholder="例如：1 号门式起重机" /></label>
         <label>资产编号<input v-model="newAsset.assetCode" placeholder="CRN-001" /></label>
         <label>类型
           <select v-model="newAsset.assetType">

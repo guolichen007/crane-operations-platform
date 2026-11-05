@@ -4,20 +4,16 @@ import { useRoute } from 'vue-router';
 import { useQuery } from '@tanstack/vue-query';
 import { Search, MapPin } from 'lucide-vue-next';
 import { listAllLocations } from '../cloud/asset';
-import { webSession } from '../cloud/session';
 import type { AssetLocation } from '../../../../contracts/typescript/types.gen';
 
 const route = useRoute();
 const q = ref('');
 const kind = ref('');
 const status = ref('');
-// The project scope follows the top command bar (?project=), falling back to the
-// first authorized project — never silently only the first one.
-const projectId = computed(() => {
-  const scoped = typeof route.query.project === 'string' ? route.query.project : '';
-  if (scoped) return scoped;
-  return webSession.value?.projects?.[0]?.projectId ?? '';
-});
+// The project scope is explicit: only `?project=` selects a scope. There is no
+// silent fallback to the first authorized project, which would mislead the
+// "全国运营视图" scope. Without a scope, the page shows an explicit prompt.
+const projectId = computed(() => (typeof route.query.project === 'string' ? route.query.project : ''));
 
 const locationsQuery = useQuery({
   queryKey: ['locations', projectId],

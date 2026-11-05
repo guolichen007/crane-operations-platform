@@ -183,6 +183,7 @@ export interface WebSession {
 export interface AssetMasterData {
   id: string;
   projectId: string;
+  displayName: string;
   assetCode: string | null;
   assetType: string;
   assetStatus: "DRAFT" | "ACTIVE" | "OUT_OF_SERVICE" | "RETIRED";
