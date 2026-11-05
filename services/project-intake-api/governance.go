@@ -19,12 +19,13 @@ type GovernanceEvent struct {
 	At        time.Time `json:"at"`
 }
 type decisionInput struct {
-	Version       int    `json:"version"`
-	Reason        string `json:"reason"`
-	TargetSubject string `json:"targetSubject,omitempty"`
-	SalesStage    string `json:"salesStage,omitempty"`
-	Decision      string `json:"decision,omitempty"`
-	CaseID        string `json:"caseId,omitempty"`
+	RelatedVersions map[string]int `json:"relatedVersions,omitempty"`
+	Version         int            `json:"version"`
+	Reason          string         `json:"reason"`
+	TargetSubject   string         `json:"targetSubject,omitempty"`
+	SalesStage      string         `json:"salesStage,omitempty"`
+	Decision        string         `json:"decision,omitempty"`
+	CaseID          string         `json:"caseId,omitempty"`
 }
 type Comparison struct {
 	ID         string   `json:"id"`
@@ -90,7 +91,7 @@ func (a *App) governanceHistory(ctx context.Context, p *Project) error {
 	return rows.Err()
 }
 func (a *App) comparison(ctx context.Context, q querier, p Project, u User) ([]Comparison, error) {
-	rows, e := q.Query(ctx, `SELECT id::text,candidate_id::text,score,risk,matched_signals,decision FROM duplicate_cases WHERE project_id=$1 ORDER BY created_at DESC,id`, p.ID)
+	rows, e := q.Query(ctx, `SELECT id::text,candidate_id::text,score,risk,matched_signals,decision FROM duplicate_cases WHERE project_id=$1 AND (submission_revision=$2 OR decision<>'PENDING') ORDER BY created_at DESC,id`, p.ID, p.SubmissionRevision)
 	if e != nil {
 		return nil, e
 	}
@@ -132,7 +133,7 @@ func (a *App) comparison(ctx context.Context, q querier, p Project, u User) ([]C
 func (a *App) governance(w http.ResponseWriter, r *http.Request, u User) (bool, error) {
 	path, method, ctx := r.URL.Path, r.Method, r.Context()
 	if path == "/api/v1/reviews" && method == "GET" {
-		if !manager(u) {
+		if !(ProjectPolicy{u}).Manage() {
 			fail(w, 403, "FORBIDDEN", "没有审核权限")
 			return true, nil
 		}
@@ -152,7 +153,7 @@ func (a *App) governance(w http.ResponseWriter, r *http.Request, u User) (bool, 
 		return true, nil
 	}
 	if path == "/api/v1/ownership-candidates" && method == "GET" {
-		if !manager(u) {
+		if !(ProjectPolicy{u}).Manage() {
 			fail(w, 403, "FORBIDDEN", "没有归属管理权限")
 			return true, nil
 		}
@@ -162,11 +163,14 @@ func (a *App) governance(w http.ResponseWriter, r *http.Request, u User) (bool, 
 			return true, nil
 		}
 		p, e := get(ctx, a.db, id, false)
+		if e != nil && !errors.Is(e, pgx.ErrNoRows) {
+			return true, e
+		}
 		if e != nil || !canRead(u, p) {
 			fail(w, 404, "NOT_FOUND", "项目不存在或无权访问")
 			return true, nil
 		}
-		rows, e := a.db.Query(ctx, `SELECT subject,display_name FROM app_users WHERE active AND role='baobei_sales' AND ($1='baobei_director' OR team_id::text=$2) ORDER BY display_name`, u.Role, u.TeamID)
+		rows, e := a.db.Query(ctx, `SELECT subject,display_name FROM app_users WHERE active AND role='baobei_sales' AND ($1 IN ('baobei_director','baobei_admin') OR team_id::text=$2) ORDER BY display_name`, u.Role, u.TeamID)
 		if e != nil {
 			return true, e
 		}
@@ -199,11 +203,14 @@ func (a *App) governance(w http.ResponseWriter, r *http.Request, u User) (bool, 
 		return true, nil
 	}
 	if action == "duplicate-comparison" && method == "GET" {
-		if !manager(u) {
+		if !(ProjectPolicy{u}).Manage() {
 			fail(w, 403, "FORBIDDEN", "没有重复审核权限")
 			return true, nil
 		}
 		p, e := get(ctx, a.db, id, false)
+		if e != nil && !errors.Is(e, pgx.ErrNoRows) {
+			return true, e
+		}
 		if e != nil || !canRead(u, p) {
 			fail(w, 404, "NOT_FOUND", "项目不存在或无权访问")
 			return true, nil
@@ -219,7 +226,7 @@ func (a *App) governance(w http.ResponseWriter, r *http.Request, u User) (bool, 
 		fail(w, 405, "METHOD_NOT_ALLOWED", "操作不支持")
 		return true, nil
 	}
-	if action != "stage-change" && !manager(u) {
+	if action != "stage-change" && !(ProjectPolicy{u}).Manage() {
 		fail(w, 403, "FORBIDDEN", "没有主管操作权限")
 		return true, nil
 	}
@@ -237,6 +244,16 @@ func (a *App) governance(w http.ResponseWriter, r *http.Request, u User) (bool, 
 		return true, e
 	}
 	defer tx.Rollback(ctx)
+	var related []Project
+	if contains([]string{"approve", "return", "reject", "duplicate-decisions"}, action) {
+		if _, e = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(727102)`); e != nil {
+			return true, e
+		}
+		related, e = relatedReviewProjects(ctx, tx, id)
+		if e != nil {
+			return true, e
+		}
+	}
 	p, e := get(ctx, tx, id, true)
 	if e != nil {
 		if !errors.Is(e, pgx.ErrNoRows) {
@@ -252,6 +269,21 @@ func (a *App) governance(w http.ResponseWriter, r *http.Request, u User) (bool, 
 	if in.Version != p.Version {
 		fail(w, 409, "VERSION_CONFLICT", "项目已更新，请重新加载后重试")
 		return true, nil
+	}
+	if e = enforceProject(u, p, action); e != nil {
+		return true, e
+	}
+	if contains([]string{"approve", "return", "reject", "duplicate-decisions"}, action) {
+		if e = reviewIndependence(ctx, tx, u, p); e != nil {
+			return true, e
+		}
+		if action == "duplicate-decisions" {
+			for _, candidate := range related {
+				if e = reviewIndependence(ctx, tx, u, candidate); e != nil {
+					return true, e
+				}
+			}
+		}
 	}
 	event := "review." + action
 	details := map[string]any{"reason": in.Reason}
@@ -280,12 +312,15 @@ func (a *App) governance(w http.ResponseWriter, r *http.Request, u User) (bool, 
 		}
 		var teamID string
 
-		e = tx.QueryRow(ctx, `SELECT coalesce(team_id::text,'') FROM app_users WHERE subject=$1 AND active AND role='baobei_sales'`, in.TargetSubject).Scan(&teamID)
-		if e != nil || in.TargetSubject == p.OwnerSubject || teamID == "" || u.Role == "baobei_manager" && teamID != u.TeamID {
-			fail(w, 400, "INVALID_TARGET", "请选择权限范围内的其他有效销售人员")
-			return true, nil
+		teamID, e = activeOwner(ctx, tx, in.TargetSubject)
+		if e != nil {
+			return true, e
 		}
-		if _, e = tx.Exec(ctx, `INSERT INTO ownership_history(project_id,from_subject,to_subject,reason,actor_subject) VALUES($1,$2,$3,$4,$5)`, id, p.OwnerSubject, in.TargetSubject, in.Reason, u.Subject); e != nil {
+		if in.TargetSubject == p.OwnerSubject || u.Role == managerRole && teamID != u.TeamID {
+			return true, problem(400, "INVALID_TARGET")
+		}
+
+		if _, e = tx.Exec(ctx, `INSERT INTO ownership_history(project_id,from_subject,to_subject,reason,actor_subject) VALUES($1,NULLIF($2,''),$3,$4,$5)`, id, p.OwnerSubject, in.TargetSubject, in.Reason, u.Subject); e != nil {
 			return true, e
 		}
 		details["fromOwner"] = p.OwnerSubject
@@ -304,7 +339,7 @@ func (a *App) governance(w http.ResponseWriter, r *http.Request, u User) (bool, 
 		switch action {
 		case "approve":
 			var pending int
-			if e = tx.QueryRow(ctx, `SELECT count(*) FROM duplicate_cases WHERE project_id=$1 AND decision='PENDING'`, id).Scan(&pending); e != nil {
+			if e = tx.QueryRow(ctx, `SELECT count(*) FROM duplicate_cases WHERE project_id=$1 AND decision='PENDING' AND submission_revision=(SELECT submission_revision FROM intake_projects WHERE id=$1)`, id).Scan(&pending); e != nil {
 				return true, e
 			}
 			if pending > 0 {
@@ -320,6 +355,14 @@ func (a *App) governance(w http.ResponseWriter, r *http.Request, u User) (bool, 
 			if !uuidPattern.MatchString(in.CaseID) || !contains([]string{"CONFIRMED_DUPLICATE", "DISTINCT_APPROVED"}, in.Decision) {
 				fail(w, 400, "INVALID_INPUT", "请选择重复候选与处理结论")
 				return true, nil
+			}
+			if len(in.RelatedVersions) != len(related)-1 {
+				return true, problem(409, "RELATED_VERSION_CONFLICT")
+			}
+			for _, candidate := range related {
+				if candidate.ID != p.ID && in.RelatedVersions[candidate.ID] != candidate.Version {
+					return true, problem(409, "RELATED_VERSION_CONFLICT")
+				}
 			}
 			cases, e := a.comparison(ctx, tx, p, u)
 			if e != nil {
@@ -354,7 +397,7 @@ func (a *App) governance(w http.ResponseWriter, r *http.Request, u User) (bool, 
 				where = ""
 				args = args[:5]
 			}
-			if _, e = tx.Exec(ctx, `UPDATE duplicate_cases SET decision=$2,reason=$3,decided_by_subject=$4,decided_at=$5 WHERE project_id=$1 AND decision='PENDING'`+where, args...); e != nil {
+			if _, e = tx.Exec(ctx, `UPDATE duplicate_cases SET decision=$2,reason=$3,decided_by_subject=$4,decided_at=$5 WHERE project_id=$1 AND decision='PENDING' AND submission_revision=(SELECT submission_revision FROM intake_projects WHERE id=$1)`+where, args...); e != nil {
 				return true, e
 			}
 			details["decision"] = decision
@@ -363,7 +406,7 @@ func (a *App) governance(w http.ResponseWriter, r *http.Request, u User) (bool, 
 		if _, e = tx.Exec(ctx, `UPDATE intake_projects SET intake_status=$2,version=version+1,updated_at=now() WHERE id=$1`, id, status); e != nil {
 			return true, e
 		}
-		if _, e = tx.Exec(ctx, `INSERT INTO approvals(project_id,subject,decision,reason) VALUES($1,$2,$3,$4)`, id, u.Subject, decision, in.Reason); e != nil {
+		if _, e = tx.Exec(ctx, `INSERT INTO approvals(project_id,subject,decision,reason,submission_revision) VALUES($1,$2,$3,$4,$5)`, id, u.Subject, decision, in.Reason, p.SubmissionRevision); e != nil {
 			return true, e
 		}
 	}
@@ -371,10 +414,22 @@ func (a *App) governance(w http.ResponseWriter, r *http.Request, u User) (bool, 
 	if e != nil {
 		return true, e
 	}
+	if action == "ownership-transfer" || action == "stage-change" {
+		kind := "ASSIGN"
+		if action == "stage-change" {
+			kind = "STAGE"
+		}
+		if e = participation(ctx, tx, p, u, kind); e != nil {
+			return true, e
+		}
+	}
 	if _, e = tx.Exec(ctx, `INSERT INTO audit_events(project_id,subject,action,revision,details) VALUES($1,$2,$3,$4,$5)`, id, u.Subject, event, p.Version, mustJSON(details)); e != nil {
 		return true, e
 	}
 	if e = tx.Commit(ctx); e != nil {
+		return true, e
+	}
+	if e = a.projectHints(ctx, a.db, u, &p); e != nil {
 		return true, e
 	}
 	respond(w, 200, p)

@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Project Intake API",
-    "version": "1.0.0-b3",
-    "description": "项目报备、审批与重复裁决，以及受团队、角色和业务能力约束的人员治理。"
+    "version": "1.1.0-g1",
+    "description": "全角色项目资源授权、不可覆盖提交证据、管理员未分配草稿及幂等创建；统计与UI重排不在G1。"
   },
   "servers": [
     {
@@ -28,13 +28,20 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "permissions"
+                    "permissions",
+                    "businessActions"
                   ],
                   "properties": {
                     "permissions": {
                       "type": "array",
                       "items": {
                         "$ref": "#/components/schemas/StaffCapability"
+                      }
+                    },
+                    "businessActions": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/ActionHint"
                       }
                     }
                   }
@@ -65,7 +72,7 @@
             "description": "版本或状态冲突"
           },
           "503": {
-            "description": "会话服务暂时不可用（SESSION_UNAVAILABLE）"
+            "description": "服务暂不可用；输入保留，可重试"
           }
         }
       }
@@ -127,8 +134,8 @@
           "409": {
             "description": "版本或状态冲突"
           },
-          "501": {
-            "description": "后续批次，仅契约"
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
           }
         },
         "parameters": [
@@ -287,7 +294,8 @@
                   },
                   "estimatedAmount": {
                     "type": "number",
-                    "minimum": 0
+                    "minimum": 0,
+                    "nullable": true
                   },
                   "expectedPurchaseDate": {
                     "type": "string"
@@ -320,6 +328,30 @@
                   "notes": {
                     "type": "string",
                     "maxLength": 4000
+                  },
+                  "knowledge": {
+                    "$ref": "#/components/schemas/Knowledge"
+                  },
+                  "nextAction": {
+                    "type": "string",
+                    "maxLength": 3000
+                  },
+                  "nextFollowupAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "nullable": true
+                  },
+                  "assignmentMode": {
+                    "type": "string",
+                    "enum": [
+                      "UNASSIGNED_DRAFT",
+                      "ASSIGN_ACTIVE_SALES"
+                    ],
+                    "description": "仅admin；省略时未分配"
+                  },
+                  "targetSubject": {
+                    "type": "string",
+                    "description": "仅admin指派模式；必须来自有效销售候选"
                   }
                 }
               }
@@ -359,8 +391,8 @@
           "409": {
             "description": "版本或状态冲突"
           },
-          "501": {
-            "description": "后续批次，仅契约"
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
           }
         },
         "parameters": [
@@ -372,6 +404,16 @@
               "type": "string"
             },
             "description": "GET /api/v1/me 的会话绑定 CSRF；同时需要同源 Origin"
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{16,128}$"
+            },
+            "description": "actor+key唯一，同内容返回原ID当前版本，不同内容409；不接受缺失键"
           }
         ]
       }
@@ -429,8 +471,8 @@
           "409": {
             "description": "版本或状态冲突"
           },
-          "501": {
-            "description": "后续批次，仅契约"
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
           }
         }
       },
@@ -544,7 +586,8 @@
                   },
                   "estimatedAmount": {
                     "type": "number",
-                    "minimum": 0
+                    "minimum": 0,
+                    "nullable": true
                   },
                   "expectedPurchaseDate": {
                     "type": "string"
@@ -577,6 +620,18 @@
                   "notes": {
                     "type": "string",
                     "maxLength": 4000
+                  },
+                  "knowledge": {
+                    "$ref": "#/components/schemas/Knowledge"
+                  },
+                  "nextAction": {
+                    "type": "string",
+                    "maxLength": 3000
+                  },
+                  "nextFollowupAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "nullable": true
                   }
                 }
               }
@@ -616,8 +671,8 @@
           "409": {
             "description": "版本或状态冲突"
           },
-          "501": {
-            "description": "后续批次，仅契约"
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
           }
         }
       }
@@ -703,8 +758,8 @@
           "409": {
             "description": "版本或状态冲突"
           },
-          "501": {
-            "description": "后续批次，仅契约"
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
           }
         }
       }
@@ -770,8 +825,8 @@
           "409": {
             "description": "版本或状态冲突"
           },
-          "501": {
-            "description": "后续批次，仅契约"
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
           }
         }
       }
@@ -867,7 +922,8 @@
                   },
                   "estimatedAmount": {
                     "type": "number",
-                    "minimum": 0
+                    "minimum": 0,
+                    "nullable": true
                   },
                   "expectedPurchaseDate": {
                     "type": "string"
@@ -900,6 +956,18 @@
                   "notes": {
                     "type": "string",
                     "maxLength": 4000
+                  },
+                  "knowledge": {
+                    "$ref": "#/components/schemas/Knowledge"
+                  },
+                  "nextAction": {
+                    "type": "string",
+                    "maxLength": 3000
+                  },
+                  "nextFollowupAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "nullable": true
                   }
                 }
               }
@@ -947,8 +1015,8 @@
           "409": {
             "description": "版本或状态冲突"
           },
-          "501": {
-            "description": "后续批次，仅契约"
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
           }
         },
         "parameters": [
@@ -1067,8 +1135,8 @@
           "409": {
             "description": "版本或状态冲突"
           },
-          "501": {
-            "description": "后续批次，仅契约"
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
           }
         }
       }
@@ -1142,6 +1210,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
           }
         },
         "parameters": [
@@ -1236,6 +1307,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
           }
         },
         "parameters": [
@@ -1354,6 +1428,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
           }
         },
         "parameters": [
@@ -1472,6 +1549,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
           }
         },
         "parameters": [
@@ -1590,6 +1670,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
           }
         },
         "parameters": [
@@ -1686,8 +1769,8 @@
           "409": {
             "description": "版本或状态冲突"
           },
-          "501": {
-            "description": "后续批次，仅契约"
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
           }
         }
       }
@@ -1730,8 +1813,8 @@
           "409": {
             "description": "版本或状态冲突"
           },
-          "501": {
-            "description": "后续批次，仅契约"
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
           }
         }
       }
@@ -1774,8 +1857,8 @@
           "409": {
             "description": "版本或状态冲突"
           },
-          "501": {
-            "description": "后续批次，仅契约"
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
           }
         }
       }
@@ -1849,6 +1932,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
           }
         },
         "parameters": [
@@ -1985,6 +2071,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
           }
         },
         "parameters": [
@@ -2017,7 +2106,8 @@
                   "version",
                   "reason",
                   "decision",
-                  "caseId"
+                  "caseId",
+                  "relatedVersions"
                 ],
                 "properties": {
                   "version": {
@@ -2038,6 +2128,14 @@
                   "caseId": {
                     "type": "string",
                     "format": "uuid"
+                  },
+                  "relatedVersions": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "description": "从comparison可见候选ID到version的完整映射；缺项、额外项或过期409"
                   }
                 }
               }
@@ -2115,6 +2213,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
           }
         },
         "parameters": [
@@ -2199,6 +2300,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
           }
         },
         "parameters": [
@@ -2253,7 +2357,7 @@
             "$ref": "#/components/responses/StaffMediaType"
           },
           "503": {
-            "$ref": "#/components/responses/StaffUnavailable"
+            "description": "服务暂不可用；输入保留，可重试"
           }
         },
         "parameters": [
@@ -2343,7 +2447,7 @@
             "$ref": "#/components/responses/StaffMediaType"
           },
           "503": {
-            "$ref": "#/components/responses/StaffUnavailable"
+            "description": "服务暂不可用；输入保留，可重试"
           }
         },
         "requestBody": {
@@ -2407,7 +2511,7 @@
             "$ref": "#/components/responses/StaffMediaType"
           },
           "503": {
-            "$ref": "#/components/responses/StaffUnavailable"
+            "description": "服务暂不可用；输入保留，可重试"
           }
         },
         "parameters": [
@@ -2460,7 +2564,7 @@
             "$ref": "#/components/responses/StaffMediaType"
           },
           "503": {
-            "$ref": "#/components/responses/StaffUnavailable"
+            "description": "服务暂不可用；输入保留，可重试"
           }
         },
         "requestBody": {
@@ -2533,7 +2637,7 @@
             "$ref": "#/components/responses/StaffMediaType"
           },
           "503": {
-            "$ref": "#/components/responses/StaffUnavailable"
+            "description": "服务暂不可用；输入保留，可重试"
           }
         },
         "requestBody": {
@@ -2606,7 +2710,7 @@
             "$ref": "#/components/responses/StaffMediaType"
           },
           "503": {
-            "$ref": "#/components/responses/StaffUnavailable"
+            "description": "服务暂不可用；输入保留，可重试"
           }
         },
         "requestBody": {
@@ -2679,7 +2783,7 @@
             "$ref": "#/components/responses/StaffMediaType"
           },
           "503": {
-            "$ref": "#/components/responses/StaffUnavailable"
+            "description": "服务暂不可用；输入保留，可重试"
           }
         },
         "requestBody": {
@@ -2752,7 +2856,7 @@
             "$ref": "#/components/responses/StaffMediaType"
           },
           "503": {
-            "$ref": "#/components/responses/StaffUnavailable"
+            "description": "服务暂不可用；输入保留，可重试"
           }
         },
         "requestBody": {
@@ -2825,7 +2929,7 @@
             "$ref": "#/components/responses/StaffMediaType"
           },
           "503": {
-            "$ref": "#/components/responses/StaffUnavailable"
+            "description": "服务暂不可用；输入保留，可重试"
           }
         },
         "requestBody": {
@@ -2898,7 +3002,7 @@
             "$ref": "#/components/responses/StaffMediaType"
           },
           "503": {
-            "$ref": "#/components/responses/StaffUnavailable"
+            "description": "服务暂不可用；输入保留，可重试"
           }
         },
         "requestBody": {
@@ -2971,7 +3075,7 @@
             "$ref": "#/components/responses/StaffMediaType"
           },
           "503": {
-            "$ref": "#/components/responses/StaffUnavailable"
+            "description": "服务暂不可用；输入保留，可重试"
           }
         },
         "parameters": [
@@ -3026,7 +3130,7 @@
             "$ref": "#/components/responses/StaffMediaType"
           },
           "503": {
-            "$ref": "#/components/responses/StaffUnavailable"
+            "description": "服务暂不可用；输入保留，可重试"
           }
         }
       },
@@ -3068,7 +3172,7 @@
             "$ref": "#/components/responses/StaffMediaType"
           },
           "503": {
-            "$ref": "#/components/responses/StaffUnavailable"
+            "description": "服务暂不可用；输入保留，可重试"
           }
         },
         "requestBody": {
@@ -3132,7 +3236,7 @@
             "$ref": "#/components/responses/StaffMediaType"
           },
           "503": {
-            "$ref": "#/components/responses/StaffUnavailable"
+            "description": "服务暂不可用；输入保留，可重试"
           }
         },
         "requestBody": {
@@ -3260,7 +3364,8 @@
           },
           "estimatedAmount": {
             "type": "number",
-            "minimum": 0
+            "minimum": 0,
+            "nullable": true
           },
           "expectedPurchaseDate": {
             "type": "string"
@@ -3295,6 +3400,18 @@
           "notes": {
             "type": "string",
             "maxLength": 4000
+          },
+          "knowledge": {
+            "$ref": "#/components/schemas/Knowledge"
+          },
+          "nextAction": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "nextFollowupAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
           }
         }
       },
@@ -3413,20 +3530,61 @@
           },
           "capacityTons": {
             "type": "number",
-            "minimum": 0
+            "minimum": 0,
+            "nullable": true
           },
           "spanM": {
             "type": "number",
-            "minimum": 0
+            "minimum": 0,
+            "nullable": true
           },
           "liftHeightM": {
             "type": "number",
-            "minimum": 0
+            "minimum": 0,
+            "nullable": true
           },
           "quantity": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 10000
+            "maximum": 10000,
+            "nullable": true
+          },
+          "knowledge": {
+            "$ref": "#/components/schemas/Knowledge"
+          },
+          "environmentFlags": {
+            "type": "array",
+            "nullable": true,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "DUST",
+                "HIGH_TEMPERATURE",
+                "EXPLOSIVE",
+                "OUTDOOR"
+              ]
+            }
+          },
+          "automationGoals": {
+            "type": "array",
+            "nullable": true,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "AUTONOMOUS",
+                "ANTI_SWAY",
+                "COLLISION_AVOIDANCE",
+                "POSITIONING",
+                "VISION",
+                "LIDAR",
+                "REMOTE_OPERATION",
+                "SAFETY",
+                "MONITORING",
+                "OTHER"
+              ]
+            }
           }
         },
         "required": [
@@ -3445,7 +3603,17 @@
           "intakeStatus",
           "version",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "actions",
+          "assignmentStatus",
+          "teamId",
+          "draftCustodianSubject",
+          "submittedBySubject",
+          "submissionRevision",
+          "evidenceState",
+          "protectionStartedAt",
+          "protectionBasis",
+          "documentHash"
         ],
         "properties": {
           "version": {
@@ -3528,7 +3696,8 @@
           },
           "estimatedAmount": {
             "type": "number",
-            "minimum": 0
+            "minimum": 0,
+            "nullable": true
           },
           "expectedPurchaseDate": {
             "type": "string"
@@ -3573,19 +3742,22 @@
             "pattern": "^BB-[0-9]{4}-[0-9]{6}$"
           },
           "ownerSubject": {
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "createdBySubject": {
             "type": "string"
           },
           "teamId": {
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "protectionStatus": {
             "type": "string"
           },
           "nextAction": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 3000
           },
           "intakeStatus": {
             "enum": [
@@ -3666,6 +3838,60 @@
                 }
               }
             }
+          },
+          "knowledge": {
+            "$ref": "#/components/schemas/Knowledge"
+          },
+          "actions": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ActionHint"
+            }
+          },
+          "assignmentStatus": {
+            "type": "string",
+            "enum": [
+              "ASSIGNED",
+              "UNASSIGNED_DRAFT"
+            ]
+          },
+          "draftCustodianSubject": {
+            "type": "string"
+          },
+          "submittedBySubject": {
+            "type": "string",
+            "description": "无可证明的新提交时为空，不代表历史从未提交"
+          },
+          "submissionRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "evidenceState": {
+            "type": "string",
+            "enum": [
+              "COMPLETE",
+              "INCOMPLETE"
+            ]
+          },
+          "protectionStartedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "protectionBasis": {
+            "type": "string",
+            "enum": [
+              "FIRST_SUBMISSION",
+              "LEGACY_CREATED_AT"
+            ]
+          },
+          "replayed": {
+            "type": "boolean"
+          },
+          "documentHash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "PostgreSQL JSONB text UTF8 SHA256，原始提交快照含依据版本"
           }
         }
       },
@@ -4317,6 +4543,35 @@
           "name",
           "reason"
         ]
+      },
+      "Knowledge": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string",
+          "enum": [
+            "UNKNOWN",
+            "KNOWN",
+            "LEGACY_UNCONFIRMED"
+          ]
+        },
+        "description": "null为UNKNOWN；旧客户端零默认LEGACY_UNCONFIRMED；显式KNOWN可确认零。"
+      },
+      "ActionHint": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "allowed",
+          "reasonCode"
+        ],
+        "properties": {
+          "allowed": {
+            "type": "boolean"
+          },
+          "reasonCode": {
+            "type": "string",
+            "nullable": true
+          }
+        }
       }
     },
     "responses": {

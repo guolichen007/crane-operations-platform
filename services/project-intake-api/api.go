@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/jackc/pgx/v5"
 	"net/http"
 	"strings"
 	"time"
@@ -59,6 +60,15 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 		return e
 	}
 	if path == "/api/v1/me" && method == "GET" {
+		u.BusinessActions = map[string]ActionHint{"project.create": hint("BUSINESS_PERMISSION_DENIED")}
+		if (ProjectPolicy{u}).Create() {
+			u.BusinessActions["project.create"] = hint("")
+		}
+		u.BusinessActions["project.read"] = hint("")
+		u.BusinessActions["project.review"] = hint("BUSINESS_PERMISSION_DENIED")
+		if (ProjectPolicy{u}).Manage() {
+			u.BusinessActions["project.review"] = hint("")
+		}
 		respond(w, 200, u)
 		return nil
 	}
@@ -67,7 +77,7 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 		return nil
 	}
 	if path == "/api/v1/duplicate-checks" && method == "POST" {
-		if u.Role != "baobei_sales" {
+		if u.Role != salesRole && u.Role != adminRole {
 			fail(w, 403, "FORBIDDEN", "没有报备权限")
 			return nil
 		}
@@ -104,51 +114,7 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 			return nil
 		}
 		if method == "POST" {
-			if u.Role != "baobei_sales" {
-				fail(w, 403, "FORBIDDEN", "仅业务员可创建报备")
-				return nil
-			}
-			var in Input
-			if !decode(w, r, &in) {
-				return nil
-			}
-			if e := validateInput(&in, false); e != nil {
-				fail(w, 400, "INVALID_INPUT", e.Error())
-				return nil
-			}
-			in.Version = 1
-			b, e := json.Marshal(in)
-			if e != nil {
-				return e
-			}
-			tx, e := a.beginBusiness(ctx, u, 1)
-			if e != nil {
-				return e
-			}
-			defer tx.Rollback(ctx)
-			var id string
-			e = tx.QueryRow(ctx, `INSERT INTO intake_projects(project_name,normalized_project_name,owner_subject,created_by_subject,team_id,sales_stage,information_source,confidence_level,project_type,estimated_amount,expected_purchase_date,document) VALUES($1,$2,$3,$3,NULLIF($4,'')::uuid,$5,$6,$7,$8,$9,NULLIF($10,'')::date,$11) RETURNING id::text`, in.ProjectName, normalize(in.ProjectName), u.Subject, u.TeamID, in.SalesStage, in.InformationSource, in.ConfidenceLevel, in.ProjectType, in.EstimatedAmount, in.ExpectedPurchaseDate, b).Scan(&id)
-			if e != nil {
-				return e
-			}
-			p, e := get(ctx, tx, id, false)
-			if e != nil {
-				return e
-			}
-			if e = relations(ctx, tx, p); e != nil {
-				return e
-			}
-			if e = audit(ctx, tx, p, u, "project.create"); e != nil {
-				return e
-			}
-			if _, e = tx.Exec(ctx, `INSERT INTO ownership_history(project_id,to_subject,reason) VALUES($1,$2,'首次创建，由会话确定')`, id, u.Subject); e != nil {
-				return e
-			}
-			if e = tx.Commit(ctx); e != nil {
-				return e
-			}
-			respond(w, 200, p)
-			return nil
+			return a.createProject(w, r, u)
 		}
 	}
 	prefix := "/api/v1/projects/"
@@ -172,6 +138,9 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 	}
 	if method == "GET" {
 		p, e := get(ctx, a.db, id, false)
+		if e != nil && !errors.Is(e, pgx.ErrNoRows) {
+			return e
+		}
 		if e != nil || !canRead(u, p) {
 			fail(w, 404, "NOT_FOUND", "项目不存在或无权访问")
 			return nil
@@ -219,6 +188,9 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 			if e = rows.Err(); e != nil {
 				return e
 			}
+			if e = a.projectHints(ctx, a.db, u, &p); e != nil {
+				return e
+			}
 			respond(w, 200, p)
 		case "duplicates":
 			ds, e := a.duplicates(ctx, a.db, p.Input, p.ID)
@@ -253,13 +225,19 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 		}
 	}
 	p, e := get(ctx, tx, id, true)
+	if e != nil && !errors.Is(e, pgx.ErrNoRows) {
+		return e
+	}
 	if e != nil || !canRead(u, p) {
 		fail(w, 404, "NOT_FOUND", "项目不存在或无权访问")
 		return nil
 	}
-	if !canWrite(u, p) {
-		fail(w, 403, "FORBIDDEN", "仅负责人可操作此项目")
-		return nil
+	policyAction := action
+	if policyAction == "" {
+		policyAction = "edit"
+	}
+	if e = enforceProject(u, p, policyAction); e != nil {
+		return e
 	}
 	var in Input
 	var activity Activity
@@ -310,7 +288,7 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 		if _, e = tx.Exec(ctx, `INSERT INTO project_activities(project_id,subject,type,occurred_at,summary,result,next_action,next_followup_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, id, u.Subject, activity.Type, activity.OccurredAt, activity.Summary, activity.Result, activity.NextAction, next); e != nil {
 			return e
 		}
-		if _, e = tx.Exec(ctx, `UPDATE intake_projects SET last_activity_at=greatest(last_activity_at,$2),next_followup_at=$3,version=version+1,updated_at=now() WHERE id=$1`, id, activity.OccurredAt, next); e != nil {
+		if _, e = tx.Exec(ctx, `UPDATE intake_projects SET last_activity_at=greatest(last_activity_at,$2),next_followup_at=$3,next_action=$4,version=version+1,updated_at=now() WHERE id=$1`, id, activity.OccurredAt, next, activity.NextAction); e != nil {
 			return e
 		}
 		event = "activity.create"
@@ -321,14 +299,25 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 		}
 		if action == "submit" {
 			in = p.Input
+			team, err := activeOwner(ctx, tx, p.OwnerSubject)
+			if err != nil {
+				return err
+			}
+			if team != p.TeamID {
+				return problem(409, "OWNER_INACTIVE")
+			}
+			var confirmed bool
+			if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM duplicate_cases WHERE project_id=$1 AND decision='CONFIRMED_DUPLICATE')`, id).Scan(&confirmed); err != nil {
+				return err
+			}
+			if confirmed {
+				return problem(409, "DUPLICATE_ALREADY_CONFIRMED")
+			}
 			if e = validateInput(&in, true); e != nil {
 				fail(w, 400, "INVALID_INPUT", e.Error())
 				return nil
 			}
 			if _, e = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, fingerprint(in)); e != nil {
-				return e
-			}
-			if _, e = tx.Exec(ctx, `DELETE FROM duplicate_cases WHERE project_id=$1 AND decision='PENDING'`, id); e != nil {
 				return e
 			}
 			ds, e := a.duplicates(ctx, tx, in, id)
@@ -339,10 +328,17 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 			if len(ds) > 0 {
 				p.IntakeStatus = "UNDER_REVIEW"
 			}
+			if e = freezeSubmission(ctx, tx, p, u); e != nil {
+				return e
+			}
 			for _, d := range ds {
-				if _, e = tx.Exec(ctx, `INSERT INTO duplicate_cases(project_id,candidate_id,score,risk,matched_signals) VALUES($1,$2,$3,$4,$5)`, id, d.CandidateID, d.Score, d.Risk, mustJSON(d.Signals)); e != nil {
+				if _, e = tx.Exec(ctx, `INSERT INTO duplicate_cases(project_id,candidate_id,score,risk,matched_signals,submission_revision) VALUES($1,$2,$3,$4,$5,$6)`, id, d.CandidateID, d.Score, d.Risk, mustJSON(d.Signals), p.SubmissionRevision+1); e != nil {
 					return e
 				}
+			}
+			if _, e = tx.Exec(ctx, `UPDATE intake_projects SET submitted_by_subject=$2,submission_revision=submission_revision+1,
+            protection_started_at=CASE WHEN protection_basis='FIRST_SUBMISSION' THEN coalesce(protection_started_at,now()) ELSE protection_started_at END WHERE id=$1`, id, u.Subject); e != nil {
+				return e
 			}
 			event = "project.submit"
 		} else {
@@ -363,6 +359,18 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 			fail(w, 409, "INVALID_STATE", "阶段必须正常向前或明确暂停/结束")
 			return nil
 		}
+		if action != "submit" {
+			if _, e = tx.Exec(ctx, `UPDATE intake_projects SET next_action=$2,next_followup_at=$3 WHERE id=$1`, id, in.NextAction, in.NextFollowupAt); e != nil {
+				return e
+			}
+			updated, err := get(ctx, tx, id, false)
+			if err != nil {
+				return err
+			}
+			if e = participation(ctx, tx, updated, u, "EDIT"); e != nil {
+				return e
+			}
+		}
 		p.Input = in
 		if e = relations(ctx, tx, p); e != nil {
 			return e
@@ -381,6 +389,9 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 		return e
 	}
 	if e = tx.Commit(ctx); e != nil {
+		return e
+	}
+	if e = a.projectHints(ctx, a.db, u, &p); e != nil {
 		return e
 	}
 	respond(w, 200, p)

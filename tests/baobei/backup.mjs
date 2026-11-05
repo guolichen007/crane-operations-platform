@@ -70,6 +70,9 @@ const tables = [
   'staff_sessions',
   'staff_outbox',
   'staff_handoffs',
+  'project_submissions',
+  'project_participations',
+  'project_create_requests',
 ].sort();
 const countsSQL = `jsonb_build_object(${tables.map((t) => `'${t}',(SELECT count(*) FROM ${t})`).join(',')})`;
 const metaSQL = `jsonb_build_object('counts',${countsSQL},'migrations',(SELECT json_agg(m ORDER BY name) FROM baobei_migrations m),'postgres_version',current_setting('server_version'),'extensions',(SELECT jsonb_agg(jsonb_build_object('name',extname,'version',extversion) ORDER BY extname) FROM pg_extension))`;

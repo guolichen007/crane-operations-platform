@@ -15,17 +15,20 @@ type querier interface {
 	QueryRow(context.Context, string, ...any) pgx.Row
 }
 
-const columns = `p.protected_until,p.next_review_at,p.id::text,p.registration_no,p.owner_subject,p.created_by_subject,coalesce(p.team_id::text,''),p.intake_status,p.protection_status,p.version,p.created_at,p.updated_at,p.last_activity_at,p.next_followup_at,p.document,coalesce((SELECT next_action FROM project_activities WHERE project_id=p.id ORDER BY created_at DESC LIMIT 1),'')`
+const columns = `p.protected_until,p.next_review_at,p.id::text,p.registration_no,coalesce(p.owner_subject,''),p.created_by_subject,coalesce(p.team_id::text,''),p.intake_status,p.protection_status,p.version,p.created_at,p.updated_at,p.last_activity_at,p.next_followup_at,p.document,p.next_action,p.draft_custodian_subject,coalesce(p.submitted_by_subject,''),p.submission_revision,p.evidence_state,p.protection_started_at,p.protection_basis,p.document_hash`
 
 func scan(row interface{ Scan(...any) error }) (Project, error) {
 	var p Project
 	var b []byte
-	e := row.Scan(&p.ProtectedUntil, &p.NextReviewAt, &p.ID, &p.RegistrationNo, &p.OwnerSubject, &p.CreatedBySubject, &p.TeamID, &p.IntakeStatus, &p.ProtectionStatus, &p.Version, &p.CreatedAt, &p.UpdatedAt, &p.LastActivityAt, &p.NextFollowupAt, &b, &p.NextAction)
+	e := row.Scan(&p.ProtectedUntil, &p.NextReviewAt, &p.ID, &p.RegistrationNo, &p.OwnerSubject, &p.CreatedBySubject, &p.TeamID, &p.IntakeStatus, &p.ProtectionStatus, &p.Version, &p.CreatedAt, &p.UpdatedAt, &p.LastActivityAt, &p.NextFollowupAt, &b, &p.NextAction, &p.DraftCustodianSubject, &p.SubmittedBySubject, &p.SubmissionRevision, &p.EvidenceState, &p.ProtectionStartedAt, &p.ProtectionBasis, &p.DocumentHash)
 	if e != nil {
 		return p, e
 	}
 	v := p.Version
 	e = json.Unmarshal(b, &p.Input)
+	if e == nil {
+		e = inputKnowledge(&p.Input)
+	}
 	p.Version = v
 	return p, e
 }
@@ -93,7 +96,7 @@ func (a *App) duplicates(ctx context.Context, q querier, p Input, exclude string
 	if t.Warn < 1 || t.High < t.Warn || t.High > 100 {
 		return nil, errors.New("invalid thresholds")
 	}
-	rows, e := q.Query(ctx, `SELECT p.id::text,p.document,p.created_at,similarity(p.normalized_project_name,$1),EXISTS(SELECT 1 FROM project_parties pp JOIN organizations o ON o.id=pp.organization_id LEFT JOIN organization_aliases al ON al.organization_id=o.id WHERE pp.project_id=p.id AND pp.role='END_CUSTOMER' AND (o.normalized_name=$2 OR al.normalized_alias=$2)) FROM intake_projects p WHERE p.intake_status IN ('SUBMITTED','UNDER_REVIEW','APPROVED') AND ($3='' OR p.id::text<>$3)`, normalize(p.ProjectName), normalize(p.Customer), exclude)
+	rows, e := q.Query(ctx, `SELECT p.id::text,coalesce(p.owner_subject,''),coalesce(p.team_id::text,''),p.document,p.created_at,similarity(p.normalized_project_name,$1),EXISTS(SELECT 1 FROM project_parties pp JOIN organizations o ON o.id=pp.organization_id LEFT JOIN organization_aliases al ON al.organization_id=o.id WHERE pp.project_id=p.id AND pp.role='END_CUSTOMER' AND (o.normalized_name=$2 OR al.normalized_alias=$2)) FROM intake_projects p WHERE p.intake_status IN ('SUBMITTED','UNDER_REVIEW','APPROVED') AND ($3='' OR p.id::text<>$3)`, normalize(p.ProjectName), normalize(p.Customer), exclude)
 	if e != nil {
 		return nil, e
 	}
@@ -101,12 +104,12 @@ func (a *App) duplicates(ctx context.Context, q querier, p Input, exclude string
 	out := []Duplicate{}
 	for rows.Next() {
 		var q Input
-		var id string
+		var id, owner, team string
 		var doc []byte
 		var at time.Time
 		var sim float64
 		var same bool
-		if e = rows.Scan(&id, &doc, &at, &sim, &same); e != nil {
+		if e = rows.Scan(&id, &owner, &team, &doc, &at, &sim, &same); e != nil {
 			return nil, e
 		}
 		if e = json.Unmarshal(doc, &q); e != nil {
@@ -120,7 +123,7 @@ func (a *App) duplicates(ctx context.Context, q querier, p Input, exclude string
 		if n >= t.High {
 			risk = "HIGH"
 		}
-		out = append(out, Duplicate{Signals: duplicateSignals(p, q, sim, same), CandidateID: id, Score: n, Risk: risk, Region: q.Location.Province + " / " + q.Location.City, CreatedAt: at, SalesStage: q.SalesStage, Message: "疑似已有报备，需要主管确认", ProjectName: q.ProjectName})
+		out = append(out, Duplicate{source: Project{OwnerSubject: owner, TeamID: team}, Signals: duplicateSignals(p, q, sim, same), CandidateID: id, Score: n, Risk: risk, Region: q.Location.Province + " / " + q.Location.City, CreatedAt: at, SalesStage: q.SalesStage, Message: "疑似已有报备，需要主管确认", ProjectName: q.ProjectName})
 	}
 	return out, rows.Err()
 }
@@ -128,7 +131,7 @@ func redact(ds []Duplicate, u User) []Duplicate {
 	out := make([]Duplicate, len(ds))
 	copy(out, ds)
 	for i := range out {
-		if u.Role != "baobei_director" {
+		if u.Role == salesRole || !canRead(u, out[i].source) {
 			out[i].CandidateID = ""
 			out[i].ProjectName = ""
 		}
@@ -137,7 +140,7 @@ func redact(ds []Duplicate, u User) []Duplicate {
 }
 func (a *App) list(ctx context.Context, u User, params map[string]string) ([]Project, int, error) {
 	args := []any{u.Subject, u.Role, u.TeamID}
-	where := ` WHERE (p.owner_subject=$1 OR $2='baobei_director' OR ($2='baobei_manager' AND p.team_id::text=$3 AND $3<>''))`
+	where := ` WHERE ` + projectScope("p")
 	add := func(sql string, v any) {
 		args = append(args, v)
 		where += strings.ReplaceAll(sql, "?", "$"+strconv.Itoa(len(args)))
@@ -195,5 +198,15 @@ func (a *App) list(ctx context.Context, u User, params map[string]string) ([]Pro
 		}
 		out = append(out, p)
 	}
-	return out, total, rows.Err()
+	err := rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, 0, err
+	}
+	for i := range out {
+		if err = a.projectHints(ctx, a.db, u, &out[i]); err != nil {
+			return nil, 0, err
+		}
+	}
+	return out, total, nil
 }

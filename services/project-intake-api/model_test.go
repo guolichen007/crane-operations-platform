@@ -8,7 +8,7 @@ import (
 )
 
 func sample(name string) Input {
-	return Input{ProjectName: name, Customer: "Synthetic Example 有限公司", Location: Location{Province: "合成省", City: "合成市", FactoryName: "合成一厂"}, SalesStage: "L1_REQUIREMENT", ProjectType: "RETROFIT", InformationSource: "END_CUSTOMER", ConfidenceLevel: "CUSTOMER_CONFIRMED", Requirements: []string{"ANTI_SWAY"}, RequirementNotes: "synthetic 需求", PlannedEquipment: []Equipment{{EquipmentType: "BRIDGE", Quantity: 2}}, ExpectedPurchaseDate: "2027-01-01"}
+	return Input{ProjectName: name, Customer: "Synthetic Example 有限公司", Location: Location{Province: "合成省", City: "合成市", FactoryName: "合成一厂"}, SalesStage: "L1_REQUIREMENT", ProjectType: "RETROFIT", InformationSource: "END_CUSTOMER", ConfidenceLevel: "CUSTOMER_CONFIRMED", Requirements: []string{"ANTI_SWAY"}, RequirementNotes: "synthetic 需求", PlannedEquipment: []Equipment{{EquipmentType: "BRIDGE", Quantity: pointer(2)}}, ExpectedPurchaseDate: "2027-01-01"}
 }
 func TestNormalization(t *testing.T) {
 	for _, pair := range [][2]string{{" ＡＢＣ， 有限公司  ", "abc 有限公司"}, {"示例（一期）\t项目", "示例 一期 项目"}, {"Hello---World", "hello world"}} {
@@ -45,7 +45,7 @@ func TestRBACOwnership(t *testing.T) {
 	cases := []struct {
 		u           User
 		read, write bool
-	}{{User{Subject: "a", Role: "baobei_sales"}, true, true}, {User{Subject: "b", Role: "baobei_sales", TeamID: "one"}, false, false}, {User{Role: "baobei_manager", TeamID: "one"}, true, false}, {User{Role: "baobei_manager", TeamID: "two"}, false, false}, {User{Role: "baobei_manager"}, false, false}, {User{Role: "baobei_director"}, true, false}, {User{Role: "baobei_admin"}, false, false}}
+	}{{User{Subject: "a", Role: "baobei_sales"}, true, true}, {User{Subject: "b", Role: "baobei_sales", TeamID: "one"}, false, false}, {User{Role: "baobei_manager", TeamID: "one"}, true, false}, {User{Role: "baobei_manager", TeamID: "two"}, false, false}, {User{Role: "baobei_manager"}, false, false}, {User{Role: "baobei_director"}, true, false}, {User{Role: "baobei_admin"}, true, true}}
 	for _, c := range cases {
 		if canRead(c.u, p) != c.read || canWrite(c.u, p) != c.write {
 			t.Fatalf("RBAC %v", c.u)

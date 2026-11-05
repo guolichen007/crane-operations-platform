@@ -40,3 +40,14 @@ GRANT INSERT ON audit_events TO baobei_staff_api;
 
 GRANT SELECT, INSERT ON staff_audit TO baobei_maintenance;
 GRANT SELECT, UPDATE (status,processed_at,receipt_hash) ON staff_outbox TO baobei_maintenance;
+
+-- G1 immutable business evidence: no UPDATE or DELETE for resident identities.
+GRANT SELECT, INSERT ON project_submissions,project_participations,project_create_requests TO baobei_runtime;
+GRANT INSERT ON project_participations TO baobei_staff_api;
+GRANT SELECT (draft_custodian_subject,document_hash) ON intake_projects TO baobei_staff_api;
+
+REVOKE UPDATE ON intake_projects FROM baobei_runtime;
+GRANT UPDATE (project_name,normalized_project_name,owner_subject,team_id,intake_status,sales_stage,
+ protection_status,information_source,confidence_level,project_type,estimated_amount,expected_purchase_date,
+ last_activity_at,next_followup_at,version,updated_at,document,protected_until,next_review_at,
+ submitted_by_subject,submission_revision,protection_started_at,next_action) ON intake_projects TO baobei_runtime;

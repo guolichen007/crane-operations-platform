@@ -56,6 +56,7 @@ async function decide() {
     body.decision =
       operation.value === 'duplicate.confirm' ? 'CONFIRMED_DUPLICATE' : 'DISTINCT_APPROVED';
     body.caseId = caseId.value;
+    body.relatedVersions = Object.fromEntries(cases.value.filter((c) => c.candidate).map((c) => [c.candidate!.id, c.candidate!.version]));
   }
   await app.api(`/api/v1/projects/${selected.value.id}/${endpoint}`, 'POST', body);
   operation.value = '';

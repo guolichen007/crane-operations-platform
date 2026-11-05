@@ -38,7 +38,7 @@ test('B3 主管邀请、调整权限、审核、停用与交接', async ({ page,
       const post = async (path: string, body: unknown) => {
         const response = await fetch(path, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': me.csrfToken },
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': me.csrfToken, 'Idempotency-Key': crypto.randomUUID() },
           body: JSON.stringify(body),
         });
         if (!response.ok) throw new Error('Synthetic project setup failed ' + response.status);

@@ -5,10 +5,16 @@ BAOBEI_MAIN_MERGE=FORBIDDEN
 BAOBEI_R2_MERGE=FORBIDDEN
 BASE_SHA=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18
 BRANCH=product/baobei-v1
-CURRENT_BATCH=FULL_ROLE_G0
-STOP_AFTER_FULL_ROLE_G0=YES
+CURRENT_BATCH=FULL_ROLE_G1
+STOP_AFTER_FULL_ROLE_G1=YES
 
 目标：快速报项目、识别重复、明确归属并跟进。独立产品，永不合并 main/R2。
+
+## 当前实施：全角色G1
+
+负责人已批准G0，核准基线 `c580978b7056f95f1ac284f00b7d92f0b549f69b`。本批交付后端ProjectPolicy、管理员草稿/指派/提交/代录/独立审核、幂等创建、不可覆盖提交与参与证据、00004增量迁移及Go/OpenAPI/TS配套。G0下述“尚未实现”保留为当时事实，G1已实现范围以[19-G1实施契约与验收](19-G1实施契约与验收.md)为准。
+
+销售界面只做类型、稳定创建键及关联候选版本适配，没有四角色导航重排/统计页面。历史证据不完整仍拒绝新审核，生产数据与恢复未核实，生产迁移依然BLOCKED。G2需单独授权。
 
 ## 当前设计裁决：全角色G0（2026-11-05）
 

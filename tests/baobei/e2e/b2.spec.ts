@@ -21,7 +21,7 @@ async function api(p: Page, path: string, method = 'GET', body?: unknown) {
       const me = await (await fetch('/api/v1/me')).json();
       const r = await fetch(path, {
         method,
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': me.csrfToken },
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': me.csrfToken, 'Idempotency-Key': crypto.randomUUID() },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
       return { status: r.status, body: await r.json() };

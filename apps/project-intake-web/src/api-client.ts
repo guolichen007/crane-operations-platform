@@ -13,7 +13,8 @@ export async function request<T>(
   method = 'GET',
   body?: unknown,
   csrf = '',
-  timeoutMs = 20000
+  timeoutMs = 20000,
+  idempotencyKey = ''
 ): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -22,7 +23,7 @@ export async function request<T>(
       method,
       credentials: 'same-origin',
       signal: controller.signal,
-      headers: { 'Content-Type': 'application/json', ...(csrf ? { 'X-CSRF-Token': csrf } : {}) },
+      headers: { 'Content-Type': 'application/json', ...(method === 'POST' && url === '/api/v1/projects' ? { 'Idempotency-Key': idempotencyKey || crypto.randomUUID() } : {}), ...(csrf ? { 'X-CSRF-Token': csrf } : {}) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     const text = await r.text();

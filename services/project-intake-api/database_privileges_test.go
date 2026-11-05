@@ -130,6 +130,10 @@ func TestDatabaseProductionPrivileges(t *testing.T) {
 		"INSERT INTO staff_sessions(token_hash,subject) VALUES ('forged','synthetic-manager')",
 		"SET ROLE baobei_staff_api",
 		"INSERT INTO teams(name) VALUES ('forbidden')",
+		"UPDATE project_submissions SET evidence_state='COMPLETE'",
+		"DELETE FROM project_participations",
+		"UPDATE project_create_requests SET request_hash=repeat('a',64)",
+		"UPDATE intake_projects SET created_by_subject='synthetic-a'",
 		"DELETE FROM audit_events",
 	} {
 		deny(runtime, sql)
@@ -145,7 +149,7 @@ func TestDatabaseProductionPrivileges(t *testing.T) {
 	}
 
 	// Drive the real HTTP handlers against a restricted login using synthetic actors.
-	for _, sql := range []string{"UPDATE app_users SET subject='forbidden'", "UPDATE intake_projects SET document='{}'", "UPDATE intake_projects SET created_by_subject='forbidden'", "CREATE TABLE forbidden(id int)"} {
+	for _, sql := range []string{"UPDATE app_users SET subject='forbidden'", "UPDATE intake_projects SET document='{}'", "UPDATE intake_projects SET created_by_subject='forbidden'", "CREATE TABLE forbidden(id int)", "UPDATE project_submissions SET evidence_state='COMPLETE'", "SELECT document FROM project_submissions"} {
 		deny(staff, sql)
 	}
 	app := &App{db: runtime, staffDB: staff, cfg: Config{Env: "development", Dev: true}}
@@ -154,6 +158,7 @@ func TestDatabaseProductionPrivileges(t *testing.T) {
 	app.cfg.Origin = server.URL
 	sales := login(t, server, "synthetic-a")
 	manager := login(t, server, "synthetic-manager")
+	director := login(t, server, "synthetic-director")
 	statusStaff, bodyStaff := manager.call("POST", "/api/v1/staff/invitations", staffProfileInput{Name: "合成隔离邀请", Email: "role-fixture@example.test", Role: salesRole, TeamID: syntheticTeam, Reason: "角色隔离验证"})
 	invitation := memberFrom(t, statusStaff, bodyStaff)
 	receipt := provisionReceipt{StaffID: invitation.ID, Version: invitation.Version, Operation: "approve",
@@ -188,6 +193,8 @@ func TestDatabaseProductionPrivileges(t *testing.T) {
 	status, response = manager.call("POST", path+"/approve", map[string]any{
 		"version": project.Version, "reason": "Synthetic restricted approval",
 	})
+	expect(t, status, 403, response)
+	status, response = director.call("POST", path+"/approve", map[string]any{"version": project.Version, "reason": "独立总监核验移交后的报备"})
 	project = projectFrom(t, status, response)
 	if project.IntakeStatus != "APPROVED" {
 		t.Fatal("restricted role approval failed")

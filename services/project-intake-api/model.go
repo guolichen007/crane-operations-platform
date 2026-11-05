@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"math"
 	"regexp"
 	"strings"
 	"time"
@@ -23,46 +22,62 @@ type Location struct {
 	AddressDetail  string `json:"addressDetail"`
 }
 type Equipment struct {
-	EquipmentType   string  `json:"equipmentType"`
-	Quantity        int     `json:"quantity"`
-	Manufacturer    string  `json:"manufacturer"`
-	Model           string  `json:"model"`
-	CapacityTons    float64 `json:"capacityTons"`
-	SpanM           float64 `json:"spanM"`
-	LiftHeightM     float64 `json:"liftHeightM"`
-	ControlMode     string  `json:"controlMode"`
-	PLCBrand        string  `json:"plcBrand"`
-	PLCModel        string  `json:"plcModel"`
-	DriveBrand      string  `json:"driveBrand"`
-	Notes           string  `json:"notes"`
-	ConfidenceLevel string  `json:"confidenceLevel"`
+	Knowledge        map[string]string `json:"knowledge,omitempty"`
+	EnvironmentFlags []string          `json:"environmentFlags"`
+	AutomationGoals  []string          `json:"automationGoals"`
+	EquipmentType    string            `json:"equipmentType"`
+	Quantity         *int              `json:"quantity"`
+	Manufacturer     string            `json:"manufacturer"`
+	Model            string            `json:"model"`
+	CapacityTons     *float64          `json:"capacityTons"`
+	SpanM            *float64          `json:"spanM"`
+	LiftHeightM      *float64          `json:"liftHeightM"`
+	ControlMode      string            `json:"controlMode"`
+	PLCBrand         string            `json:"plcBrand"`
+	PLCModel         string            `json:"plcModel"`
+	DriveBrand       string            `json:"driveBrand"`
+	Notes            string            `json:"notes"`
+	ConfidenceLevel  string            `json:"confidenceLevel"`
 }
 type Party struct {
 	Role string `json:"role"`
 	Name string `json:"name"`
 }
 type Input struct {
-	Version              int         `json:"version"`
-	ProjectName          string      `json:"projectName"`
-	Customer             string      `json:"customer"`
-	Location             Location    `json:"location"`
-	SalesStage           string      `json:"salesStage"`
-	ProjectType          string      `json:"projectType"`
-	InformationSource    string      `json:"informationSource"`
-	ConfidenceLevel      string      `json:"confidenceLevel"`
-	EstimatedAmount      float64     `json:"estimatedAmount"`
-	ExpectedPurchaseDate string      `json:"expectedPurchaseDate"`
-	Requirements         []string    `json:"requirements"`
-	RequirementNotes     string      `json:"requirementNotes"`
-	PlannedEquipment     []Equipment `json:"plannedEquipment"`
-	Parties              []Party     `json:"parties"`
-	TenderNo             string      `json:"tenderNo"`
-	Notes                string      `json:"notes"`
+	Knowledge            map[string]string `json:"knowledge,omitempty"`
+	NextAction           string            `json:"nextAction"`
+	NextFollowupAt       *time.Time        `json:"nextFollowupAt"`
+	Version              int               `json:"version"`
+	ProjectName          string            `json:"projectName"`
+	Customer             string            `json:"customer"`
+	Location             Location          `json:"location"`
+	SalesStage           string            `json:"salesStage"`
+	ProjectType          string            `json:"projectType"`
+	InformationSource    string            `json:"informationSource"`
+	ConfidenceLevel      string            `json:"confidenceLevel"`
+	EstimatedAmount      *float64          `json:"estimatedAmount"`
+	ExpectedPurchaseDate string            `json:"expectedPurchaseDate"`
+	Requirements         []string          `json:"requirements"`
+	RequirementNotes     string            `json:"requirementNotes"`
+	PlannedEquipment     []Equipment       `json:"plannedEquipment"`
+	Parties              []Party           `json:"parties"`
+	TenderNo             string            `json:"tenderNo"`
+	Notes                string            `json:"notes"`
 }
 type Project struct {
-	ProtectedUntil    *time.Time        `json:"protectedUntil"`
-	NextReviewAt      *time.Time        `json:"nextReviewAt"`
-	GovernanceHistory []GovernanceEvent `json:"governanceHistory,omitempty"`
+	DocumentHash          string                `json:"documentHash"`
+	DraftCustodianSubject string                `json:"draftCustodianSubject"`
+	SubmittedBySubject    string                `json:"submittedBySubject"`
+	SubmissionRevision    int                   `json:"submissionRevision"`
+	EvidenceState         string                `json:"evidenceState"`
+	ProtectionStartedAt   *time.Time            `json:"protectionStartedAt"`
+	ProtectionBasis       string                `json:"protectionBasis"`
+	Actions               map[string]ActionHint `json:"actions"`
+	AssignmentStatus      string                `json:"assignmentStatus"`
+	Replayed              bool                  `json:"replayed,omitempty"`
+	ProtectedUntil        *time.Time            `json:"protectedUntil"`
+	NextReviewAt          *time.Time            `json:"nextReviewAt"`
+	GovernanceHistory     []GovernanceEvent     `json:"governanceHistory,omitempty"`
 	Input
 	ID               string     `json:"id"`
 	RegistrationNo   string     `json:"registrationNo"`
@@ -96,13 +111,14 @@ type Audit struct {
 	CreatedAt time.Time      `json:"createdAt"`
 }
 type User struct {
-	Subject     string   `json:"subject"`
-	Name        string   `json:"name"`
-	Role        string   `json:"role"`
-	TeamID      string   `json:"teamId"`
-	CSRF        string   `json:"csrfToken"`
-	Permissions []string `json:"permissions"`
-	sessionHash string
+	Subject         string                `json:"subject"`
+	Name            string                `json:"name"`
+	Role            string                `json:"role"`
+	TeamID          string                `json:"teamId"`
+	CSRF            string                `json:"csrfToken"`
+	Permissions     []string              `json:"permissions"`
+	BusinessActions map[string]ActionHint `json:"businessActions"`
+	sessionHash     string
 }
 
 var stages = strings.Fields("L0_LEAD L1_REQUIREMENT L2_TECHNICAL L3_SITE_SURVEY L4_SOLUTION L5_QUOTATION L6_TENDER L7_COMMERCIAL L8_PENDING_CONTRACT WON LOST HOLD")
@@ -133,12 +149,18 @@ func fingerprint(p Input) string {
 	h := sha256.Sum256([]byte(normalize(p.Customer) + "|" + normalize(p.Location.Province+p.Location.City+p.Location.FactoryName) + "|" + normalize(p.ProjectName)))
 	return hex.EncodeToString(h[:])
 }
-func canRead(u User, p Project) bool {
-	return u.Subject == p.OwnerSubject || u.Role == "baobei_director" || u.Role == "baobei_manager" && u.TeamID != "" && u.TeamID == p.TeamID
+func canRead(u User, p Project) bool { return (ProjectPolicy{u}).Read(p) }
+func canWrite(u User, p Project) bool {
+	return (u.Role == adminRole || u.Role == salesRole && p.OwnerSubject == u.Subject) && canRead(u, p)
 }
-func canWrite(u User, p Project) bool { return u.Role == "baobei_sales" && u.Subject == p.OwnerSubject }
-func editable(s string) bool          { return s == "DRAFT" || s == "RETURNED" }
+func editable(s string) bool { return s == "DRAFT" || s == "RETURNED" }
 func validateInput(p *Input, submit bool) error {
+	if err := inputKnowledge(p); err != nil {
+		return err
+	}
+	if len(p.NextAction) > 3000 {
+		return errors.New("下一步过长")
+	}
 	if p.Requirements == nil {
 		p.Requirements = []string{}
 	}
@@ -150,7 +172,7 @@ func validateInput(p *Input, submit bool) error {
 	}
 	p.ProjectName = strings.TrimSpace(p.ProjectName)
 	p.Customer = strings.TrimSpace(p.Customer)
-	if len(p.ProjectName) > 600 || len(p.Customer) > 600 || len(p.RequirementNotes) > 12000 || len(p.Notes) > 12000 || p.EstimatedAmount < 0 || math.IsNaN(p.EstimatedAmount) || p.EstimatedAmount > 1e14 || len(p.Parties) > 30 || len(p.Requirements) > 10 || len(p.PlannedEquipment) > 30 {
+	if len(p.ProjectName) > 600 || len(p.Customer) > 600 || len(p.RequirementNotes) > 12000 || len(p.Notes) > 12000 || badNumber(p.EstimatedAmount, 1e14) || len(p.Parties) > 30 || len(p.Requirements) > 10 || len(p.PlannedEquipment) > 30 {
 		return errors.New("字段超过允许长度或金额范围")
 	}
 	if p.SalesStage == "" {
@@ -175,7 +197,7 @@ func validateInput(p *Input, submit bool) error {
 		seen[r] = true
 	}
 	for _, e := range p.PlannedEquipment {
-		if e.Quantity < 1 || e.Quantity > 10000 || e.CapacityTons < 0 || e.SpanM < 0 || e.LiftHeightM < 0 {
+		if (e.Quantity != nil && (*e.Quantity < 1 || *e.Quantity > 10000)) || submit && e.Quantity == nil || badNumber(e.CapacityTons, 1e6) || badNumber(e.SpanM, 1e6) || badNumber(e.LiftHeightM, 1e6) {
 			return errors.New("设备数量或尺寸不正确")
 		}
 	}
@@ -196,6 +218,7 @@ func validateInput(p *Input, submit bool) error {
 var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 type Duplicate struct {
+	source      Project
 	Signals     []string  `json:"signals"`
 	CandidateID string    `json:"candidateId,omitempty"`
 	Score       int       `json:"score"`
@@ -223,7 +246,7 @@ func score(p, q Input, similarity float64, sameCustomer bool) int {
 	if sameCustomer && p.Location.FactoryName != "" && samePlace && similarity >= 0.8 {
 		return 95
 	}
-	if len(p.PlannedEquipment) > 0 && len(q.PlannedEquipment) > 0 && p.PlannedEquipment[0].EquipmentType == q.PlannedEquipment[0].EquipmentType && p.PlannedEquipment[0].Quantity == q.PlannedEquipment[0].Quantity {
+	if len(p.PlannedEquipment) > 0 && len(q.PlannedEquipment) > 0 && p.PlannedEquipment[0].EquipmentType == q.PlannedEquipment[0].EquipmentType && p.PlannedEquipment[0].Quantity != nil && q.PlannedEquipment[0].Quantity != nil && *p.PlannedEquipment[0].Quantity == *q.PlannedEquipment[0].Quantity {
 		n += 10
 	}
 	for _, v := range p.Requirements {
@@ -255,7 +278,7 @@ func duplicateSignals(p, q Input, similarity float64, sameCustomer bool) []strin
 	if similarity >= 0.8 {
 		out = append(out, "项目名称高度相似")
 	}
-	if len(p.PlannedEquipment) > 0 && len(q.PlannedEquipment) > 0 && p.PlannedEquipment[0].EquipmentType == q.PlannedEquipment[0].EquipmentType && p.PlannedEquipment[0].Quantity == q.PlannedEquipment[0].Quantity {
+	if len(p.PlannedEquipment) > 0 && len(q.PlannedEquipment) > 0 && p.PlannedEquipment[0].EquipmentType == q.PlannedEquipment[0].EquipmentType && p.PlannedEquipment[0].Quantity != nil && q.PlannedEquipment[0].Quantity != nil && *p.PlannedEquipment[0].Quantity == *q.PlannedEquipment[0].Quantity {
 		out = append(out, "相同设备类型及数量")
 	}
 	for _, r := range p.Requirements {

@@ -16,10 +16,10 @@ export const useApp = defineStore('app', () => {
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => (message.value = ''), 4500);
   }
-  async function api<T>(url: string, method = 'GET', body?: unknown): Promise<T> {
+  async function api<T>(url: string, method = 'GET', body?: unknown, idempotencyKey = ''): Promise<T> {
     const current = user.value;
     try {
-      return await request<T>(url, method, body, current?.csrfToken || '');
+      return await request<T>(url, method, body, current?.csrfToken || '', 20000, idempotencyKey);
     } catch (e) {
       if (current && user.value === current && e instanceof ApiError && e.status === 401 &&
           (url.startsWith('/api/') || url === '/auth/logout')) {

@@ -14,6 +14,7 @@ import {
   type Duplicate,
 } from './model';
 import ActionButton from './ActionButton.vue';
+const createKey = crypto.randomUUID();
 const app = useApp(),
   route = useRoute(),
   router = useRouter(),
@@ -37,7 +38,22 @@ const snapshot = () => {
 };
 const savedSignature = ref(snapshot());
 const dirty = computed(() => snapshot() !== savedSignature.value);
-const input = () => JSON.parse(JSON.stringify(form)) as Input;
+const input = () => {
+  const body = JSON.parse(JSON.stringify(form)) as Input;
+  const previous = JSON.parse(savedSignature.value) as Input;
+  const reconcile = (row: Record<string, unknown>, old: Record<string, unknown>) => {
+    const knowledge = row.knowledge as Record<string, string> | undefined;
+    for (const key of Object.keys(knowledge || {})) {
+      const state = knowledge![key], value = row[key];
+      if ((state === 'UNKNOWN' && value != null) ||
+          (state === 'LEGACY_UNCONFIRMED' && value !== 0) ||
+          (state === 'KNOWN' && (value == null || value === 0 && old[key] !== 0))) delete knowledge![key];
+    }
+  };
+  reconcile(body as unknown as Record<string, unknown>, previous as unknown as Record<string, unknown>);
+  body.plannedEquipment.forEach((row, i) => reconcile(row as unknown as Record<string, unknown>, (previous.plannedEquipment[i] || {}) as unknown as Record<string, unknown>));
+  return body;
+};
 onMounted(async () => {
   try {
     if (id.value) {
@@ -70,7 +86,8 @@ async function save(silent = false) {
     const p = await app.api<Project>(
       '/api/v1/projects' + (id.value ? '/' + id.value : ''),
       id.value ? 'PATCH' : 'POST',
-      body
+      body,
+      createKey
     );
     id.value = p.id;
     form.version = p.version;

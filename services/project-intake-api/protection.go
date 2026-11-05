@@ -94,6 +94,12 @@ func (a *App) refreshProtection(ctx context.Context, tx pgx.Tx, id string, now t
 		return false, nil
 	}
 	anchor := p.CreatedAt
+	if p.ProtectionBasis == "FIRST_SUBMISSION" {
+		if p.ProtectionStartedAt == nil {
+			return false, errors.New("missing first submission protection anchor")
+		}
+		anchor = *p.ProtectionStartedAt
+	}
 	if p.LastActivityAt != nil && p.LastActivityAt.After(anchor) {
 		anchor = *p.LastActivityAt
 	}

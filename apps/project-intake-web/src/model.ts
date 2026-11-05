@@ -7,14 +7,19 @@ export interface Location {
   workshop: string;
   addressDetail: string;
 }
+export type KnowledgeState = 'UNKNOWN' | 'KNOWN' | 'LEGACY_UNCONFIRMED';
+export interface ActionHint { allowed: boolean; reasonCode: string | null }
 export interface Equipment {
+ knowledge?: Record<string, KnowledgeState>;
+ environmentFlags?: string[] | null;
+ automationGoals?: string[] | null;
   equipmentType: string;
-  quantity: number;
+  quantity: number | null;
   manufacturer: string;
   model?: string;
-  capacityTons?: number;
-  spanM?: number;
-  liftHeightM?: number;
+  capacityTons?: number | null;
+  spanM?: number | null;
+  liftHeightM?: number | null;
   controlMode?: string;
   plcBrand?: string;
   plcModel?: string;
@@ -23,6 +28,9 @@ export interface Equipment {
   confidenceLevel?: string;
 }
 export interface Input {
+ knowledge?: Record<string, KnowledgeState>;
+ nextAction?: string;
+ nextFollowupAt?: string | null;
   version: number;
   projectName: string;
   customer: string;
@@ -31,7 +39,7 @@ export interface Input {
   projectType: string;
   informationSource: string;
   confidenceLevel: string;
-  estimatedAmount: number;
+  estimatedAmount: number | null;
   expectedPurchaseDate: string;
   requirements: string[];
   requirementNotes: string;
@@ -49,6 +57,16 @@ export interface Activity {
   nextFollowupAt: string;
 }
 export interface Project extends Input {
+ documentHash: string;
+ actions: Record<string, ActionHint>;
+ teamId: string | null;
+ draftCustodianSubject: string;
+ submittedBySubject: string;
+ submissionRevision: number;
+ evidenceState: 'COMPLETE' | 'INCOMPLETE';
+ assignmentStatus: 'ASSIGNED' | 'UNASSIGNED_DRAFT';
+ protectionStartedAt: string | null;
+ protectionBasis: string;
   protectedUntil: string | null;
   nextReviewAt: string | null;
   governanceHistory?: {
@@ -61,7 +79,7 @@ export interface Project extends Input {
   }[];
   id: string;
   registrationNo: string;
-  ownerSubject: string;
+  ownerSubject: string | null;
   createdBySubject: string;
   intakeStatus: string;
   protectionStatus: string;
@@ -86,6 +104,7 @@ export interface User {
   csrfToken: string;
   teamId: string;
   permissions: string[];
+  businessActions?: Record<string, ActionHint>;
 }
 export interface Duplicate {
   risk: string;
@@ -183,6 +202,9 @@ export const blank = (): Input => ({
   informationSource: '',
   confidenceLevel: '',
   estimatedAmount: 0,
+  knowledge: {},
+  nextAction: '',
+  nextFollowupAt: null,
   expectedPurchaseDate: '',
   requirements: [],
   requirementNotes: '',

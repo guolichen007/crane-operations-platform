@@ -42,6 +42,9 @@ func (c testClient) call(method, path string, body any) (int, []byte) {
 		c.t.Fatal(e)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if method == "POST" && path == "/api/v1/projects" {
+		req.Header.Set("Idempotency-Key", randomToken())
+	}
 	req.Header.Set("Origin", c.origin)
 	req.Header.Set("X-CSRF-Token", c.csrf)
 	resp, e := c.client.Do(req)

@@ -80,6 +80,9 @@ func TestDatabaseB2(t *testing.T) {
 	}
 	decision := func(c testClient, p Project, action string, extra map[string]any) (int, []byte) {
 		body := map[string]any{"version": p.Version, "reason": "Synthetic主管核验"}
+		if action == "duplicate-decisions" {
+			body["relatedVersions"] = relatedVersionsFor(c, p)
+		}
 		for k, v := range extra {
 			body[k] = v
 		}
@@ -207,7 +210,7 @@ func TestDatabaseB2(t *testing.T) {
 	})
 	t.Run("protection-idempotency-no-transfer-and-policy", func(t *testing.T) {
 		p := submit(ca, create(ca, "Synthetic保护期", "B2 protection"))
-		_, e = db.Exec(ctx, `UPDATE intake_projects SET created_at=now()-interval '91 days',last_activity_at=NULL WHERE id=$1`, p.ID)
+		_, e = db.Exec(ctx, `UPDATE intake_projects SET created_at=now()-interval '91 days',protection_started_at=now()-interval '91 days',last_activity_at=NULL WHERE id=$1`, p.ID)
 		if e != nil {
 			t.Fatal(e)
 		}

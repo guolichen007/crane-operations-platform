@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/mail"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -258,8 +259,8 @@ func staffProjects(ctx context.Context, tx pgx.Tx, actor User, m staffMember) ([
 	}
 	rows, err := tx.Query(ctx, `SELECT p.id::text,p.registration_no,p.project_name,p.intake_status,p.version,
   EXISTS(SELECT 1 FROM staff_handoffs h WHERE h.staff_id=$1 AND h.project_id=p.id)
-  FROM intake_projects p WHERE p.owner_subject=$2 AND ($3='baobei_director' OR p.team_id::text=$4)
-  AND `+openProjects+` ORDER BY p.updated_at DESC,p.id LIMIT 100`, m.ID, m.Subject, actor.Role, actor.TeamID)
+  FROM intake_projects p WHERE p.owner_subject=$2 `+"AND "+projectScopeAt("p", "$5", "$3", "$4")+`
+  AND `+openProjects+` ORDER BY p.updated_at DESC,p.id LIMIT 100`, m.ID, m.Subject, actor.Role, actor.TeamID, actor.Subject)
 	if err != nil {
 		return nil, err
 	}
@@ -415,7 +416,7 @@ func editStaff(ctx context.Context, tx pgx.Tx, actor User, at *time.Time, m staf
 	}
 	if roleOrTeam {
 		var open bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM intake_projects WHERE owner_subject=$1 AND `+openProjects+`)`, m.Subject).Scan(&open); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM intake_projects WHERE (owner_subject=$1 OR (owner_subject IS NULL AND draft_custodian_subject=$1)) AND `+openProjects+`)`, m.Subject).Scan(&open); err != nil {
 			return nil, err
 		}
 		if open {
@@ -505,7 +506,7 @@ func mutateStaff(ctx context.Context, tx pgx.Tx, actor User, at *time.Time, m st
 			return nil, staffDenied
 		}
 		var open bool
-		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM intake_projects WHERE owner_subject=$1 AND `+openProjects+`)`, m.Subject).Scan(&open); err != nil {
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM intake_projects WHERE (owner_subject=$1 OR (owner_subject IS NULL AND draft_custodian_subject=$1)) AND `+openProjects+`)`, m.Subject).Scan(&open); err != nil {
 			return nil, err
 		}
 		if open {
@@ -576,22 +577,27 @@ func transferStaffProjects(ctx context.Context, tx pgx.Tx, actor User, from staf
 	}
 	seen := map[string]bool{}
 	results := make([]transferResult, 0, len(in.Projects))
+	sort.Slice(in.Projects, func(i, j int) bool { return in.Projects[i].ID < in.Projects[j].ID })
 	for _, item := range in.Projects {
 		if !uuidPattern.MatchString(item.ID) || item.Version < 1 || seen[item.ID] {
 			return nil, staffInvalid
 		}
 		seen[item.ID] = true
 		result := transferResult{ID: item.ID, Status: "NOT_AVAILABLE"}
-		var owner, team string
+		var owner, team, documentHash, status string
 		var version int
-		err = tx.QueryRow(ctx, `SELECT owner_subject,coalesce(team_id::text,''),version FROM intake_projects WHERE id=$1
-   AND `+openProjects+` AND ($2='baobei_director' OR team_id::text=$3) FOR UPDATE`, item.ID, actor.Role, actor.TeamID).Scan(&owner, &team, &version)
+		err = tx.QueryRow(ctx, `SELECT owner_subject,coalesce(team_id::text,''),version,document_hash,intake_status FROM intake_projects WHERE id=$1
+   AND `+openProjects+` AND `+projectScopeAt("intake_projects", "$4", "$2", "$3")+` FOR UPDATE`, item.ID, actor.Role, actor.TeamID, actor.Subject).Scan(&owner, &team, &version, &documentHash, &status)
 		if errors.Is(err, pgx.ErrNoRows) {
 			results = append(results, result)
 			continue
 		}
 		if err != nil {
 			return nil, err
+		}
+		if enforceProject(actor, Project{ID: item.ID, OwnerSubject: owner, TeamID: team, IntakeStatus: status}, "ownership-transfer") != nil {
+			results = append(results, result)
+			continue
 		}
 		if owner == target.Subject {
 			var prior bool
@@ -615,6 +621,9 @@ func transferStaffProjects(ctx context.Context, tx pgx.Tx, actor User, from staf
 					return nil, err
 				}
 				if _, err = tx.Exec(ctx, `INSERT INTO audit_events(project_id,subject,action,revision,details) VALUES($1,$2,'ownership.transfer',$3,$4::jsonb)`, item.ID, actor.Subject, version, string(mustJSON(map[string]string{"fromOwner": from.Subject, "toOwner": target.Subject, "reason": in.Reason}))); err != nil {
+					return nil, err
+				}
+				if err = participation(ctx, tx, Project{ID: item.ID, Version: version, OwnerSubject: target.Subject, TeamID: target.TeamID, DocumentHash: documentHash}, actor, "ASSIGN"); err != nil {
 					return nil, err
 				}
 				if err = staffAudit(ctx, tx, from.ID, actor.Subject, "staff.transfer", in.Reason, from.Version); err != nil {
@@ -817,6 +826,9 @@ func staffRoute(ctx context.Context, tx pgx.Tx, w http.ResponseWriter, r *http.R
 // Acquire the identity lock before any project lock. Suspension and capability
 // changes can commit only before this recheck or after the entire business write.
 func (a *App) beginBusiness(ctx context.Context, user User, required int) (pgx.Tx, error) {
+	if user.Role == adminRole {
+		required = 0
+	}
 	tx, err := a.db.Begin(ctx)
 	if err != nil {
 		return nil, err
