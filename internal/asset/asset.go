@@ -1278,14 +1278,32 @@ func RemoveEquipment(ctx context.Context, db *sql.DB, equipmentID string, expect
 		return err
 	}
 	defer tx.Rollback()
+	// Resolve the parent asset id (immutable on the equipment row) and lock the
+	// parent asset first — the single lock ordering across all child writes. The
+	// parent status is deliberately not used to refuse removal: terminating a
+	// historical installation stays allowed after the asset is retired.
 	var assetID string
-	var version int64
-	var validTo sql.NullTime
-	if err := tx.QueryRowContext(ctx, `SELECT asset_id,version,valid_to FROM asset_equipment_installations WHERE id=$1 FOR UPDATE`, equipmentID).Scan(&assetID, &version, &validTo); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT asset_id FROM asset_equipment_installations WHERE id=$1`, equipmentID).Scan(&assetID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
 		return err
+	}
+	_, projectID, err := lockParentAssetForUpdate(ctx, tx, assetID)
+	if err != nil {
+		return err
+	}
+	var lockedAssetID string
+	var version int64
+	var validTo sql.NullTime
+	if err := tx.QueryRowContext(ctx, `SELECT asset_id,version,valid_to FROM asset_equipment_installations WHERE id=$1 FOR UPDATE`, equipmentID).Scan(&lockedAssetID, &version, &validTo); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if lockedAssetID != assetID {
+		return ErrNotFound
 	}
 	if validTo.Valid {
 		// A removed equipment cannot be removed again; history is immutable.
@@ -1302,10 +1320,6 @@ func RemoveEquipment(ctx context.Context, db *sql.DB, equipmentID string, expect
 		return ErrActiveBinding
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE asset_equipment_installations SET valid_to=now(),removed_at=now(),administrative_state='OUT_OF_SERVICE',version=version+1,updated_at=now() WHERE id=$1 AND version=$2`, equipmentID, expectedVersion); err != nil {
-		return err
-	}
-	var projectID string
-	if err := tx.QueryRowContext(ctx, `SELECT project_id FROM asset_devices WHERE id=$1`, assetID).Scan(&projectID); err != nil {
 		return err
 	}
 	if err := revision(ctx, tx, projectID, assetID, "equipment", equipmentID, actor, requestID, []string{"removed"}, map[string]string{"id": equipmentID, "state": "OUT_OF_SERVICE"}); err != nil {
@@ -1399,14 +1413,32 @@ func RemoveRelation(ctx context.Context, db *sql.DB, relationID string, expected
 		return err
 	}
 	defer tx.Rollback()
+	// Resolve the parent asset id (immutable on the relation row) and lock the
+	// parent asset first — the single lock ordering across all child writes. The
+	// parent status is deliberately not used to refuse termination: terminating a
+	// historical relation stays allowed after the asset is retired.
 	var assetID string
-	var version int64
-	var validTo sql.NullTime
-	if err := tx.QueryRowContext(ctx, `SELECT asset_id,version,valid_to FROM equipment_relations WHERE id=$1 FOR UPDATE`, relationID).Scan(&assetID, &version, &validTo); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT asset_id FROM equipment_relations WHERE id=$1`, relationID).Scan(&assetID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
 		return err
+	}
+	_, projectID, err := lockParentAssetForUpdate(ctx, tx, assetID)
+	if err != nil {
+		return err
+	}
+	var lockedAssetID string
+	var version int64
+	var validTo sql.NullTime
+	if err := tx.QueryRowContext(ctx, `SELECT asset_id,version,valid_to FROM equipment_relations WHERE id=$1 FOR UPDATE`, relationID).Scan(&lockedAssetID, &version, &validTo); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if lockedAssetID != assetID {
+		return ErrNotFound
 	}
 	if validTo.Valid {
 		// A terminated relation cannot be terminated again; history is immutable.
@@ -1416,10 +1448,6 @@ func RemoveRelation(ctx context.Context, db *sql.DB, relationID string, expected
 		return ErrVersionConflict
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE equipment_relations SET valid_to=now(),version=version+1 WHERE id=$1 AND version=$2`, relationID, expectedVersion); err != nil {
-		return err
-	}
-	var projectID string
-	if err := tx.QueryRowContext(ctx, `SELECT project_id FROM asset_devices WHERE id=$1`, assetID).Scan(&projectID); err != nil {
 		return err
 	}
 	if err := revision(ctx, tx, projectID, assetID, "relation", relationID, actor, requestID, []string{"removed"}, map[string]string{"id": relationID, "removed": "true"}); err != nil {
