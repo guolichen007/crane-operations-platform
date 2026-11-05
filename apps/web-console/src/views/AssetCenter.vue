@@ -5,9 +5,9 @@ import { useRouter, useRoute } from 'vue-router';
 import { Search, Plus, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-vue-next';
 import { listAssets, createAsset } from '../cloud/asset';
 import { ApiError } from '../cloud/client';
-import { webSession } from '../cloud/session';
+import { webSession, productionAuth } from '../cloud/session';
 import { writableProjects } from '../cloud/auth-state';
-import { scopeFromQuery, isAuthorizedScope, projectLabel, scopeKey } from '../cloud/project-scope';
+import { scopeFromQuery, projectLabel, scopeKey, scopeState } from '../cloud/project-scope';
 import type { AssetMasterData } from '../../../../contracts/typescript/types.gen';
 
 const router = useRouter();
@@ -17,7 +17,9 @@ const queryClient = useQueryClient();
 // project; an absent scope means "all authorized projects".
 const scopedProject = computed(() => scopeFromQuery(route.query.project));
 const grants = computed(() => webSession.value?.projects ?? []);
-const scopeAuthorized = computed(() => isAuthorizedScope(scopedProject.value, grants.value));
+// 'session-loading' / 'unauthorized' never send the list request.
+const state = computed(() => scopeState(productionAuth, webSession.value ? webSession.value.projects : null, scopedProject.value));
+const scopeAuthorized = computed(() => state.value !== 'unauthorized');
 // The create entry exists only when the caller holds at least one project with
 // asset_master_write (platform_admin); the form selects among those projects.
 const writable = computed(() => writableProjects(webSession.value));
@@ -59,6 +61,7 @@ watch(scopedProject, () => {
 const assetsQuery = useQuery({
   queryKey: computed(() => ['assets', scopeKey(scopedProject.value), params.value]),
   queryFn: () => listAssets(params.value),
+  enabled: computed(() => state.value === 'ready'),
 });
 
 const createMutation = useMutation({
@@ -126,7 +129,7 @@ const statusText: Record<string, string> = {
     <p v-if="!scopeAuthorized" class="workspace-empty" role="status" data-testid="asset-scope-unauthorized">
       当前项目范围（{{ scopedProject }}）不在您的授权项目内，无可显示资产。请在顶部重新选择项目范围。
     </p>
-    <div v-else-if="assetsQuery.isLoading.value" class="skeleton table-skeleton" aria-busy="true"></div>
+    <div v-else-if="state === 'session-loading' || assetsQuery.isLoading.value" class="skeleton table-skeleton" aria-busy="true" data-testid="asset-loading"></div>
     <p v-else-if="assetsQuery.isError.value" class="workspace-error" role="alert">
       资产加载失败：{{ (assetsQuery.error.value as Error).message }}
     </p>

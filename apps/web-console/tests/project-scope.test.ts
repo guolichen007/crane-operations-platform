@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { scopeFromQuery, isAuthorizedScope, projectLabel, scopeKey } from '../src/cloud/project-scope';
+import { scopeFromQuery, isAuthorizedScope, projectLabel, scopeKey, scopeState, scopeSupported } from '../src/cloud/project-scope';
 
 const grants = [
   { projectId: 'P001', projectName: '一号项目' },
@@ -27,5 +27,33 @@ describe('项目范围解析', () => {
     const keys = new Set([scopeKey(''), scopeKey('P001'), scopeKey('P002')]);
     expect(keys.size).toBe(3);
     expect(scopeKey('')).not.toBe('');
+  });
+});
+
+describe('列表请求门禁（scopeState）', () => {
+  it('生产认证下会话未加载：不请求、不显示空态', () => {
+    expect(scopeState(true, null, '')).toBe('session-loading');
+    expect(scopeState(true, null, 'P001')).toBe('session-loading');
+  });
+  it('未知/未授权项目：不请求', () => {
+    expect(scopeState(true, grants, 'P999')).toBe('unauthorized');
+    expect(scopeState(true, [], 'P001')).toBe('unauthorized');
+  });
+  it('授权项目或全部：可请求', () => {
+    expect(scopeState(true, grants, 'P001')).toBe('ready');
+    expect(scopeState(true, grants, '')).toBe('ready');
+    expect(scopeState(true, [], '')).toBe('ready');
+  });
+  it('开发模式（无 OIDC 授权）不等待会话', () => {
+    expect(scopeState(false, null, 'P001')).toBe('ready');
+  });
+});
+
+describe('顶栏项目范围适用页面', () => {
+  it('真正按 ?project= 过滤的页面显示选择器', () => {
+    for (const p of ['/overview', '/projects', '/devices', '/assets', '/locations']) expect(scopeSupported(p)).toBe(true);
+  });
+  it('不支持过滤的页面不显示带误导的项目选择', () => {
+    for (const p of ['/portfolio', '/runtime', '/alarms', '/catalog', '/assets/abc']) expect(scopeSupported(p)).toBe(false);
   });
 });

@@ -27,3 +27,24 @@ export function projectLabel(projectId: string, grants: readonly Grant[]): strin
 export function scopeKey(scope: string): string {
   return scope === '' ? '__all_authorized__' : scope;
 }
+
+export type ScopeState = 'session-loading' | 'unauthorized' | 'ready';
+
+/**
+ * Whether a project-scoped list may be requested yet.
+ *  - Production auth with no session yet: 'session-loading' — do not request and
+ *    do not show an empty state (it would be a false "no data").
+ *  - A scope outside the grants: 'unauthorized' — do not request.
+ *  - Otherwise 'ready'. Development mode (no OIDC) has no grants to wait for.
+ */
+export function scopeState(productionAuth: boolean, grants: readonly Grant[] | null, scope: string): ScopeState {
+  if (productionAuth && grants === null) return 'session-loading';
+  if (productionAuth && !isAuthorizedScope(scope, grants ?? [])) return 'unauthorized';
+  return 'ready';
+}
+
+/** Top-bar label for a route: only pages that really filter by ?project= show a project. */
+export const PROJECT_SCOPED_PATHS = ['/overview', '/projects', '/devices', '/assets', '/locations'];
+export function scopeSupported(path: string): boolean {
+  return PROJECT_SCOPED_PATHS.includes(path);
+}

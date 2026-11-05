@@ -5,12 +5,16 @@ import { ChevronDown, LogOut, Maximize, ShieldCheck, UserRound, Play } from 'luc
 import BrandMark from './BrandMark.vue';
 import { webSession, productionAuth, logoutWebSession } from '../cloud/session';
 import { isViewerOnly } from '../cloud/auth-state';
+import { scopeSupported } from '../cloud/project-scope';
 const route = useRoute(),
   router = useRouter(),
   clock = ref(''),
   error = ref('');
 const viewer = computed(() => isViewerOnly(webSession.value));
 const scope = computed(() => (typeof route.query.project === 'string' ? route.query.project : ''));
+// Only pages that really filter by ?project= offer the project selector; on the
+// others the data is always "all authorized projects" and the bar says so.
+const scopeApplies = computed(() => scopeSupported(route.path));
 let timer: ReturnType<typeof setInterval>;
 function tick() {
   clock.value = new Intl.DateTimeFormat('zh-CN', {
@@ -64,12 +68,17 @@ async function tour() {
     >
     <div class="command-scope">
       <span class="scope-divider"></span
-      ><select :value="scope" aria-label="当前项目范围" @change="changeScope">
-        <option value="">全国运营视图</option>
-        <option v-for="p in webSession?.projects" :key="p.projectId" :value="p.projectId">
-          {{ p.projectName }}
-        </option></select
-      ><ChevronDown :size="12" />
+      ><template v-if="scopeApplies"
+        ><select :value="scope" aria-label="当前项目范围" @change="changeScope">
+          <option value="">全部已授权项目</option>
+          <option v-for="p in webSession?.projects" :key="p.projectId" :value="p.projectId">
+            {{ p.projectName }}
+          </option></select
+        ><ChevronDown :size="12"
+      /></template
+      ><span v-else class="scope-fixed" data-testid="scope-fixed" title="此页面不按项目筛选，始终显示全部已授权项目"
+        >全部已授权项目</span
+      >
     </div>
     <div class="command-actions">
       <button

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query';
-import { useRoute, useRouter } from 'vue-router';
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
 import { Pencil, Move, Archive, ArrowLeft, Plus } from 'lucide-vue-next';
 import {
   getAsset,
@@ -18,6 +18,7 @@ import {
 import { ApiError } from '../cloud/client';
 import { webSession } from '../cloud/session';
 import { canWriteProject } from '../cloud/auth-state';
+import { useDraftSession, allowDiscard, fieldDiff } from '../cloud/draft';
 import type { AssetMasterData, AssetLocation, EquipmentInstallation } from '../../../../contracts/typescript/types.gen';
 
 const route = useRoute();
@@ -53,46 +54,151 @@ const locationsQuery = useQuery({
 });
 
 const tab = ref<'overview' | 'equipment' | 'location'>('overview');
-const editing = ref(false);
-const moving = ref(false);
-const retiring = ref(false);
 const actionError = ref('');
-const editDraft = ref<AssetMasterData | null>(null);
-// Snapshot of the asset as it was when the editor opened (Batch 3 pins its version).
-const editBase = ref<AssetMasterData | null>(null);
-const moveLocation = ref('');
+
+// Each write action pins the version (and a snapshot) at the moment its dialog
+// opens. Submits always send that pinned version as If-Match — never the latest
+// cached version, which a background refetch may have advanced under an old draft.
+const edit = useDraftSession<AssetMasterData>();
+const editError = ref('');
+const editConflict = ref(false);
+const move = useDraftSession<{ locationId: string }>();
+const moveError = ref('');
+const retire = useDraftSession<{ confirm: true }>();
+const retireError = ref('');
+
+const editLabels: Partial<Record<keyof AssetMasterData, string>> = {
+  displayName: '资产名称', assetCode: '资产编号', assetType: '类型', assetStatus: '状态',
+  manufacturerSnapshot: '制造商', brandSnapshot: '品牌', modelSnapshot: '型号', serialNumber: '序列号',
+};
+const conflictDiff = computed(() =>
+  edit.draft.value && edit.latest.value ? fieldDiff(edit.draft.value, edit.latest.value, editLabels) : [],
+);
+
+function errorText(e: unknown, fallback: string): string {
+  if (!(e instanceof ApiError)) return fallback;
+  if (e.status === 403) return '没有执行此操作的权限。';
+  if (e.status === 404) return '资产不存在或已不在您的授权范围内。';
+  if (e.status === 422) return `输入不符合要求：${e.message}`;
+  if (e.status === 503) return '服务暂不可用，请稍后重试（草稿已保留）。';
+  return e.message || fallback;
+}
 
 function openEdit() {
-  editBase.value = { ...(assetQuery.data.value as AssetMasterData) };
-  editDraft.value = { ...editBase.value };
-  editing.value = true;
+  const current = assetQuery.data.value;
+  if (!current) return;
+  edit.start(current, current.version);
+  editError.value = '';
+  editConflict.value = false;
 }
+async function refreshForConflict() {
+  // Fetch the latest server copy for side-by-side comparison; the draft is kept.
+  const fresh = await queryClient.fetchQuery({ queryKey: ['asset', id], queryFn: () => getAsset(id.value), staleTime: 0 });
+  edit.latest.value = fresh;
+}
+function rebaseOnLatest() {
+  if (edit.latest.value) edit.rebase(edit.latest.value, edit.latest.value.version);
+  editConflict.value = false;
+  editError.value = '';
+}
+async function refreshAfterWrite() {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['asset', id] }),
+    queryClient.invalidateQueries({ queryKey: ['assets'] }),
+  ]);
+}
+
 const updateMutation = useMutation({
-  // PATCH carries only the fields the user changed.
-  mutationFn: (input: AssetMasterData) =>
-    updateAsset(id.value, assetChanges(editBase.value ?? input, input), assetQuery.data.value!.version),
+  // PATCH carries only the fields the user changed, against the pinned version.
+  mutationFn: () => updateAsset(id.value, assetChanges(edit.base.value!, edit.draft.value!), edit.baseVersion.value!),
   onSuccess: async () => {
-    editing.value = false;
-    await queryClient.invalidateQueries({ queryKey: ['asset', id] });
+    edit.close();
+    await refreshAfterWrite();
   },
-  onError: (e) => (actionError.value = e instanceof ApiError ? e.message : '更新失败'),
-});
-const retireMutation = useMutation({
-  mutationFn: () => retireAsset(id.value, assetQuery.data.value!.version),
-  onSuccess: async () => {
-    retiring.value = false;
-    await queryClient.invalidateQueries({ queryKey: ['asset', id] });
+  onError: async (e) => {
+    // Never close the dialog or drop the draft on failure.
+    if (e instanceof ApiError && e.status === 409) {
+      editConflict.value = true;
+      editError.value = '数据已被其他用户修改。您的草稿已保留，可刷新查看最新内容后决定。';
+      await refreshForConflict().catch(() => undefined);
+    } else {
+      editError.value = errorText(e, '更新失败');
+    }
   },
-  onError: (e) => (actionError.value = e instanceof ApiError ? e.message : '退役失败'),
 });
+
+function openMove() {
+  const current = assetQuery.data.value;
+  if (!current) return;
+  move.start({ locationId: '' }, current.version);
+  moveError.value = '';
+}
 const moveMutation = useMutation({
-  mutationFn: () => moveAsset(id.value, moveLocation.value, assetQuery.data.value!.version),
+  mutationFn: () => moveAsset(id.value, move.draft.value!.locationId, move.baseVersion.value!),
   onSuccess: async () => {
-    moving.value = false;
-    await queryClient.invalidateQueries({ queryKey: ['asset', id] });
+    move.close();
+    await refreshAfterWrite();
   },
-  onError: (e) => (actionError.value = e instanceof ApiError ? e.message : '移动失败'),
+  onError: (e) => {
+    moveError.value = e instanceof ApiError && e.status === 409
+      ? '资产已被其他用户修改，请关闭后重新打开再移动。'
+      : errorText(e, '移动失败');
+  },
 });
+
+function openRetire() {
+  const current = assetQuery.data.value;
+  if (!current) return;
+  retire.start({ confirm: true }, current.version);
+  retireError.value = '';
+}
+const retireMutation = useMutation({
+  mutationFn: () => retireAsset(id.value, retire.baseVersion.value!),
+  onSuccess: async () => {
+    retire.close();
+    await refreshAfterWrite();
+  },
+  onError: (e) => {
+    retireError.value = e instanceof ApiError && e.status === 409
+      ? '资产已被其他用户修改或存在活动绑定，未退役。请关闭后核对再操作。'
+      : errorText(e, '退役失败');
+  },
+});
+
+// ---- DirtyGuard: cancel button, backdrop, Esc, route change and page unload all
+// go through the same check; clean drafts close without a prompt. ----
+const anyDirty = computed(() => edit.dirty.value || move.dirty.value || equipmentEditDirty.value);
+function closeEdit() {
+  if (allowDiscard(edit.dirty.value)) edit.close();
+}
+function closeMove() {
+  if (allowDiscard(move.dirty.value)) move.close();
+}
+function closeRetire() {
+  retire.close();
+}
+function onKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Escape') return;
+  if (edit.open.value) closeEdit();
+  else if (move.open.value) closeMove();
+  else if (retire.open.value) closeRetire();
+  else if (equipmentEditing.value) closeEquipmentEdit();
+}
+function onBeforeUnload(event: BeforeUnloadEvent) {
+  if (anyDirty.value) {
+    event.preventDefault();
+    event.returnValue = '';
+  }
+}
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown);
+  window.addEventListener('beforeunload', onBeforeUnload);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown);
+  window.removeEventListener('beforeunload', onBeforeUnload);
+});
+onBeforeRouteLeave(() => allowDiscard(anyDirty.value));
 
 // ---- Equipment install / remove (asset-scoped, never a second master data
 // set). Removal closes the validity interval; an active runtime binding is
@@ -177,22 +283,34 @@ const removeEquipmentMutation = useMutation({
 // ---- Equipment update (If-Match) — only editable business fields; a removed
 // equipment cannot be edited; TELEMETRY_OWNED data is never sent. ----
 const equipmentEditing = ref<EquipmentInstallation | null>(null);
+const equipmentEditBase = ref<EquipmentInstallation | null>(null);
 const equipmentEditError = ref('');
+const equipmentEditDirty = computed(
+  () => !!equipmentEditing.value && JSON.stringify(equipmentEditing.value) !== JSON.stringify(equipmentEditBase.value),
+);
 function openEquipmentEdit(e: EquipmentInstallation) {
+  equipmentEditBase.value = { ...e };
   equipmentEditing.value = { ...e };
   equipmentEditError.value = '';
 }
+function closeEquipmentEdit() {
+  if (!allowDiscard(equipmentEditDirty.value)) return;
+  equipmentEditing.value = null;
+  equipmentEditBase.value = null;
+}
 const updateEquipmentMutation = useMutation({
-  mutationFn: (draft: EquipmentInstallation) => updateEquipment(draft.id, draft, equipmentEditing.value!.version),
+  // The version is the one pinned when the editor opened.
+  mutationFn: (draft: EquipmentInstallation) => updateEquipment(draft.id, draft, equipmentEditBase.value!.version),
   onSuccess: async () => {
     equipmentEditing.value = null;
+    equipmentEditBase.value = null;
     await queryClient.invalidateQueries({ queryKey: ['equipment', id] });
   },
   onError: (e) => {
     if (e instanceof ApiError && e.status === 409) {
-      equipmentEditError.value = '版本冲突：该 Equipment 已被他人修改，请刷新后重试。';
+      equipmentEditError.value = '版本冲突：该 Equipment 已被他人修改。您的草稿已保留，请取消后重新打开以获取最新版本。';
     } else {
-      equipmentEditError.value = e instanceof ApiError ? e.message : '更新失败';
+      equipmentEditError.value = errorText(e, '更新失败');
     }
   },
 });
@@ -220,8 +338,8 @@ const statusText: Record<string, string> = {
       </div>
       <div v-if="canWrite" class="detail-actions">
         <button class="ghost-action" @click="openEdit"><Pencil :size="14" />编辑</button>
-        <button class="ghost-action" @click="moving = true"><Move :size="14" />移动</button>
-        <button class="danger-action" @click="retiring = true"><Archive :size="14" />退役</button>
+        <button class="ghost-action" @click="openMove"><Move :size="14" />移动</button>
+        <button class="danger-action" @click="openRetire"><Archive :size="14" />退役</button>
       </div>
     </header>
 
@@ -297,44 +415,63 @@ const statusText: Record<string, string> = {
 
     <p v-if="actionError" class="form-error" role="alert">{{ actionError }}</p>
 
-    <div v-if="editing && editDraft" class="modal-backdrop" @click.self="editing = false">
-      <form class="workspace-modal" @submit.prevent="updateMutation.mutate(editDraft)">
-        <h2>编辑资产（If-Match v{{ asset?.version }}）</h2>
-        <label>资产名称<input v-model="editDraft.displayName" /></label>
-        <label>资产编号<input v-model="editDraft.assetCode" /></label>
-        <label>类型<input v-model="editDraft.assetType" /></label>
+    <div v-if="edit.open.value && edit.draft.value" class="modal-backdrop" @click.self="closeEdit">
+      <form class="workspace-modal" data-testid="asset-edit-form" @submit.prevent="updateMutation.mutate()">
+        <h2>编辑资产（基于 v{{ edit.baseVersion.value }}）</h2>
+        <label>资产名称<input v-model="edit.draft.value.displayName" required maxlength="160" /></label>
+        <label>资产编号<input v-model="edit.draft.value.assetCode" maxlength="160" /></label>
+        <label>类型<input v-model="edit.draft.value.assetType" required maxlength="80" /></label>
+        <div v-if="editError" class="form-error" role="alert" data-testid="asset-edit-error">
+          <p>{{ editError }}</p>
+          <template v-if="editConflict">
+            <table v-if="conflictDiff.length" class="conflict-diff" data-testid="asset-conflict-diff">
+              <thead><tr><th>字段</th><th>您的草稿</th><th>服务器最新（v{{ edit.latest.value?.version }}）</th></tr></thead>
+              <tbody>
+                <tr v-for="d in conflictDiff" :key="d.field"><td>{{ d.field }}</td><td>{{ d.mine ?? '—' }}</td><td>{{ d.theirs ?? '—' }}</td></tr>
+              </tbody>
+            </table>
+            <div class="modal-actions">
+              <button type="button" class="ghost-action" @click="refreshForConflict">重新获取最新内容</button>
+              <button type="button" class="ghost-action" :disabled="!edit.latest.value" @click="rebaseOnLatest">放弃我的修改，基于最新版本重新编辑</button>
+            </div>
+          </template>
+        </div>
         <div class="modal-actions">
-          <button type="button" class="ghost-action" @click="editing = false">取消</button>
-          <button type="submit" class="primary-action">保存</button>
+          <button type="button" class="ghost-action" @click="closeEdit">取消</button>
+          <button type="submit" class="primary-action" :disabled="!edit.dirty.value || updateMutation.isPending.value || editConflict">
+            {{ updateMutation.isPending.value ? '保存中…' : '保存' }}
+          </button>
         </div>
       </form>
     </div>
 
-    <div v-if="moving" class="modal-backdrop" @click.self="moving = false">
-      <form class="workspace-modal" @submit.prevent="moveMutation.mutate()">
-        <h2>移动资产（迁移安装位置）</h2>
+    <div v-if="move.open.value && move.draft.value" class="modal-backdrop" @click.self="closeMove">
+      <form class="workspace-modal" data-testid="asset-move-form" @submit.prevent="moveMutation.mutate()">
+        <h2>移动资产（基于 v{{ move.baseVersion.value }}）</h2>
         <label>目标位置
-          <select v-model="moveLocation" required>
+          <select v-model="move.draft.value.locationId" required>
             <option value="" disabled>选择位置</option>
             <option v-for="l in (locationsQuery.data.value as AssetLocation[])" :key="l.id" :value="l.id">
               {{ l.name }}（{{ l.kind }}）
             </option>
           </select>
         </label>
+        <p v-if="moveError" class="form-error" role="alert">{{ moveError }}</p>
         <div class="modal-actions">
-          <button type="button" class="ghost-action" @click="moving = false">取消</button>
-          <button type="submit" class="primary-action">移动</button>
+          <button type="button" class="ghost-action" @click="closeMove">取消</button>
+          <button type="submit" class="primary-action" :disabled="moveMutation.isPending.value">移动</button>
         </div>
       </form>
     </div>
 
-    <div v-if="retiring" class="modal-backdrop" @click.self="retiring = false">
-      <div class="workspace-modal">
-        <h2>确认退役</h2>
+    <div v-if="retire.open.value" class="modal-backdrop" @click.self="closeRetire">
+      <div class="workspace-modal" data-testid="asset-retire-dialog">
+        <h2>确认退役（基于 v{{ retire.baseVersion.value }}）</h2>
         <p>退役是终态，不可恢复。存在活动 Runtime Binding 时将拒绝。</p>
+        <p v-if="retireError" class="form-error" role="alert">{{ retireError }}</p>
         <div class="modal-actions">
-          <button class="ghost-action" @click="retiring = false">取消</button>
-          <button class="danger-action" @click="retireMutation.mutate()">确认退役</button>
+          <button class="ghost-action" @click="closeRetire">取消</button>
+          <button class="danger-action" :disabled="retireMutation.isPending.value" @click="retireMutation.mutate()">确认退役</button>
         </div>
       </div>
     </div>
@@ -368,13 +505,13 @@ const statusText: Record<string, string> = {
       </form>
     </div>
 
-    <div v-if="equipmentEditing" class="modal-backdrop" @click.self="equipmentEditing = null">
+    <div v-if="equipmentEditing" class="modal-backdrop" @click.self="closeEquipmentEdit">
       <form
         class="workspace-modal"
         data-testid="equipment-edit-form"
         @submit.prevent="updateEquipmentMutation.mutate(equipmentEditing)"
       >
-        <h2>编辑 Equipment（If-Match v{{ equipmentEditing.version }}）</h2>
+        <h2>编辑 Equipment（基于 v{{ equipmentEditBase?.version }}）</h2>
         <label>Equipment 编号<input v-model="equipmentEditing.equipmentCode" required /></label>
         <label>序列号<input v-model="equipmentEditing.serialNumber" /></label>
         <label>关键度
@@ -388,7 +525,7 @@ const statusText: Record<string, string> = {
         <p class="muted small">设备类型、Catalog 与 Spec 在此不修改（后端边界一致）。</p>
         <p v-if="equipmentEditError" class="form-error" role="alert">{{ equipmentEditError }}</p>
         <div class="modal-actions">
-          <button type="button" class="ghost-action" @click="equipmentEditing = null">取消</button>
+          <button type="button" class="ghost-action" @click="closeEquipmentEdit">取消</button>
           <button type="submit" class="primary-action" :disabled="updateEquipmentMutation.isPending.value">
             保存
           </button>
