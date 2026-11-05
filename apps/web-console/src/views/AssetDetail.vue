@@ -285,7 +285,7 @@ const statusText: Record<string, string> = {
       </div>
 
       <div v-else class="workspace-empty">
-        暂无安装位置记录。
+        当前位置查询待接入。
       </div>
     </template>
 

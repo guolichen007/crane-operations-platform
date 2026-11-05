@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { Search, Plus, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-vue-next';
 import { listAssets, createAsset } from '../cloud/asset';
 import { ApiError } from '../cloud/client';
@@ -10,7 +10,16 @@ import { writableProjects } from '../cloud/auth-state';
 import type { AssetMasterData } from '../../../../contracts/typescript/types.gen';
 
 const router = useRouter();
+const route = useRoute();
 const queryClient = useQueryClient();
+// The top command bar's ?project= scope narrows the ledger to one authorized
+// project; an absent scope means "all authorized projects".
+const scopedProject = computed(() => (typeof route.query.project === 'string' ? route.query.project : ''));
+const projectNames = computed(() => {
+  const map: Record<string, string> = {};
+  for (const p of webSession.value?.projects ?? []) map[p.projectId] = p.projectName;
+  return map;
+});
 // The create entry exists only when the caller holds at least one project with
 // asset_master_write (platform_admin); the form selects among those projects.
 const writable = computed(() => writableProjects(webSession.value));
@@ -40,6 +49,7 @@ const params = computed(() => ({
   q: applied.value.q || undefined,
   status: applied.value.status || undefined,
   type: applied.value.type || undefined,
+  project: scopedProject.value || undefined,
 }));
 
 const assetsQuery = useQuery({
@@ -134,7 +144,7 @@ const statusText: Record<string, string> = {
           <tr v-for="a in assetsQuery.data.value" :key="a.id" class="data-row" @click="router.push(`/assets/${a.id}`)">
             <td>{{ a.assetCode ?? '—' }}</td>
             <td>{{ a.displayName || a.assetCode || '—' }}</td>
-            <td>{{ a.projectId }}</td>
+            <td>{{ projectNames[a.projectId] ?? a.projectId }}</td>
             <td>{{ a.assetType }}</td>
             <td>
               <span class="status-pill" :data-status="a.assetStatus">{{ statusText[a.assetStatus] ?? a.assetStatus }}</span>

@@ -171,6 +171,22 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 			respondAPI(w, 503, map[string]string{"error": "authorization unavailable"})
 			return
 		}
+		// An explicit ?project= narrows the ledger to an authorized project only;
+		// an unknown or unauthorized project yields an empty list, never a leak.
+		if pf := r.URL.Query().Get("project"); pf != "" {
+			if projects == nil {
+				projects = []string{pf}
+			} else {
+				filtered := make([]string, 0, 1)
+				for _, p := range projects {
+					if p == pf {
+						filtered = append(filtered, p)
+						break
+					}
+				}
+				projects = filtered
+			}
+		}
 		values, _, err := asset.ListAssetsScoped(r.Context(), h.db, projects, parseListOptions(r))
 		if err != nil {
 			respondAPI(w, 400, map[string]string{"error": err.Error()})

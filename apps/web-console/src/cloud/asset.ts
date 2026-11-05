@@ -16,6 +16,7 @@ export type AssetListParams = {
   q?: string;
   status?: string;
   type?: string;
+  project?: string;
 };
 export type LocationListParams = {
   limit?: number;
@@ -34,6 +35,7 @@ export const listAssets = (params: AssetListParams = {}) =>
       ...pageQuery(params.limit ?? 50, params.offset ?? 0, params.sort, params.q),
       status: params.status,
       type: params.type,
+      project: params.project,
     },
   });
 export const getAsset = (id: string) => api<AssetMasterData>(`assets/${encodeURIComponent(id)}`);
