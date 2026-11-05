@@ -70,7 +70,7 @@ docker compose --project-name crane-b4-preview --env-file deploy/compose/b4-prev
   config --format json > /tmp/b4-preview.resolved.json
 node tools/b4-preview-contract.mjs --resolved /tmp/b4-preview.resolved.json
 # 2) Keycloak 只读预检：issuer、realm 存在、client 唯一且 redirect/webOrigins 精确等于 Preview
-provision-keycloak --preview-precheck   # 需 KEYCLOAK_ADMIN_URL / PUBLIC_URL / KEYCLOAK_BOOTSTRAP_PASSWORD_FILE
+provision-keycloak --preview-precheck   # KEYCLOAK_ADMIN_URL 必须严格为 http://127.0.0.1:18085（其他一律拒绝，且在读取管理员密码前拒绝）；另需 PUBLIC_URL=https://b4.crane.youdaozd.com 与 KEYCLOAK_BOOTSTRAP_PASSWORD_FILE。还会复核 clientId 精确一致及安全开关（机密客户端、仅授权码流程、禁用 implicit/密码/服务账号、PKCE S256）
 ```
 仓库内 `node tools/b4-preview-contract.mjs`（无参数）只检查源 overlay 文件，不能替代上面的 resolved 检查。
 
@@ -84,16 +84,49 @@ docker compose --project-name crane-b4-preview --env-file deploy/compose/b4-prev
 
 ## 8. Preview 浏览器验收的写入保护
 
-- `playwright.b4-preview.config.ts` 加载时校验 `A1_WEB_ORIGIN`：缺失、HTTP、非 `b4.crane.youdaozd.com`（含正式站）一律报错，不打开浏览器。
-- 运行时必须设 `B4_REQUIRED_ENVIRONMENT=b4-preview`：每个写入用例登录后先读服务端 `GET /api/v1/environment`（由 cloud-api 的 `CRANE_DEPLOYMENT_ENVIRONMENT` 提供，生产不设置、返回空），不一致即失败，不发写请求。
+- `playwright.b4-preview.config.ts` 加载时双门禁，任一不满足即报错、不启动浏览器：`A1_WEB_ORIGIN` 必须严格等于 `https://b4.crane.youdaozd.com`（拒绝端口含 :443、路径、query、fragment、用户名密码、伪主机、大小写变体）；`B4_REQUIRED_ENVIRONMENT` 必须为 `b4-preview`。
+- 每个写入用例登录后先读服务端 `GET /api/v1/environment`（由 cloud-api 的 `CRANE_DEPLOYMENT_ENVIRONMENT` 提供，生产不设置、返回空），与 `B4_REQUIRED_ENVIRONMENT` 不一致即失败，不发写请求；目标为 Preview 源而未声明哨兵时直接报错。
 - 所有测试编码带每次运行唯一的 `RUN_ID`（`CRN-B4-<RUN_ID>-...`），持久化的 Preview 库重复运行不会冲突；清理仅限本次 `RUN_ID` 前缀的匿名数据，禁止对生产执行。
 
-## 9. 待服务器 CC 只读复核项
+## 9. 镜像与 commit 的交叉核对（合法 sha256 字符串不等于对应提交）
+
+`b4-preview-contract.mjs` 只能检查镜像引用「形如」`@sha256:<64hex>`，**不能证明该 digest 由候选 commit 构建**。部署前由 OWNER/CC 对每个镜像逐项核对：
+
+1. 构建记录：候选 SHA 的 CI 构建日志/产物中记录的 `cloud-api` / `web-console` digest，与 env 文件中的 digest 字符完全一致。
+2. 镜像标签：`docker buildx imagetools inspect <image@sha256:...>` 或 `docker image inspect` 读取 `org.opencontainers.image.revision`（`deploy/Dockerfile.backend` 由 `SOURCE_SHA` 写入），必须等于候选 SHA；值为 `development` 或缺失即拒绝。
+3. SBOM：对同一 digest 生成/取回 SBOM（如 `cloud-api.cdx.json`），确认其主组件指向同一 digest，并随部署证据归档。
+4. 漏洞扫描：对同一 digest 运行 Trivy（与 CI `security` job 同等级 HIGH/CRITICAL），结果归档。
+
+任一项缺失或不一致，`PREVIEW_IMAGE_PROVENANCE` 不得记为 PASS。
+
+## 10. 服务器 CC 只读核验清单（全部只读，不修改任何资源）
+
+```bash
+# 既有网络：归属、标签、子网、已连接容器
+docker network inspect u-dao-crane-b4-preview-frontend u-dao-crane-b4-preview-api-frontend \
+  --format '{{.Name}} driver={{.Driver}} internal={{.Internal}} labels={{json .Labels}} subnets={{json .IPAM.Config}} containers={{len .Containers}}'
+# 既有卷：确认属于 Preview 项目、挂载点不是生产卷
+docker volume ls --filter label=com.docker.compose.project=crane-b4-preview
+docker volume inspect crane-b4-preview_b4-preview-postgres crane-b4-preview_b4-preview-mqtt \
+  --format '{{.Name}} labels={{json .Labels}} mountpoint={{.Mountpoint}}'
+# 生产卷不得被 Preview 容器挂载（逐个 Preview 容器检查 Mounts）
+docker ps --filter label=com.docker.compose.project=crane-b4-preview --format '{{.Names}}' \
+  | xargs -r docker inspect --format '{{.Name}} {{range .Mounts}}{{.Type}}:{{.Name}}{{.Source}}->{{.Destination}}(rw={{.RW}}) {{end}}'
+# 数据库卷归属：Preview postgres 的数据目录来自 Preview 卷
+docker inspect "$(docker ps -q --filter label=com.docker.compose.project=crane-b4-preview --filter label=com.docker.compose.service=postgres)" \
+  --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}'
+# 宿主机端口：18083/18085 仅绑定 127.0.0.1
+ss -ltnp | grep -E ':(18083|18085)\b'
+```
+
+判定：网络标签/归属与既有 Preview 基座一致；卷标签 `com.docker.compose.project=crane-b4-preview`；任何 Preview 容器不挂载 `crane-postgres`/`crane-mqtt`/`/srv/u-dao/secrets/crane-ops`；Postgres 数据目录来自 `crane-b4-preview_b4-preview-postgres`。**未取得这些服务器实际证据，`RUNTIME_ISOLATION` 与 `PREVIEW_EXISTING_VOLUME_NETWORK_OWNERSHIP` 一律记为 NOT_RUN，不得用静态检查 PASS 推断实际隔离。**
+
+## 11. 待服务器 CC 只读复核项
 
 - `10.240.40.0/24` 是否确为预留且不与生产冲突。
 - `18083/18085` 端口占用与既有容器映射一致。
 - 既有两张前端网络的归属与共享 Ingress 实际路由（DNS/TLS/回环/`X-Forwarded-*`/受信代理 IP）。
 
-## 10. 不做
+## 12. 不做
 
 不真实部署、不改 DNS/TLS/Ingress/Keycloak/PG、不重启生产容器、不触碰正式库。

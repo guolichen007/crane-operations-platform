@@ -12,12 +12,19 @@ if (!/^[A-Z0-9]{4,16}$/.test(RUN_ID)) throw new Error('B4_RUN_ID must be 4-16 al
 export const code = (kind: string, label: string) => `${kind}-B4-${RUN_ID}-${label}`;
 
 /**
- * When a required environment name is configured (Preview UAT), assert the
- * server-side sentinel matches before any write. Must be called after login.
- * Unset requirement (isolated CI fixture) skips the check.
+ * Before any write, prove the server is the intended environment. Must be called
+ * after login.
+ *  - Preview origin: B4_REQUIRED_ENVIRONMENT is mandatory (also enforced by
+ *    playwright.b4-preview.config.ts) and must match the server sentinel.
+ *  - Isolated CI fixture (any other origin): the check runs only if the variable
+ *    is set; the fixture's own isolation logic is unchanged.
  */
 export async function assertWriteTarget(page: Page): Promise<void> {
   const required = process.env.B4_REQUIRED_ENVIRONMENT;
+  const origin = new URL(page.url()).origin;
+  if (origin === 'https://b4.crane.youdaozd.com' && required !== 'b4-preview') {
+    throw new Error('Preview writes require B4_REQUIRED_ENVIRONMENT=b4-preview');
+  }
   if (!required) return;
   const environment = await page.evaluate(async () => {
     const response = await fetch('/api/v1/environment');

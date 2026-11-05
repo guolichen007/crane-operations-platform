@@ -64,9 +64,66 @@ export function checkOverlay(overlay, envExample) {
   return errors;
 }
 
+// Exact resolved topology for the Preview stack (derived from
+// docker-compose.prod.yml + docker-compose.b4-preview.yml). Anything outside this
+// allowlist — an extra service (e.g. a second ingress), an extra network attachment,
+// an unexpected published port, a volume source outside the Preview roots, or an
+// unknown secret — is a violation.
+export const TOPOLOGY = {
+  services: {
+    postgres: { networks: ['backend'], ports: [], secrets: ['postgres_admin_password', 'app_db_password', 'keycloak_db_password'] },
+    keycloak: { networks: ['backend', 'frontend'], ports: [PREVIEW.authPort], secrets: ['keycloak_db_password', 'keycloak_bootstrap_password'] },
+    mosquitto: { networks: ['backend'], ports: [], secrets: [] },
+    'cloud-api': { networks: ['backend', 'frontend', 'api-frontend'], ports: [], secrets: ['app_db_password', 'oidc_client_secret', 'session_server_secret'] },
+    'web-console': { networks: ['frontend'], ports: [PREVIEW.webPort], secrets: [] },
+  },
+  namedVolumes: PREVIEW.volumes,
+  // Bind-mount sources must live under the Preview secret root or be a read-only
+  // repository file shipped with the deployment (entrypoints, broker config, theme).
+  bindRoots: [PREVIEW.secretRoot + '/'],
+  repoBindSuffixes: ['/deploy/production/postgres-entrypoint.sh', '/deploy/production/postgres-init.sh', '/deploy/production/keycloak-entrypoint.sh', '/deploy/keycloak/themes/u-dao', '/deploy/mosquitto/mosquitto.prod.conf'],
+};
+
+function checkTopology(errors, config) {
+  const services = config.services ?? {};
+  const allowed = Object.keys(TOPOLOGY.services);
+  for (const name of Object.keys(services)) check(errors, allowed.includes(name), `unexpected service ${name} (only ${allowed.join(', ')} are allowed; no second ingress)`);
+  for (const name of allowed) check(errors, Object.hasOwn(services, name), `service ${name} missing`);
+  for (const [name, service] of Object.entries(services)) {
+    const spec = TOPOLOGY.services[name];
+    if (!spec) continue;
+    const networks = Array.isArray(service.networks) ? service.networks : Object.keys(service.networks ?? {});
+    check(errors, JSON.stringify([...networks].sort()) === JSON.stringify([...spec.networks].sort()), `${name}: networks must be exactly [${spec.networks}] (got [${networks}])`);
+    const ports = (service.ports ?? []).map((p) => String(p.published));
+    check(errors, JSON.stringify([...ports].sort()) === JSON.stringify([...spec.ports].sort()), `${name}: published ports must be exactly [${spec.ports}] (got [${ports}])`);
+    const secrets = (service.secrets ?? []).map((x) => (typeof x === 'string' ? x : x.source));
+    check(errors, JSON.stringify([...secrets].sort()) === JSON.stringify([...spec.secrets].sort()), `${name}: secrets must be exactly [${spec.secrets}] (got [${secrets}])`);
+    for (const volume of service.volumes ?? []) {
+      const source = String(volume.source ?? '');
+      if (volume.type === 'volume') {
+        check(errors, TOPOLOGY.namedVolumes.includes(source), `${name}: named volume ${source} is not a Preview volume`);
+      } else if (volume.type === 'bind') {
+        const ok = TOPOLOGY.bindRoots.some((root) => source.startsWith(root)) || TOPOLOGY.repoBindSuffixes.some((suffix) => source.endsWith(suffix));
+        check(errors, ok, `${name}: bind mount source ${source} is outside the Preview roots`);
+        if (TOPOLOGY.repoBindSuffixes.some((suffix) => source.endsWith(suffix))) check(errors, volume.read_only === true, `${name}: repository bind ${source} must be read-only`);
+      } else if (volume.type !== 'tmpfs') {
+        check(errors, false, `${name}: unsupported volume type ${volume.type}`);
+      }
+    }
+  }
+  const networkKeys = Object.keys(config.networks ?? {});
+  for (const key of networkKeys) check(errors, ['backend', 'frontend', 'api-frontend'].includes(key), `unexpected network ${key}`);
+  check(errors, config.networks?.backend?.internal === true, 'backend network must be internal');
+  for (const key of ['frontend', 'api-frontend']) check(errors, config.networks?.[key]?.external === true, `${key} network must be the existing external Preview network`);
+  for (const key of Object.keys(config.volumes ?? {})) check(errors, TOPOLOGY.namedVolumes.includes(key), `unexpected volume ${key}`);
+  const expectedSecrets = [...new Set(Object.values(TOPOLOGY.services).flatMap((x) => x.secrets))].sort();
+  check(errors, JSON.stringify(Object.keys(config.secrets ?? {}).sort()) === JSON.stringify(expectedSecrets), `secrets must be exactly [${expectedSecrets}]`);
+}
+
 /** Checks `docker compose config --format json` output (fully resolved). */
 export function checkResolved(config) {
   const errors = [];
+  checkTopology(errors, config);
   check(errors, config.name === PREVIEW.project, `compose project must be ${PREVIEW.project}, got ${config.name}`);
   const services = config.services ?? {};
   for (const [name, service] of Object.entries(services)) {

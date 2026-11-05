@@ -23,7 +23,22 @@ const (
 	previewRealm  = "crane-preview"
 	previewClient = "crane-b4-preview"
 	previewHost   = "b4.crane.youdaozd.com"
+	// The Preview Keycloak admin endpoint verified read-only by the server CC:
+	// the loopback port the Preview base publishes for Keycloak. The admin
+	// password is never sent anywhere else.
+	previewAdminURL = "http://127.0.0.1:18085"
 )
+
+// validatePreviewAdminURL locks the admin target to the exact verified Preview
+// Keycloak loopback endpoint. Unlike the production endpoint() check it does not
+// accept arbitrary HTTPS hosts, other ports, other loopback names, paths,
+// userinfo or the production domain.
+func validatePreviewAdminURL(raw string) error {
+	if raw != previewAdminURL {
+		return errors.New("preview precheck refuses admin URL \"" + raw + "\" (must be exactly " + previewAdminURL + ")")
+	}
+	return nil
+}
 
 // validatePreviewTarget is fail-closed: only the exact Preview realm/client/
 // public-origin pass. A production realm, production client, unknown realm, or
@@ -56,8 +71,12 @@ func previewPrecheck(ctx context.Context) error {
 	if clientID == "" {
 		clientID = previewClient
 	}
-	if !endpoint(base) || !platform.SecureURL(public, false) {
-		return errors.New("explicit admin endpoint and public HTTPS origin required")
+	// Both locks run before the admin password file is even read.
+	if err := validatePreviewAdminURL(base); err != nil {
+		return err
+	}
+	if !platform.SecureURL(public, false) {
+		return errors.New("explicit public HTTPS origin required")
 	}
 	if err := validatePreviewTarget(public, realm, clientID); err != nil {
 		return err
@@ -117,19 +136,64 @@ func runPreviewPrecheck(ctx context.Context, h *http.Client, base, public, realm
 	// Exactly one client, whose redirect URIs are exactly the Preview callback and
 	// whose web origins are exactly the Preview origin — no wildcard, no extra
 	// (e.g. production) entries.
-	var clients []struct {
-		RedirectURIs []string `json:"redirectUris"`
-		WebOrigins   []string `json:"webOrigins"`
-	}
+	var clients []previewClientRepresentation
 	status, err = c.request(ctx, "GET", "/admin/realms/"+realm+"/clients?clientId="+url.QueryEscape(clientID), nil, &clients)
 	if err != nil || status != 200 || len(clients) != 1 {
 		return errors.New("preview client lookup rejected")
+	}
+	// Keycloak's clientId query is a search; re-verify the exact identity.
+	if clients[0].ClientID != clientID {
+		return errors.New("preview client lookup returned a different clientId")
+	}
+	if err := clients[0].secureContract(); err != nil {
+		return err
 	}
 	if !exactly(clients[0].RedirectURIs, origin+"/auth/callback") {
 		return errors.New("preview client redirect URIs must be exactly the Preview callback")
 	}
 	if !exactly(clients[0].WebOrigins, origin) {
 		return errors.New("preview client web origins must be exactly the Preview origin")
+	}
+	return nil
+}
+
+// previewClientRepresentation is the subset of a Keycloak client read back by the
+// precheck.
+type previewClientRepresentation struct {
+	ClientID                  string            `json:"clientId"`
+	Enabled                   bool              `json:"enabled"`
+	PublicClient              bool              `json:"publicClient"`
+	BearerOnly                bool              `json:"bearerOnly"`
+	StandardFlowEnabled       bool              `json:"standardFlowEnabled"`
+	ImplicitFlowEnabled       bool              `json:"implicitFlowEnabled"`
+	DirectAccessGrantsEnabled bool              `json:"directAccessGrantsEnabled"`
+	ServiceAccountsEnabled    bool              `json:"serviceAccountsEnabled"`
+	RedirectURIs              []string          `json:"redirectUris"`
+	WebOrigins                []string          `json:"webOrigins"`
+	Attributes                map[string]string `json:"attributes"`
+}
+
+// secureContract mirrors the production client contract
+// (deploy/production/realm.template.json): an enabled confidential BFF client
+// using only the authorization-code flow with PKCE S256.
+func (c previewClientRepresentation) secureContract() error {
+	switch {
+	case !c.Enabled:
+		return errors.New("preview client must be enabled")
+	case c.PublicClient:
+		return errors.New("preview client must be confidential (publicClient=false)")
+	case c.BearerOnly:
+		return errors.New("preview client must not be bearer-only")
+	case !c.StandardFlowEnabled:
+		return errors.New("preview client must enable the authorization-code flow")
+	case c.ImplicitFlowEnabled:
+		return errors.New("preview client must not enable the implicit flow")
+	case c.DirectAccessGrantsEnabled:
+		return errors.New("preview client must not enable direct access grants (password grant)")
+	case c.ServiceAccountsEnabled:
+		return errors.New("preview client must not enable service accounts")
+	case c.Attributes["pkce.code.challenge.method"] != "S256":
+		return errors.New("preview client must require PKCE S256")
 	}
 	return nil
 }
