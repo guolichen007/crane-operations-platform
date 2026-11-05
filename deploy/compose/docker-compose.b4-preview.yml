@@ -1,0 +1,77 @@
+# B4 Preview 隔离叠加层（在 docker-compose.prod.yml 之上，-f 叠加）。
+# 目标：b4.crane.youdaozd.com 独立 Preview，与 production 完全隔离。
+# 未获服务器变更授权前，禁止执行 `docker compose ... up`。
+#
+# 使用方式（示例，须先经服务器 CC 复核网络/端口/密钥后执行）：
+#   docker compose \
+#     --project-name crane-b4-preview \
+#     --env-file deploy/compose/b4-preview.env \
+#     -f deploy/compose/docker-compose.prod.yml \
+#     -f deploy/compose/docker-compose.b4-preview.yml \
+#     up -d
+services:
+  postgres:
+    # 独立 Preview 数据卷，绝不引用 production 卷。
+    volumes:
+      - b4-preview-postgres:/var/lib/postgresql/data
+      - ../production/postgres-entrypoint.sh:/opt/crane/postgres-entrypoint.sh:ro
+      - ../production/postgres-init.sh:/docker-entrypoint-initdb.d/10-crane-roles.sh:ro
+  keycloak:
+    # 独立 Preview realm/DB，仅托管 preview realm；不触碰 production realm。
+    environment:
+      KC_DB_URL: jdbc:postgresql://postgres:5432/crane_keycloak
+      KC_HOSTNAME: ${CRANE_AUTH_URL:?Preview auth URL required}
+      KC_PROXY_TRUSTED_ADDRESSES: ${CRANE_PROXY_CIDRS:?explicit Preview ingress CIDRs required}
+    ports: ["127.0.0.1:${CRANE_AUTH_PORT:-18084}:8080"]
+  mosquitto:
+    volumes:
+      - ../mosquitto/mosquitto.prod.conf:/mosquitto/config/mosquitto.conf:ro
+      - ${CRANE_MQTT_DIR:?preview MQTT dir required}/broker:/mosquitto/certs:ro
+      - ${CRANE_MQTT_ACL:?preview Fleet ACL required}:/mosquitto/acl:ro
+      - b4-preview-mqtt:/mosquitto/data
+  cloud-api:
+    environment:
+      PUBLIC_URL: ${CRANE_PUBLIC_URL:-https://b4.crane.youdaozd.com}
+      OIDC_ISSUER: ${CRANE_AUTH_URL:-https://b4.crane.youdaozd.com}/realms/crane
+      OIDC_CLIENT_ID: crane-b4-preview
+      OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
+      SESSION_SECRET_FILE: /run/secrets/session_server_secret
+      DATABASE_URL: postgres://crane_app@postgres:5432/crane_app?sslmode=disable
+      INVENTORY_FILE: /inventory/inventory.json
+      FLEET_FILE: /inventory/fleet.json
+    volumes:
+      - ${CRANE_INVENTORY_FILE:?preview Inventory required}:/inventory/inventory.json:ro
+      - ${CRANE_FLEET_FILE:?preview Fleet required}:/inventory/fleet.json:ro
+      - ${CRANE_MQTT_DIR:?preview MQTT dir required}/cloud:/certs:ro
+  web-console:
+    ports: ["127.0.0.1:${CRANE_WEB_PORT:-18083}:8080"]
+  # Preview 专用 ingress：TLS 终结 + 路由，独立于 production 前置代理。
+  ingress:
+    image: nginx:1.28-alpine
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${B4_PREVIEW_HTTPS_PORT:-18443}:443"
+    volumes:
+      - ${CRANE_SECRET_DIR:?preview secrets dir required}/ingress:/etc/nginx/certs:ro
+      - ../ingress/b4-preview.conf:/etc/nginx/conf.d/default.conf:ro
+    networks: [frontend]
+    depends_on:
+      web-console: {condition: service_started}
+      cloud-api: {condition: service_healthy}
+      keycloak: {condition: service_healthy}
+secrets:
+  postgres_admin_password: {file: '${CRANE_SECRET_DIR:?preview secrets dir required}/postgres_admin_password'}
+  app_db_password: {file: '${CRANE_SECRET_DIR:?preview secrets dir required}/app_db_password'}
+  keycloak_db_password: {file: '${CRANE_SECRET_DIR:?preview secrets dir required}/keycloak_db_password'}
+  keycloak_bootstrap_password: {file: '${CRANE_SECRET_DIR:?preview secrets dir required}/keycloak_bootstrap_password'}
+  oidc_client_secret: {file: '${CRANE_SECRET_DIR:?preview secrets dir required}/oidc_client_secret'}
+  session_server_secret: {file: '${CRANE_SECRET_DIR:?preview secrets dir required}/session_server_secret'}
+volumes:
+  b4-preview-postgres:
+  b4-preview-mqtt:
+networks:
+  frontend:
+    external: true
+    name: ${CRANE_FRONTEND_NETWORK:-b4-preview-frontend}
