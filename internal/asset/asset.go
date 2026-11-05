@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
 	"github.com/guolichen007/crane-operations-platform/internal/auditlog"
@@ -33,9 +34,21 @@ var (
 	ErrTerminalStatus   = errors.New("asset status is terminal")
 	ErrExpectedVersion  = errors.New("expected version is required")
 	ErrRemoved          = errors.New("equipment is already removed")
+	ErrInvalidInput     = errors.New("invalid input")
 )
 
 const maxPageSize = 100
+
+// maxDisplayNameRunes mirrors the contract (AssetMasterData.displayName maxLength
+// 160). JSON Schema maxLength counts characters, so runes are counted, not bytes.
+const maxDisplayNameRunes = 160
+
+func validDisplayName(name string) error {
+	if utf8.RuneCountInString(name) > maxDisplayNameRunes {
+		return fmt.Errorf("%w: displayName exceeds %d characters", ErrInvalidInput, maxDisplayNameRunes)
+	}
+	return nil
+}
 
 func sha256hex(b []byte) string {
 	sum := sha256.Sum256(b)
@@ -118,6 +131,9 @@ func canonicalEquipmentRequest(in contract.EquipmentInstallation, spec json.RawM
 // CreateAsset inserts a DRAFT asset. Idempotency is evaluated on the canonical
 // client request before any server-side id/status/version assignment.
 func CreateAsset(ctx context.Context, db *sql.DB, in contract.AssetMasterData, actor, requestID, idemKey string) (contract.AssetMasterData, error) {
+	if err := validDisplayName(strings.TrimSpace(in.DisplayName)); err != nil {
+		return in, err
+	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return in, err
@@ -312,6 +328,9 @@ func ListAssets(ctx context.Context, db *sql.DB, projectID string, opts ListOpti
 func UpdateAsset(ctx context.Context, db *sql.DB, in contract.AssetMasterData, expectedVersion int64, actor, requestID string) (contract.AssetMasterData, error) {
 	if expectedVersion <= 0 {
 		return in, ErrExpectedVersion
+	}
+	if err := validDisplayName(strings.TrimSpace(in.DisplayName)); err != nil {
+		return in, err
 	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {

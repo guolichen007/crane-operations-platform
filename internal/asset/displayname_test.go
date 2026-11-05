@@ -2,9 +2,12 @@ package asset
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
+	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
 	"github.com/guolichen007/crane-operations-platform/internal/testsupport"
 )
 
@@ -102,5 +105,83 @@ func TestAssetDisplayNameFallbackAndSnapshot(t *testing.T) {
 	}
 	if replayed.Id != first.Id || replayed.DisplayName != "三号门式起重机" {
 		t.Fatalf("replay = %q/%q, want %q/三号门式起重机", replayed.Id, replayed.DisplayName, first.Id)
+	}
+}
+
+// Over-long names (counted in characters, matching the contract's maxLength 160)
+// are rejected with ErrInvalidInput on both create and update, and nothing is
+// written. Exactly 160 Chinese characters is accepted.
+func TestAssetDisplayNameLengthLimit(t *testing.T) {
+	db := testsupport.Database(t)
+	ctx := context.Background()
+	seedProject(t, db, "Project-A")
+
+	ok := testAsset("Project-A")
+	ok.AssetCode = strPtr("CRN-LEN-OK")
+	ok.DisplayName = strings.Repeat("机", 160) // 160 runes, 480 bytes
+	created, err := CreateAsset(ctx, db, ok, "actor", "req-ok", "")
+	if err != nil {
+		t.Fatalf("160-character name rejected: %v", err)
+	}
+
+	long := testAsset("Project-A")
+	long.AssetCode = strPtr("CRN-LEN-BAD")
+	long.DisplayName = strings.Repeat("机", 161)
+	if _, err := CreateAsset(ctx, db, long, "actor", "req-long", ""); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("161-character create = %v, want ErrInvalidInput", err)
+	}
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM asset_devices WHERE asset_code='CRN-LEN-BAD'`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("rejected create wrote %d rows (err=%v)", n, err)
+	}
+
+	upd := created
+	upd.DisplayName = strings.Repeat("机", 161)
+	if _, err := UpdateAsset(ctx, db, upd, created.Version, "actor", "req-long-u"); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("161-character update = %v, want ErrInvalidInput", err)
+	}
+	got, err := GetAsset(ctx, db, created.Id)
+	if err != nil || got.Version != created.Version || got.DisplayName != created.DisplayName {
+		t.Fatalf("rejected update changed row: v%d %q (err=%v)", got.Version, got.DisplayName, err)
+	}
+}
+
+// A legacy client that predates displayName (field absent → empty string after
+// decode) must not wipe the stored name on update, and a fresh GET after a real
+// rename returns the new name.
+func TestAssetDisplayNameLegacyClientAndReread(t *testing.T) {
+	db := testsupport.Database(t)
+	ctx := context.Background()
+	seedProject(t, db, "Project-A")
+
+	in := testAsset("Project-A")
+	in.DisplayName = "四号门机"
+	created, err := CreateAsset(ctx, db, in, "actor", "req-1", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Legacy payload: decode JSON without displayName, as an old client sends it.
+	var legacy contract.AssetMasterData
+	if err := json.Unmarshal([]byte(`{"assetType":"GANTRY","assetCode":"CRN-001"}`), &legacy); err != nil {
+		t.Fatal(err)
+	}
+	legacy.Id = created.Id
+	if _, err := UpdateAsset(ctx, db, legacy, created.Version, "actor", "req-2"); err != nil {
+		t.Fatal(err)
+	}
+	afterLegacy, err := GetAsset(ctx, db, created.Id)
+	if err != nil || afterLegacy.DisplayName != "四号门机" || afterLegacy.AssetType != "GANTRY" {
+		t.Fatalf("legacy update: name=%q type=%q (err=%v), want 四号门机/GANTRY", afterLegacy.DisplayName, afterLegacy.AssetType, err)
+	}
+
+	rename := afterLegacy
+	rename.DisplayName = "四号门机（大修后）"
+	if _, err := UpdateAsset(ctx, db, rename, afterLegacy.Version, "actor", "req-3"); err != nil {
+		t.Fatal(err)
+	}
+	reread, err := GetAsset(ctx, db, created.Id)
+	if err != nil || reread.DisplayName != "四号门机（大修后）" || reread.Version != afterLegacy.Version+1 {
+		t.Fatalf("reread = %q v%d (err=%v), want 四号门机（大修后） v%d", reread.DisplayName, reread.Version, err, afterLegacy.Version+1)
 	}
 }

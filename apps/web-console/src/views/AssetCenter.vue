@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query';
 import { useRouter, useRoute } from 'vue-router';
 import { Search, Plus, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-vue-next';
@@ -7,6 +7,7 @@ import { listAssets, createAsset } from '../cloud/asset';
 import { ApiError } from '../cloud/client';
 import { webSession } from '../cloud/session';
 import { writableProjects } from '../cloud/auth-state';
+import { scopeFromQuery, isAuthorizedScope, projectLabel, scopeKey } from '../cloud/project-scope';
 import type { AssetMasterData } from '../../../../contracts/typescript/types.gen';
 
 const router = useRouter();
@@ -14,12 +15,9 @@ const route = useRoute();
 const queryClient = useQueryClient();
 // The top command bar's ?project= scope narrows the ledger to one authorized
 // project; an absent scope means "all authorized projects".
-const scopedProject = computed(() => (typeof route.query.project === 'string' ? route.query.project : ''));
-const projectNames = computed(() => {
-  const map: Record<string, string> = {};
-  for (const p of webSession.value?.projects ?? []) map[p.projectId] = p.projectName;
-  return map;
-});
+const scopedProject = computed(() => scopeFromQuery(route.query.project));
+const grants = computed(() => webSession.value?.projects ?? []);
+const scopeAuthorized = computed(() => isAuthorizedScope(scopedProject.value, grants.value));
 // The create entry exists only when the caller holds at least one project with
 // asset_master_write (platform_admin); the form selects among those projects.
 const writable = computed(() => writableProjects(webSession.value));
@@ -52,8 +50,14 @@ const params = computed(() => ({
   project: scopedProject.value || undefined,
 }));
 
+// Switching project scope starts from the first page: page 3 of P001 must not
+// become page 3 of P002.
+watch(scopedProject, () => {
+  page.value = 0;
+});
+
 const assetsQuery = useQuery({
-  queryKey: ['assets', params],
+  queryKey: computed(() => ['assets', scopeKey(scopedProject.value), params.value]),
   queryFn: () => listAssets(params.value),
 });
 
@@ -119,7 +123,10 @@ const statusText: Record<string, string> = {
       </button>
     </div>
 
-    <div v-if="assetsQuery.isLoading.value" class="skeleton table-skeleton" aria-busy="true"></div>
+    <p v-if="!scopeAuthorized" class="workspace-empty" role="status" data-testid="asset-scope-unauthorized">
+      当前项目范围（{{ scopedProject }}）不在您的授权项目内，无可显示资产。请在顶部重新选择项目范围。
+    </p>
+    <div v-else-if="assetsQuery.isLoading.value" class="skeleton table-skeleton" aria-busy="true"></div>
     <p v-else-if="assetsQuery.isError.value" class="workspace-error" role="alert">
       资产加载失败：{{ (assetsQuery.error.value as Error).message }}
     </p>
@@ -144,7 +151,7 @@ const statusText: Record<string, string> = {
           <tr v-for="a in assetsQuery.data.value" :key="a.id" class="data-row" @click="router.push(`/assets/${a.id}`)">
             <td>{{ a.assetCode ?? '—' }}</td>
             <td>{{ a.displayName || a.assetCode || '—' }}</td>
-            <td>{{ projectNames[a.projectId] ?? a.projectId }}</td>
+            <td>{{ projectLabel(a.projectId, grants) }}</td>
             <td>{{ a.assetType }}</td>
             <td>
               <span class="status-pill" :data-status="a.assetStatus">{{ statusText[a.assetStatus] ?? a.assetStatus }}</span>

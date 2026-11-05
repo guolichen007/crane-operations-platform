@@ -210,6 +210,10 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 				respondAPI(w, 409, map[string]string{"error": "idempotency conflict"})
 				return
 			}
+			if errors.Is(err, asset.ErrInvalidInput) {
+				respondAPI(w, 422, map[string]string{"error": err.Error()})
+				return
+			}
 			respondAPI(w, 503, map[string]string{"error": "database unavailable"})
 			return
 		}
@@ -265,6 +269,8 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 				respondAPI(w, 409, map[string]string{"error": "version conflict"})
 			case errors.Is(err, asset.ErrExpectedVersion), errors.Is(err, asset.ErrRetired), errors.Is(err, asset.ErrTerminalStatus):
 				respondAPI(w, 409, map[string]string{"error": err.Error()})
+			case errors.Is(err, asset.ErrInvalidInput):
+				respondAPI(w, 422, map[string]string{"error": err.Error()})
 			default:
 				respondAPI(w, 503, map[string]string{"error": "database unavailable"})
 			}
