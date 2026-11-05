@@ -224,6 +224,9 @@ func (a *App) governance(w http.ResponseWriter, r *http.Request, u User) (bool, 
 		if e != nil {
 			return true, e
 		}
+		if e = a.projectHints(ctx, a.db, u, &p); e != nil {
+			return true, e
+		}
 		respond(w, 200, map[string]any{"project": p, "cases": cases})
 		return true, nil
 	}

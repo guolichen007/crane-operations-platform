@@ -144,7 +144,29 @@ func redact(ds []Duplicate, u User) []Duplicate {
 	}
 	return out
 }
+
+// listParams are the only accepted project list filters. Unknown keys are
+// rejected so the UI cannot present a filter the server does not apply.
+var listParams = map[string]bool{"q": true, "status": true, "stage": true, "province": true, "updatedAfter": true, "sort": true, "page": true, "pageSize": true, "due": true, "followup": true, "assignment": true, "review": true}
+
+type listError string
+
+func (e listError) Error() string { return string(e) }
+
 func (a *App) list(ctx context.Context, u User, params map[string]string) ([]Project, int, error) {
+	items, total, _, err := a.listAt(ctx, u, params)
+	return items, total, err
+}
+
+// listAt returns the page, the filtered total and the single asOf instant used
+// for every time-window predicate in this request.
+func (a *App) listAt(ctx context.Context, u User, params map[string]string) ([]Project, int, time.Time, error) {
+	asOf := time.Now().UTC().Truncate(time.Microsecond)
+	for k := range params {
+		if !listParams[k] {
+			return nil, 0, asOf, listError("不支持的筛选条件：" + k)
+		}
+	}
 	args := []any{u.Subject, u.Role, u.TeamID}
 	where := ` WHERE ` + projectScope("p")
 	add := func(sql string, v any) {
@@ -154,6 +176,12 @@ func (a *App) list(ctx context.Context, u User, params map[string]string) ([]Pro
 	if v := params["q"]; v != "" {
 		add(` AND (p.project_name ILIKE '%'||?||'%' OR p.registration_no ILIKE '%'||?||'%' OR p.document->>'customer' ILIKE '%'||?||'%')`, v)
 	}
+	if v := params["status"]; v != "" && !contains(strings.Fields("DRAFT SUBMITTED UNDER_REVIEW APPROVED RETURNED REJECTED EXPIRED CANCELLED CONVERTED"), v) {
+		return nil, 0, asOf, listError("报备状态不正确")
+	}
+	if v := params["stage"]; v != "" && !contains(stages, v) {
+		return nil, 0, asOf, listError("销售阶段不正确")
+	}
 	for k, col := range map[string]string{"status": "p.intake_status", "stage": "p.sales_stage", "province": "p.document->'location'->>'province'"} {
 		if v := params[k]; v != "" {
 			add(` AND `+col+`=?`, v)
@@ -161,12 +189,32 @@ func (a *App) list(ctx context.Context, u User, params map[string]string) ([]Pro
 	}
 	if v := params["updatedAfter"]; v != "" {
 		if _, e := time.Parse(time.RFC3339, v); e != nil {
-			return nil, 0, e
+			return nil, 0, asOf, listError("更新时间格式不正确")
 		}
 		add(` AND p.updated_at>=?::timestamptz`, v)
 	}
+	// Follow-up windows share one asOf: overdue=[-inf,asOf), upcoming=[asOf,asOf+7d).
+	switch params["followup"] {
+	case "":
+	case "overdue":
+		add(` AND p.next_followup_at<?::timestamptz`, asOf)
+	case "upcoming":
+		add(` AND p.next_followup_at>=?::timestamptz`, asOf)
+		add(` AND p.next_followup_at<?::timestamptz`, asOf.Add(7*24*time.Hour))
+	default:
+		return nil, 0, asOf, listError("跟进时间筛选不正确")
+	}
+	switch params["assignment"] {
+	case "":
+	case "unassigned":
+		where += ` AND p.owner_subject IS NULL`
+	case "assigned":
+		where += ` AND p.owner_subject IS NOT NULL`
+	default:
+		return nil, 0, asOf, listError("归属筛选不正确")
+	}
 	if params["due"] == "true" {
-		where += ` AND p.next_followup_at<=now()+interval '7 days'`
+		add(` AND p.next_followup_at<?::timestamptz`, asOf.Add(7*24*time.Hour))
 	}
 	if params["review"] == "pending" {
 		where += ` AND p.intake_status IN ('SUBMITTED','UNDER_REVIEW')`
@@ -176,11 +224,17 @@ func (a *App) list(ctx context.Context, u User, params map[string]string) ([]Pro
 	}
 	var total int
 	if e := a.db.QueryRow(ctx, `SELECT count(*) FROM intake_projects p`+where, args...).Scan(&total); e != nil {
-		return nil, 0, e
+		return nil, 0, asOf, e
 	}
 	sort := `p.updated_at DESC`
-	if params["sort"] == "name" {
+	switch params["sort"] {
+	case "", "updated":
+	case "name":
 		sort = `p.project_name ASC`
+	case "followup":
+		sort = `p.next_followup_at ASC NULLS LAST`
+	default:
+		return nil, 0, asOf, listError("排序方式不正确")
 	}
 	page, _ := strconv.Atoi(params["page"])
 	if page < 1 {
@@ -193,28 +247,28 @@ func (a *App) list(ctx context.Context, u User, params map[string]string) ([]Pro
 	args = append(args, size, (page-1)*size)
 	rows, e := a.db.Query(ctx, `SELECT `+columns+` FROM intake_projects p`+where+` ORDER BY `+sort+`,p.id LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
 	if e != nil {
-		return nil, 0, e
+		return nil, 0, asOf, e
 	}
 	defer rows.Close()
 	out := []Project{}
 	for rows.Next() {
 		p, e := scan(rows)
 		if e != nil {
-			return nil, 0, e
+			return nil, 0, asOf, e
 		}
 		out = append(out, p)
 	}
 	err := rows.Err()
 	rows.Close()
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, asOf, err
 	}
 	ptrs := make([]*Project, len(out))
 	for i := range out {
 		ptrs[i] = &out[i]
 	}
 	if err = a.batchHints(ctx, a.db, u, ptrs); err != nil {
-		return nil, 0, err
+		return nil, 0, asOf, err
 	}
-	return out, total, nil
+	return out, total, asOf, nil
 }

@@ -88,9 +88,9 @@ test('flow: draft, edit, submit, preview, followup, list, actions', async ({ pag
   await expect(
     page.getByRole('heading', { name: 'Synthetic 电话确认', exact: true })
   ).toBeVisible();
-  await action(page, 'project.tab').filter({ hasText: '审计历史' }).click();
+  await action(page, 'project.tab').filter({ hasText: '操作审计' }).click();
   await expect(page.getByText('记录跟进', { exact: true }).last()).toBeVisible();
-  await action(page, 'project.tab').filter({ hasText: '概况' }).click();
+  await action(page, 'project.tab').filter({ hasText: '项目概要' }).click();
   await expect(page.getByText('发送 synthetic 方案', { exact: true })).toBeVisible();
   await action(page, 'nav.open').filter({ hasText: '返回我的报备' }).click();
   await page.getByRole('textbox', { name: '搜索报备', exact: true }).fill(name);
@@ -188,7 +188,7 @@ test('pagination and read-only navigation actions', async ({ page }, info) => {
   await expect(page.locator('.pagination')).toContainText('第 1 页');
   await action(page, 'project.preview').first().click();
   await action(page, 'project.detail').click();
-  for (const tab of ['关系方', '设备与需求', '跟进记录', '重复与审批', '审计历史']) {
+  for (const tab of ['设备与技术需求', '跟进时间线', '审批和重复风险', '归属历史', '操作审计']) {
     await action(page, 'project.tab').filter({ hasText: tab }).click();
     await expect(page.locator('.detail-body')).toBeVisible();
   }

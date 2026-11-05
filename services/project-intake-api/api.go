@@ -121,11 +121,16 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 			for k, v := range r.URL.Query() {
 				params[k] = v[0]
 			}
-			items, total, e := a.list(ctx, u, params)
+			items, total, asOf, e := a.listAt(ctx, u, params)
+			var le listError
+			if errors.As(e, &le) {
+				fail(w, 400, "INVALID_FILTER", le.Error())
+				return nil
+			}
 			if e != nil {
 				return e
 			}
-			respond(w, 200, map[string]any{"items": items, "total": total})
+			respond(w, 200, map[string]any{"items": items, "total": total, "asOf": asOf})
 			return nil
 		}
 		if method == "POST" {

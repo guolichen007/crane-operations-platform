@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
 import { useApp } from './store';
+import { hintReason, recovery } from './reasons';
 import { type Project, statuses, stages, sources, confidences, when } from './model';
 import ActionButton from './ActionButton.vue';
 import Modal from './Modal.vue';
@@ -58,7 +59,11 @@ async function decide() {
     body.caseId = caseId.value;
     body.relatedVersions = Object.fromEntries(cases.value.filter((c) => c.candidate).map((c) => [c.candidate!.id, c.candidate!.version]));
   }
-  await app.api(`/api/v1/projects/${selected.value.id}/${endpoint}`, 'POST', body);
+  try {
+    await app.api(`/api/v1/projects/${selected.value.id}/${endpoint}`, 'POST', body);
+  } catch (e) {
+    throw new Error(recovery(e).message);
+  }
   operation.value = '';
   selected.value = null;
   app.toast('审核结论已保存，列表已更新');
@@ -90,7 +95,6 @@ const fields = [
 <template>
   <div class="page-heading">
     <div>
-      <div class="eyebrow">GOVERNANCE / 项目治理</div>
       <h1>
         {{ comparison ? '重复处理' : '报备审核' }} <small>{{ total }}</small>
       </h1>
@@ -151,7 +155,8 @@ const fields = [
   >
     <template v-if="selected">
       <h2>{{ selected.projectName }}</h2>
-      <p class="muted">{{ selected.registrationNo }}</p>
+      <p class="muted">{{ selected.registrationNo }} · 负责人 {{ selected.ownerName || '姓名待核对' }}</p>
+      <p v-if="selected.review && !selected.review.eligible" class="review-eligibility" role="status">{{ hintReason({ allowed: false, reasonCode: selected.review.reasonCode }) }}</p>
       <template v-for="c in cases" :key="c.id">
         <div class="note">
           {{ c.risk==='HIGH'?'高风险':'疑似重复' }} · {{ c.score }} 分 · {{ c.signals.join(' / ') || '历史候选' }} ·
@@ -177,16 +182,16 @@ const fields = [
         <div v-if="c.decision === 'PENDING'" class="actions">
           <ActionButton
             action-id="duplicate.confirm"
-            :disabled="c.restricted"
-            reason="跨团队候选需销售总监处理"
+            :disabled="c.restricted || !selected.actions?.['duplicate-decisions']?.allowed"
+            :reason="c.restricted ? '跨团队候选需销售总监处理' : hintReason(selected.actions?.['duplicate-decisions'])"
             :run="() => prompt('duplicate.confirm', c.id)"
           >
             确认重复
           </ActionButton><ActionButton
             action-id="duplicate.dismiss"
             primary
-            :disabled="cases.some((x) => x.decision === 'PENDING' && x.restricted)"
-            reason="存在不可见候选，需总监核验"
+            :disabled="cases.some((x) => x.decision === 'PENDING' && x.restricted) || !selected.actions?.['duplicate-decisions']?.allowed"
+            :reason="hintReason(selected.actions?.['duplicate-decisions'], '存在不可见候选，需总监核验')"
             :run="() => prompt('duplicate.dismiss', c.id)"
           >
             不是重复并批准
@@ -205,25 +210,22 @@ const fields = [
         <ActionButton
           action-id="review.approve"
           primary
-          :disabled="
-            !['SUBMITTED', 'UNDER_REVIEW'].includes(selected.intakeStatus) ||
-              cases.some((c) => c.decision === 'PENDING')
-          "
-          reason="仅待审核项目可批准；重复候选必须先裁决"
+          :disabled="!selected.actions?.approve?.allowed"
+          :reason="hintReason(selected.actions?.approve)"
           :run="() => prompt('approve')"
         >
           批准
         </ActionButton><ActionButton
           action-id="review.return"
-          :disabled="!['SUBMITTED', 'UNDER_REVIEW'].includes(selected.intakeStatus)"
-          reason="当前状态不可退回"
+          :disabled="!selected.actions?.return?.allowed"
+          :reason="hintReason(selected.actions?.return)"
           :run="() => prompt('return')"
         >
           退回补充
         </ActionButton><ActionButton
           action-id="review.reject"
-          :disabled="!['SUBMITTED', 'UNDER_REVIEW'].includes(selected.intakeStatus)"
-          reason="当前状态不可拒绝"
+          :disabled="!selected.actions?.reject?.allowed"
+          :reason="hintReason(selected.actions?.reject)"
           :run="() => prompt('reject')"
         >
           拒绝

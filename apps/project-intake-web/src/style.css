@@ -1871,3 +1871,84 @@ td small {
     padding-bottom: 170px;
   }
 }
+
+/* G2 project center and detail. */
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 3px;
+  background: var(--steel);
+  margin-bottom: 8px;
+}
+.segmented button {
+  border: 0;
+  background: transparent;
+  min-height: 32px;
+}
+.segmented .selected {
+  background: var(--surface);
+  color: var(--blue);
+  font-weight: 600;
+  box-shadow: 0 0 0 1px var(--rule);
+}
+.window-note {
+  font-size: 13px;
+  margin: 4px 0 16px;
+}
+td.unassigned,
+.owner-tag.unassigned {
+  color: var(--amber-ink);
+}
+.owner-tag {
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.owner-tag.unassigned {
+  background: var(--amber-wash);
+  padding: 2px 8px;
+  border-radius: var(--radius);
+}
+.governance-bar {
+  margin-bottom: 20px;
+}
+.equipment-table {
+  white-space: normal;
+  font-size: 14px;
+  margin: 16px 0;
+}
+.equipment-table td,
+.equipment-table th {
+  height: auto;
+  padding: 8px 10px;
+}
+.review-eligibility {
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--amber);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin: 12px 0 16px;
+  background: var(--amber-wash);
+  color: var(--amber-ink);
+}
+.review-eligibility.ok {
+  border-left-color: var(--done);
+  background: var(--done-wash);
+  color: var(--done);
+}
+.review-eligibility ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: var(--ink-2);
+  font-size: 14px;
+}
+.form-alert button {
+  margin-left: 8px;
+  min-height: 30px;
+}
+@media (max-width: 700px) {
+  .equipment-table {
+    display: block;
+    overflow-x: auto;
+  }
+}

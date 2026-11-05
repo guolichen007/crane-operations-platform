@@ -107,6 +107,10 @@
                     },
                     "total": {
                       "type": "integer"
+                    },
+                    "asOf": {
+                      "type": "string",
+                      "format": "date-time"
                     }
                   }
                 }
@@ -114,7 +118,7 @@
             }
           },
           "400": {
-            "description": "输入错误",
+            "description": "筛选条件不支持或格式错误（INVALID_FILTER）",
             "content": {
               "application/json": {
                 "schema": {
@@ -145,13 +149,25 @@
             "in": "query",
             "schema": {
               "type": "string"
-            }
+            },
+            "description": "客户、项目名称或报备编号"
           },
           {
             "name": "status",
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "DRAFT",
+                "SUBMITTED",
+                "UNDER_REVIEW",
+                "APPROVED",
+                "RETURNED",
+                "REJECTED",
+                "EXPIRED",
+                "CANCELLED",
+                "CONVERTED"
+              ]
             }
           },
           {
@@ -172,14 +188,20 @@
             "name": "updatedAfter",
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "format": "date-time"
             }
           },
           {
             "name": "sort",
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "updated",
+                "name",
+                "followup"
+              ]
             }
           },
           {
@@ -194,16 +216,57 @@
             "in": "query",
             "schema": {
               "type": "string"
-            }
+            },
+            "description": "1–100，默认20"
           },
           {
             "name": "due",
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "true"
+              ]
+            },
+            "description": "兼容：下次跟进早于asOf+7天"
+          },
+          {
+            "name": "followup",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "overdue",
+                "upcoming"
+              ]
+            },
+            "description": "overdue: next_followup_at < asOf；upcoming: asOf ≤ next_followup_at < asOf+7天；两者不重叠"
+          },
+          {
+            "name": "assignment",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "assigned",
+                "unassigned"
+              ]
+            },
+            "description": "待分配草稿仅管理员范围可见"
+          },
+          {
+            "name": "review",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "protection"
+              ]
             }
           }
-        ]
+        ],
+        "description": "统一ProjectPolicy范围内的列表。仅接受白名单筛选，未知参数或非法取值返回400 INVALID_FILTER。时间窗口共用响应中的asOf。"
       },
       "post": {
         "operationId": "projects.create",

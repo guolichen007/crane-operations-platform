@@ -102,7 +102,7 @@ test('B2 manager approve return reject duplicate comparison and transfer', async
   await page.locator('[name=targetOwner]').selectOption('synthetic-b');
   await page.locator('[name=governanceReason]').fill('Synthetic主管转移归属');
   await action(page, 'governance.confirm').click();
-  await action(page, 'project.tab').filter({ hasText: '审计历史' }).click();
+  await action(page, 'project.tab').filter({ hasText: '操作审计' }).click();
   await expect(page.locator('.detail-body')).toContainText('Synthetic主管转移归属');
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
   await action(page, 'auth.logout').click();

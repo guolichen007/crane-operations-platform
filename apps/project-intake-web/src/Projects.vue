@@ -4,6 +4,8 @@ import { useRouter, useRoute } from 'vue-router';
 import { Search, SlidersHorizontal, ArrowUpRight } from '@lucide/vue';
 import { useApp } from './store';
 import { type Project, statuses, stages, when } from './model';
+import { projectScopeLabel, can } from './navigation';
+import { recovery } from './reasons';
 import ActionButton from './ActionButton.vue';
 import Modal from './Modal.vue';
 const app = useApp(),
@@ -11,8 +13,9 @@ const app = useApp(),
   route = useRoute(),
   items = ref<Project[]>([]),
   total = ref(0),
+  asOf = ref(''),
   q = ref(String(route.query.q || '')),
-  status = ref(''),
+  status = ref(String(route.query.status || '')),
   stage = ref(''),
   province = ref(''),
   after = ref(''),
@@ -22,37 +25,59 @@ const app = useApp(),
   columns = ref(false),
   showLocation = ref(true),
   showOwner = ref(true),
-  loading = ref(false);
+  loading = ref(false),
+  failure = ref(''),
+  followup = ref<'overdue' | 'upcoming'>(route.query.window === 'upcoming' ? 'upcoming' : 'overdue');
 let generation = 0;
-const pipeline = computed(() => route.path === '/pipeline');
+const view = computed(() =>
+  route.path === '/pipeline' ? 'pipeline' : route.path === '/followups' ? 'followups' : route.path === '/unassigned' ? 'unassigned' : 'projects'
+);
+const scopeName = computed(() => projectScopeLabel(app.user));
+const scopeNote = computed(
+  () =>
+    ({
+      baobei_sales: '范围：你负责的项目',
+      baobei_manager: '范围：本团队已分配项目',
+      baobei_director: '范围：全部已分配项目',
+      baobei_admin: '范围：全部项目，含待分配草稿',
+    })[app.user?.role || ''] || ''
+);
+const title = computed(
+  () =>
+    ({ pipeline: '项目管道', followups: '待跟进', unassigned: '待分配草稿', projects: scopeName.value })[view.value]
+);
 async function load() {
   const n = ++generation;
   loading.value = true;
+  failure.value = '';
   try {
-    const params = new URLSearchParams({
-      q: q.value,
-      status: status.value,
-      stage: stage.value,
-      province: province.value,
-      sort: sort.value,
-      page: String(page.value),
-      pageSize: '20',
-      due: String(route.path === '/followups'),
-    });
+    const params = new URLSearchParams({ page: String(page.value), pageSize: '20' });
+    const set = (k: string, v: string) => v && params.set(k, v);
+    set('q', q.value);
+    set('status', status.value);
+    set('stage', stage.value);
+    set('province', province.value);
+    if (sort.value !== 'updated') params.set('sort', sort.value);
     if (after.value) params.set('updatedAfter', new Date(after.value).toISOString());
-    const b = await app.api<{ items: Project[]; total: number }>('/api/v1/projects?' + params);
+    if (view.value === 'followups') {
+      params.set('followup', followup.value);
+      params.set('sort', 'followup');
+    }
+    if (view.value === 'unassigned') params.set('assignment', 'unassigned');
+    const b = await app.api<{ items: Project[]; total: number; asOf: string }>('/api/v1/projects?' + params);
     if (n === generation) {
       items.value = b.items;
       total.value = b.total;
+      asOf.value = b.asOf;
     }
   } catch (e) {
-    app.error = (e as Error).message;
+    if (n === generation) failure.value = recovery(e).message;
   } finally {
     if (n === generation) loading.value = false;
   }
 }
 let timer: ReturnType<typeof setTimeout>;
-watch([q, status, stage, province, after, sort], () => {
+watch([q, status, stage, province, after, sort, followup], () => {
   page.value = 1;
   clearTimeout(timer);
   timer = setTimeout(load, 250);
@@ -66,35 +91,43 @@ void load();
 async function open(p: Project) {
   preview.value = await app.api<Project>('/api/v1/projects/' + p.id);
 }
+const owner = (p: Project) => (!p.ownerSubject ? '待分配' : p.ownerSubject === app.user?.subject ? '我' : p.ownerName || '姓名待核对');
+const asOfText = computed(() => (asOf.value ? new Date(asOf.value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''));
 </script>
 <template>
   <div class="page-heading">
     <div>
-      <div class="eyebrow">PROJECTS / 项目管理</div>
       <h1>
-        {{ pipeline ? '项目管道' : route.path === '/followups' ? '待跟进' : '我的报备' }}
-        <small>{{ total }}</small>
+        {{ title }} <small>{{ total }}</small>
       </h1>
       <p class="muted">
-        {{ pipeline ? '按销售阶段查看项目进展。' : '集中管理客户需求，让每个机会都有迹可循。' }}
+        {{ scopeNote }}<template v-if="asOfText"> · 统计时间 {{ asOfText }}</template>
       </p>
     </div>
-    <ActionButton v-if="pipeline" action-id="nav.open" :run="() => router.push('/projects')">
-      列表视图
-    </ActionButton>
+    <div class="actions">
+      <ActionButton v-if="view === 'pipeline'" action-id="nav.open" :run="() => router.push('/projects')">列表视图</ActionButton>
+      <ActionButton v-if="view === 'unassigned' && can(app.user, 'project.create')" action-id="project.create" primary :run="() => router.push('/new')">新建项目</ActionButton>
+    </div>
   </div>
+  <div v-if="view === 'followups'" class="segmented" role="tablist" aria-label="跟进时间窗口">
+    <ActionButton action-id="followup.window" role="tab" :aria-selected="followup === 'overdue'" :class="{ selected: followup === 'overdue' }" :run="() => { followup = 'overdue'; }">已逾期</ActionButton>
+    <ActionButton action-id="followup.window" role="tab" :aria-selected="followup === 'upcoming'" :class="{ selected: followup === 'upcoming' }" :run="() => { followup = 'upcoming'; }">未来 7 天</ActionButton>
+  </div>
+  <p v-if="view === 'followups'" class="muted window-note">
+    {{ followup === 'overdue' ? '下次跟进时间早于统计时间的项目。' : '下次跟进时间在统计时间起 7 天内的项目，与“已逾期”不重叠。' }}
+  </p>
   <div class="filterbar">
-    <label class="search-field"><Search :size="16" /><input
+    <label class="search-field"><Search :size="16" aria-hidden="true" /><input
       v-model="q"
       aria-label="搜索报备"
-      placeholder="搜索客户或项目…"
+      placeholder="客户、项目或报备编号"
     /></label><select v-model="status" aria-label="报备状态筛选">
       <option value="">全部状态</option>
       <option v-for="(label, key) in statuses" :key="key" :value="key">{{ label }}</option>
     </select><select v-model="stage" aria-label="阶段筛选">
       <option value="">全部阶段</option>
       <option v-for="(label, key) in stages" :key="key" :value="key">{{ label }}</option>
-    </select><input v-model="province" aria-label="地区筛选" placeholder="省份" /><input
+    </select><input v-model="province" aria-label="省份筛选" placeholder="省份" /><input
       v-model="after"
       type="date"
       aria-label="更新时间起"
@@ -106,7 +139,7 @@ async function open(p: Project) {
         }
       "
     >
-      {{ sort === 'name' ? '名称 ↑' : '最近更新 ↓' }}
+      {{ sort === 'name' ? '按名称' : '按最近更新' }}
     </ActionButton><ActionButton
       action-id="project.columns"
       :run="
@@ -115,100 +148,104 @@ async function open(p: Project) {
         }
       "
     >
-      <SlidersHorizontal :size="15" />列
+      <SlidersHorizontal :size="15" aria-hidden="true" />列
     </ActionButton>
   </div>
   <div v-if="columns" class="column-settings">
     <label><input v-model="showLocation" type="checkbox" />地区</label><label><input v-model="showOwner" type="checkbox" />负责人</label>
   </div>
   <p v-if="loading" role="status" class="muted">正在加载报备…</p>
-  <div v-if="pipeline" class="pipeline">
-    <section v-for="(label, key) in stages" :key="key">
-      <h3>
-        {{ label }} <small>{{ items.filter((p) => p.salesStage === key).length }}</small>
-      </h3>
-      <ActionButton
-        v-for="p in items.filter((p) => p.salesStage === key)"
-        :key="p.id"
-        action-id="project.preview"
-        :run="() => open(p)"
-      >
-        <strong>{{ p.projectName || '未命名草稿' }}</strong><small>{{ p.customer }}</small><span class="badge">{{ statuses[p.intakeStatus] }}</span>
-      </ActionButton>
-    </section>
+  <div v-if="failure" class="form-alert" role="alert">
+    {{ failure }} <ActionButton action-id="project.reload" :run="load">重新加载</ActionButton>
   </div>
   <template v-else>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>报备编号 / 客户</th>
-            <th>项目名称</th>
-            <th v-if="showLocation">地区</th>
-            <th>销售阶段</th>
-            <th>报备状态</th>
-            <th v-if="showOwner">负责人</th>
-            <th>最近跟进 / 下一步</th>
-            <th>更新时间</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="p in items"
+    <div v-if="view === 'pipeline'">
+      <p class="note">G2 管道仅展示当前页 {{ items.length }} / 共 {{ total }} 项，按阶段分组；各阶段全量计数与逐栏分页在后续批次提供。</p>
+      <div class="pipeline">
+        <section v-for="(label, key) in stages" :key="key">
+          <h3>
+            {{ label }} <small>本页 {{ items.filter((p) => p.salesStage === key).length }}</small>
+          </h3>
+          <ActionButton
+            v-for="p in items.filter((p) => p.salesStage === key)"
             :key="p.id"
-            tabindex="0"
-            data-action-id="project.preview"
-            :aria-label="'预览 ' + p.projectName"
-            @click="open(p)"
-            @keydown.enter="open(p)"
-            @keydown.space.prevent="open(p)"
+            action-id="project.preview"
+            :run="() => open(p)"
           >
-            <td>
-              <span class="mono">{{ p.registrationNo }}</span><small>{{ p.customer || '待填写客户' }}</small>
-            </td>
-            <td class="project-cell">{{ p.projectName || '未命名草稿' }}</td>
-            <td v-if="showLocation">{{ p.location.province }} {{ p.location.city }}</td>
-            <td>{{ stages[p.salesStage] }}</td>
-            <td>
-              <span :class="['badge', p.intakeStatus.toLowerCase()]">{{
-                statuses[p.intakeStatus]
-              }}</span>
-            </td>
-            <td v-if="showOwner">
-              {{ p.ownerSubject === app.user?.subject ? '我' : p.ownerSubject }}
-            </td>
-            <td>
-              {{ when(p.lastActivityAt) }}<small>{{ p.nextAction || '尚未记录下一步' }}</small>
-            </td>
-            <td class="muted">{{ when(p.updatedAt) }}</td>
-            <td @click.stop>
-              <ActionButton action-id="project.preview" :run="() => open(p)" aria-label="预览项目">
-                <ArrowUpRight :size="15" />
-              </ActionButton>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+            <strong>{{ p.projectName || '未命名草稿' }}</strong><small>{{ p.customer }}</small><span class="badge">{{ statuses[p.intakeStatus] }}</span>
+          </ActionButton>
+        </section>
+      </div>
     </div>
-    <div class="mobile-projects">
-      <ActionButton
-        v-for="p in items"
-        :key="p.id"
-        action-id="project.preview"
-        class="project-card"
-        :run="() => open(p)"
-      >
-        <span class="mono">{{ p.registrationNo }}</span><strong>{{ p.projectName || '未命名草稿' }}</strong><span>{{ p.customer }}</span><span class="card-meta"><span class="badge">{{ statuses[p.intakeStatus] }}</span>{{ stages[p.salesStage] }} · {{ p.location.city }}</span><small>下一步：{{ p.nextAction || '尚未记录' }}</small>
-      </ActionButton>
+    <template v-else>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>报备编号 / 客户</th>
+              <th>项目名称</th>
+              <th v-if="showLocation">地区</th>
+              <th>销售阶段</th>
+              <th>报备状态</th>
+              <th v-if="showOwner">负责人</th>
+              <th>下次跟进 / 下一步</th>
+              <th>更新时间</th>
+              <th><span class="sr-only">操作</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="p in items"
+              :key="p.id"
+              tabindex="0"
+              data-action-id="project.preview"
+              :aria-label="'预览 ' + (p.projectName || '未命名草稿')"
+              @click="open(p)"
+              @keydown.enter="open(p)"
+              @keydown.space.prevent="open(p)"
+            >
+              <td>
+                <span class="mono">{{ p.registrationNo }}</span><small>{{ p.customer || '待填写客户' }}</small>
+              </td>
+              <td class="project-cell">{{ p.projectName || '未命名草稿' }}</td>
+              <td v-if="showLocation">{{ p.location.province }} {{ p.location.city }}</td>
+              <td>{{ stages[p.salesStage] }}</td>
+              <td>
+                <span :class="['badge', p.intakeStatus.toLowerCase()]">{{ statuses[p.intakeStatus] }}</span>
+              </td>
+              <td v-if="showOwner" :class="{ unassigned: !p.ownerSubject }">{{ owner(p) }}</td>
+              <td>
+                {{ when(p.nextFollowupAt) }}<small>{{ p.nextAction || '尚未记录下一步' }}</small>
+              </td>
+              <td class="muted">{{ when(p.updatedAt) }}</td>
+              <td @click.stop>
+                <ActionButton action-id="project.preview" :run="() => open(p)" aria-label="预览项目">
+                  <ArrowUpRight :size="15" aria-hidden="true" />
+                </ActionButton>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="mobile-projects">
+        <ActionButton
+          v-for="p in items"
+          :key="p.id"
+          action-id="project.preview"
+          class="project-card"
+          :run="() => open(p)"
+        >
+          <span class="mono">{{ p.registrationNo }}</span><strong>{{ p.projectName || '未命名草稿' }}</strong><span>{{ p.customer }}</span><span class="card-meta"><span class="badge">{{ statuses[p.intakeStatus] }}</span>{{ stages[p.salesStage] }} · {{ owner(p) }}</span><small>下一步：{{ p.nextAction || '尚未记录' }}</small>
+        </ActionButton>
+      </div>
+    </template>
+    <div v-if="!items.length && !loading" class="empty">
+      <h2>{{ q || status || stage || province || after ? '没有符合筛选条件的项目' : view === 'unassigned' ? '没有待分配草稿' : view === 'followups' ? (followup === 'overdue' ? '没有逾期的跟进' : '未来 7 天没有安排跟进') : '还没有项目' }}</h2>
+      <p class="muted">{{ q || status || stage || province || after ? '调整或清空筛选条件后再试。' : '新建报备后会出现在这里。' }}</p>
     </div>
   </template>
-  <div v-if="!items.length && !loading" class="empty">
-    <h2>还没有匹配的报备</h2>
-    <p class="muted">调整筛选条件，或从右上角新建报备。</p>
-  </div>
   <div class="pagination">
-    <span class="muted">共 {{ total }} 项 · 第 {{ page }} 页{{ pipeline ? ' · 管道展示当前页' : '' }}</span><ActionButton
+    <span class="muted">共 {{ total }} 项 · 第 {{ page }} 页 · 本页 {{ items.length }} 项</span><ActionButton
       action-id="project.page-prev"
       :disabled="page === 1 || loading"
       reason="已经是第一页或正在加载"
@@ -247,6 +284,8 @@ async function open(p: Project) {
         <span class="badge">{{ statuses[preview.intakeStatus] }}</span><span class="badge">{{ stages[preview.salesStage] }}</span>
       </div>
       <dl>
+        <dt>负责人</dt>
+        <dd>{{ owner(preview) }}</dd>
         <dt>位置</dt>
         <dd>
           {{ preview.location.province }} {{ preview.location.city }}
@@ -254,8 +293,8 @@ async function open(p: Project) {
         </dd>
         <dt>主要需求</dt>
         <dd>{{ preview.requirementNotes || '尚未填写' }}</dd>
-        <dt>最近跟进</dt>
-        <dd>{{ when(preview.lastActivityAt) }}</dd>
+        <dt>下次跟进</dt>
+        <dd>{{ when(preview.nextFollowupAt) }}</dd>
         <dt>下一步</dt>
         <dd>{{ preview.nextAction || '尚未记录' }}</dd>
       </dl>
@@ -271,7 +310,7 @@ async function open(p: Project) {
             }
           "
         >
-          打开完整详情 <ArrowUpRight :size="15" />
+          打开完整详情 <ArrowUpRight :size="15" aria-hidden="true" />
         </ActionButton><ActionButton
           action-id="project.preview-close"
           :run="
