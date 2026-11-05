@@ -167,3 +167,28 @@ func itoa(v int64) string {
 	b, _ := json.Marshal(v)
 	return string(b)
 }
+
+// The equipment type dictionary requires a session and lists only types that are
+// both in the code-owned registry and ACTIVE in equipment_types, with the
+// registry's Chinese name (not the DB display_name).
+func TestHTTPEquipmentTypesDictionary(t *testing.T) {
+	p := newPatchFixture(t)
+	if _, err := p.f.db.Exec(`INSERT INTO equipment_types(type_code,display_name,domain,spec_schema_version,status) VALUES
+	  ('MOTOR','Motor','MECHANICAL','1','ACTIVE'),('PLC','PLC','CONTROL','1','DISABLED'),('NOT_IN_REGISTRY','X','OTHER','1','ACTIVE')`); err != nil {
+		t.Fatal(err)
+	}
+	if w := p.f.doBody(nil, "", "GET", "/api/v1/equipment/types", nil, nil); w.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous = %d, want 401", w.Code)
+	}
+	w := p.f.doBody(p.cookie, "", "GET", "/api/v1/equipment/types", nil, nil)
+	if w.Code != 200 {
+		t.Fatalf("types = %d", w.Code)
+	}
+	var types []struct{ TypeCode, DisplayName, Domain string }
+	if err := json.Unmarshal(w.Body.Bytes(), &types); err != nil {
+		t.Fatalf("decode: %v %s", err, w.Body.String())
+	}
+	if len(types) != 1 || types[0].TypeCode != "MOTOR" || types[0].DisplayName != "电机" || types[0].Domain != "MECHANICAL" {
+		t.Fatalf("types = %s, want only MOTOR/电机 (PLC disabled, NOT_IN_REGISTRY unregistered)", w.Body.String())
+	}
+}

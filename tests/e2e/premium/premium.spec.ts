@@ -131,9 +131,13 @@ for (const width of [1920, 1366]) {
         window.__spatialDiagnostics().adcode === 100000
     );
     await expect(page.locator('.scene-loading')).toBeHidden();
-    // Only implemented business pages are exposed: the demo /analytics link and
-    // the 收藏/最近/设置/帮助 placeholders are no longer reachable entries.
-    await expect(page.locator('.side-rail nav a')).toHaveCount(6);
+    // Only implemented business pages are exposed, each exactly once: the demo
+    // /analytics link and the 收藏/最近/设置/帮助 placeholders are not reachable
+    // entries, and 资产台账 is not duplicated by a second top-level 资产 link.
+    const hrefs = await page.locator('.side-rail nav a').evaluateAll((as) => as.map((a) => a.getAttribute('href')));
+    expect(hrefs.sort()).toEqual(
+      ['#/overview', '#/portfolio', '#/projects', '#/assets', '#/locations', '#/catalog', '#/runtime', '#/alarms'].sort()
+    );
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
     await screenshot(page, 'overview-viewer-' + width);
     await page.goto('/#/alarms');

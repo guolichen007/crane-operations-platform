@@ -60,6 +60,7 @@ func TestAssetCoreRoutesRegistered(t *testing.T) {
 		{"GET", "/api/v1/manufacturers/abc"},
 		{"PATCH", "/api/v1/manufacturers/abc"},
 		{"POST", "/api/v1/manufacturers/abc/disable"},
+		{"GET", "/api/v1/equipment/types"},
 		{"GET", "/api/v1/equipment/catalog"},
 		{"POST", "/api/v1/equipment/catalog"},
 		{"GET", "/api/v1/equipment/catalog/abc"},

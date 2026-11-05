@@ -8,7 +8,7 @@ import { ApiError } from '../cloud/client';
 import { allowClose } from '../cloud/draft';
 import { webSession, productionAuth } from '../cloud/session';
 import { writableProjects } from '../cloud/auth-state';
-import { scopeFromQuery, projectLabel, scopeKey, scopeState } from '../cloud/project-scope';
+import { scopeFromQuery, projectLabel, scopeKey, scopeState, ledgerQueryFrom, rememberLedgerQuery } from '../cloud/project-scope';
 import type { AssetMasterData } from '../../../../contracts/typescript/types.gen';
 
 const router = useRouter();
@@ -26,13 +26,17 @@ const scopeAuthorized = computed(() => state.value !== 'unauthorized');
 const writable = computed(() => writableProjects(webSession.value));
 const canCreate = computed(() => writable.value.length > 0);
 
-const q = ref('');
-const status = ref('');
-const type = ref('');
-const sort = ref('');
-const page = ref(0);
+// Search / filters / page live in the URL (?q=&status=&type=&sort=&page=) so
+// the asset detail's 返回 and browser history restore the same ledger view.
+const initial = ledgerQueryFrom(route.query);
+const q = ref(initial.q ?? '');
+const status = ref(initial.status ?? '');
+const type = ref(initial.type ?? '');
+const sort = ref(initial.sort ?? '');
+const initialPage = Number(initial.page);
+const page = ref(Number.isInteger(initialPage) && initialPage > 1 ? initialPage - 1 : 0);
 const limit = 50;
-const applied = ref({ q: '', status: '', type: '', sort: '' });
+const applied = ref({ q: q.value, status: status.value, type: type.value, sort: sort.value });
 const creating = ref(false);
 const formError = ref('');
 const blankAsset = (): Partial<AssetMasterData> => ({ projectId: '', displayName: '', assetType: 'CRANE' });
@@ -60,6 +64,17 @@ const params = computed(() => ({
 watch(scopedProject, () => {
   page.value = 0;
 });
+watch([applied, page], () => {
+  if (route.path !== '/assets') return;
+  const query: Record<string, string> = {};
+  if (scopedProject.value) query.project = scopedProject.value;
+  for (const [k, v] of Object.entries(applied.value)) if (v) query[k] = v;
+  if (page.value > 0) query.page = String(page.value + 1);
+  void router.replace({ path: '/assets', query });
+});
+watch(() => route.query, (query) => {
+  if (route.path === '/assets') rememberLedgerQuery(query);
+}, { immediate: true });
 
 const assetsQuery = useQuery({
   queryKey: computed(() => ['assets', scopeKey(scopedProject.value), params.value]),

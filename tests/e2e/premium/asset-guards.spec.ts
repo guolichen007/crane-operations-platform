@@ -6,7 +6,7 @@ import { test, expect, type Page } from '@playwright/test';
 const session = { userId: 'u', displayName: 'admin', projects: [{ projectId: 'P001', projectName: 'Project-A', role: 'platform_admin' }], csrfToken: 'x', expiresAt: '2099-01-01T00:00:00Z', idleExpiresAt: '2099-01-01T00:00:00Z' };
 const base = { id: 'A1', projectId: 'P001', displayName: '原名', assetCode: 'C1', assetType: 'CRANE', assetStatus: 'DRAFT', manufacturerId: null, manufacturerSnapshot: '', brandSnapshot: '', modelSnapshot: '', serialNumber: null, manufactureDate: null, installationDate: null, commissioningDate: null, liftingHeightM: null, applicationType: null, controlMode: null, version: 1, specialEquipmentCode: null, useRegistrationNo: null };
 type Reply = { status: number; json: unknown };
-async function mock(page: Page, onPatch: () => Promise<Reply>) {
+async function mock(page: Page, onPatch: () => Promise<Reply>, opts: { equipmentFails?: boolean } = {}) {
   let server: unknown = { ...base };
   await page.route('**/auth/session', (r) => r.fulfill({ json: session }));
   await page.route('**/api/v1/**', async (r) => {
@@ -15,7 +15,8 @@ async function mock(page: Page, onPatch: () => Promise<Reply>) {
     if (u.pathname === '/api/v1/assets/A1') return r.fulfill({ json: server });
     if (u.pathname === '/api/v1/assets') return r.fulfill({ json: [server] });
     if (m === 'POST' && u.pathname === '/api/v1/assets/A1/equipment') { await new Promise((x) => setTimeout(x, 1500)); return r.fulfill({ status: 422, json: { error: 'spec invalid' } }); }
-    if (u.pathname.startsWith('/api/v1/assets/A1/equipment')) return r.fulfill({ json: [] });
+    if (u.pathname === '/api/v1/equipment/types') return r.fulfill({ json: [{ typeCode: 'MOTOR', displayName: '电机', domain: 'MECHANICAL', specSchemaVersion: '1', status: 'ACTIVE' }] });
+    if (u.pathname.startsWith('/api/v1/assets/A1/equipment')) return opts.equipmentFails ? r.fulfill({ status: 503, json: { error: 'database unavailable' } }) : r.fulfill({ json: [] });
     return r.fulfill({ json: [] });
   });
   return { set: (v: unknown) => (server = v) };
@@ -80,6 +81,7 @@ test('Equipment 安装：干净关闭不提示、有输入需确认、提交中�
   await page.locator('.modal-backdrop').click({ position: { x: 5, y: 5 } });
   await form.getByRole('button', { name: '取消' }).click();
   expect(prompts).toBe(3);
+  await expect(form.getByLabel('设备类型选择').locator('option', { hasText: '电机（MOTOR）' })).toHaveCount(1);
   await form.getByLabel('设备类型选择').selectOption('MOTOR');
   await form.getByRole('button', { name: '安装' }).click();
   await expect(form.getByRole('button', { name: '安装中…' })).toBeDisabled();
@@ -102,4 +104,30 @@ test('新建资产表单：干净关闭不提示，有输入时 Esc/切路由需
   await page.evaluate(() => (location.hash = '#/overview'));
   expect(prompts).toBe(2);
   await expect(page.getByTestId('asset-create-form')).toBeVisible();
+});
+
+test('Equipment 列表加载失败显示原位错误与重试，不显示「暂无」', async ({ page }) => {
+  await mock(page, async () => ({ status: 200, json: base }), { equipmentFails: true });
+  await page.goto('/#/assets/A1');
+  await page.locator('.tabs').getByRole('button', { name: '设备', exact: true }).click();
+  await expect(page.getByTestId('equipment-error')).toContainText('服务暂不可用');
+  await expect(page.getByTestId('equipment-error').getByRole('button', { name: '重试' })).toBeVisible();
+  await expect(page.getByTestId('equipment-empty')).toHaveCount(0);
+});
+
+test('详情返回台账恢复合法项目范围与搜索，丢弃未授权项目', async ({ page }) => {
+  await mock(page, async () => ({ status: 200, json: base }));
+  await page.goto('/#/assets?project=P001&q=C1');
+  await expect(page.locator('.asset-filters input')).toHaveValue('C1');
+  await page.getByTestId('asset-table').getByText('C1').click();
+  await expect(page.getByTestId('asset-detail')).toBeVisible();
+  await page.getByRole('button', { name: '返回' }).click();
+  await expect(page).toHaveURL(/#\/assets\?project=P001&q=C1$/);
+  await expect(page.locator('.asset-filters input')).toHaveValue('C1');
+
+  await page.goto('/#/assets?project=P999&q=C1');
+  await expect(page.getByTestId('asset-scope-unauthorized')).toBeVisible();
+  await page.goto('/#/assets/A1');
+  await page.getByRole('button', { name: '返回' }).click();
+  await expect(page).toHaveURL(/#\/assets\?q=C1$/);
 });

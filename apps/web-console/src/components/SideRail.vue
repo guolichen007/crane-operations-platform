@@ -19,33 +19,40 @@ import { productionAuth } from '../cloud/session';
 
 type NavItem = { path: string; name: string; icon: typeof Map };
 const route = useRoute();
-// Top-level business pages (one <a> each in the nav). The asset-ledger pages are a
-// separate group below, not three more top-level items.
-const primary: NavItem[] = [
+// One navigation hierarchy: every business page appears exactly once. Asset
+// management is a group (资产与设备) inside the same <nav>, between 项目 and 运营;
+// there is no separate top-level 资产 link duplicating 资产台账.
+const before: NavItem[] = [
   { path: '/overview', name: '数字沙盘', icon: Map },
   { path: '/portfolio', name: '项目组合', icon: FolderKanban },
   { path: '/projects', name: '项目', icon: BriefcaseBusiness },
-  { path: '/assets', name: '资产', icon: Container },
-  { path: '/runtime', name: '运营', icon: Gauge },
-  { path: '/alarms', name: '告警', icon: TriangleAlert },
-  ...(productionAuth ? [] : [{ path: '/analytics', name: '分析', icon: ChartColumn }] as NavItem[]),
 ];
-// Asset-management sub-pages; every child is a registered route.
 const assets: NavItem[] = [
   { path: '/assets', name: '资产台账', icon: Container },
   { path: '/locations', name: '位置中心', icon: MapPin },
   { path: '/catalog', name: '设备目录', icon: BookOpen },
+];
+const after: NavItem[] = [
+  { path: '/runtime', name: '运营', icon: Gauge },
+  { path: '/alarms', name: '告警', icon: TriangleAlert },
+  ...(productionAuth ? [] : [{ path: '/analytics', name: '分析', icon: ChartColumn }] as NavItem[]),
 ];
 
 const STORAGE_KEY = 'crane.rail.collapsed';
 const collapsed = ref(localStorage.getItem(STORAGE_KEY) === '1');
 watch(collapsed, (v) => localStorage.setItem(STORAGE_KEY, v ? '1' : '0'));
 
-// The group is active whenever one of its pages is open, and expands by default.
+// The group is active whenever one of its pages (or an asset detail) is open,
+// and is expanded by default.
 const inAssets = computed(() => assets.some((a) => route.path === a.path || route.path.startsWith(a.path + '/')));
 const assetsOpen = ref(inAssets.value || localStorage.getItem('crane.rail.assetsOpen') !== '0');
 watch(assetsOpen, (v) => localStorage.setItem('crane.rail.assetsOpen', v ? '1' : '0'));
-watch(inAssets, (v) => { if (v) assetsOpen.value = true; });
+watch(inAssets, (v) => {
+  if (v) assetsOpen.value = true;
+});
+// In the collapsed rail there is no room for a disclosure; the three pages are
+// shown as icon links (title + aria-label) so they stay reachable.
+const showChildren = computed(() => collapsed.value || assetsOpen.value);
 </script>
 <template>
   <aside class="side-rail" :class="{ collapsed }" data-testid="side-rail">
@@ -63,34 +70,43 @@ watch(inAssets, (v) => { if (v) assetsOpen.value = true; });
       </button>
     </div>
     <nav aria-label="业务导航" class="rail-nav">
-      <RouterLink
-        v-for="n in primary"
-        :key="n.name"
-        :to="n.path"
-        active-class="active"
-        :title="n.name"
+      <RouterLink v-for="n in before" :key="n.path" :to="n.path" active-class="active" :title="n.name" :aria-label="n.name"
+        ><component :is="n.icon" :size="19" :stroke-width="1.7" /><span>{{ n.name }}</span></RouterLink
+      >
+      <div class="rail-assets" :class="{ collapsed, active: inAssets }" data-testid="rail-assets">
+        <button
+          v-if="!collapsed"
+          type="button"
+          class="rail-group-toggle"
+          :aria-expanded="assetsOpen"
+          aria-controls="rail-assets-menu"
+          @click="assetsOpen = !assetsOpen"
+        >
+          <Container :size="19" :stroke-width="1.7" /><span>资产与设备</span
+          ><ChevronDown :size="14" :class="{ flipped: !assetsOpen }" />
+        </button>
+        <div
+          v-if="showChildren"
+          id="rail-assets-menu"
+          class="rail-sub"
+          role="group"
+          aria-label="资产与设备"
+        >
+          <RouterLink
+            v-for="a in assets"
+            :key="a.path"
+            :to="a.path"
+            active-class="active"
+            :title="a.name"
+            :aria-label="a.name"
+            ><component :is="a.icon" :size="collapsed ? 19 : 16" :stroke-width="1.7" /><span>{{ a.name }}</span></RouterLink
+          >
+        </div>
+      </div>
+      <RouterLink v-for="n in after" :key="n.path" :to="n.path" active-class="active" :title="n.name" :aria-label="n.name"
         ><component :is="n.icon" :size="19" :stroke-width="1.7" /><span>{{ n.name }}</span></RouterLink
       >
     </nav>
-    <!-- Asset-management group: separate from the top-level nav so the rail
-         link count stays stable; children are grouped (ledger / locations / catalog). -->
-    <div class="rail-assets" :class="{ collapsed }" data-testid="rail-assets">
-      <button
-        class="rail-group-toggle"
-        :aria-expanded="assetsOpen && !collapsed"
-        aria-label="资产与设备"
-        :title="'资产与设备'"
-        @click="assetsOpen = !assetsOpen"
-      >
-        <Container :size="19" :stroke-width="1.7" /><span v-if="!collapsed">资产与设备</span
-        ><ChevronDown v-if="!collapsed" :size="14" :class="{ flipped: !assetsOpen }" />
-      </button>
-      <div v-if="assetsOpen && !collapsed" class="rail-sub" role="group" aria-label="资产与设备子菜单">
-        <RouterLink v-for="a in assets" :key="a.path" :to="a.path" active-class="active" :title="a.name"
-          ><component :is="a.icon" :size="16" :stroke-width="1.7" /><span>{{ a.name }}</span></RouterLink
-        >
-      </div>
-    </div>
     <div class="rail-foot"><span class="rail-version-dot"></span><small v-if="!collapsed">A1.1</small></div>
   </aside>
 </template>

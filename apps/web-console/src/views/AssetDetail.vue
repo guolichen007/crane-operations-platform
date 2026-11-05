@@ -14,11 +14,14 @@ import {
   updateEquipment,
   removeEquipment,
   listAllLocations,
+  listEquipmentTypes,
+  equipmentTypeLabel,
 } from '../cloud/asset';
 import { ApiError } from '../cloud/client';
 import { webSession } from '../cloud/session';
 import { canWriteProject } from '../cloud/auth-state';
 import { useDraftSession, allowClose, allowRebase, draftText, fieldDiff, sameData } from '../cloud/draft';
+import { ledgerReturnQuery } from '../cloud/project-scope';
 import type { AssetMasterData, AssetLocation, EquipmentInstallation } from '../../../../contracts/typescript/types.gen';
 
 const route = useRoute();
@@ -242,18 +245,11 @@ onBeforeRouteLeave(() => allowClose(anyDirty.value, anyPending.value));
 // ---- Equipment install / remove (asset-scoped, never a second master data
 // set). Removal closes the validity interval; an active runtime binding is
 // refused by the backend. ----
-// Registered equipment type codes, mirroring internal/equipment specFileFor. The
-// install form never offers an unregistered code (e.g. CRANE_BRIDGE).
-const equipmentTypeCodes = [
-  'MOTOR', 'PLC', 'SAFETY_PLC', 'VFD', 'SERVO_DRIVE',
-  'LIDAR_3D', 'LIDAR_2D', 'CAMERA_RGB', 'CAMERA_DEPTH', 'CAMERA_STEREO', 'CAMERA_THERMAL',
-  'INDUSTRIAL_PC', 'EDGE_GATEWAY', 'INDUSTRIAL_SWITCH', 'POE_SWITCH',
-  'LOAD_CELL', 'IMU', 'REDUCER', 'BRAKE', 'DRUM', 'HOOK', 'GRAB', 'WHEEL', 'COUPLING',
-  'PLC_IO', 'RELAY', 'CONTACTOR', 'REMOTE_CONTROLLER', 'ENCODER', 'ROPE_ENCODER',
-  'LIMIT_SWITCH', 'PROXIMITY_SENSOR', 'ANTI_COLLISION_SENSOR', 'WIND_SENSOR',
-  'TEMPERATURE_SENSOR', 'VIBRATION_SENSOR', 'GPU', 'ROUTER', 'MEDIA_CONVERTER',
-  'POWER_SUPPLY', 'UPS', 'TRANSFORMER', 'CONDUCTOR_RAIL',
-];
+// Equipment types come from the backend's code-owned registry (the same one
+// that validates specs), so the form never offers an unregistered code and each
+// option shows the Chinese name next to the stable code.
+const typesQuery = useQuery({ queryKey: ['equipment-types'], queryFn: listEquipmentTypes, staleTime: Infinity });
+const typeLabel = (code: string) => equipmentTypeLabel(code, typesQuery.data.value);
 const equipmentAdding = ref(false);
 const blankEquipment = (): EquipmentInstallation => ({
   id: '',
@@ -364,7 +360,13 @@ const updateEquipmentMutation = useMutation({
 });
 
 const asset = computed(() => assetQuery.data.value);
+// Back to the ledger with the scope / search / page it was opened from; a project
+// the caller can no longer read is dropped, never carried over.
+function backToLedger() {
+  void router.push({ path: '/assets', query: ledgerReturnQuery(webSession.value ? webSession.value.projects : null) });
+}
 const criticalityText: Record<string, string> = { LOW: '低', MEDIUM: '中', HIGH: '高', SAFETY_CRITICAL: '安全关键' };
+const adminStateText: Record<string, string> = { IN_SERVICE: '在用', MAINTENANCE: '维护中', OUT_OF_SERVICE: '停用', FAULT_REPORTED: '已报故障' };
 const statusText: Record<string, string> = {
   DRAFT: '草稿',
   ACTIVE: '在用',
@@ -375,7 +377,7 @@ const statusText: Record<string, string> = {
 <template>
   <section class="workspace-page asset-detail" data-testid="asset-detail">
     <header class="detail-head">
-      <button class="ghost-action" aria-label="返回" @click="router.push('/assets')">
+      <button class="ghost-action" aria-label="返回" @click="backToLedger">
         <ArrowLeft :size="15" />返回
       </button>
       <div v-if="asset" class="detail-title">
@@ -393,8 +395,9 @@ const statusText: Record<string, string> = {
     </header>
 
     <p v-if="assetQuery.isLoading.value" class="skeleton table-skeleton" aria-busy="true"></p>
-    <p v-else-if="assetQuery.isError.value" class="workspace-error" role="alert">
-      资产加载失败：{{ (assetQuery.error.value as Error).message }}
+    <p v-else-if="assetQuery.isError.value" class="workspace-error" role="alert" data-testid="asset-load-error">
+      {{ errorText(assetQuery.error.value, '资产加载失败') }}
+      <button type="button" class="ghost-action" @click="assetQuery.refetch()">重试</button>
     </p>
     <template v-else-if="asset">
       <div class="tabs" role="tablist">
@@ -421,8 +424,12 @@ const statusText: Record<string, string> = {
             <Plus :size="14" />安装 Equipment
           </button>
         </div>
-        <p v-if="equipmentQuery.isLoading.value">加载设备…</p>
-        <p v-else-if="!equipmentQuery.data.value?.length" class="workspace-empty">该资产暂无 Equipment。</p>
+        <p v-if="equipmentQuery.isLoading.value" class="skeleton table-skeleton" aria-busy="true" data-testid="equipment-loading"></p>
+        <p v-else-if="equipmentQuery.isError.value" class="workspace-error" role="alert" data-testid="equipment-error">
+          {{ errorText(equipmentQuery.error.value, 'Equipment 加载失败') }}
+          <button type="button" class="ghost-action" @click="equipmentQuery.refetch()">重试</button>
+        </p>
+        <p v-else-if="!equipmentQuery.data.value?.length" class="workspace-empty" data-testid="equipment-empty">该资产暂无 Equipment。</p>
         <table v-else class="data-table">
           <thead>
             <tr>
@@ -432,10 +439,10 @@ const statusText: Record<string, string> = {
           <tbody>
             <tr v-for="e in equipmentQuery.data.value" :key="e.id" class="data-row">
               <td>{{ e.equipmentCode }}</td>
-              <td>{{ e.typeCode }}</td>
-              <td>{{ e.criticality }}</td>
+              <td>{{ typeLabel(e.typeCode) }}</td>
+              <td>{{ criticalityText[e.criticality] ?? e.criticality }}</td>
               <td>
-                {{ e.administrativeState }}
+                {{ adminStateText[e.administrativeState] ?? e.administrativeState }}
                 <span v-if="e.removedAt" class="tiny-badge">已拆卸</span>
               </td>
               <td>v{{ e.version }}</td>
@@ -534,10 +541,14 @@ const statusText: Record<string, string> = {
         <h2>安装 Equipment</h2>
         <label>设备类型
           <select v-model="equipmentDraft.typeCode" required aria-label="设备类型选择">
-            <option value="" disabled>选择已注册类型</option>
-            <option v-for="t in equipmentTypeCodes" :key="t" :value="t">{{ t }}</option>
+            <option value="" disabled>{{ typesQuery.isLoading.value ? '加载类型…' : typesQuery.isError.value ? '类型字典加载失败' : '选择已注册类型' }}</option>
+            <option v-for="t in typesQuery.data.value" :key="t.typeCode" :value="t.typeCode">{{ t.displayName }}（{{ t.typeCode }}）</option>
           </select>
         </label>
+        <p v-if="typesQuery.isError.value" class="form-error" role="alert" data-testid="equipment-types-error">
+          设备类型字典加载失败，无法选择类型。
+          <button type="button" class="ghost-action" @click="typesQuery.refetch()">重试</button>
+        </p>
         <label>Equipment 编号<input v-model="equipmentDraft.equipmentCode" required /></label>
         <label>序列号<input v-model="equipmentDraft.serialNumber" /></label>
         <label>关键度

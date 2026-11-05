@@ -101,6 +101,7 @@ add('/api/v1/manufacturers', 'post', 'createManufacturer', manufacturer, '201');
 add('/api/v1/manufacturers/{id}', 'get', 'getManufacturer', manufacturer);
 add('/api/v1/manufacturers/{id}', 'patch', 'updateManufacturer', manufacturer);
 add('/api/v1/manufacturers/{id}/disable', 'post', 'disableManufacturer', null);
+add('/api/v1/equipment/types', 'get', 'listEquipmentTypes', { type: 'array', items: { $ref: '#/components/schemas/EquipmentType' } });
 add('/api/v1/equipment/catalog', 'get', 'listCatalogItems', { type: 'array', items: catalogItem });
 add('/api/v1/equipment/catalog', 'post', 'createCatalogItem', catalogItem, '201');
 add('/api/v1/equipment/catalog/{id}', 'get', 'getCatalogItem', catalogItem);

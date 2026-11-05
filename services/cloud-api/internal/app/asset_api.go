@@ -9,6 +9,7 @@ import (
 
 	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
 	"github.com/guolichen007/crane-operations-platform/internal/asset"
+	"github.com/guolichen007/crane-operations-platform/internal/equipment"
 	"github.com/guolichen007/crane-operations-platform/internal/identity"
 )
 
@@ -593,6 +594,40 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 			return
 		}
 		respondAPI(w, 200, map[string]string{"status": "disabled"})
+	})
+
+	// ---- Equipment type dictionary (read-only) ----
+	// What the UI may offer when installing Equipment: the code-owned registry
+	// (stable code, Chinese name, domain — the same registry that gates spec
+	// validation) intersected with the ACTIVE rows of equipment_types (the FK
+	// target). A code missing from either side is not installable and not listed.
+	api.HandleFunc("GET /api/v1/equipment/types", func(w http.ResponseWriter, r *http.Request) {
+		rows, err := h.db.QueryContext(r.Context(), `SELECT type_code, spec_schema_version FROM equipment_types WHERE status='ACTIVE'`)
+		if err != nil {
+			respondAPI(w, 503, map[string]string{"error": "database unavailable"})
+			return
+		}
+		defer rows.Close()
+		active := map[string]string{}
+		for rows.Next() {
+			var code, version string
+			if err := rows.Scan(&code, &version); err != nil {
+				respondAPI(w, 503, map[string]string{"error": "database unavailable"})
+				return
+			}
+			active[code] = version
+		}
+		if rows.Err() != nil {
+			respondAPI(w, 503, map[string]string{"error": "database unavailable"})
+			return
+		}
+		out := []contract.EquipmentType{}
+		for _, t := range equipment.Types() {
+			if version, ok := active[t.Code]; ok {
+				out = append(out, contract.EquipmentType{TypeCode: t.Code, DisplayName: t.NameZh, Domain: t.Domain, SpecSchemaVersion: version, Status: "ACTIVE"})
+			}
+		}
+		respondAPI(w, 200, out)
 	})
 
 	// ---- Equipment Catalog ----

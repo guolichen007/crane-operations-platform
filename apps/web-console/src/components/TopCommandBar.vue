@@ -5,16 +5,21 @@ import { ChevronDown, LogOut, Maximize, ShieldCheck, UserRound, Play } from 'luc
 import BrandMark from './BrandMark.vue';
 import { webSession, productionAuth, logoutWebSession } from '../cloud/session';
 import { isViewerOnly } from '../cloud/auth-state';
-import { scopeSupported } from '../cloud/project-scope';
+import { scopeMode } from '../cloud/project-scope';
 const route = useRoute(),
   router = useRouter(),
   clock = ref(''),
   error = ref('');
 const viewer = computed(() => isViewerOnly(webSession.value));
 const scope = computed(() => (typeof route.query.project === 'string' ? route.query.project : ''));
-// Only pages that really filter by ?project= offer the project selector; on the
-// others the data is always "all authorized projects" and the bar says so.
-const scopeApplies = computed(() => scopeSupported(route.path));
+// Only pages that really use ?project= offer the project selector; on the others
+// the data is always "all authorized projects" and the bar says so. On the
+// overview the selector focuses the map (it does not hide other projects), so it
+// is labelled 聚焦项目 rather than 项目范围.
+const mode = computed(() => scopeMode(route.path));
+const scopeApplies = computed(() => mode.value !== 'none');
+const scopeLabel = computed(() => (mode.value === 'focus' ? '地图聚焦项目' : '当前项目范围'));
+const allLabel = computed(() => (mode.value === 'focus' ? '不聚焦（全部已授权项目）' : '全部已授权项目'));
 let timer: ReturnType<typeof setInterval>;
 function tick() {
   clock.value = new Intl.DateTimeFormat('zh-CN', {
@@ -69,8 +74,8 @@ async function tour() {
     <div class="command-scope">
       <span class="scope-divider"></span
       ><template v-if="scopeApplies"
-        ><select :value="scope" aria-label="当前项目范围" @change="changeScope">
-          <option value="">全部已授权项目</option>
+        ><select :value="scope" :aria-label="scopeLabel" :title="scopeLabel" :data-scope-mode="mode" @change="changeScope">
+          <option value="">{{ allLabel }}</option>
           <option v-for="p in webSession?.projects" :key="p.projectId" :value="p.projectId">
             {{ p.projectName }}
           </option></select

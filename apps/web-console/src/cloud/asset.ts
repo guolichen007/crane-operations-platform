@@ -7,6 +7,7 @@ import type {
   EquipmentCatalogItem,
   EquipmentInstallation,
   EquipmentRelation,
+  EquipmentType,
 } from '../../../../contracts/typescript/types.gen';
 
 export type AssetListParams = {
@@ -117,6 +118,13 @@ export const disableCatalogItem = (id: string, version: number) =>
   api<{ status: string }>(`equipment/catalog/${encodeURIComponent(id)}/disable`, { method: 'POST', body: {}, ifMatch: version });
 
 // ---- Equipment ----
+/** Code-owned equipment type dictionary (stable code + Chinese name). */
+export const listEquipmentTypes = () => api<EquipmentType[]>('equipment/types');
+/** "中文名（CODE）" from the dictionary; an unknown code is shown as-is, never renamed. */
+export function equipmentTypeLabel(code: string, types: readonly EquipmentType[] | undefined): string {
+  const t = types?.find((x) => x.typeCode === code);
+  return t ? `${t.displayName}（${t.typeCode}）` : code;
+}
 export const listEquipment = (assetId: string, params: AssetListParams = {}) =>
   api<EquipmentInstallation[]>(`assets/${encodeURIComponent(assetId)}/equipment`, {
     query: pageQuery(params.limit ?? 100, params.offset ?? 0, params.sort, params.q),

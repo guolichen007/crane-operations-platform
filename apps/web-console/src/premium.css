@@ -245,7 +245,9 @@
   background: var(--accent-blue);
 }
 .rail-assets {
-  padding: 2px 8px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 .rail-group-toggle {
   display: flex;
@@ -265,6 +267,15 @@
 .rail-group-toggle:hover {
   background: var(--surface-850);
   color: var(--text-1);
+}
+.rail-assets.active .rail-group-toggle {
+  color: var(--text-1);
+}
+.rail-group-toggle:focus-visible,
+.rail-sub a:focus-visible,
+.side-rail nav > a:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: -2px;
 }
 .rail-group-toggle svg.flipped {
   transform: rotate(-90deg);
@@ -301,6 +312,19 @@
   color: var(--accent-blue);
   background: linear-gradient(90deg, #2c8fff20, transparent);
 }
+/* Collapsed rail: the group's pages become plain icon links like the others. */
+.rail-assets.collapsed .rail-sub {
+  margin-left: 0;
+  padding-left: 0;
+  border-left: 0;
+  gap: 3px;
+}
+.rail-assets.collapsed .rail-sub a {
+  justify-content: center;
+  height: 40px;
+  padding: 0;
+}
+.rail-assets.collapsed .rail-sub a span { display: none; }
 .rail-foot {
   margin-top: auto;
   display: flex;

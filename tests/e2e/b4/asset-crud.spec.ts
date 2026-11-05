@@ -51,15 +51,16 @@ test('真实 Keycloak 浏览器：资产与 Equipment 完整业务 CRUD（新建
   await eqForm.getByRole('button', { name: '安装' }).click();
   await expect(page.locator('table.data-table')).toContainText(equipmentCode);
 
-  // 9. 查看已安装设备。
-  await expect(page.locator('table.data-table')).toContainText('MOTOR');
+  // 9. 查看已安装设备：类型显示受控字典中文名 + 稳定编码。
+  await expect(page.locator('table.data-table')).toContainText('电机（MOTOR）');
 
   // 10. 修改 Equipment 关键度。
   await page.locator('table.data-table').getByRole('button', { name: '编辑' }).click();
   const eqEditForm = page.getByTestId('equipment-edit-form');
   await eqEditForm.getByLabel('关键度').selectOption('HIGH');
   await eqEditForm.getByRole('button', { name: '保存' }).click();
-  await expect(page.locator('table.data-table')).toContainText('HIGH');
+  await expect(eqEditForm).toHaveCount(0);
+  await expect(page.locator('table.data-table tbody tr').first().locator('td').nth(2)).toHaveText('高');
 
   // 12. 拆卸 Equipment（软拆卸，保留历史）。
   await page.locator('table.data-table').getByRole('button', { name: '拆卸' }).click();
