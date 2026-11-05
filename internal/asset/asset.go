@@ -1175,6 +1175,18 @@ func ListEquipment(ctx context.Context, db *sql.DB, assetID string, opts ListOpt
 	return values, total, rows.Err()
 }
 
+// lockParentAssetForUpdate is the single lock-ordering root for child writes:
+// every child mutation acquires the parent asset row FOR UPDATE before touching
+// the child row, so a concurrent RetireAsset — which locks only the asset —
+// serializes against it and the terminal-status check is race-free.
+func lockParentAssetForUpdate(ctx context.Context, tx *sql.Tx, assetID string) (status, projectID string, err error) {
+	err = tx.QueryRowContext(ctx, `SELECT asset_status, project_id FROM asset_devices WHERE id=$1 FOR UPDATE`, assetID).Scan(&status, &projectID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", ErrNotFound
+	}
+	return status, projectID, err
+}
+
 func UpdateEquipment(ctx context.Context, db *sql.DB, in contract.EquipmentInstallation, expectedVersion int64, actor, requestID string) (contract.EquipmentInstallation, error) {
 	if expectedVersion <= 0 {
 		return in, ErrExpectedVersion
@@ -1184,7 +1196,26 @@ func UpdateEquipment(ctx context.Context, db *sql.DB, in contract.EquipmentInsta
 		return in, err
 	}
 	defer tx.Rollback()
-	var assetID, existingType string
+	// Resolve the parent asset id (immutable on the equipment row) so the parent
+	// asset lock is acquired before the child equipment lock — the single lock
+	// ordering across all child writes.
+	var assetID string
+	if err := tx.QueryRowContext(ctx, `SELECT asset_id FROM asset_equipment_installations WHERE id=$1`, in.Id).Scan(&assetID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return in, ErrNotFound
+		}
+		return in, err
+	}
+	assetStatus, projectID, err := lockParentAssetForUpdate(ctx, tx, assetID)
+	if err != nil {
+		return in, err
+	}
+	if assetStatus == "RETIRED" {
+		// Ordinary business updates are refused once the parent asset is terminal;
+		// history correction is only via removal (termination), never via update.
+		return in, ErrRetired
+	}
+	var existingType string
 	var existingCatalog sql.NullString
 	var existingSpecText string
 	var version int64
@@ -1217,10 +1248,6 @@ func UpdateEquipment(ctx context.Context, db *sql.DB, in contract.EquipmentInsta
 	}
 	// removedAt is server-managed; a client can never forge it on update.
 	in.RemovedAt = nil
-	var projectID string
-	if err := tx.QueryRowContext(ctx, `SELECT project_id FROM asset_devices WHERE id=$1`, assetID).Scan(&projectID); err != nil {
-		return in, err
-	}
 	result, err := tx.ExecContext(ctx, `UPDATE asset_equipment_installations SET equipment_code=$2,type_code=$3,catalog_item_id=$4,serial_number=$5,semantic_slot=$6,position_label=$7,criticality=$8,administrative_state=$9,version=version+1,updated_at=now() WHERE id=$1 AND version=$10`,
 		in.Id, in.EquipmentCode, in.TypeCode, in.CatalogItemId, in.SerialNumber, in.SemanticSlot, in.PositionLabel, in.Criticality, in.AdministrativeState, expectedVersion)
 	if err != nil {
@@ -1313,12 +1340,18 @@ func CreateRelation(ctx context.Context, db *sql.DB, in contract.EquipmentRelati
 		in.Id = platform.ID()
 	}
 	in.Version = 1
-	if _, err := tx.ExecContext(ctx, `INSERT INTO equipment_relations(id,asset_id,from_equipment_installation_id,to_equipment_installation_id,relation_type,valid_from,source,notes,version) VALUES($1,$2,$3,$4,$5,now(),$6,$7,$8)`,
-		in.Id, in.AssetId, in.FromEquipmentInstallationId, in.ToEquipmentInstallationId, in.RelationType, in.Source, in.Notes, in.Version); err != nil {
+	// Lock the parent asset first (single lock-ordering root) and refuse ordinary
+	// creation once the asset is terminal. History correction is via termination,
+	// not via creating new relations on a retired asset.
+	assetStatus, projectID, err := lockParentAssetForUpdate(ctx, tx, in.AssetId)
+	if err != nil {
 		return in, err
 	}
-	var projectID string
-	if err := tx.QueryRowContext(ctx, `SELECT project_id FROM asset_devices WHERE id=$1`, in.AssetId).Scan(&projectID); err != nil {
+	if assetStatus == "RETIRED" {
+		return in, ErrRetired
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO equipment_relations(id,asset_id,from_equipment_installation_id,to_equipment_installation_id,relation_type,valid_from,source,notes,version) VALUES($1,$2,$3,$4,$5,now(),$6,$7,$8)`,
+		in.Id, in.AssetId, in.FromEquipmentInstallationId, in.ToEquipmentInstallationId, in.RelationType, in.Source, in.Notes, in.Version); err != nil {
 		return in, err
 	}
 	if err := revision(ctx, tx, projectID, in.AssetId, "relation", in.Id, actor, requestID, []string{"created"}, in); err != nil {
@@ -1368,11 +1401,16 @@ func RemoveRelation(ctx context.Context, db *sql.DB, relationID string, expected
 	defer tx.Rollback()
 	var assetID string
 	var version int64
-	if err := tx.QueryRowContext(ctx, `SELECT asset_id,version FROM equipment_relations WHERE id=$1 FOR UPDATE`, relationID).Scan(&assetID, &version); err != nil {
+	var validTo sql.NullTime
+	if err := tx.QueryRowContext(ctx, `SELECT asset_id,version,valid_to FROM equipment_relations WHERE id=$1 FOR UPDATE`, relationID).Scan(&assetID, &version, &validTo); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
 		return err
+	}
+	if validTo.Valid {
+		// A terminated relation cannot be terminated again; history is immutable.
+		return ErrRemoved
 	}
 	if version != expectedVersion {
 		return ErrVersionConflict

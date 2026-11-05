@@ -791,7 +791,7 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 				respondAPI(w, 404, map[string]string{"error": "not found"})
 			case errors.Is(err, asset.ErrVersionConflict):
 				respondAPI(w, 409, map[string]string{"error": "version conflict"})
-			case errors.Is(err, asset.ErrRemoved):
+			case errors.Is(err, asset.ErrRemoved), errors.Is(err, asset.ErrRetired):
 				respondAPI(w, 409, map[string]string{"error": err.Error()})
 			default:
 				respondAPI(w, 503, map[string]string{"error": "database unavailable"})
@@ -868,7 +868,14 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 		in.AssetId = assetID
 		out, err := asset.CreateRelation(r.Context(), h.db, in, currentPrincipal(r).user, requestID(r))
 		if err != nil {
-			respondAPI(w, 400, map[string]string{"error": err.Error()})
+			switch {
+			case errors.Is(err, asset.ErrNotFound):
+				respondAPI(w, 404, map[string]string{"error": "not found"})
+			case errors.Is(err, asset.ErrRetired), errors.Is(err, asset.ErrRemoved):
+				respondAPI(w, 409, map[string]string{"error": err.Error()})
+			default:
+				respondAPI(w, 400, map[string]string{"error": err.Error()})
+			}
 			return
 		}
 		setETag(w, out.Version)
@@ -894,8 +901,8 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 			switch {
 			case errors.Is(err, asset.ErrNotFound):
 				respondAPI(w, 404, map[string]string{"error": "not found"})
-			case errors.Is(err, asset.ErrVersionConflict):
-				respondAPI(w, 409, map[string]string{"error": "version conflict"})
+			case errors.Is(err, asset.ErrVersionConflict), errors.Is(err, asset.ErrRemoved):
+				respondAPI(w, 409, map[string]string{"error": err.Error()})
 			default:
 				respondAPI(w, 503, map[string]string{"error": "database unavailable"})
 			}
