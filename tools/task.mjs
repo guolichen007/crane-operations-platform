@@ -93,6 +93,7 @@ const tasks = {
     run(process.execPath, ['tools/codegen/contracts.mjs', '--check']);
     run(process.execPath, ['tools/codegen/openapi.mjs', '--check']);
     run(process.execPath, ['tools/diagnostics/repository.mjs']);
+    run(go, ['run', './tools/astguard']);
     run(go, ['vet', './...']);
     const format = spawnSync(go, ['fmt', './...'], { encoding: 'utf8', env });
     if (format.status !== 0 || format.stdout.trim())

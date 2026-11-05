@@ -1,10 +1,6 @@
 package equipment
 
-import (
-	"os"
-	"regexp"
-	"testing"
-)
+import "testing"
 
 // The registry and the spec-schema switch must list exactly the same codes, and
 // display names must be unique and non-empty (two codes never share a label).
@@ -32,22 +28,15 @@ func TestTypeRegistryMatchesSpecSchemas(t *testing.T) {
 			t.Errorf("code %s has invalid domain %s", ti.Code, ti.Domain)
 		}
 	}
-	// Every type-code case label in specFileFor must be in the registry (schema
-	// file names are lowercase and are not matched).
-	src, err := os.ReadFile("spec.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := regexp.MustCompile(`(?s)func specFileFor.*?\n}\n`).Find(src)
-	found := 0
-	for _, m := range regexp.MustCompile(`"([A-Z][A-Z0-9_]+)"`).FindAllSubmatch(body, -1) {
-		found++
-		if !seenCode[string(m[1])] {
-			t.Errorf("spec type %s missing from registry", m[1])
+	// The spec-schema map and the registry list exactly the same codes (both are
+	// in-memory: no source files are read, so the test binary runs anywhere).
+	for code := range specFileByType {
+		if !seenCode[code] {
+			t.Errorf("spec type %s missing from registry", code)
 		}
 	}
-	if found != len(seenCode) {
-		t.Fatalf("specFileFor lists %d codes, registry %d", found, len(seenCode))
+	if len(specFileByType) != len(seenCode) {
+		t.Fatalf("specFileByType lists %d codes, registry %d", len(specFileByType), len(seenCode))
 	}
 }
 

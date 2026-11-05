@@ -26,36 +26,59 @@ var (
 	ErrUnsupportedSpecVersion = errors.New("unsupported equipment spec schema version")
 )
 
-// specFileFor maps a stable type_code to its specification schema file (without
-// extension). Code-owned and forward-extensible; type_code is never a DB hard enum.
+// specFileByType maps each registered stable type_code to its specification schema
+// file (without extension). Code-owned and forward-extensible; type_code is
+// never a DB hard enum.
+var specFileByType = map[string]string{
+	"LIDAR_3D":              "lidar_3d",
+	"LIDAR_2D":              "lidar_3d",
+	"CAMERA_RGB":            "camera",
+	"CAMERA_DEPTH":          "camera",
+	"CAMERA_STEREO":         "camera",
+	"CAMERA_THERMAL":        "camera",
+	"PLC":                   "plc",
+	"SAFETY_PLC":            "plc",
+	"VFD":                   "vfd",
+	"SERVO_DRIVE":           "vfd",
+	"MOTOR":                 "motor",
+	"INDUSTRIAL_PC":         "industrial_pc",
+	"EDGE_GATEWAY":          "industrial_pc",
+	"INDUSTRIAL_SWITCH":     "industrial_switch",
+	"POE_SWITCH":            "industrial_switch",
+	"LOAD_CELL":             "load_cell",
+	"IMU":                   "imu",
+	"REDUCER":               "generic",
+	"BRAKE":                 "generic",
+	"DRUM":                  "generic",
+	"HOOK":                  "generic",
+	"GRAB":                  "generic",
+	"WHEEL":                 "generic",
+	"COUPLING":              "generic",
+	"PLC_IO":                "generic",
+	"RELAY":                 "generic",
+	"CONTACTOR":             "generic",
+	"REMOTE_CONTROLLER":     "generic",
+	"ENCODER":               "generic",
+	"ROPE_ENCODER":          "generic",
+	"LIMIT_SWITCH":          "generic",
+	"PROXIMITY_SENSOR":      "generic",
+	"ANTI_COLLISION_SENSOR": "generic",
+	"WIND_SENSOR":           "generic",
+	"TEMPERATURE_SENSOR":    "generic",
+	"VIBRATION_SENSOR":      "generic",
+	"GPU":                   "generic",
+	"ROUTER":                "generic",
+	"MEDIA_CONVERTER":       "generic",
+	"POWER_SUPPLY":          "generic",
+	"UPS":                   "generic",
+	"TRANSFORMER":           "generic",
+	"CONDUCTOR_RAIL":        "generic",
+}
+
+// specFileFor returns the schema file for typeCode, if registered.
 func specFileFor(typeCode string) (string, bool) {
-	switch typeCode {
-	case "LIDAR_3D", "LIDAR_2D":
-		return "lidar_3d", true
-	case "CAMERA_RGB", "CAMERA_DEPTH", "CAMERA_STEREO", "CAMERA_THERMAL":
-		return "camera", true
-	case "PLC", "SAFETY_PLC":
-		return "plc", true
-	case "VFD", "SERVO_DRIVE":
-		return "vfd", true
-	case "MOTOR":
-		return "motor", true
-	case "INDUSTRIAL_PC", "EDGE_GATEWAY":
-		return "industrial_pc", true
-	case "INDUSTRIAL_SWITCH", "POE_SWITCH":
-		return "industrial_switch", true
-	case "LOAD_CELL":
-		return "load_cell", true
-	case "IMU":
-		return "imu", true
-	case "REDUCER", "BRAKE", "DRUM", "HOOK", "GRAB", "WHEEL", "COUPLING", "PLC_IO",
-		"RELAY", "CONTACTOR", "REMOTE_CONTROLLER", "ENCODER", "ROPE_ENCODER",
-		"LIMIT_SWITCH", "PROXIMITY_SENSOR", "ANTI_COLLISION_SENSOR", "WIND_SENSOR",
-		"TEMPERATURE_SENSOR", "VIBRATION_SENSOR", "GPU", "ROUTER", "MEDIA_CONVERTER",
-		"POWER_SUPPLY", "UPS", "TRANSFORMER", "CONDUCTOR_RAIL":
-		return "generic", true
-	}
-	return "", false
+	name, ok := specFileByType[typeCode]
+	return name, ok
 }
 
 type specSchema struct {

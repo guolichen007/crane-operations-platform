@@ -3,8 +3,6 @@ package app
 import (
 	"encoding/json"
 	"net/http"
-	"os"
-	"strings"
 	"testing"
 )
 
@@ -119,21 +117,6 @@ func TestHTTPAssetPatchNoopDoesNotBreakOtherEditors(t *testing.T) {
 	}
 	if got := p.get(t, a.Id); got.BrandSnapshot != "B的修改" || got.Version != a.Version+1 {
 		t.Fatalf("stored %q v%d", got.BrandSnapshot, got.Version)
-	}
-}
-
-// The HTTP PATCH route must use the presence-aware PatchAsset, never the
-// whole-object UpdateAsset wrapper (which would turn omitted keys into clears).
-func TestHTTPAssetPatchRouteDoesNotUseWholeObjectUpdate(t *testing.T) {
-	src, err := os.ReadFile("asset_api.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(src), "asset.UpdateAsset(") {
-		t.Fatal("asset_api.go must not call asset.UpdateAsset; use asset.PatchAsset")
-	}
-	if !strings.Contains(string(src), "asset.PatchAsset(") {
-		t.Fatal("asset_api.go must call asset.PatchAsset for PATCH")
 	}
 }
 

@@ -5,7 +5,14 @@ export default defineConfig({
   fullyParallel: false,
   timeout: 180000,
   expect: { timeout: 20000 },
-  reporter: [['list'], ['html', { open: 'never', outputFolder: 'playwright-report/b4' }]],
+  // 'github' turns each failure into a check-run annotation, readable through the
+  // public API even when raw job logs are not; json is archived with the evidence.
+  reporter: [
+    ['list'],
+    ['html', { open: 'never', outputFolder: 'playwright-report/b4' }],
+    ['json', { outputFile: 'playwright-report/b4/results.json' }],
+    ...(process.env.CI ? [['github'] as ['github']] : []),
+  ],
   use: {
     baseURL: process.env.A1_WEB_ORIGIN,
     ignoreHTTPSErrors: true,
