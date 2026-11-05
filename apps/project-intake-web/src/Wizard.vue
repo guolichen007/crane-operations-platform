@@ -1,77 +1,138 @@
 <script setup lang="ts">
 import { reactive, ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
-import { Check, ShieldCheck } from '@lucide/vue';
+import { Check, ShieldCheck, Plus, Trash2, UserRound } from '@lucide/vue';
 import { useApp } from './store';
+import { ApiError } from './api-client';
 import {
   blank,
+  blankEquipment,
   stages,
   reqs,
   sources,
   confidences,
+  equipmentTypes,
+  controlModes,
+  environments,
+  projectTypes,
+  statuses,
   type Input,
   type Project,
   type Duplicate,
+  type KnowledgeState,
 } from './model';
+import { consistent } from './numeric';
+import { readIntent, startIntent, markSent, clearIntent, type CreateIntent } from './create-intent';
+import { recovery, hintReason } from './reasons';
 import ActionButton from './ActionButton.vue';
-const createKey = crypto.randomUUID();
+import NumberField from './NumberField.vue';
+
 const app = useApp(),
   route = useRoute(),
   router = useRouter(),
   form = reactive<Input>(blank()),
   step = ref(1),
   id = ref(String(route.params.id || route.query.draft || '')),
+  project = ref<Project | null>(null),
   saving = ref(false),
   saved = ref(''),
+  savedAt = ref(''),
   dups = ref<Duplicate[]>([]),
-  duplicateStatus = ref(''),
+  dupState = ref<'insufficient' | 'checking' | 'none' | 'found' | 'error'>('insufficient'),
   ready = ref(false),
+  loadError = ref(''),
   leaving = ref(false),
-  submitting = ref(false);
+  submitting = ref(false),
+  conflict = ref<Project | null>(null),
+  candidates = ref<{ subject: string; name: string }[] | null>(null),
+  assignTarget = ref(''),
+  assignReason = ref('创建时指派销售负责人'),
+  followLocal = ref('');
+const stepNames = ['客户与项目', '设备与技术', '商务与跟进', '核对与提交'];
+const isAdmin = computed(() => app.user?.role === 'baobei_admin');
+let intent: CreateIntent | null = null;
 let timer: ReturnType<typeof setTimeout>,
   duplicateTimer: ReturnType<typeof setTimeout>,
   pending: Promise<void> | null = null,
   dupSeq = 0;
-const snapshot = () => {
-  const x = { ...form, version: 0 };
-  return JSON.stringify(x);
+
+const toLocal = (iso: string | null | undefined) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 };
+const minute = (iso: string | null | undefined) => (iso ? Math.floor(new Date(iso).getTime() / 60000) : null);
+watch(followLocal, (v) => {
+  const iso = v ? new Date(v).toISOString() : null;
+  if (minute(iso) !== minute(form.nextFollowupAt)) form.nextFollowupAt = iso;
+});
+
+const snapshot = () => JSON.stringify({ ...form, version: 0 });
 const savedSignature = ref(snapshot());
 const dirty = computed(() => snapshot() !== savedSignature.value);
-const input = () => {
-  const body = JSON.parse(JSON.stringify(form)) as Input;
-  const previous = JSON.parse(savedSignature.value) as Input;
-  const reconcile = (row: Record<string, unknown>, old: Record<string, unknown>) => {
-    const knowledge = row.knowledge as Record<string, string> | undefined;
-    for (const key of Object.keys(knowledge || {})) {
-      const state = knowledge![key], value = row[key];
-      if ((state === 'UNKNOWN' && value != null) ||
-          (state === 'LEGACY_UNCONFIRMED' && value !== 0) ||
-          (state === 'KNOWN' && (value == null || value === 0 && old[key] !== 0))) delete knowledge![key];
-    }
-  };
-  reconcile(body as unknown as Record<string, unknown>, previous as unknown as Record<string, unknown>);
-  body.plannedEquipment.forEach((row, i) => reconcile(row as unknown as Record<string, unknown>, (previous.plannedEquipment[i] || {}) as unknown as Record<string, unknown>));
-  return body;
-};
+
+// Body sent to the server: knowledge flags always agree with their values.
+function body(): Input {
+  const b = JSON.parse(JSON.stringify(form)) as Input;
+  b.knowledge = consistent(b.knowledge, { estimatedAmount: b.estimatedAmount });
+  b.plannedEquipment = b.plannedEquipment.map((e) => ({
+    ...e,
+    knowledge: consistent(e.knowledge, { quantity: e.quantity, capacityTons: e.capacityTons, spanM: e.spanM, liftHeightM: e.liftHeightM }),
+  }));
+  return b;
+}
+function adopt(p: Project) {
+  project.value = p;
+  for (const key of Object.keys(blank()) as (keyof Input)[]) Object.assign(form, { [key]: JSON.parse(JSON.stringify(p[key] ?? blank()[key])) });
+  form.version = p.version;
+  followLocal.value = toLocal(p.nextFollowupAt);
+  savedSignature.value = snapshot();
+}
+async function loadProject() {
+  const p = await app.api<Project>('/api/v1/projects/' + id.value);
+  if (!p.actions?.edit?.allowed) throw new Error(hintReason(p.actions?.edit, '当前项目不可编辑') + '（' + statuses[p.intakeStatus] + '）');
+  adopt(p);
+}
+// After a refresh or lost response, ask the server before creating again.
+async function recoverIntent(): Promise<Project | null> {
+  if (!intent?.sent || id.value) return null;
+  try {
+    const r = await app.api<{ project: Project }>('/api/v1/project-create-receipts/' + intent.key);
+    id.value = r.project.id;
+    clearIntent();
+    intent = null;
+    window.history.replaceState(window.history.state, '', '/new?draft=' + r.project.id);
+    return r.project;
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) return null;
+    throw e;
+  }
+}
 onMounted(async () => {
   try {
-    if (id.value) {
-      const p = await app.api<Project>('/api/v1/projects/' + id.value);
-      if (!['DRAFT', 'RETURNED'].includes(p.intakeStatus)) throw new Error('当前报备不可编辑');
-      for (const key of Object.keys(blank()) as (keyof Input)[])
-        Object.assign(form, { [key]: p[key] });
-      savedSignature.value = snapshot();
+    if (!id.value && app.user) {
+      intent = readIntent(app.user.subject);
+      if (await recoverIntent()) app.toast('已找回上次已保存但未确认的草稿');
     }
+    if (id.value) await loadProject();
     ready.value = true;
+    if (project.value) void loadCandidates();
   } catch (e) {
-    app.error = (e as Error).message;
+    loadError.value = recovery(e).message;
+    app.error = loadError.value;
   }
 });
-async function save(silent = false) {
+async function loadCandidates() {
+  if (!isAdmin.value || !project.value || !project.value.actions['ownership-transfer']?.allowed) return;
+  const b = await app.api<{ items: { subject: string; name: string }[] }>('/api/v1/ownership-candidates?projectId=' + project.value.id);
+  candidates.value = b.items.filter((c) => c.subject !== project.value?.ownerSubject);
+}
+
+async function save(silent = false): Promise<void> {
   clearTimeout(timer);
+  if (conflict.value) throw new Error('存在版本冲突，请先选择处理方式');
   if (pending) {
-    await pending;
+    await pending.catch(() => undefined);
     if (dirty.value) return save(silent);
     return;
   }
@@ -79,111 +140,200 @@ async function save(silent = false) {
     if (!silent) app.toast('草稿已保存');
     return;
   }
-  const signature = snapshot(),
-    body = input();
+  const signature = snapshot();
   saving.value = true;
+  let recoveredNow = false;
   pending = (async () => {
-    const p = await app.api<Project>(
-      '/api/v1/projects' + (id.value ? '/' + id.value : ''),
-      id.value ? 'PATCH' : 'POST',
-      body,
-      createKey
-    );
+    if (!id.value) {
+      // The same intent may already have been committed: continue it with PATCH.
+      const recovered = await recoverIntent();
+      if (recovered) {
+        project.value = recovered;
+        recoveredNow = true;
+        form.version = recovered.version;
+      } else {
+        if (!intent && app.user) intent = startIntent(app.user.subject);
+        markSent(intent!);
+      }
+    }
+    const creating = !id.value;
+    const p = await app.api<Project>('/api/v1/projects' + (creating ? '' : '/' + id.value), creating ? 'POST' : 'PATCH', body(), creating ? intent!.key : '');
+    const created = creating || recoveredNow;
     id.value = p.id;
+    project.value = p;
     form.version = p.version;
     savedSignature.value = signature;
     saved.value = '草稿已保存';
-    if (!route.params.id) {
-      window.history.replaceState(window.history.state, '', '/new?draft=' + p.id);
+    savedAt.value = new Date(p.updatedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    if (created) {
+      clearIntent();
+      intent = null;
+      if (!route.params.id) window.history.replaceState(window.history.state, '', '/new?draft=' + p.id);
+      void loadCandidates();
     }
     if (!silent) app.toast('草稿已保存');
   })();
   try {
     await pending;
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 409 && e.code === 'VERSION_CONFLICT' && id.value) {
+      conflict.value = await app.api<Project>('/api/v1/projects/' + id.value).catch(() => null);
+      saved.value = '版本冲突，自动保存已暂停';
+      throw new Error('项目已被其他人更新，自动保存已暂停；你的输入仍保留');
+    }
+    if (e instanceof ApiError && e.code === 'IDEMPOTENCY_CONFLICT') {
+      clearIntent();
+      intent = null;
+    }
+    const r = recovery(e);
+    saved.value = '保存失败，输入已保留';
+    throw new Error(r.message);
   } finally {
     pending = null;
     saving.value = false;
   }
 }
+const conflictFields = computed(() => {
+  const c = conflict.value;
+  if (!c) return [];
+  const pairs: [string, string, string][] = [
+    ['客户', form.customer, c.customer],
+    ['项目名称', form.projectName, c.projectName],
+    ['省市', form.location.province + form.location.city, c.location.province + c.location.city],
+    ['主要需求', form.requirementNotes, c.requirementNotes],
+    ['预估金额', String(form.estimatedAmount ?? '未知'), String(c.estimatedAmount ?? '未知')],
+    ['下一步', form.nextAction || '', c.nextAction || ''],
+    ['计划设备数', String(form.plannedEquipment.length), String(c.plannedEquipment.length)],
+  ];
+  return pairs.filter(([, a, b]) => a !== b);
+});
+function takeServer() {
+  if (!conflict.value) return;
+  adopt(conflict.value);
+  conflict.value = null;
+  saved.value = '已载入最新版本';
+}
+async function keepMine() {
+  if (!conflict.value) return;
+  form.version = conflict.value.version;
+  conflict.value = null;
+  await save();
+}
+
 watch(
   () => snapshot(),
   () => {
-    if (!ready.value) return;
+    if (!ready.value || conflict.value) return;
     saved.value = '有未保存改动';
     clearTimeout(timer);
     timer = setTimeout(() => {
-      void save(true).catch((e) => {
-        saved.value = '自动保存失败，输入已保留';
-        app.error = e.message;
-      });
+      void save(true).catch((e) => (app.error = e.message));
     }, 1200);
   }
 );
-watch(
-  () => [
-    form.customer,
-    form.projectName,
-    form.location.province,
-    form.location.city,
-    form.location.factoryName,
-    form.location.workshop,
-  ],
-  () => {
-    clearTimeout(duplicateTimer);
-    const seq = ++dupSeq;
-    if (!form.customer || !form.projectName || !form.location.province || !form.location.city) {
-      dups.value = [];
-      duplicateStatus.value = '填写客户、位置和项目后自动查重';
-      return;
-    }
-    duplicateStatus.value = '正在查重…';
-    duplicateTimer = setTimeout(async () => {
-      try {
-        const b = await app.api<{ items: Duplicate[] }>(
-          '/api/v1/duplicate-checks',
-          'POST',
-          input()
-        );
-        if (seq !== dupSeq) return;
-        dups.value = b.items;
-        duplicateStatus.value = b.items.length
-          ? '发现疑似已有报备，提交后由主管确认'
-          : '暂未发现疑似重复；提交时会再次核验';
-      } catch (e) {
-        if (seq === dupSeq) duplicateStatus.value = (e as Error).message;
-      }
-    }, 450);
+const dupReady = computed(() => !!(form.customer.trim() && form.projectName.trim() && form.location.province.trim() && form.location.city.trim()));
+function runDuplicateCheck(delay = 450) {
+  clearTimeout(duplicateTimer);
+  const seq = ++dupSeq;
+  if (!dupReady.value) {
+    dups.value = [];
+    dupState.value = 'insufficient';
+    return;
   }
+  dupState.value = 'checking';
+  duplicateTimer = setTimeout(async () => {
+    try {
+      const b = await app.api<{ items: Duplicate[] }>('/api/v1/duplicate-checks', 'POST', body());
+      if (seq !== dupSeq) return;
+      dups.value = b.items;
+      dupState.value = b.items.length ? 'found' : 'none';
+    } catch {
+      if (seq === dupSeq) dupState.value = 'error';
+    }
+  }, delay);
+}
+watch(() => [form.customer, form.projectName, form.location.province, form.location.city, form.location.factoryName, form.location.workshop, form.tenderNo], () => runDuplicateCheck());
+watch(step, (s) => s === 4 && runDuplicateCheck(0));
+const dupMessage = computed(
+  () =>
+    ({
+      insufficient: '信息不足，尚无法完成查重：需要客户、项目名称和省市。提交时服务端会再次核验。',
+      checking: '正在查重…',
+      none: '暂未发现疑似重复；提交时会再次核验',
+      found: '发现疑似已有报备，提交后由主管确认',
+      error: '查重暂时不可用，提交时服务端会再次核验',
+    })[dupState.value]
 );
+
+function addEquipment() {
+  if (form.plannedEquipment.length < 30) form.plannedEquipment.push(blankEquipment());
+}
+function setNumber(target: object, key: string, value: number | null, state: KnowledgeState) {
+  const row = target as Record<string, unknown> & { knowledge?: Record<string, KnowledgeState> };
+  row[key] = value;
+  row.knowledge = { ...(row.knowledge || {}), [key]: state };
+}
+function toggle(list: string[] | null | undefined, value: string, on: boolean) {
+  const out = (list || []).filter((x) => x !== value);
+  if (on) out.push(value);
+  return out;
+}
+
+const missing = computed(() => {
+  const m: { label: string; step: number }[] = [];
+  if (!form.customer.trim()) m.push({ label: '终端客户', step: 1 });
+  if (!form.projectName.trim()) m.push({ label: '项目名称', step: 1 });
+  if (!form.location.province.trim() || !form.location.city.trim()) m.push({ label: '项目所在省市', step: 1 });
+  if (!form.informationSource) m.push({ label: '项目来源', step: 1 });
+  if (!form.requirements.length) m.push({ label: '自动化需求分类', step: 2 });
+  if (!form.requirementNotes.trim()) m.push({ label: '主要需求说明', step: 2 });
+  form.plannedEquipment.forEach((e, i) => e.quantity == null && m.push({ label: `第 ${i + 1} 台设备的数量`, step: 2 }));
+  if (!form.projectType) m.push({ label: '项目类型', step: 3 });
+  if (!form.confidenceLevel) m.push({ label: '信息可信度', step: 3 });
+  return m;
+});
+const ownerLine = computed(() => {
+  const p = project.value;
+  if (!p) return isAdmin.value ? '保存后为待分配草稿，由你保管' : '你（当前登录销售）';
+  if (!p.ownerSubject) return '待分配 · 保管人 ' + (p.custodianName || '管理员');
+  return p.ownerName || '姓名待核对';
+});
+const submitHint = computed(() => project.value?.actions?.submit);
+const submitBlock = computed(() => {
+  if (!project.value) return '请先保存草稿';
+  if (missing.value.length) return '还有 ' + missing.value.length + ' 项必填信息未完成';
+  if (dirty.value) return '';
+  return submitHint.value?.allowed ? '' : hintReason(submitHint.value, '当前不可提交');
+});
+
+async function assign() {
+  if (!project.value) return;
+  await save(true);
+  const p = await app.api<Project>(`/api/v1/projects/${project.value.id}/ownership-transfer`, 'POST', {
+    version: form.version,
+    reason: assignReason.value.trim(),
+    targetSubject: assignTarget.value,
+  });
+  adopt(p);
+  assignTarget.value = '';
+  app.toast('已指派给 ' + (p.ownerName || '销售负责人') + '，可以正式提交');
+  void loadCandidates();
+}
 function next() {
-  if (
-    step.value === 1 &&
-    (!form.customer.trim() ||
-      !form.projectName.trim() ||
-      !form.location.province.trim() ||
-      !form.location.city.trim())
-  )
-    throw new Error('请填写终端客户、省、市和项目名称');
-  if (
-    step.value === 2 &&
-    (!form.projectType || !form.requirementNotes.trim() || !form.requirements.length)
-  )
-    throw new Error('请选择项目类型、需求分类并填写主要需求');
-  step.value++;
+  step.value = Math.min(4, step.value + 1);
   window.scrollTo(0, 0);
 }
 async function submit() {
   submitting.value = true;
   try {
     await save(true);
-    const p = await app.api<Project>('/api/v1/projects/' + id.value + '/submit', 'POST', {
-      version: form.version,
-    });
+    if (project.value && !project.value.actions.submit.allowed) throw new Error(hintReason(project.value.actions.submit));
+    const p = await app.api<Project>('/api/v1/projects/' + id.value + '/submit', 'POST', { version: form.version });
     leaving.value = true;
-    app.toast(
-      p.intakeStatus === 'UNDER_REVIEW' ? '报备已提交，疑似重复待主管确认' : '报备提交成功'
-    );
+    app.toast(p.intakeStatus === 'UNDER_REVIEW' ? '已正式报备，疑似重复待主管确认' : '已正式报备，等待审核');
     await router.push('/projects/' + p.id);
+  } catch (e) {
+    throw new Error(recovery(e).message);
   } finally {
     submitting.value = false;
   }
@@ -191,17 +341,10 @@ async function submit() {
 onBeforeRouteLeave(async () => {
   if (leaving.value) return true;
   clearTimeout(timer);
-  if (pending) {
-    try {
-      await pending;
-    } catch {
-      /* Guard retains unsaved input after failed save. */
-    }
-  }
+  if (pending) await pending.catch(() => undefined);
   if (!dirty.value) return true;
   const result = await app.confirmDiscard();
-  if (!result && dirty.value)
-    timer = setTimeout(() => void save(true).catch((e) => (app.error = e.message)), 1200);
+  if (!result && dirty.value && !conflict.value) timer = setTimeout(() => void save(true).catch((e) => (app.error = e.message)), 1200);
   return result;
 });
 function beforeUnload(e: BeforeUnloadEvent) {
@@ -221,178 +364,200 @@ onBeforeUnmount(() => {
   <div class="wizard">
     <div class="page-heading">
       <div>
-        <div class="eyebrow">NEW INTAKE / 新建报备</div>
-        <h1>{{ route.params.id ? '继续编辑' : '报备一个新机会' }}</h1>
-        <p class="muted">先记录已知信息，细节可以在后续跟进中补充。</p>
+        <h1>{{ route.params.id || id ? '继续完善报备' : isAdmin ? '新建项目' : '快速报备' }}</h1>
+        <p class="muted">先记下已知信息即可保存草稿；正式报备前再补齐必填项。</p>
       </div>
-      <span class="save-state" role="status">{{
-        saving ? '正在保存…' : saved || '自动保存草稿'
+      <span class="save-state" role="status" aria-live="polite">{{
+        saving ? '正在保存…' : saved ? saved + (savedAt && saved === '草稿已保存' ? ' · ' + savedAt : '') : '有输入后自动保存草稿'
       }}</span>
     </div>
-    <ol class="steps">
-      <li
-        v-for="(label, i) in ['客户与项目', '设备与需求', '销售与来源']"
-        :key="label"
-        :class="{ current: step === i + 1, complete: step > i + 1 }"
-      >
-        <span><Check v-if="step > i + 1" :size="14" /><template v-else>{{ i + 1 }}</template></span>{{ label }}
+    <p v-if="loadError" class="form-alert" role="alert">{{ loadError }}</p>
+    <div class="owner-strip">
+      <UserRound :size="16" aria-hidden="true" /><span>负责人</span><strong>{{ ownerLine }}</strong>
+      <span v-if="project" class="muted">{{ project.registrationNo }} · {{ statuses[project.intakeStatus] }}</span>
+    </div>
+    <ol class="steps" aria-label="报备步骤">
+      <li v-for="(label, i) in stepNames" :key="label" :class="{ current: step === i + 1, complete: step > i + 1 }" :aria-current="step === i + 1 ? 'step' : undefined">
+        <ActionButton action-id="project.step-jump" :run="() => { step = i + 1; }"><span class="step-dot"><Check v-if="step > i + 1" :size="14" /><template v-else>{{ i + 1 }}</template></span>{{ label }}</ActionButton>
       </li>
     </ol>
+    <div v-if="conflict" class="conflict-panel" role="alert">
+      <h2>项目已被其他人更新</h2>
+      <p>自动保存已暂停，你的输入仍保留。以下字段与服务器最新版本（修订 {{ conflict.version }}）不同：</p>
+      <table class="diff">
+        <thead><tr><th>字段</th><th>你的输入</th><th>服务器版本</th></tr></thead>
+        <tbody><tr v-for="[label, mine, theirs] in conflictFields" :key="label"><td>{{ label }}</td><td>{{ mine || '空' }}</td><td>{{ theirs || '空' }}</td></tr></tbody>
+      </table>
+      <div class="actions">
+        <ActionButton action-id="draft.conflict-reload" :run="takeServer">载入服务器版本</ActionButton><ActionButton action-id="draft.conflict-keep" primary :run="keepMine">以我的输入为准保存</ActionButton>
+      </div>
+    </div>
     <fieldset :disabled="!ready || submitting" class="form-body">
       <template v-if="step === 1">
-        <div class="section-number">01 / 客户与项目</div>
-        <h2>这个机会来自哪里？</h2>
-        <p class="muted">准确的客户与位置可以帮助识别重复报备，无需 GPS。</p>
+        <h2>客户与项目</h2>
+        <p class="muted">客户、项目名称和省市用于识别重复报备。暂不清楚可以留空。</p>
         <div class="form-grid">
-          <label class="wide">终端客户 *<input
-            v-model="form.customer"
-            name="customer"
-            autocomplete="organization"
-            maxlength="200"
-            placeholder="客户企业全称"
-          /></label><label>省 *<input
-            v-model="form.location.province"
-            name="province"
-            placeholder="例如：示例省"
-            maxlength="100"
-          /></label><label>市 *<input
-            v-model="form.location.city"
-            name="city"
-            placeholder="例如：示例市"
-            maxlength="100"
-          /></label><label>区 / 县<input v-model="form.location.district" /></label><label>工业园区<input v-model="form.location.industrialPark" /></label><label>厂区<input
-            v-model="form.location.factoryName"
-            name="factoryName"
-            placeholder="可选"
-          /></label><label>车间<input v-model="form.location.workshop" /></label><label class="wide">详细地址<input v-model="form.location.addressDetail" /></label><label class="wide">项目名称 *<input
-            v-model="form.projectName"
-            name="projectName"
-            maxlength="200"
-            placeholder="简要描述项目或改造范围"
-          /></label><label class="wide">招标编号<input v-model="form.tenderNo" placeholder="如有，可帮助准确查重" /></label>
+          <label class="wide">终端客户<input v-model="form.customer" name="customer" autocomplete="organization" maxlength="200" placeholder="客户企业全称" /></label>
+          <label class="wide">项目名称<input v-model="form.projectName" name="projectName" maxlength="200" placeholder="例如：二号车间桥式行车防摇改造" /></label>
+          <label>省<input v-model="form.location.province" name="province" maxlength="100" /></label>
+          <label>市<input v-model="form.location.city" name="city" maxlength="100" /></label>
+          <label class="wide">项目来源<select v-model="form.informationSource" name="informationSource">
+            <option value="">暂不明确</option>
+            <option v-for="(v, k) in sources" :key="k" :value="k">{{ v }}</option>
+          </select></label>
         </div>
-        <div :class="['duplicate-hint', { warning: dups.length }]" role="status">
-          <ShieldCheck :size="18" />
-          <div>
-            {{ duplicateStatus || '填写客户、位置和项目后自动查重' }}
-            <p v-for="(d, i) in dups" :key="i">
-              {{ d.message }} · {{ d.region }} · {{ stages[d.salesStage] }} ·
-              {{ new Date(d.createdAt).toLocaleDateString() }}
-            </p>
-          </div>
+        <h3 class="subhead">现场位置（可选）</h3>
+        <div class="form-grid">
+          <label>区 / 县<input v-model="form.location.district" /></label>
+          <label>工业园区<input v-model="form.location.industrialPark" /></label>
+          <label>厂区<input v-model="form.location.factoryName" name="factoryName" /></label>
+          <label>车间<input v-model="form.location.workshop" name="workshop" /></label>
+          <label class="wide">详细地址<input v-model="form.location.addressDetail" /></label>
+          <label class="wide">招标编号<input v-model="form.tenderNo" name="tenderNo" placeholder="如有，可帮助准确查重" /></label>
         </div>
       </template>
       <template v-if="step === 2">
-        <div class="section-number">02 / 设备与需求</div>
-        <h2>客户希望解决什么问题？</h2>
-        <div class="form-grid">
-          <label class="wide">项目类型 *<select v-model="form.projectType" name="projectType">
-            <option value="">请选择</option>
-            <option value="NEW_BUILD">新建项目</option>
-            <option value="RETROFIT">存量改造</option>
-            <option value="EXPANSION">扩建</option>
-          </select></label>
-          <div class="wide">
-            <span class="field-label">需求分类 *</span>
-            <div class="check-grid">
-              <label v-for="(v, k) in reqs" :key="k"><input v-model="form.requirements" type="checkbox" :value="k" />{{ v }}</label>
-            </div>
+        <h2>设备与技术</h2>
+        <p class="muted">逐台记录计划设备；吨位、跨度、起升高度不清楚时留空，不要填 0。</p>
+        <div class="wide">
+          <span class="field-label">自动化需求分类</span>
+          <div class="check-grid">
+            <label v-for="(v, k) in reqs" :key="k"><input v-model="form.requirements" type="checkbox" :value="k" />{{ v }}</label>
           </div>
-          <label class="wide">主要需求 *<textarea
-            v-model="form.requirementNotes"
-            name="requirementNotes"
-            rows="4"
-            maxlength="4000"
-            placeholder="记录当前痛点、目标或已知要求"
-          ></textarea></label><label>行车类型<select
-            :value="form.plannedEquipment[0]?.equipmentType || ''"
-            @change="
-              form.plannedEquipment = ($event.target as HTMLSelectElement).value
-                ? [
-                  {
-                    equipmentType: ($event.target as HTMLSelectElement).value,
-                    quantity: 1,
-                    manufacturer: '',
-                  },
-                ]
-                : []
-            "
-          >
-            <option value="">暂不明确</option>
-            <option value="BRIDGE">桥式行车</option>
-            <option value="GANTRY">门式行车</option>
-            <option value="OTHER">其他</option>
-          </select></label><template v-if="form.plannedEquipment[0]">
-            <label>预计数量<input
-              v-model.number="form.plannedEquipment[0].quantity"
-              type="number"
-              min="1"
-              max="10000"
-            /></label><label>厂家<input v-model="form.plannedEquipment[0].manufacturer" /></label><label>基础设备情况<input v-model="form.plannedEquipment[0].notes" /></label>
-          </template>
         </div>
-        <p class="muted">以上为计划设备信息，后续转换时仍需正式设备建档。</p>
+        <div class="form-grid">
+          <label class="wide">主要需求说明<textarea v-model="form.requirementNotes" name="requirementNotes" rows="3" maxlength="4000" placeholder="当前痛点、目标、已知技术要求"></textarea></label>
+        </div>
+        <section v-for="(eq, i) in form.plannedEquipment" :key="i" class="equipment-row" :aria-label="'计划设备 ' + (i + 1)">
+          <div class="equipment-head">
+            <h3>计划设备 {{ i + 1 }}</h3>
+            <ActionButton action-id="equipment.remove" :aria-label="'移除计划设备 ' + (i + 1)" :run="() => { form.plannedEquipment.splice(i, 1); }"><Trash2 :size="15" aria-hidden="true" />移除</ActionButton>
+          </div>
+          <div class="form-grid compact">
+            <label>设备类型<select v-model="eq.equipmentType" :name="'equipmentType' + i">
+              <option v-for="(v, k) in equipmentTypes" :key="k" :value="k">{{ v }}</option>
+            </select></label>
+            <NumberField label="数量" unit="台" integer :name="'quantity' + i" :model-value="eq.quantity" :state="eq.knowledge?.quantity" @update="(v, s) => setNumber(eq, 'quantity', v, s)" />
+            <NumberField label="额定起重量" unit="t" :name="'capacityTons' + i" :model-value="eq.capacityTons" :state="eq.knowledge?.capacityTons" @update="(v, s) => setNumber(eq, 'capacityTons', v, s)" />
+            <NumberField label="跨度" unit="m" :name="'spanM' + i" :model-value="eq.spanM" :state="eq.knowledge?.spanM" @update="(v, s) => setNumber(eq, 'spanM', v, s)" />
+            <NumberField label="起升高度" unit="m" :name="'liftHeightM' + i" :model-value="eq.liftHeightM" :state="eq.knowledge?.liftHeightM" @update="(v, s) => setNumber(eq, 'liftHeightM', v, s)" />
+            <label>控制方式<select v-model="eq.controlMode">
+              <option value="">暂不明确</option>
+              <option v-for="(v, k) in controlModes" :key="k" :value="k">{{ v }}</option>
+            </select></label>
+            <label>厂家<input v-model="eq.manufacturer" maxlength="200" /></label>
+            <label>型号<input v-model="eq.model" maxlength="200" /></label>
+            <fieldset class="wide chip-set">
+              <legend>工作环境</legend>
+              <label v-for="(v, k) in environments" :key="k"><input type="checkbox" :checked="eq.environmentFlags?.includes(k)" @change="eq.environmentFlags = toggle(eq.environmentFlags, k, ($event.target as HTMLInputElement).checked)" />{{ v }}</label>
+            </fieldset>
+            <fieldset class="wide chip-set">
+              <legend>该设备的自动化目标</legend>
+              <label v-for="(v, k) in reqs" :key="k"><input type="checkbox" :checked="eq.automationGoals?.includes(k)" @change="eq.automationGoals = toggle(eq.automationGoals, k, ($event.target as HTMLInputElement).checked)" />{{ v }}</label>
+            </fieldset>
+            <label class="wide">现状说明<input v-model="eq.notes" maxlength="1000" /></label>
+          </div>
+        </section>
+        <ActionButton action-id="equipment.add" :disabled="form.plannedEquipment.length >= 30" reason="最多记录 30 台" :run="addEquipment"><Plus :size="15" aria-hidden="true" />添加计划设备</ActionButton>
+        <p class="muted small">计划设备仅用于报备，不会生成正式设备档案。</p>
       </template>
       <template v-if="step === 3">
-        <div class="section-number">03 / 销售与来源</div>
-        <h2>明确当前进展与下一步。</h2>
+        <h2>商务与跟进</h2>
         <div class="form-grid">
-          <label>销售阶段 *<select v-model="form.salesStage">
-            <option v-for="(v, k) in stages" :key="k" :value="k">{{ v }}</option>
-          </select></label><label>信息来源 *<select v-model="form.informationSource" name="informationSource">
-            <option value="">请选择</option>
-            <option v-for="(v, k) in sources" :key="k" :value="k">{{ v }}</option>
-          </select></label><label>信息可信度 *<select v-model="form.confidenceLevel" name="confidenceLevel">
-            <option value="">请选择</option>
+          <label>项目类型<select v-model="form.projectType" name="projectType">
+            <option value="">暂不明确</option>
+            <option v-for="(v, k) in projectTypes" :key="k" :value="k">{{ v }}</option>
+          </select></label>
+          <label>信息可信度<select v-model="form.confidenceLevel" name="confidenceLevel">
+            <option value="">暂不明确</option>
             <option v-for="(v, k) in confidences" :key="k" :value="k">{{ v }}</option>
-          </select></label><label>预计金额（元）<input
-            v-model.number="form.estimatedAmount"
-            type="number"
-            min="0"
-            step="0.01"
-          /></label><label>预计采购时间<input v-model="form.expectedPurchaseDate" type="date" /></label><label class="wide">补充说明<textarea v-model="form.notes" rows="3" maxlength="4000"></textarea>
-          </label>
+          </select></label>
+          <label>销售阶段<select v-model="form.salesStage" name="salesStage">
+            <option v-for="(v, k) in stages" :key="k" :value="k">{{ v }}</option>
+          </select></label>
+          <NumberField label="预估金额" unit="元" name="estimatedAmount" :model-value="form.estimatedAmount" :state="form.knowledge?.estimatedAmount" @update="(v, s) => setNumber(form, 'estimatedAmount', v, s)" />
+          <label>预期采购日期<input v-model="form.expectedPurchaseDate" type="date" name="expectedPurchaseDate" /></label>
+          <label>下次跟进时间<input v-model="followLocal" type="datetime-local" name="draftFollowupAt" /></label>
+          <label class="wide">下一步事项<input v-model="form.nextAction" name="draftNextAction" maxlength="1000" placeholder="例如：约技术交流，确认跨度与控制方式" /></label>
+          <label class="wide">补充说明<textarea v-model="form.notes" rows="3" maxlength="4000"></textarea></label>
         </div>
-        <div class="note">提交时将再次查重。发现疑似重复会进入待审核，主管确认后确定归属。</div>
       </template>
+      <template v-if="step === 4">
+        <h2>核对与提交</h2>
+        <section class="review-block">
+          <h3>待补信息</h3>
+          <p v-if="!missing.length" class="ok-line">必填信息已齐全。</p>
+          <ul v-else class="missing-list">
+            <li v-for="m in missing" :key="m.label">{{ m.label }}<ActionButton action-id="project.step-jump" :run="() => { step = m.step; }">去填写</ActionButton></li>
+          </ul>
+        </section>
+        <section class="review-block">
+          <h3>归属</h3>
+          <p>{{ ownerLine }}</p>
+          <template v-if="isAdmin && project && project.actions['ownership-transfer']?.allowed">
+            <p v-if="candidates && !candidates.length" class="muted">
+              目前没有可指派的有效销售。草稿会保持待分配，可在人员管理中邀请销售后再指派。
+            </p>
+            <div v-else-if="candidates" class="assign-row">
+              <label>指派给有效销售<select v-model="assignTarget" name="assignTarget">
+                <option value="">请选择</option>
+                <option v-for="c in candidates" :key="c.subject" :value="c.subject">{{ c.name }}</option>
+              </select></label>
+              <label>指派原因<input v-model="assignReason" name="assignReason" maxlength="300" /></label>
+              <ActionButton action-id="project.assign" :disabled="!assignTarget || !assignReason.trim()" reason="请选择销售并填写原因" :run="assign">确认指派</ActionButton>
+            </div>
+            <p class="muted small">指派后你将成为该项目的参与人，审核需由其他独立审核人完成。</p>
+          </template>
+        </section>
+        <section class="review-block">
+          <h3>重复风险</h3>
+          <div :class="['duplicate-hint', { warning: dupState === 'found', pending: dupState === 'insufficient' || dupState === 'error' }]" role="status">
+            <ShieldCheck :size="18" aria-hidden="true" />
+            <div>
+              {{ dupMessage }}
+              <p v-for="(d, i) in dups" :key="i">{{ d.message }} · {{ d.region }} · {{ stages[d.salesStage] }} · {{ new Date(d.createdAt).toLocaleDateString('zh-CN') }}</p>
+            </div>
+          </div>
+        </section>
+        <section class="review-block">
+          <h3>摘要</h3>
+          <dl class="summary-grid">
+            <dt>客户</dt><dd>{{ form.customer || '未填写' }}</dd>
+            <dt>项目</dt><dd>{{ form.projectName || '未填写' }}</dd>
+            <dt>地点</dt><dd>{{ [form.location.province, form.location.city, form.location.factoryName, form.location.workshop].filter(Boolean).join(' ') || '未填写' }}</dd>
+            <dt>计划设备</dt><dd>{{ form.plannedEquipment.length ? form.plannedEquipment.map((e) => (equipmentTypes[e.equipmentType] || '设备') + ' × ' + (e.quantity ?? '数量未知')).join('，') : '未记录' }}</dd>
+            <dt>预估金额</dt><dd>{{ form.estimatedAmount == null ? '未知' : form.estimatedAmount.toLocaleString('zh-CN') + ' 元' }}</dd>
+            <dt>下一步</dt><dd>{{ form.nextAction || '未记录' }}</dd>
+          </dl>
+        </section>
+        <p class="note">“保存草稿”不会建立销售保护；只有“提交正式报备”成功后才进入审核，并在服务端再次查重。</p>
+      </template>
+      <div v-if="step < 4 && step !== 1" class="dup-mini" role="status">{{ dupMessage }}</div>
+      <div v-if="step === 1" :class="['duplicate-hint', { warning: dupState === 'found', pending: dupState === 'insufficient' || dupState === 'error' }]" role="status">
+        <ShieldCheck :size="18" aria-hidden="true" />
+        <div>
+          {{ dupMessage }}
+          <p v-for="(d, i) in dups" :key="i">{{ d.message }} · {{ d.region }} · {{ stages[d.salesStage] }} · {{ new Date(d.createdAt).toLocaleDateString('zh-CN') }}</p>
+        </div>
+      </div>
     </fieldset>
     <div class="wizard-actions">
-      <ActionButton
-        action-id="project.step-back"
-        :disabled="step === 1 || submitting"
-        reason="当前是第一步或正在提交"
-        :run="
-          () => {
-            step--;
-          }
-        "
-      >
-        上一步
-      </ActionButton><span class="spacer"></span><ActionButton
+      <ActionButton action-id="project.step-back" :disabled="step === 1 || submitting" reason="当前是第一步或正在提交" :run="() => { step--; }">上一步</ActionButton><span class="spacer"></span><ActionButton
         action-id="project.save-draft"
-        :disabled="!ready || submitting"
-        reason="正在加载或提交"
+        :disabled="!ready || submitting || saving || !!conflict"
+        :reason="conflict ? '请先处理版本冲突' : '正在加载、保存或提交'"
         :run="() => save()"
       >
         保存草稿
-      </ActionButton><ActionButton
-        v-if="step < 3"
-        action-id="project.step-next"
-        primary
-        :disabled="!ready"
-        reason="正在加载"
-        :run="next"
-      >
-        下一步 →
-      </ActionButton><ActionButton
+      </ActionButton><ActionButton v-if="step < 4" action-id="project.step-next" primary :disabled="!ready" reason="正在加载" :run="next">下一步</ActionButton><ActionButton
         v-else
         action-id="project.submit"
         primary
-        :disabled="!app.user?.permissions.includes('project.submit') || !form.informationSource || !form.confidenceLevel || !ready"
-        :reason="app.user?.permissions.includes('project.submit') ? '请选择信息来源和可信度' : '团队未授予提交报备权限'"
+        :disabled="!ready || !!submitBlock || !!conflict"
+        :reason="submitBlock || '请先处理版本冲突'"
         :run="submit"
       >
-        提交报备
+        提交正式报备
       </ActionButton>
     </div>
   </div>

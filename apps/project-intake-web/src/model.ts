@@ -220,7 +220,7 @@ export const blank = (): Input => ({
   projectType: '',
   informationSource: '',
   confidenceLevel: '',
-  estimatedAmount: 0,
+  estimatedAmount: null,
   knowledge: {},
   nextAction: '',
   nextFollowupAt: null,
@@ -241,3 +241,34 @@ export const when = (v: string | null | undefined) =>
         minute: '2-digit',
       })
     : '—';
+
+export const equipmentTypes: Record<string, string> = { BRIDGE: '桥式行车', GANTRY: '门式行车', OTHER: '其他起重设备' };
+export const controlModes: Record<string, string> = {
+  CAB: '司机室操作',
+  PENDANT: '地面按钮',
+  REMOTE: '无线遥控',
+  SEMI_AUTO: '半自动',
+  AUTO: '全自动',
+  UNKNOWN: '尚不明确',
+};
+export const environments: Record<string, string> = {
+  DUST: '粉尘',
+  HIGH_TEMPERATURE: '高温',
+  EXPLOSIVE: '防爆',
+  OUTDOOR: '户外',
+};
+export const projectTypes: Record<string, string> = { NEW_BUILD: '新建项目', RETROFIT: '存量改造', EXPANSION: '扩建' };
+export const blankEquipment = (): Equipment => ({
+  equipmentType: 'BRIDGE',
+  quantity: null,
+  manufacturer: '',
+  model: '',
+  capacityTons: null,
+  spanM: null,
+  liftHeightM: null,
+  controlMode: '',
+  environmentFlags: [],
+  automationGoals: [],
+  notes: '',
+  knowledge: {},
+});

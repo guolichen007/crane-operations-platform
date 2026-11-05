@@ -11,6 +11,7 @@ async function login(p: Page, subject = 'synthetic-a') {
   await action(p, 'auth.dev-login').click();
   await expect(p.getByRole('heading', { name: '工作台', exact: true })).toBeVisible();
 }
+// G2 four-step intake: 客户与项目 → 设备与技术 → 商务与跟进 → 核对与提交.
 async function stepOne(p: Page, name: string, customer: string) {
   await p.locator('[name=customer]').fill(customer);
   await p.locator('[name=province]').fill('合成省');
@@ -19,16 +20,18 @@ async function stepOne(p: Page, name: string, customer: string) {
   await p.locator('[name=projectName]').fill(name);
 }
 async function remaining(p: Page) {
+  await p.locator('[name=informationSource]').selectOption('END_CUSTOMER');
   await action(p, 'project.step-next').click();
-  await p.locator('[name=projectType]').selectOption('RETROFIT');
-  await p.getByLabel('防摇', { exact: true }).check();
+  await p.getByLabel('防摇', { exact: true }).first().check();
   await p.locator('[name=requirementNotes]').fill('Synthetic 设备防摇需求');
   await action(p, 'project.step-back').click();
   await expect(p.locator('[name=customer]')).toBeVisible();
   await action(p, 'project.step-next').click();
   await action(p, 'project.step-next').click();
-  await p.locator('[name=informationSource]').selectOption('END_CUSTOMER');
+  await p.locator('[name=projectType]').selectOption('RETROFIT');
   await p.locator('[name=confidenceLevel]').selectOption('CUSTOMER_CONFIRMED');
+  await action(p, 'project.step-next').click();
+  await expect(p.getByText('必填信息已齐全。')).toBeVisible();
 }
 async function api(p: Page, path: string, method = 'GET', body?: unknown) {
   return p.evaluate(
