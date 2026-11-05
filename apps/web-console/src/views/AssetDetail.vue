@@ -6,6 +6,7 @@ import { Pencil, Move, Archive, ArrowLeft, Plus } from 'lucide-vue-next';
 import {
   getAsset,
   updateAsset,
+  assetChanges,
   retireAsset,
   moveAsset,
   listEquipment,
@@ -57,14 +58,19 @@ const moving = ref(false);
 const retiring = ref(false);
 const actionError = ref('');
 const editDraft = ref<AssetMasterData | null>(null);
+// Snapshot of the asset as it was when the editor opened (Batch 3 pins its version).
+const editBase = ref<AssetMasterData | null>(null);
 const moveLocation = ref('');
 
 function openEdit() {
-  editDraft.value = { ...(assetQuery.data.value as AssetMasterData) };
+  editBase.value = { ...(assetQuery.data.value as AssetMasterData) };
+  editDraft.value = { ...editBase.value };
   editing.value = true;
 }
 const updateMutation = useMutation({
-  mutationFn: (input: AssetMasterData) => updateAsset(id.value, input, assetQuery.data.value!.version),
+  // PATCH carries only the fields the user changed.
+  mutationFn: (input: AssetMasterData) =>
+    updateAsset(id.value, assetChanges(editBase.value ?? input, input), assetQuery.data.value!.version),
   onSuccess: async () => {
     editing.value = false;
     await queryClient.invalidateQueries({ queryKey: ['asset', id] });

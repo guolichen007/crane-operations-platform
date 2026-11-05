@@ -41,8 +41,23 @@ export const listAssets = (params: AssetListParams = {}) =>
 export const getAsset = (id: string) => api<AssetMasterData>(`assets/${encodeURIComponent(id)}`);
 export const createAsset = (input: AssetMasterData, idempotencyKey: string) =>
   api<AssetMasterData>('assets', { method: 'POST', body: input, idempotencyKey });
-export const updateAsset = (id: string, input: AssetMasterData, version: number) =>
-  api<AssetMasterData>(`assets/${encodeURIComponent(id)}`, { method: 'PATCH', body: input, ifMatch: version });
+
+// Business fields a PATCH may carry (identity, project and version are never sent;
+// the version travels only in If-Match).
+export type AssetPatch = Partial<Omit<AssetMasterData, 'id' | 'projectId' | 'version'>>;
+
+/** Only the business fields whose value differs from the base snapshot. */
+export function assetChanges(base: AssetMasterData, draft: AssetMasterData): AssetPatch {
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(draft) as (keyof AssetMasterData)[]) {
+    if (key === 'id' || key === 'projectId' || key === 'version') continue;
+    if (JSON.stringify(draft[key] ?? null) !== JSON.stringify(base[key] ?? null)) out[key] = draft[key] ?? null;
+  }
+  return out as AssetPatch;
+}
+
+export const updateAsset = (id: string, patch: AssetPatch, version: number) =>
+  api<AssetMasterData>(`assets/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch, ifMatch: version });
 export const retireAsset = (id: string, version: number) =>
   api<{ status: string }>(`assets/${encodeURIComponent(id)}/retire`, { method: 'POST', body: {}, ifMatch: version });
 export const moveAsset = (id: string, locationId: string, version: number) =>

@@ -254,13 +254,15 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 			respondAPI(w, 428, map[string]string{"error": "precondition required"})
 			return
 		}
-		var in contract.AssetMasterData
-		if err := decodeStrict(r, &in); err != nil {
+		// Presence-aware PATCH: omitted fields keep their stored value, explicit
+		// null clears nullable fields, clearing a required field is 422, unknown
+		// keys are 400. Never a zero-value whole-object overwrite.
+		var patch asset.AssetPatch
+		if err := decodeStrict(r, &patch); err != nil {
 			respondAPI(w, 400, map[string]string{"error": "invalid body"})
 			return
 		}
-		in.Id = id
-		out, err := asset.UpdateAsset(r.Context(), h.db, in, expected, currentPrincipal(r).user, requestID(r))
+		out, err := asset.PatchAsset(r.Context(), h.db, id, patch, expected, currentPrincipal(r).user, requestID(r))
 		if err != nil {
 			switch {
 			case errors.Is(err, asset.ErrNotFound):
@@ -271,6 +273,8 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 				respondAPI(w, 409, map[string]string{"error": err.Error()})
 			case errors.Is(err, asset.ErrInvalidInput):
 				respondAPI(w, 422, map[string]string{"error": err.Error()})
+			case errors.Is(err, asset.ErrCrossProject):
+				respondAPI(w, 422, map[string]string{"error": "manufacturer belongs to another project"})
 			default:
 				respondAPI(w, 503, map[string]string{"error": "database unavailable"})
 			}

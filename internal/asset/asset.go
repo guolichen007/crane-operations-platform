@@ -189,8 +189,10 @@ func CreateAsset(ctx context.Context, db *sql.DB, in contract.AssetMasterData, a
 	return in, tx.Commit()
 }
 
-// assetColumns is the canonical asset_devices SELECT list used by readers.
-const assetColumns = `id,project_id,display_name,asset_code,asset_type,asset_status,manufacturer_id,manufacturer_snapshot,brand_snapshot,model_snapshot,serial_number,manufacture_date,installation_date,commissioning_date,lifting_height_m,application_type,control_mode,special_equipment_code,use_registration_no,version`
+// assetColumns is the canonical asset_devices SELECT list used by readers. Date
+// columns are rendered as YYYY-MM-DD so the API matches the contract's
+// format:date (a raw scan of a PostgreSQL date yields an RFC 3339 timestamp).
+const assetColumns = `id,project_id,display_name,asset_code,asset_type,asset_status,manufacturer_id,manufacturer_snapshot,brand_snapshot,model_snapshot,serial_number,to_char(manufacture_date,'YYYY-MM-DD'),to_char(installation_date,'YYYY-MM-DD'),to_char(commissioning_date,'YYYY-MM-DD'),lifting_height_m,application_type,control_mode,special_equipment_code,use_registration_no,version`
 
 func scanAsset(row interface{ Scan(...any) error }) (contract.AssetMasterData, error) {
 	var v contract.AssetMasterData
@@ -322,70 +324,38 @@ func ListAssets(ctx context.Context, db *sql.DB, projectID string, opts ListOpti
 	return values, total, rows.Err()
 }
 
-// UpdateAsset applies an optimistic-concurrency update to BUSINESS_OWNED fields
-// and allows non-terminal asset_status transitions (DRAFT/ACTIVE/OUT_OF_SERVICE).
-// RETIRED is terminal: a retired asset can never be patched back to ACTIVE.
+// UpdateAsset applies a whole-object update: every BUSINESS_OWNED field of `in`
+// is written. It is a thin wrapper over PatchAsset (one validated write path);
+// HTTP PATCH uses PatchAsset directly with presence-aware fields so omitted keys
+// are preserved. A blank DisplayName keeps the stored name (legacy clients that
+// predate the field). RETIRED is terminal and is reached only via RetireAsset.
 func UpdateAsset(ctx context.Context, db *sql.DB, in contract.AssetMasterData, expectedVersion int64, actor, requestID string) (contract.AssetMasterData, error) {
-	if expectedVersion <= 0 {
-		return in, ErrExpectedVersion
-	}
-	if err := validDisplayName(strings.TrimSpace(in.DisplayName)); err != nil {
-		return in, err
-	}
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return in, err
-	}
-	defer tx.Rollback()
-	var status, projectID, existingDisplayName string
-	var version int64
-	if err := tx.QueryRowContext(ctx, `SELECT asset_status,version,project_id,display_name FROM asset_devices WHERE id=$1 FOR UPDATE`, in.Id).Scan(&status, &version, &projectID, &existingDisplayName); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return in, ErrNotFound
+	str := func(v string) Field[string] { return Field[string]{Set: true, Value: v} }
+	ptr := func(v *string) Field[string] {
+		if v == nil {
+			return Field[string]{Set: true, Null: true}
 		}
-		return in, err
+		return Field[string]{Set: true, Value: *v}
 	}
-	if status == "RETIRED" {
-		return in, ErrRetired
+	patch := AssetPatch{
+		AssetCode: ptr(in.AssetCode), AssetType: str(in.AssetType), ManufacturerId: ptr(in.ManufacturerId),
+		ManufacturerSnapshot: str(in.ManufacturerSnapshot), BrandSnapshot: str(in.BrandSnapshot), ModelSnapshot: str(in.ModelSnapshot),
+		SerialNumber: ptr(in.SerialNumber), ManufactureDate: ptr(in.ManufactureDate), InstallationDate: ptr(in.InstallationDate),
+		CommissioningDate: ptr(in.CommissioningDate), ApplicationType: ptr(in.ApplicationType), ControlMode: ptr(in.ControlMode),
+		SpecialEquipmentCode: ptr(in.SpecialEquipmentCode), UseRegistrationNo: ptr(in.UseRegistrationNo),
 	}
-	if version != expectedVersion {
-		return in, ErrVersionConflict
+	if strings.TrimSpace(in.DisplayName) != "" {
+		patch.DisplayName = str(in.DisplayName)
 	}
-	newStatus := status
-	if in.AssetStatus != "" && in.AssetStatus != status {
-		switch in.AssetStatus {
-		case "DRAFT", "ACTIVE", "OUT_OF_SERVICE":
-			newStatus = in.AssetStatus
-		case "RETIRED":
-			return in, ErrTerminalStatus
-		default:
-			return in, fmt.Errorf("invalid asset status %q", in.AssetStatus)
-		}
+	if in.AssetStatus != "" {
+		patch.AssetStatus = str(in.AssetStatus)
 	}
-	// A blank display name keeps the existing one; an explicit name replaces it.
-	name := strings.TrimSpace(in.DisplayName)
-	if name == "" {
-		name = existingDisplayName
+	if in.LiftingHeightM == nil {
+		patch.LiftingHeightM = Field[float64]{Set: true, Null: true}
+	} else {
+		patch.LiftingHeightM = Field[float64]{Set: true, Value: *in.LiftingHeightM}
 	}
-	in.DisplayName = name
-	result, err := tx.ExecContext(ctx, `UPDATE asset_devices SET asset_code=$2,display_name=$3,asset_type=$4,manufacturer_id=$5,manufacturer_snapshot=$6,brand_snapshot=$7,model_snapshot=$8,serial_number=$9,manufacture_date=$10,installation_date=$11,commissioning_date=$12,lifting_height_m=$13,application_type=$14,control_mode=$15,special_equipment_code=$16,use_registration_no=$17,asset_status=$18,version=version+1,updated_at=now() WHERE id=$1 AND version=$19`,
-		in.Id, in.AssetCode, name, in.AssetType, in.ManufacturerId, in.ManufacturerSnapshot, in.BrandSnapshot, in.ModelSnapshot, in.SerialNumber, in.ManufactureDate, in.InstallationDate, in.CommissioningDate, in.LiftingHeightM, in.ApplicationType, in.ControlMode, in.SpecialEquipmentCode, in.UseRegistrationNo, newStatus, expectedVersion)
-	if err != nil {
-		return in, err
-	}
-	if n, err := result.RowsAffected(); err != nil || n != 1 {
-		return in, ErrVersionConflict
-	}
-	in.Version = version + 1
-	in.AssetStatus = newStatus
-	in.ProjectId = projectID
-	if err := revision(ctx, tx, projectID, in.Id, "asset", in.Id, actor, requestID, []string{"updated"}, in); err != nil {
-		return in, err
-	}
-	if err := auditlog.Write(ctx, tx, auditlog.Event{Actor: actor, Project: projectID, Action: "asset_updated", Result: "success", RequestID: requestID}); err != nil {
-		return in, err
-	}
-	return in, tx.Commit()
+	return PatchAsset(ctx, db, in.Id, patch, expectedVersion, actor, requestID)
 }
 
 // RetireAsset retires an asset. A retired asset can never be reactivated, and
