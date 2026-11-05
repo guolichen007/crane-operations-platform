@@ -301,7 +301,6 @@
   color: var(--accent-blue);
   background: linear-gradient(90deg, #2c8fff20, transparent);
 }
-.rail-sep {
 .rail-foot {
   margin-top: auto;
   display: flex;
