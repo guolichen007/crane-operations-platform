@@ -38,13 +38,15 @@
 
 00003 还增加：staff_id UNIQUE、canonical work_email CHECK 与非空邮箱部分 UNIQUE；staff_status 六状态及 `active=(status='ACTIVE')` CHECK；staff_version>0；capability 0–7；legacy 触发器协调旧身份入口；最后一名 active admin 触发器（727105 锁）保护。`staff_outbox` pending 索引、team/role/status 索引保持。00001 的 owner/team/trgm 及关系表索引、00002 的 pending/session 到期和 duplicate 索引不删减。
 
-固定迁移 SHA-256（按 Git 工作树现有字节核对）：
+固定迁移 SHA-256（按基线与本批提交的 Git 对象逐字节比较，二者相同；以下 LF 字节是 Linux 构建源码核对基准，不是生产数据库实测）：
 
 | 文件 | SHA-256 |
 | --- | --- |
-| 00001_init.sql | `f7b14b52d80b68c8ddc40aaba27211e19e353d5aa605f5521a375693f31c3335` |
-| 00002_auth_and_governance.sql | `6080a101b4a7938341fac8707c640f1a3e12451118cc699c302b08f587ab355b` |
+| 00001_init.sql | `30ae47d5d305cac9fbfb2dcd36fd73ffcf324d6f1d02ec699c64417d74b93db7` |
+| 00002_auth_and_governance.sql | `f50dbf5570c5b010b58faf2cc5883e78c6ae6dfb63363e660728004bbe591e8a` |
 | 00003_staff_governance.sql | `00ffd4f93cc2be16d269bfdd3741fe4fe1307b84d0bc7153b6d5bee36de17ed1` |
+
+另外，本机历史工作树的00001/00002分别为42/15行CRLF，尽管当前Git属性为 `text=auto,eol=lf`，文件字节尚未重新检出；00003为LF。两份CRLF工作树SHA分别是 `f7b14b52d80b68c8ddc40aaba27211e19e353d5aa605f5521a375693f31c3335`、`6080a101b4a7938341fac8707c640f1a3e12451118cc699c302b08f587ab355b`。Git对象无变更，本批不改SQL或重检出它们。迁移器对嵌入原始字节校验，不能用本地CRLF测试清单替代Linux LF清单，更不能为通过校验改数据库checksum。后续发布预检须比较实际待运行镜像的嵌入清单、核准Git对象及生产baobei_migrations；不同即STOP并调查来源。生产目前属于哪一组仍为UNKNOWN。
 
 ## ADR-004：真实未分配草稿
 
