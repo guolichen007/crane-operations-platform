@@ -1950,6 +1950,7 @@ td.unassigned,
   .equipment-table {
     display: block;
     overflow-x: auto;
+    white-space: nowrap;
   }
 }
 
@@ -1987,6 +1988,7 @@ td.unassigned,
 .task-tile {
   display: grid;
   grid-template-rows: auto auto 1fr;
+  justify-content: stretch;
   justify-items: start;
   align-content: start;
   gap: 2px;
@@ -2001,6 +2003,10 @@ td.unassigned,
 }
 .task-tile:last-child {
   border-right: 0;
+}
+.task-tile > span {
+  width: 100%;
+  text-align: left;
 }
 .task-tile::after {
   content: '';

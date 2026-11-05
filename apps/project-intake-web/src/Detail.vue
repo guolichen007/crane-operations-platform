@@ -66,7 +66,12 @@ const governanceOpen = ref(''),
   targetStage = ref(''),
   candidates = ref<{ subject: string; name: string }[]>([]);
 const can = (action: string) => !!p.value?.actions?.[action]?.allowed;
-const shown = (action: string) => !!p.value?.actions?.[action] && (can(action) || p.value.actions[action].reasonCode !== 'BUSINESS_PERMISSION_DENIED');
+// Hide actions that do not apply to this role or status; show a disabled
+// button with its reason only when the action applies but a condition is unmet.
+const shown = (action: string) => {
+  const h = p.value?.actions?.[action];
+  return !!h && (h.allowed || !['BUSINESS_PERMISSION_DENIED', 'INVALID_STATE'].includes(h.reasonCode || ''));
+};
 const reason = (action: string) => hintReason(p.value?.actions?.[action] as ActionHint | undefined);
 const governanceTitles: Record<string, string> = {
   'ownership-transfer': '指派或转移负责人',
@@ -308,7 +313,7 @@ const reviewSummary = computed(() => {
           <ul>
             <li>项目可读：是</li>
             <li>本轮独立性：{{ p.review.projectIndependence.allowed ? '满足' : hintReason(p.review.projectIndependence) }}</li>
-            <li>相关候选：{{ p.review.relatedCandidates.allowed ? '均可见且未参与' : hintReason(p.review.relatedCandidates) }}</li>
+            <li>相关候选：{{ !p.review.pendingDuplicates ? '无待裁决候选' : p.review.relatedCandidates.allowed ? '均可见且未参与' : hintReason(p.review.relatedCandidates) }}</li>
           </ul>
         </div>
         <div class="actions">
