@@ -131,6 +131,7 @@ func canonicalEquipmentRequest(in contract.EquipmentInstallation, spec json.RawM
 // CreateAsset inserts a DRAFT asset. Idempotency is evaluated on the canonical
 // client request before any server-side id/status/version assignment.
 func CreateAsset(ctx context.Context, db *sql.DB, in contract.AssetMasterData, actor, requestID, idemKey string) (contract.AssetMasterData, error) {
+	normalizeAssetText(&in)
 	if err := validDisplayName(strings.TrimSpace(in.DisplayName)); err != nil {
 		return in, err
 	}
@@ -187,6 +188,29 @@ func CreateAsset(ctx context.Context, db *sql.DB, in contract.AssetMasterData, a
 		}
 	}
 	return in, tx.Commit()
+}
+
+// normalizeAssetText applies the same text normalization as PATCH (see
+// patch.go): text is trimmed, and a blank nullable text/date is stored as NULL.
+// Create and PATCH must agree, otherwise re-sending a stored value via PATCH
+// would look like a change.
+func normalizeAssetText(in *contract.AssetMasterData) {
+	in.DisplayName = strings.TrimSpace(in.DisplayName)
+	in.AssetType = strings.TrimSpace(in.AssetType)
+	in.ManufacturerSnapshot = strings.TrimSpace(in.ManufacturerSnapshot)
+	in.BrandSnapshot = strings.TrimSpace(in.BrandSnapshot)
+	in.ModelSnapshot = strings.TrimSpace(in.ModelSnapshot)
+	for _, p := range []**string{&in.AssetCode, &in.ManufacturerId, &in.SerialNumber, &in.ManufactureDate, &in.InstallationDate, &in.CommissioningDate, &in.ApplicationType, &in.ControlMode, &in.SpecialEquipmentCode, &in.UseRegistrationNo} {
+		if *p == nil {
+			continue
+		}
+		v := strings.TrimSpace(**p)
+		if v == "" {
+			*p = nil
+		} else {
+			*p = &v
+		}
+	}
 }
 
 // assetColumns is the canonical asset_devices SELECT list used by readers. Date

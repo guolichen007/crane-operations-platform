@@ -234,12 +234,60 @@ func (p AssetPatch) apply(current *contract.AssetMasterData) ([]string, error) {
 	return changed, nil
 }
 
+func sameStr(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
+}
+
+func sameFloat(a, b *float64) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
+}
+
+// diffAsset lists the business fields whose merged value differs from the stored
+// row, in a fixed order. nil and "" are different values (a nullable text field
+// is stored as NULL when cleared, so a cleared field compares as nil on both
+// sides); dates are compared in their stored YYYY-MM-DD form.
+func diffAsset(cur, next contract.AssetMasterData) []string {
+	out := []string{}
+	add := func(name string, same bool) {
+		if !same {
+			out = append(out, name)
+		}
+	}
+	add("displayName", cur.DisplayName == next.DisplayName)
+	add("assetCode", sameStr(cur.AssetCode, next.AssetCode))
+	add("assetType", cur.AssetType == next.AssetType)
+	add("assetStatus", cur.AssetStatus == next.AssetStatus)
+	add("manufacturerId", sameStr(cur.ManufacturerId, next.ManufacturerId))
+	add("manufacturerSnapshot", cur.ManufacturerSnapshot == next.ManufacturerSnapshot)
+	add("brandSnapshot", cur.BrandSnapshot == next.BrandSnapshot)
+	add("modelSnapshot", cur.ModelSnapshot == next.ModelSnapshot)
+	add("serialNumber", sameStr(cur.SerialNumber, next.SerialNumber))
+	add("applicationType", sameStr(cur.ApplicationType, next.ApplicationType))
+	add("controlMode", sameStr(cur.ControlMode, next.ControlMode))
+	add("specialEquipmentCode", sameStr(cur.SpecialEquipmentCode, next.SpecialEquipmentCode))
+	add("useRegistrationNo", sameStr(cur.UseRegistrationNo, next.UseRegistrationNo))
+	add("manufactureDate", sameStr(cur.ManufactureDate, next.ManufactureDate))
+	add("installationDate", sameStr(cur.InstallationDate, next.InstallationDate))
+	add("commissioningDate", sameStr(cur.CommissioningDate, next.CommissioningDate))
+	add("liftingHeightM", sameFloat(cur.LiftingHeightM, next.LiftingHeightM))
+	return out
+}
+
 // PatchAsset applies a presence-aware partial update. Omitted fields keep their
 // stored value; explicit null clears a nullable field; clearing a required field
 // is ErrInvalidInput. The row is locked, lifecycle and If-Match are checked, the
 // patch is merged and validated, and the merged row is written — all in one
 // transaction. The revision snapshot is the stored row after the update, and its
-// changed_fields are the fields the client actually provided.
+// changed_fields are the fields whose stored value actually changed. If nothing
+// changed the call is a no-op (see diffAsset): the current row is returned and no
+// version bump, revision or audit is written. Validation (422), lifecycle and
+// If-Match (409) checks still run first, so a no-op with a stale version is 409.
 func PatchAsset(ctx context.Context, db *sql.DB, id string, patch AssetPatch, expectedVersion int64, actor, requestID string) (contract.AssetMasterData, error) {
 	if expectedVersion <= 0 {
 		return contract.AssetMasterData{}, ErrExpectedVersion
@@ -273,11 +321,18 @@ func PatchAsset(ctx context.Context, db *sql.DB, id string, patch AssetPatch, ex
 		return current, invalid("body version must equal the If-Match version")
 	}
 	merged := current
-	changed, err := patch.apply(&merged)
-	if err != nil {
+	if _, err := patch.apply(&merged); err != nil {
 		return current, err
 	}
-	if patch.ManufacturerId.Set && merged.ManufacturerId != nil {
+	// Whether anything changed is decided by comparing the merged values with the
+	// stored row, never by which keys were present. A request that changes
+	// nothing ({} or same-value fields) is an idempotent no-op: 200 with the
+	// current entity, version/ETag unchanged, no revision and no success audit.
+	changed := diffAsset(current, merged)
+	if len(changed) == 0 {
+		return current, nil
+	}
+	if merged.ManufacturerId != nil && !sameStr(current.ManufacturerId, merged.ManufacturerId) {
 		var mfrProject sql.NullString
 		if err := tx.QueryRowContext(ctx, `SELECT project_id FROM manufacturers WHERE id=$1`, *merged.ManufacturerId).Scan(&mfrProject); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
