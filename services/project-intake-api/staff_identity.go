@@ -16,15 +16,16 @@ import (
 
 // This receipt records a human-reviewed result. The worker has no Keycloak Admin API client.
 type provisionReceipt struct {
-	StaffID           string `json:"staffId"`
-	Version           int    `json:"version"`
-	Operation         string `json:"operation"`
-	Subject           string `json:"subject"`
-	Email             string `json:"email"`
-	IdentityVerified  bool   `json:"identityVerified"`
-	UniqueEmail       bool   `json:"uniqueEmail"`
-	ApprovalReference string `json:"approvalReference"`
-	Reason            string `json:"reason"`
+	StaffID           string   `json:"staffId"`
+	Version           int      `json:"version"`
+	Operation         string   `json:"operation"`
+	Subject           string   `json:"subject"`
+	Email             string   `json:"email"`
+	IdentityVerified  bool     `json:"identityVerified"`
+	UniqueEmail       bool     `json:"uniqueEmail"`
+	ClientRoles       []string `json:"clientRoles,omitempty"`
+	ApprovalReference string   `json:"approvalReference"`
+	Reason            string   `json:"reason"`
 }
 
 func applyProvisionReceipt(ctx context.Context, db *pgxpool.Pool, raw []byte, operator string, dry bool) (string, error) {
@@ -43,7 +44,8 @@ func applyProvisionReceipt(ctx context.Context, db *pgxpool.Pool, raw []byte, op
 	var in provisionReceipt
 	if err := decoder.Decode(&in); err != nil || !uuidPattern.MatchString(in.StaffID) || in.Version < 1 ||
 		!reasonOK(in.Reason) || !evidenceID.MatchString(in.ApprovalReference) ||
-		!contains([]string{"approve", "ack-suspend", "fail"}, in.Operation) {
+		!contains([]string{"approve", "ack-suspend", "fail"}, in.Operation) ||
+		in.Operation != "approve" && in.ClientRoles != nil {
 		return "", staffInvalid
 	}
 	tx, err := db.Begin(ctx)
@@ -62,12 +64,14 @@ func applyProvisionReceipt(ctx context.Context, db *pgxpool.Pool, raw []byte, op
 	if exists {
 		return "ALREADY_APPLIED", nil
 	}
-	var subject, email, state, job, operation string
+	var subject, email, state, job, operation, role string
 	var version int
-	err = tx.QueryRow(ctx, `SELECT u.subject,coalesce(u.work_email,''),u.staff_status,u.staff_version,o.id::text,o.operation
+	var roleChanged bool
+	err = tx.QueryRow(ctx, `SELECT u.subject,coalesce(u.work_email,''),u.staff_status,u.staff_version,o.id::text,o.operation,u.role,
+ EXISTS(SELECT 1 FROM staff_audit a WHERE a.target_id=u.staff_id AND a.action='staff.role-change')
  FROM app_users u JOIN staff_outbox o ON o.staff_id=u.staff_id
  WHERE u.staff_id=$1 AND u.staff_managed AND o.status='PENDING'
- ORDER BY o.staff_version DESC LIMIT 1`, in.StaffID).Scan(&subject, &email, &state, &version, &job, &operation)
+ ORDER BY o.staff_version DESC LIMIT 1`, in.StaffID).Scan(&subject, &email, &state, &version, &job, &operation, &role, &roleChanged)
 	if errors.Is(err, pgx.ErrNoRows) || err == nil && (version != in.Version || email != in.Email) {
 		return "", staffConflict
 	}
@@ -79,6 +83,9 @@ func applyProvisionReceipt(ctx context.Context, db *pgxpool.Pool, raw []byte, op
 	case "approve":
 		if state != staffPending || operation != "PROVISION" || !in.IdentityVerified || !in.UniqueEmail ||
 			!validIdentityUUID(in.Subject) || email == "" || subject != in.Subject && !strings.HasPrefix(subject, "pending:") {
+			return "", staffDenied
+		}
+		if (roleChanged || in.ClientRoles != nil) && !exactClientRole(in.ClientRoles, role) {
 			return "", staffDenied
 		}
 		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM app_users WHERE subject=$1 AND staff_id<>$2)`, in.Subject, in.StaffID).Scan(&exists); err != nil {
@@ -149,9 +156,10 @@ func provisionCommand(ctx context.Context, db *pgxpool.Pool, args []string, out 
 func authorizeOIDCSession(ctx context.Context, tx pgx.Tx, subject string, email loginEmail, roles []string, activate bool) (string, error) {
 	var target, role, status, expected string
 	var version int
-	var active, managed bool
-	err := tx.QueryRow(ctx, `SELECT staff_id::text,role,staff_status,coalesce(work_email,''),staff_version,active,staff_managed
- FROM app_users WHERE subject=$1`, subject).Scan(&target, &role, &status, &expected, &version, &active, &managed)
+	var active, managed, roleChanged bool
+	err := tx.QueryRow(ctx, `SELECT staff_id::text,role,staff_status,coalesce(work_email,''),staff_version,active,staff_managed,
+ EXISTS(SELECT 1 FROM staff_audit a WHERE a.target_id=u.staff_id AND a.action='staff.role-change')
+ FROM app_users u WHERE subject=$1`, subject).Scan(&target, &role, &status, &expected, &version, &active, &managed, &roleChanged)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", loginNotProvisioned
 	}
@@ -165,6 +173,9 @@ func authorizeOIDCSession(ctx context.Context, tx pgx.Tx, subject string, email 
 		return "", loginNotProvisioned
 	}
 	if !contains(roles, role) {
+		return "", loginRoleMissing
+	}
+	if roleChanged && !exactClientRole(roles, role) {
 		return "", loginRoleMissing
 	}
 	if managed && (expected != "" || !active) {
@@ -181,6 +192,10 @@ func authorizeOIDCSession(ctx context.Context, tx pgx.Tx, subject string, email 
 		return "", err
 	}
 	return role, staffAudit(ctx, tx, target, subject, "staff.activate", "企业认证完成精确身份与角色校验", version)
+}
+
+func exactClientRole(roles []string, expected string) bool {
+	return len(roles) == 1 && roles[0] == expected
 }
 
 func reauthenticationTime(nonce string, seconds int64, expires time.Time) *time.Time {

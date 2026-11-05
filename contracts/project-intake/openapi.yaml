@@ -3869,6 +3869,10 @@
           "version": {
             "type": "integer",
             "minimum": 1
+          },
+          "verifyIdentity": {
+            "type": "boolean",
+            "description": "管理员为已有精确 subject 的未核验员工发起身份复核。角色及团队保持一致。"
           }
         },
         "required": [
@@ -4003,6 +4007,17 @@
           },
           "canManage": {
             "type": "boolean"
+          },
+          "identityLinked": {
+            "type": "boolean",
+            "description": "存在格式有效的已绑定企业身份标识。响应不返回标识原值。"
+          },
+          "identityVerified": {
+            "type": "boolean",
+            "description": "活动账号具有精确企业身份、工作邮箱及签名登录激活记录。"
+          },
+          "roleChanged": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -4019,7 +4034,10 @@
           "projectCount",
           "lastLogin",
           "syncStatus",
-          "canManage"
+          "canManage",
+          "identityLinked",
+          "identityVerified",
+          "roleChanged"
         ]
       },
       "StaffPage": {
@@ -4098,11 +4116,16 @@
             "items": {
               "$ref": "#/components/schemas/StaffProject"
             }
+          },
+          "recentReauth": {
+            "type": "boolean",
+            "description": "当前管理员会话具有近期企业重新认证证明。提交变更时服务端再次检查。"
           }
         },
         "required": [
           "member",
-          "projects"
+          "projects",
+          "recentReauth"
         ]
       },
       "StaffAudit": {

@@ -12,6 +12,7 @@ import StaffMembers from './StaffMembers.vue';
 import StaffTeams from './StaffTeams.vue';
 import { useApp } from './store';
 import { loginErrorMessage } from './login-errors';
+import { clearStaffRoleDraft, readStaffRoleDraft } from './staff-role-draft';
 import './style.css';
 const pinia = createPinia();
 const router = createRouter({
@@ -47,6 +48,12 @@ router.beforeEach(async (to) => {
       !['baobei_manager', 'baobei_director', 'baobei_admin'].includes(app.user?.role ?? '')) return '/';
   if (to.path.startsWith('/settings/') && app.user?.role !== 'baobei_admin') return '/';
   if (app.user && to.path === '/login' && !loginErrorMessage(to.query.error)) return '/';
+  if (app.user && to.path === '/') {
+    const draft = readStaffRoleDraft();
+    if (draft && app.user.role === 'baobei_admin' && draft.actor === app.user.subject)
+      return { path: '/team/members/' + draft.staffId, replace: true };
+    if (draft) clearStaffRoleDraft();
+  }
   if ((to.path === '/new' || to.path.endsWith('/edit')) && app.user?.role !== 'baobei_sales')
     return '/';
   if (to.path === '/new' && !to.query.draft && !app.user?.permissions.includes('project.create'))

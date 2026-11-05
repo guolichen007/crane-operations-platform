@@ -4,13 +4,15 @@ import { useRoute, useRouter } from 'vue-router';
 import ActionButton from './ActionButton.vue';
 import Modal from './Modal.vue';
 import { useApp } from './store';
+import { ApiError } from './api-client';
+import { clearStaffRoleDraft, readStaffRoleDraft, saveStaffRoleDraft, type StaffRoleAction } from './staff-role-draft';
 import { when } from './model';
 import {
   capabilities, roles, staffEvents, statuses, syncStatuses,
   type StaffEvent, type StaffMember, type StaffProject, type StaffTeam,
 } from './staff-model';
 
-type Dialog = 'invite' | 'edit' | 'permissions' | 'suspend' | 'reactivate' | 'retry' | 'archive' | 'transfer';
+type Dialog = 'invite' | 'edit' | 'verify' | 'permissions' | 'suspend' | 'reactivate' | 'retry' | 'archive' | 'transfer' | StaffRoleAction;
 const app = useApp();
 const route = useRoute();
 const router = useRouter();
@@ -37,19 +39,34 @@ const targetSearch = ref('');
 const targets = ref<StaffMember[]>([]);
 const results = ref<{id: string; status: string}[]>([]);
 const working = ref(false);
+const reauthReady = ref(false);
+const roleVersion = ref(0);
 const titles: Record<Dialog, string> = {
   invite: '添加团队成员', edit: '编辑成员资料', permissions: '设置业务权限',
+  verify: '完善企业身份', promote: '设为销售主管', demote: '恢复为普通销售',
   suspend: '确认停用账号', reactivate: '申请恢复账号', retry: '重试身份任务',
   archive: '确认归档账号', transfer: '批量移交项目',
 };
 const descriptions: Partial<Record<Dialog, string>> = {
   invite: '提交后等待管理员核对企业账号及 Baobei 角色。',
+  verify: '提交真实工作邮箱以重新核对企业身份。原会话会撤销，核对和员工登录激活后恢复访问。',
+  promote: '变更提交后会立即撤销旧会话。身份运维同步角色，员工重新登录激活后，主管权限才生效。',
+  demote: '提交后立即撤销主管会话。身份运维移除主管角色，员工重新登录激活后恢复销售权限。',
   suspend: '此操作立即撤销 Baobei 会话，未结束项目进入待移交清单。',
   reactivate: '完成管理员核对和企业账号激活后，成员才能再次登录。',
   transfer: '仅移交选中项目，保留创建人、审批和重复裁决。',
   archive: '归档保留人员历史记录。',
 };
 const canManage = computed(() => member.value?.canManage ?? false);
+const roleAction = computed(() => dialog.value === 'promote' || dialog.value === 'demote' ? dialog.value : null);
+const showRoleAction = computed(() => administrator.value && canManage.value && member.value?.status === 'ACTIVE' &&
+  ['baobei_sales', 'baobei_manager'].includes(member.value.role));
+const failureReason = computed(() => member.value?.syncStatus === 'FAILED'
+  ? events.value.find(event => event.action === 'staff.provision.fail')?.reason : '');
+const roleStatus: Record<string, string> = {
+  PENDING_PROVISION: '待身份运维同步', PENDING_ACTIVATION: '待员工登录激活',
+  ACTIVE: '已生效', PROVISION_FAILED: '身份同步失败',
+};
 const needsTeam = computed(() => ['baobei_sales','baobei_manager'].includes(form.value.role));
 const profileDialog = computed(() => dialog.value === 'invite' || dialog.value === 'edit');
 const formReady = computed(() => form.value.reason.trim().length > 0 &&
@@ -63,10 +80,11 @@ async function load() {
     if (memberId.value) {
       const path = '/api/v1/staff/' + memberId.value;
       const [detail, history] = await Promise.all([
-        app.api<{member: StaffMember; projects: StaffProject[]}>(path),
+        app.api<{member: StaffMember; projects: StaffProject[]; recentReauth: boolean}>(path),
         app.api<{items: StaffEvent[]}>(path + '/audit'),
       ]);
       member.value = detail.member;
+      reauthReady.value = detail.recentReauth;
       projects.value = detail.projects;
       events.value = history.items;
       selected.value = selected.value.filter(id => projects.value.some(project => project.id === id));
@@ -83,6 +101,15 @@ async function load() {
 }
 
 function reauthenticate() { window.location.assign('/auth/login?reauth=1'); }
+
+function reauthenticateForRole() {
+  if (!app.user || !member.value || !roleAction.value || !formReady.value) return;
+  saveStaffRoleDraft({
+    actor: app.user.subject, staffId: member.value.id, action: roleAction.value,
+    version: roleVersion.value, reason: form.value.reason.trim(), expiresAt: Date.now() + 300_000,
+  });
+  reauthenticate();
+}
 
 async function changePage(next: number) {
   page.value = next;
@@ -102,6 +129,7 @@ async function findTargets() {
 
 async function open(kind: Dialog) {
   const existing = member.value;
+  roleVersion.value = existing?.version ?? 0;
   form.value = {
     name: existing?.name ?? '',
     email: existing?.email ?? '',
@@ -124,13 +152,22 @@ async function open(kind: Dialog) {
 
 async function save() {
   const kind = dialog.value;
-  if (!kind || !formReady.value || working.value) return;
+  if (!kind || !formReady.value || working.value || roleAction.value && !reauthReady.value) return;
   working.value = true;
   const path = '/api/v1/staff/' + memberId.value;
   const reason = form.value.reason.trim();
   const version = member.value?.version ?? 0;
   try {
-    if (kind === 'invite' || kind === 'edit') {
+    if (kind === 'promote' || kind === 'demote' || kind === 'verify') {
+      const person = member.value;
+      if (!person) return;
+      const role = kind === 'promote' ? 'baobei_manager' : kind === 'demote' ? 'baobei_sales' : person.role;
+      await app.api(path, 'PATCH', {
+        name: person.name, email: kind === 'verify' ? form.value.email : person.email,
+        teamId: person.teamId, note: person.note, role, reason, version: roleVersion.value,
+        ...(kind === 'verify' ? {verifyIdentity: true} : {}),
+      });
+    } else if (kind === 'invite' || kind === 'edit') {
       const payload = {
         name: form.value.name, email: form.value.email, teamId: needsTeam.value ? form.value.teamId : '',
         role: form.value.role, note: form.value.note, reason,
@@ -158,15 +195,32 @@ async function save() {
       await app.api(path + '/' + kind, 'POST', {version, reason});
     }
     dialog.value = null;
-    app.toast(kind === 'invite' || kind === 'reactivate' ? '已提交身份核对，等待处理' : '操作已保存');
+    app.toast(['invite', 'reactivate', 'promote', 'demote', 'verify'].includes(kind)
+      ? '已提交身份核对，等待处理' : '操作已保存');
     await load();
+  } catch (error) {
+    if (roleAction.value && error instanceof ApiError && error.code === 'STAFF_REAUTH_REQUIRED') reauthReady.value = false;
+    throw error;
   } finally {
     working.value = false;
   }
 }
 
 onMounted(async () => {
-  try { await load(); } catch (error) { app.error = (error as Error).message; }
+  try {
+    await load();
+    const draft = readStaffRoleDraft();
+    if (!draft || !member.value || draft.staffId !== member.value.id) return;
+    clearStaffRoleDraft();
+    if (!administrator.value || draft.actor !== app.user?.subject) return;
+    if (draft.version !== member.value.version || !showRoleAction.value || !member.value.identityVerified ||
+        (draft.action === 'promote' ? 'baobei_sales' : 'baobei_manager') !== member.value.role) {
+      app.error = '人员记录已变化，请重新发起授权。';
+      return;
+    }
+    await open(draft.action);
+    form.value.reason = draft.reason;
+  } catch (error) { app.error = (error as Error).message; }
 });
 </script>
 
@@ -220,15 +274,39 @@ onMounted(async () => {
         <div class="staff-title"><h2>{{ member.name }}</h2><span class="staff-status" :data-state="member.status">{{ statuses[member.status] }}</span></div>
         <dl class="staff-facts">
           <div><dt>工作邮箱</dt><dd>{{ member.email || '待补充' }}</dd></div>
-          <div><dt>团队与角色</dt><dd>{{ member.team || '全局角色' }} · {{ roles[member.role] }}</dd></div>
+          <div><dt>{{ member.roleChanged && member.status !== 'ACTIVE' ? '团队与目标角色' : '团队与角色' }}</dt><dd>{{ member.team || '全局角色' }} · {{ roles[member.role] }}</dd></div>
           <div><dt>最近登录</dt><dd>{{ when(member.lastLogin) }}</dd></div>
           <div><dt>身份任务</dt><dd>{{ syncStatuses[member.syncStatus] }}</dd></div>
+          <div v-if="administrator"><dt>企业身份</dt><dd>{{ member.identityVerified ? '已核验' : '待核验' }}</dd></div>
+          <div v-if="member.roleChanged"><dt>授权状态</dt><dd>{{ roleStatus[member.status] || statuses[member.status] }}</dd></div>
           <div><dt>人员编号 / 版本</dt><dd>{{ member.id }} / {{ member.version }}</dd></div>
           <div><dt>备注</dt><dd>{{ member.note || '—' }}</dd></div>
         </dl>
         <p v-if="member.status === 'PENDING_PROVISION'" class="muted">等待管理员处理受控开通回执，成员暂不可登录。</p>
         <p v-if="member.status === 'PENDING_ACTIVATION'" class="muted">等待成员使用已核对的企业账号完成登录激活。</p>
+        <p v-if="failureReason" role="status">最近一次同步失败：{{ failureReason }}</p>
+        <p v-if="showRoleAction && !member.identityVerified" class="muted">
+          {{ member.identityLinked ? '请先完善工作邮箱并完成企业身份核验。' : '请联系身份运维核对企业账号标识。' }}
+        </p>
         <div v-if="canManage" class="actions">
+          <ActionButton
+            v-if="showRoleAction && member.role === 'baobei_sales'" action-id="staff.promote"
+            :disabled="!member.identityVerified" reason="请先核验企业身份" :run="() => open('promote')"
+          >
+            设为销售主管
+          </ActionButton>
+          <ActionButton
+            v-if="showRoleAction && member.role === 'baobei_manager'" action-id="staff.demote"
+            :disabled="!member.identityVerified" reason="请先核验企业身份" :run="() => open('demote')"
+          >
+            恢复为普通销售
+          </ActionButton>
+          <ActionButton
+            v-if="showRoleAction && member.identityLinked && !member.identityVerified"
+            action-id="staff.verify-identity" :run="() => open('verify')"
+          >
+            完善企业身份
+          </ActionButton>
           <ActionButton action-id="staff.edit" :run="() => open('edit')">编辑资料</ActionButton>
           <ActionButton v-if="member.status !== 'SUSPENDED'" action-id="staff.suspend" :run="() => open('suspend')">停用账号</ActionButton>
           <ActionButton v-if="member.status === 'SUSPENDED'" action-id="staff.reactivate" :disabled="!member.email" reason="请先补充工作邮箱" :run="() => open('reactivate')">申请恢复</ActionButton>
@@ -277,6 +355,10 @@ onMounted(async () => {
       @update:open="value => { if (!value && !working) dialog = null; }"
     >
       <form class="staff-form" @submit.prevent="save">
+        <p v-if="roleAction || dialog === 'verify'">
+          {{ member?.name }} · {{ member?.team || '全局角色' }} · {{ roles[member?.role ?? ''] }}
+        </p>
+        <label v-if="dialog === 'verify'">工作邮箱<input v-model="form.email" required type="email" maxlength="254" /></label>
         <template v-if="profileDialog">
           <label>姓名<input v-model="form.name" required maxlength="128" /></label>
           <label>工作邮箱<input v-model="form.email" required type="email" maxlength="254" /></label>
@@ -306,7 +388,18 @@ onMounted(async () => {
         <label>操作原因<textarea v-model="form.reason" required maxlength="300" rows="3" /></label>
         <div class="actions">
           <ActionButton action-id="staff.cancel" :disabled="working" :run="() => dialog = null">取消</ActionButton>
-          <ActionButton action-id="staff.confirm" primary :disabled="!formReady || working" :run="save">确认提交</ActionButton>
+          <ActionButton
+            v-if="roleAction && !reauthReady" action-id="staff.role-reauth"
+            primary :disabled="!formReady" :run="reauthenticateForRole"
+          >
+            重新认证并返回
+          </ActionButton>
+          <ActionButton
+            v-else action-id="staff.confirm" primary
+            :disabled="!formReady || working || dialog === 'verify' && !form.email.trim()" :run="save"
+          >
+            确认提交
+          </ActionButton>
         </div>
       </form>
     </Modal>

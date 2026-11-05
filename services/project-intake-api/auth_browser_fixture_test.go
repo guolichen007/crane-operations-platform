@@ -38,6 +38,32 @@ func TestAuthBrowserFixture(t *testing.T) {
  UPDATE app_users SET active=false WHERE subject='synthetic-b'`); err != nil {
 		t.Fatal(err)
 	}
+	staffSubjects := map[string]string{
+		"role-desktop": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+		"role-mobile":  "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+	}
+	for name, subject := range staffSubjects {
+		tx, err := db.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		in := staffProfileInput{Name: "合成主管授权 " + name, Email: name + "@example.test", Role: salesRole, TeamID: syntheticTeam, Reason: "合成角色授权验收"}
+		result, err := inviteStaff(ctx, tx, User{Subject: "synthetic-admin", Role: adminRole}, nil, in)
+		if err != nil {
+			tx.Rollback(ctx)
+			t.Fatal(err)
+		}
+		if err = tx.Commit(ctx); err != nil {
+			t.Fatal(err)
+		}
+		m := result.(staffMember)
+		receipt := provisionReceipt{StaffID: m.ID, Version: m.Version, Operation: "approve",
+			Subject: subject, Email: m.Email, IdentityVerified: true, UniqueEmail: true,
+			ApprovalReference: "SYNTHETIC-BROWSER", Reason: "合成销售已核对"}
+		if outcome, err := applyProvisionReceipt(ctx, db, mustJSON(receipt), "synthetic-operator", false); err != nil || outcome != staffActivation {
+			t.Fatal(outcome, err)
+		}
+	}
 
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -136,11 +162,21 @@ func TestAuthBrowserFixture(t *testing.T) {
 				email = "different@example.test"
 			case "token":
 				audience = "other-client"
+			case "staff-admin":
+				subject = "synthetic-admin"
+				roles = map[string]any{"baobei-web": map[string]any{"roles": []string{adminRole}}}
+			case "role-desktop", "role-mobile":
+				subject, email = staffSubjects[item.mode], item.mode+"@example.test"
+			case "role-desktop-manager", "role-mobile-manager":
+				salesMode := strings.TrimSuffix(item.mode, "-manager")
+				subject, email = staffSubjects[salesMode], salesMode+"@example.test"
+				roles = map[string]any{"baobei-web": map[string]any{"roles": []string{managerRole}}}
 			}
 			claims, _ := json.Marshal(map[string]any{
 				"iss": issuer, "aud": audience, "sub": subject, "nonce": item.nonce,
 				"iat": time.Now().Unix(), "exp": time.Now().Add(time.Minute).Unix(),
-				"email": email, "email_verified": item.mode != "unverified", "resource_access": roles,
+				"auth_time": time.Now().Unix(),
+				"email":     email, "email_verified": item.mode != "unverified", "resource_access": roles,
 				"realm_access": map[string]any{"roles": []string{salesRole}},
 			})
 			signed, err := signer.Sign(claims)
@@ -172,6 +208,34 @@ func TestAuthBrowserFixture(t *testing.T) {
 	files := http.FileServer(http.Dir(dist))
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/fixture/role-receipt":
+			if r.Method != http.MethodPost {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			subject := staffSubjects[r.URL.Query().Get("member")]
+			operation := r.URL.Query().Get("operation")
+			if subject == "" || operation != "fail" && operation != "approve" {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			receipt := provisionReceipt{Operation: operation, ApprovalReference: "SYNTHETIC-ROLE",
+				Reason: "合成身份同步失败"}
+			err := db.QueryRow(r.Context(), `SELECT staff_id::text,staff_version,work_email FROM app_users
+ WHERE subject=$1 AND role='baobei_manager' AND staff_status='PENDING_PROVISION'`, subject).
+				Scan(&receipt.StaffID, &receipt.Version, &receipt.Email)
+			if err == nil {
+				if operation == "approve" {
+					receipt.Subject, receipt.IdentityVerified, receipt.UniqueEmail = subject, true, true
+					receipt.Reason, receipt.ClientRoles = "合成运维核对", []string{managerRole}
+				}
+				_, err = applyProvisionReceipt(r.Context(), db, mustJSON(receipt), "synthetic-operator", false)
+			}
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
 		case "/fixture/mode", "/fixture/expire-state", "/fixture/expire-session", "/fixture/db-outage", "/fixture/db-online":
 			if r.Method != http.MethodPost {
 				w.WriteHeader(http.StatusMethodNotAllowed)

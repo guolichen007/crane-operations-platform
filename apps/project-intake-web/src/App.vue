@@ -16,6 +16,7 @@ import {
 import ActionButton from './ActionButton.vue';
 import Modal from './Modal.vue';
 import { useApp } from './store';
+import { clearStaffRoleDraft } from './staff-role-draft';
 const app = useApp(),
   router = useRouter(),
   route = useRoute(),
@@ -44,6 +45,7 @@ const nav = computed(() =>
 );
 async function logout() {
   await app.api('/auth/logout', 'POST', {});
+  clearStaffRoleDraft();
   app.user = null;
   app.toast('已退出登录');
   await router.push('/login');

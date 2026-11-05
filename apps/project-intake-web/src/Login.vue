@@ -5,6 +5,7 @@ import { useApp } from './store';
 import ActionButton from './ActionButton.vue';
 import { ApiError } from './api-client';
 import { loginErrorMessage } from './login-errors';
+import { readStaffRoleDraft } from './staff-role-draft';
 const app = useApp(),
   router = useRouter(),
   route = useRoute(),
@@ -56,7 +57,7 @@ async function login() {
 }
 async function enterpriseLogin() {
   await loadConfig();
-  if (oidc.value) window.location.assign('/auth/login');
+  if (oidc.value) window.location.assign(readStaffRoleDraft() ? '/auth/login?reauth=1' : '/auth/login');
 }
 async function retry() {
   await Promise.all([app.loadUser(), loadConfig()]);

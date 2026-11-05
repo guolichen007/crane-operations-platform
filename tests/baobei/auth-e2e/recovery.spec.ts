@@ -177,3 +177,55 @@ test('登录配置网络失败后重试，未知查询值不回显', async ({ pa
   await page.getByRole('button', { name: '重试连接' }).click();
   await expect(page.getByRole('button', { name: /企业账号登录/ })).toBeEnabled();
 });
+
+test('管理员经真实重新认证返回同一员工，确认后才提交主管授权', async ({ page, browser, baseURL }, info) => {
+  const mode = info.project.name === 'desktop' ? 'role-desktop' : 'role-mobile';
+  const context = await browser.newContext({ baseURL, ignoreHTTPSErrors: true });
+  try {
+    const employee = await context.newPage();
+    await begin(employee, mode);
+    await authorize(employee);
+    await workspace(employee);
+    await begin(page, 'staff-admin');
+    await authorize(page);
+    await workspace(page);
+    await page.getByRole('button', { name: '人员管理', exact: true }).click();
+    await page.getByLabel('姓名或邮箱').fill(mode + '@example.test');
+    await page.getByRole('button', { name: '搜索', exact: true }).click();
+    await page.getByRole('button', { name: '查看合成主管授权 ' + mode }).click();
+    await expect(page.getByText('已核验', { exact: true })).toBeVisible();
+    const detail = new URL(page.url()).pathname;
+    await page.getByRole('button', { name: '设为销售主管' }).click();
+    const reason = '合成审批，调整本团队负责人';
+    await page.getByLabel('操作原因').fill(reason);
+    await page.getByRole('button', { name: '重新认证并返回' }).click();
+    await expect(page).toHaveURL(url => url.hostname === 'localhost' && url.searchParams.get('prompt') === 'login' &&
+      url.searchParams.get('max_age') === '0');
+    await authorize(page);
+    await expect(page).toHaveURL(detail);
+    await expect(page.getByLabel('操作原因')).toHaveValue(reason);
+    expect((await employee.request.get('/api/v1/me')).status()).toBe(200);
+    await page.getByRole('button', { name: '确认提交' }).click();
+    await expect(page.getByText('待身份运维同步', { exact: true })).toBeVisible();
+    await expect(page.getByText(reason, { exact: false })).toBeVisible();
+    expect((await employee.request.get('/api/v1/me')).status()).toBe(401);
+    await control(page, 'role-receipt?member=' + mode + '&operation=fail');
+    await page.reload();
+    await expect(page.getByText('身份同步失败', { exact: true })).toBeVisible();
+    await expect(page.getByText(/最近一次同步失败.*合成身份同步失败/)).toBeVisible();
+    await page.getByRole('button', { name: '重试身份任务' }).click();
+    await page.getByLabel('操作原因').fill('合成排障后重试');
+    await page.getByRole('button', { name: '确认提交' }).click();
+    await expect(page.getByText('待身份运维同步', { exact: true })).toBeVisible();
+    await control(page, 'role-receipt?member=' + mode + '&operation=approve');
+    await page.reload();
+    await expect(page.getByText('待员工登录激活', { exact: true })).toBeVisible();
+    await begin(employee, mode + '-manager');
+    await authorize(employee);
+    await workspace(employee);
+    await page.reload();
+    await expect(page.getByText('已生效', { exact: true })).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});

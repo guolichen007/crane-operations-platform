@@ -134,21 +134,24 @@ func needsApproval(actor User, oldRole, newRole string, at *time.Time) error {
 }
 
 type staffMember struct {
-	ID          string     `json:"id"`
-	Subject     string     `json:"-"`
-	Name        string     `json:"name"`
-	Email       string     `json:"email"`
-	TeamID      string     `json:"teamId"`
-	Team        string     `json:"team"`
-	Role        string     `json:"role"`
-	Status      string     `json:"status"`
-	Version     int        `json:"version"`
-	Note        string     `json:"note"`
-	Permissions []string   `json:"permissions"`
-	Projects    int        `json:"projectCount"`
-	LastLogin   *time.Time `json:"lastLogin"`
-	SyncStatus  string     `json:"syncStatus"`
-	CanManage   bool       `json:"canManage"`
+	ID               string     `json:"id"`
+	Subject          string     `json:"-"`
+	Name             string     `json:"name"`
+	Email            string     `json:"email"`
+	TeamID           string     `json:"teamId"`
+	Team             string     `json:"team"`
+	Role             string     `json:"role"`
+	Status           string     `json:"status"`
+	Version          int        `json:"version"`
+	Note             string     `json:"note"`
+	Permissions      []string   `json:"permissions"`
+	Projects         int        `json:"projectCount"`
+	LastLogin        *time.Time `json:"lastLogin"`
+	SyncStatus       string     `json:"syncStatus"`
+	CanManage        bool       `json:"canManage"`
+	IdentityVerified bool       `json:"identityVerified"`
+	IdentityLinked   bool       `json:"identityLinked"`
+	RoleChanged      bool       `json:"roleChanged"`
 }
 type staffProject struct {
 	ID      string `json:"id"`
@@ -175,7 +178,9 @@ const staffColumns = `u.staff_id::text,u.subject,u.display_name,coalesce(u.work_
  u.role,u.staff_status,u.staff_version,u.staff_note,u.staff_permissions,
  (SELECT count(*) FROM intake_projects p WHERE p.owner_subject=u.subject
    AND ($1<>'baobei_manager' OR p.team_id::text=$2)),u.last_login_at,
- coalesce((SELECT status FROM staff_outbox o WHERE o.staff_id=u.staff_id ORDER BY o.staff_version DESC,o.created_at DESC LIMIT 1),'NONE')`
+ coalesce((SELECT status FROM staff_outbox o WHERE o.staff_id=u.staff_id ORDER BY o.staff_version DESC,o.created_at DESC LIMIT 1),'NONE'),
+ (u.active AND u.staff_managed AND EXISTS(SELECT 1 FROM staff_audit a WHERE a.target_id=u.staff_id AND a.action='staff.activate')),
+ EXISTS(SELECT 1 FROM staff_audit a WHERE a.target_id=u.staff_id AND a.action='staff.role-change')`
 const staffFrom = ` FROM app_users u LEFT JOIN teams t ON t.id=u.team_id `
 const staffScope = ` ($1 IN ('baobei_admin','baobei_director') OR ($1='baobei_manager' AND u.role='baobei_sales' AND u.team_id::text=$2)) `
 const openProjects = `intake_status NOT IN ('REJECTED','CANCELLED','CONVERTED') AND sales_stage NOT IN ('WON','LOST')`
@@ -183,8 +188,11 @@ const openProjects = `intake_status NOT IN ('REJECTED','CANCELLED','CONVERTED') 
 func scanStaff(row interface{ Scan(...any) error }) (staffMember, error) {
 	var m staffMember
 	var mask int
-	err := row.Scan(&m.ID, &m.Subject, &m.Name, &m.Email, &m.TeamID, &m.Team, &m.Role, &m.Status, &m.Version, &m.Note, &mask, &m.Projects, &m.LastLogin, &m.SyncStatus)
+	err := row.Scan(&m.ID, &m.Subject, &m.Name, &m.Email, &m.TeamID, &m.Team, &m.Role, &m.Status, &m.Version, &m.Note, &mask, &m.Projects, &m.LastLogin, &m.SyncStatus, &m.IdentityVerified, &m.RoleChanged)
 	m.Permissions = capabilityList(mask)
+	email, emailErr := normalizedEmail(m.Email)
+	m.IdentityLinked = validIdentityUUID(m.Subject)
+	m.IdentityVerified = m.IdentityVerified && m.IdentityLinked && emailErr == nil && email == m.Email
 	return m, err
 }
 
@@ -297,14 +305,15 @@ func staffEnqueue(ctx context.Context, tx pgx.Tx, target string, version int, op
 }
 
 type staffProfileInput struct {
-	Name        string   `json:"name"`
-	Email       string   `json:"email"`
-	TeamID      string   `json:"teamId"`
-	Role        string   `json:"role"`
-	Note        string   `json:"note"`
-	Reason      string   `json:"reason"`
-	Version     int      `json:"version"`
-	Permissions []string `json:"permissions,omitempty"`
+	Name           string   `json:"name"`
+	Email          string   `json:"email"`
+	TeamID         string   `json:"teamId"`
+	Role           string   `json:"role"`
+	Note           string   `json:"note"`
+	Reason         string   `json:"reason"`
+	Version        int      `json:"version"`
+	Permissions    []string `json:"permissions,omitempty"`
+	VerifyIdentity bool     `json:"verifyIdentity,omitempty"`
 }
 type staffMutation struct {
 	Version     int      `json:"version"`
@@ -349,6 +358,9 @@ func validateProfile(ctx context.Context, tx pgx.Tx, actor User, in *staffProfil
 }
 
 func inviteStaff(ctx context.Context, tx pgx.Tx, actor User, at *time.Time, in staffProfileInput) (any, error) {
+	if in.VerifyIdentity {
+		return nil, staffInvalid
+	}
 	if err := validateProfile(ctx, tx, actor, &in); err != nil {
 		return nil, err
 	}
@@ -393,7 +405,14 @@ func editStaff(ctx context.Context, tx pgx.Tx, actor User, at *time.Time, m staf
 	if err := needsApproval(actor, m.Role, in.Role, at); err != nil {
 		return nil, err
 	}
-	roleOrTeam := m.Role != in.Role || m.TeamID != in.TeamID
+	roleChanged := m.Role != in.Role
+	if roleChanged && (!m.IdentityVerified || in.Email != m.Email) {
+		return nil, staffProblem{409, "STAFF_IDENTITY_NOT_VERIFIED", "请先完成企业身份核对和登录激活，再变更角色"}
+	}
+	roleOrTeam := roleChanged || m.TeamID != in.TeamID
+	if in.VerifyIdentity && (actor.Role != adminRole || roleOrTeam || m.Status != staffActive || m.IdentityVerified || !m.IdentityLinked) {
+		return nil, staffDenied
+	}
 	if roleOrTeam {
 		var open bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM intake_projects WHERE owner_subject=$1 AND `+openProjects+`)`, m.Subject).Scan(&open); err != nil {
@@ -404,7 +423,7 @@ func editStaff(ctx context.Context, tx pgx.Tx, actor User, at *time.Time, m staf
 		}
 	}
 	next := m.Status
-	newProvision := roleOrTeam || in.Email != m.Email
+	newProvision := roleOrTeam || in.Email != m.Email || in.VerifyIdentity
 	if newProvision && next != staffSuspended {
 		next = staffPending
 	}
@@ -425,7 +444,11 @@ func editStaff(ctx context.Context, tx pgx.Tx, actor User, at *time.Time, m staf
 			}
 		}
 	}
-	if err = staffAudit(ctx, tx, m.ID, actor.Subject, "staff.edit", in.Reason, version); err != nil {
+	action, reason := "staff.edit", in.Reason
+	if roleChanged {
+		action, reason = "staff.role-change", m.Role+" → "+in.Role+" · "+in.Reason
+	}
+	if err = staffAudit(ctx, tx, m.ID, actor.Subject, action, reason, version); err != nil {
 		return nil, err
 	}
 	return readStaff(ctx, tx, actor, m.ID)
@@ -758,7 +781,7 @@ func staffRoute(ctx context.Context, tx pgx.Tx, w http.ResponseWriter, r *http.R
 			return nil, staffMissing
 		}
 		projects, err := staffProjects(ctx, tx, actor, m)
-		return map[string]any{"member": m, "projects": projects}, err
+		return map[string]any{"member": m, "projects": projects, "recentReauth": actor.Role == adminRole && recentReauth(at)}, err
 	}
 	if !staffWritable(actor, m.Subject, m.Role, m.TeamID) || m.Status == staffArchived {
 		return nil, staffDenied

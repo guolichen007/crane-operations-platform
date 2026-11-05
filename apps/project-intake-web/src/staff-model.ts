@@ -31,6 +31,7 @@ export const syncStatuses: Record<string, string> = {
 export const staffEvents: Record<string, string> = {
   'staff.invite': '添加成员',
   'staff.edit': '编辑资料',
+  'staff.role-change': '提交角色授权变更',
   'staff.permissions': '调整业务权限',
   'staff.suspend': '停用账号',
   'staff.reactivate': '申请恢复',
@@ -58,6 +59,9 @@ export interface StaffMember {
   lastLogin: string | null;
   syncStatus: string;
   canManage: boolean;
+  identityLinked: boolean;
+  identityVerified: boolean;
+  roleChanged: boolean;
 }
 
 export interface StaffProject {

@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -371,6 +372,13 @@ func testOIDC(t *testing.T, db *pgxpool.Pool) {
 			if roleMode == "admin" {
 				claims["resource_access"] = map[string]any{"baobei-web": map[string]any{"roles": []string{adminRole}}}
 			}
+			if roleMode == "manager" || roleMode == "dual" {
+				roles := []string{managerRole}
+				if roleMode == "dual" {
+					roles = append(roles, salesRole)
+				}
+				claims["resource_access"] = map[string]any{"baobei-web": map[string]any{"roles": roles}}
+			}
 			b, _ := json.Marshal(claims)
 			obj, _ := signer.Sign(b)
 			token, _ := obj.CompactSerialize()
@@ -657,6 +665,177 @@ func testOIDC(t *testing.T, db *pgxpool.Pool) {
 			status, body = c.call("POST", "/api/v1/staff/invitations", invite)
 			expect(t, status, tc.want, body)
 		}
+	})
+	t.Run("staff_role_change_keeps_identity_and_requires_exclusive_role", func(t *testing.T) {
+		ctx := context.Background()
+		const subject = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+		const legacy = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+		const email = "role-change@example.test"
+		signIn := func(who, mode string, reauth bool, want int) testClient {
+			t.Helper()
+			jar, _ := cookiejar.New(nil)
+			c = testClient{&http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, server.URL, "", t}
+			tokenSubject, roleMode, authAge = who, mode, 0
+			s, b := c.call("GET", "/auth/callback?code=synthetic&state="+url.QueryEscape(startLogin(reauth)), nil)
+			expect(t, s, want, b)
+			if want == 303 {
+				s, b = c.call("GET", "/api/v1/me", nil)
+				expect(t, s, 200, b)
+				var user User
+				if err := json.Unmarshal(b, &user); err != nil {
+					t.Fatal(err)
+				}
+				c.csrf = user.CSRF
+			}
+			return c
+		}
+		admin := signIn("synthetic-admin", "admin", true, 303)
+		profile := staffProfileInput{Name: "合成待升主管", Email: email, Role: salesRole, TeamID: syntheticTeam, Reason: "录入经审批的合成销售"}
+		s, b := admin.call("POST", "/api/v1/staff/invitations", profile)
+		member := memberFrom(t, s, b)
+		path := "/api/v1/staff/" + member.ID
+		receipt := provisionReceipt{StaffID: member.ID, Version: member.Version, Operation: "approve", Subject: subject, Email: email,
+			IdentityVerified: true, UniqueEmail: true, ApprovalReference: "SYNTHETIC-ROLE", Reason: "核对精确身份"}
+		apply := func(in provisionReceipt, want string) {
+			t.Helper()
+			got, err := applyProvisionReceipt(ctx, db, mustJSON(in), "synthetic-operator", false)
+			if got != want || err != nil {
+				t.Fatalf("receipt status %q, want %q: %v", got, want, err)
+			}
+		}
+		reject := func(in provisionReceipt) {
+			t.Helper()
+			if _, err := applyProvisionReceipt(ctx, db, mustJSON(in), "synthetic-operator", false); err == nil {
+				t.Fatal("invalid role receipt accepted")
+			}
+		}
+		detail := func() staffMember {
+			t.Helper()
+			s, b := admin.call("GET", path, nil)
+			expect(t, s, 200, b)
+			var result struct{ Member staffMember }
+			if err := json.Unmarshal(b, &result); err != nil {
+				t.Fatal(err)
+			}
+			return result.Member
+		}
+		apply(receipt, staffActivation)
+		signedEmail, signedVerified = email, true
+		sales := signIn(subject, "client", false, 303)
+		member = detail()
+		if !member.IdentityVerified || member.Status != staffActive {
+			t.Fatal("verified enterprise identity was not recognized")
+		}
+		profile.Role, profile.Version, profile.Reason = managerRole, member.Version, "合成团队负责人调整"
+		s, b = sales.call("PATCH", path, profile)
+		expect(t, s, 403, b)
+		if _, err := db.Exec(ctx, `UPDATE app_users SET team_id=$1 WHERE subject='synthetic-manager'`, syntheticTeam); err != nil {
+			t.Fatal(err)
+		}
+		manager := signIn("synthetic-manager", "manager", true, 303)
+		s, b = manager.call("PATCH", path, profile)
+		expect(t, s, 403, b)
+		staleAdmin := signIn("synthetic-admin", "admin", false, 303)
+		s, b = staleAdmin.call("PATCH", path, profile)
+		expect(t, s, 403, b)
+		if !strings.Contains(string(b), "STAFF_REAUTH_REQUIRED") {
+			t.Fatal("missing explicit reauthentication gate")
+		}
+
+		var legacyID string
+		if err := db.QueryRow(ctx, `INSERT INTO app_users(subject,display_name,role,team_id,work_email)
+ VALUES($1,'合成旧销售','baobei_sales',$2,'legacy-role@example.test') RETURNING staff_id::text`, legacy, syntheticTeam).Scan(&legacyID); err != nil {
+			t.Fatal(err)
+		}
+		invalid := profile
+		invalid.Email, invalid.Version = "legacy-role@example.test", 1
+		s, b = admin.call("PATCH", "/api/v1/staff/"+legacyID, invalid)
+		expect(t, s, 409, b)
+		if !strings.Contains(string(b), "STAFF_IDENTITY_NOT_VERIFIED") {
+			t.Fatal("unverified identity must be blocked")
+		}
+		invalid.Role, invalid.VerifyIdentity = salesRole, true
+		s, b = admin.call("PATCH", "/api/v1/staff/"+legacyID, invalid)
+		if old := memberFrom(t, s, b); old.Status != staffPending || old.SyncStatus != "PENDING" || old.IdentityVerified {
+			t.Fatal("identity verification did not queue existing UUID/email")
+		}
+		invalid = profile
+		invalid.Role = "realm-admin"
+		s, b = admin.call("PATCH", path, invalid)
+		expect(t, s, 400, b)
+		invalid = profile
+		invalid.Email = "changed@example.test"
+		s, b = admin.call("PATCH", path, invalid)
+		expect(t, s, 409, b)
+
+		// Both requests propose the same version. The identity lock admits only one.
+		outcomes := make(chan int, 2)
+		for range 2 {
+			go func() {
+				status, _ := admin.call("PATCH", path, profile)
+				outcomes <- status
+			}()
+		}
+		first, second := <-outcomes, <-outcomes
+		if !(first == 200 && second == 409 || first == 409 && second == 200) {
+			t.Fatal(first, second)
+		}
+		member = detail()
+		if member.Status != staffPending || member.Role != managerRole || member.Version != profile.Version+1 {
+			t.Fatal(member)
+		}
+		s, b = sales.call("GET", "/api/v1/me", nil)
+		expect(t, s, 401, b)
+		receipt.Version = member.Version
+		invalidReceipt := receipt
+		invalidReceipt.ClientRoles = []string{managerRole}
+		invalidReceipt.Subject = legacy
+		reject(invalidReceipt)
+		invalidReceipt.Subject, invalidReceipt.IdentityVerified = subject, false
+		reject(invalidReceipt)
+		reject(receipt)
+		invalidReceipt = receipt
+		invalidReceipt.ClientRoles = []string{"realm-admin"}
+		reject(invalidReceipt)
+		failure := receipt
+		failure.Operation, failure.Subject, failure.Reason = "fail", "", "合成身份同步失败"
+		apply(failure, staffFailed)
+		signIn(subject, "manager", false, 403)
+		member = detail()
+		s, b = admin.call("POST", path+"/retry", staffMutation{Version: member.Version, Reason: "复核后重试"})
+		member = memberFrom(t, s, b)
+		receipt.Version, receipt.ClientRoles = member.Version, []string{managerRole}
+		apply(receipt, staffActivation)
+		apply(receipt, "ALREADY_APPLIED")
+		signIn(subject, "client", false, 403)
+		signIn(subject, "dual", false, 403)
+		signedVerified = false
+		signIn(subject, "manager", false, 403)
+		signedVerified = true
+		promoted := signIn(subject, "manager", false, 303)
+		member = detail()
+		if !member.RoleChanged || !member.IdentityVerified || member.Status != staffActive {
+			t.Fatal(member)
+		}
+		profile.Role, profile.Version, profile.Reason = salesRole, member.Version, "合成恢复普通销售"
+		s, b = admin.call("PATCH", path, profile)
+		member = memberFrom(t, s, b)
+		s, b = promoted.call("GET", "/api/v1/staff", nil)
+		expect(t, s, 401, b)
+		apply(receipt, "ALREADY_APPLIED")
+		signIn(subject, "manager", false, 403)
+		receipt.Version, receipt.ClientRoles = member.Version, []string{salesRole}
+		apply(receipt, staffActivation)
+		signIn(subject, "dual", false, 403)
+		demoted := signIn(subject, "client", false, 303)
+		s, b = demoted.call("GET", "/api/v1/staff", nil)
+		expect(t, s, 403, b)
+		member = detail()
+		s, b = admin.call("POST", path+"/suspend", staffMutation{Version: member.Version, Reason: "合成停用"})
+		memberFrom(t, s, b)
+		s, b = demoted.call("GET", "/api/v1/me", nil)
+		expect(t, s, 401, b)
+		signIn(subject, "client", false, 403)
 	})
 	production := &App{cfg: Config{Env: "production"}}
 	rec := httptest.NewRecorder()
