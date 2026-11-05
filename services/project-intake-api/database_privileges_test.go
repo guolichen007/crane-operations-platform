@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -216,6 +217,32 @@ func TestDatabaseProductionPrivileges(t *testing.T) {
 	project = projectFrom(t, status, response)
 	if project.OwnerSubject != "synthetic-a" || project.CreatedBySubject != "synthetic-a" || project.IntakeStatus != "APPROVED" {
 		t.Fatal("restricted staff batch transfer failed")
+	}
+
+	// G2-0 paths under least privilege: receipt lookup, display names, list
+	// hints with review facts and admin handoff through the staff connection.
+	admin := login(t, server, "synthetic-admin")
+	receiptKey := "g2-privilege-" + strings.Repeat("k", 20)
+	status, response = admin.keyed(receiptKey, map[string]any{"projectName": "合成分权回执", "version": 1})
+	draft := projectFrom(t, status, response)
+	status, response = admin.call("GET", "/api/v1/project-create-receipts/"+receiptKey, nil)
+	expect(t, status, 200, response)
+	status, response = admin.call("GET", "/api/v1/projects/"+draft.ID, nil)
+	if d := projectFrom(t, status, response); d.CreatedByName != "示例管理员" {
+		t.Fatal("restricted display name", d.CreatedByName)
+	}
+	status, response = director.call("GET", "/api/v1/projects?pageSize=50", nil)
+	expect(t, status, 200, response)
+	if err := staff.QueryRow(ctx, `SELECT staff_version FROM app_users WHERE subject='synthetic-a'`).Scan(&sourceVersion); err != nil {
+		t.Fatal(err)
+	}
+	status, response = admin.call("POST", "/api/v1/staff/"+targetStaff+"/ownership-transfer-batch", map[string]any{
+		"version": sourceVersion, "targetId": sourceStaff, "reason": "合成管理员分权交接",
+		"projects": []map[string]any{{"id": project.ID, "version": project.Version}},
+	})
+	expect(t, status, 200, response)
+	if !strings.Contains(string(response), "TRANSFERRED") {
+		t.Fatal("restricted admin handoff", string(response))
 	}
 
 	summary, err := applyIdentity(ctx, maintenance, identityFixture(), "synthetic-operator", false)

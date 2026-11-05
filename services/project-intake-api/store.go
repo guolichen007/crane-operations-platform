@@ -15,12 +15,18 @@ type querier interface {
 	QueryRow(context.Context, string, ...any) pgx.Row
 }
 
-const columns = `p.protected_until,p.next_review_at,p.id::text,p.registration_no,coalesce(p.owner_subject,''),p.created_by_subject,coalesce(p.team_id::text,''),p.intake_status,p.protection_status,p.version,p.created_at,p.updated_at,p.last_activity_at,p.next_followup_at,p.document,p.next_action,p.draft_custodian_subject,coalesce(p.submitted_by_subject,''),p.submission_revision,p.evidence_state,p.protection_started_at,p.protection_basis,p.document_hash`
+var columns = `p.protected_until,p.next_review_at,p.id::text,p.registration_no,coalesce(p.owner_subject,''),p.created_by_subject,coalesce(p.team_id::text,''),p.intake_status,p.protection_status,p.version,p.created_at,p.updated_at,p.last_activity_at,p.next_followup_at,p.document,p.next_action,p.draft_custodian_subject,coalesce(p.submitted_by_subject,''),p.submission_revision,p.evidence_state,p.protection_started_at,p.protection_basis,p.document_hash,` + displayName("p.owner_subject") + `,` + displayName("p.created_by_subject") + `,` + displayName("p.draft_custodian_subject") + `,` + displayName("p.submitted_by_subject")
+
+// displayName resolves a business actor to the display name only; e-mail,
+// staff identifiers and team data are never projected through business reads.
+func displayName(subject string) string {
+	return `coalesce((SELECT display_name FROM app_users du WHERE du.subject=` + subject + `),'')`
+}
 
 func scan(row interface{ Scan(...any) error }) (Project, error) {
 	var p Project
 	var b []byte
-	e := row.Scan(&p.ProtectedUntil, &p.NextReviewAt, &p.ID, &p.RegistrationNo, &p.OwnerSubject, &p.CreatedBySubject, &p.TeamID, &p.IntakeStatus, &p.ProtectionStatus, &p.Version, &p.CreatedAt, &p.UpdatedAt, &p.LastActivityAt, &p.NextFollowupAt, &b, &p.NextAction, &p.DraftCustodianSubject, &p.SubmittedBySubject, &p.SubmissionRevision, &p.EvidenceState, &p.ProtectionStartedAt, &p.ProtectionBasis, &p.DocumentHash)
+	e := row.Scan(&p.ProtectedUntil, &p.NextReviewAt, &p.ID, &p.RegistrationNo, &p.OwnerSubject, &p.CreatedBySubject, &p.TeamID, &p.IntakeStatus, &p.ProtectionStatus, &p.Version, &p.CreatedAt, &p.UpdatedAt, &p.LastActivityAt, &p.NextFollowupAt, &b, &p.NextAction, &p.DraftCustodianSubject, &p.SubmittedBySubject, &p.SubmissionRevision, &p.EvidenceState, &p.ProtectionStartedAt, &p.ProtectionBasis, &p.DocumentHash, &p.OwnerName, &p.CreatedByName, &p.CustodianName, &p.SubmittedByName)
 	if e != nil {
 		return p, e
 	}
@@ -203,10 +209,12 @@ func (a *App) list(ctx context.Context, u User, params map[string]string) ([]Pro
 	if err != nil {
 		return nil, 0, err
 	}
+	ptrs := make([]*Project, len(out))
 	for i := range out {
-		if err = a.projectHints(ctx, a.db, u, &out[i]); err != nil {
-			return nil, 0, err
-		}
+		ptrs[i] = &out[i]
+	}
+	if err = a.batchHints(ctx, a.db, u, ptrs); err != nil {
+		return nil, 0, err
 	}
 	return out, total, nil
 }

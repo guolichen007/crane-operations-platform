@@ -132,35 +132,6 @@ func enforceProject(u User, p Project, action string) error {
 	}
 	return problem(status, code)
 }
-func reviewIndependence(ctx context.Context, q querier, u User, p Project) error {
-	// Candidate projects need not themselves still be pending, but their evidence must be complete.
-	if !(ProjectPolicy{u}).Read(p) {
-		return problem(403, "REVIEW_RELATED_PROJECT_RESTRICTED")
-	}
-	if p.EvidenceState != "COMPLETE" || p.SubmissionRevision < 1 {
-		return problem(409, "REVIEW_EVIDENCE_INCOMPLETE")
-	}
-	var conflict bool
-	err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM project_submissions s WHERE s.project_id=$1 AND s.revision=$2
- AND (s.actor_subject=$3 OR s.creator_subject=$3 OR s.owner_subject=$3 OR s.participants ? $3
- OR EXISTS(SELECT 1 FROM project_participations a WHERE a.project_id=s.project_id AND a.source_version>=s.source_version
- AND (a.actor_subject=$3 OR a.owner_subject=$3))))`, p.ID, p.SubmissionRevision, u.Subject).Scan(&conflict)
-	if err != nil {
-		return err
-	}
-	if conflict || u.Subject == p.CreatedBySubject || u.Subject == p.OwnerSubject {
-		return problem(403, "REVIEW_CONFLICT")
-	}
-	var complete bool
-	err = q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM project_submissions WHERE project_id=$1 AND revision=$2 AND evidence_state='COMPLETE')`, p.ID, p.SubmissionRevision).Scan(&complete)
-	if err != nil {
-		return err
-	}
-	if !complete {
-		return problem(409, "REVIEW_EVIDENCE_INCOMPLETE")
-	}
-	return nil
-}
 func activeOwner(ctx context.Context, q querier, subject string) (string, error) {
 	if subject == "" {
 		return "", problem(409, "OWNER_REQUIRED")
@@ -184,47 +155,4 @@ func freezeSubmission(ctx context.Context, tx pgx.Tx, p Project, u User) error {
  UNION SELECT owner_subject FROM project_participations WHERE project_id=$1 AND owner_subject IS NOT NULL AND source_version>coalesce((SELECT max(revision) FROM audit_events WHERE project_id=$1 AND action='review.return'),0)
  ) a),'[]'::jsonb),$8 FROM intake_projects p WHERE id=$1`, p.ID, p.SubmissionRevision+1, p.Version, u.Subject, p.CreatedBySubject, p.OwnerSubject, p.TeamID, p.EvidenceState)
 	return err
-}
-
-func (a *App) projectHints(ctx context.Context, q querier, u User, p *Project) error {
-	p.AssignmentStatus = "ASSIGNED"
-	if p.OwnerSubject == "" {
-		p.AssignmentStatus = "UNASSIGNED_DRAFT"
-	}
-	p.Actions = map[string]ActionHint{}
-	for _, action := range []string{"edit", "submit", "activities", "stage-change", "ownership-transfer", "approve", "return", "reject", "duplicate-decisions"} {
-		code := (ProjectPolicy{u}).Action(*p, action)
-		if code == "" && action == "submit" {
-			team, err := activeOwner(ctx, q, p.OwnerSubject)
-			if err != nil {
-				var e staffProblem
-				if !errors.As(err, &e) {
-					return err
-				}
-				code = e.code
-			} else if team != p.TeamID {
-				code = "OWNER_INACTIVE"
-			}
-		}
-		if code == "" && contains([]string{"approve", "return", "reject", "duplicate-decisions"}, action) {
-			if err := reviewIndependence(ctx, q, u, *p); err != nil {
-				var e staffProblem
-				if !errors.As(err, &e) {
-					return err
-				}
-				code = e.code
-			}
-		}
-		if code == "" && action == "approve" {
-			var pending int
-			if err := q.QueryRow(ctx, `SELECT count(*) FROM duplicate_cases WHERE project_id=$1 AND decision='PENDING' AND submission_revision=$2`, p.ID, p.SubmissionRevision).Scan(&pending); err != nil {
-				return err
-			}
-			if pending > 0 {
-				code = "DUPLICATE_DECISION_REQUIRED"
-			}
-		}
-		p.Actions[action] = hint(code)
-	}
-	return nil
 }

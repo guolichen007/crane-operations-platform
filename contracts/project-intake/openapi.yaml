@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Project Intake API",
-    "version": "1.1.0-g1",
-    "description": "全角色项目资源授权、不可覆盖提交证据、管理员未分配草稿及幂等创建；统计与UI重排不在G1。"
+    "version": "1.2.0-g2",
+    "description": "全角色项目资源授权、不可覆盖提交证据、管理员未分配草稿及幂等创建；G2 增加审核资格提示、创建意图回执、显示名称与首页最小聚合。完整经营分析不在G2。"
   },
   "servers": [
     {
@@ -42,7 +42,8 @@
                       "type": "object",
                       "additionalProperties": {
                         "$ref": "#/components/schemas/ActionHint"
-                      }
+                      },
+                      "description": "导航能力提示：project.create/read/review/assign/unassigned、staff.manage、team.manage。仅用于界面入口，所有接口服务端重验。"
                     }
                   }
                 }
@@ -3033,7 +3034,8 @@
               "type": "string"
             }
           }
-        ]
+        ],
+        "description": "销售主管限本组、总监与管理员按项目读取范围；来源须为销售。逐项版本校验，同事务写归属历史、审计与参与证据（移交人此后不能审核该项目）。"
       }
     },
     "/api/v1/staff/{id}/audit": {
@@ -3268,6 +3270,67 @@
             }
           }
         ]
+      }
+    },
+    "/api/v1/project-create-receipts/{key}": {
+      "get": {
+        "operationId": "projects.createReceipt",
+        "summary": "原创建人凭创建意图键找回已落库项目（当前版本）",
+        "description": "仅当前有效会话的原 actor 可查询，且须仍有项目读取权；其他账号、无读取权或不存在一律 404，不泄露键是否被使用。",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{16,128}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "创建意图键格式错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "404": {
+            "description": "无可用回执",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
+          }
+        }
       }
     }
   },
@@ -3793,13 +3856,58 @@
           "activities": {
             "type": "array",
             "items": {
-              "type": "object"
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "occurredAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "result": {
+                  "type": "string"
+                },
+                "nextAction": {
+                  "type": "string"
+                },
+                "nextFollowupAt": {
+                  "type": "string"
+                },
+                "actorName": {
+                  "type": "string"
+                }
+              }
             }
           },
           "audit": {
             "type": "array",
             "items": {
-              "type": "object"
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string"
+                },
+                "revision": {
+                  "type": "integer"
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "actorName": {
+                  "type": "string"
+                },
+                "details": {
+                  "type": "object"
+                }
+              }
             }
           },
           "protectedUntil": {
@@ -3835,6 +3943,15 @@
                 "at": {
                   "type": "string",
                   "format": "date-time"
+                },
+                "actorName": {
+                  "type": "string"
+                },
+                "fromOwnerName": {
+                  "type": "string"
+                },
+                "toOwnerName": {
+                  "type": "string"
                 }
               }
             }
@@ -3892,6 +4009,29 @@
             "type": "string",
             "pattern": "^[0-9a-f]{64}$",
             "description": "PostgreSQL JSONB text UTF8 SHA256，原始提交快照含依据版本"
+          },
+          "review": {
+            "$ref": "#/components/schemas/ReviewEligibility"
+          },
+          "ownerName": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "仅显示名称；空字符串表示无对应人员（如待分配）。不含邮箱或身份标识。"
+          },
+          "createdByName": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "仅显示名称；空字符串表示无对应人员（如待分配）。不含邮箱或身份标识。"
+          },
+          "custodianName": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "仅显示名称；空字符串表示无对应人员（如待分配）。不含邮箱或身份标识。"
+          },
+          "submittedByName": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "仅显示名称；空字符串表示无对应人员（如待分配）。不含邮箱或身份标识。"
           }
         }
       },
@@ -4570,6 +4710,58 @@
           "reasonCode": {
             "type": "string",
             "nullable": true
+          }
+        }
+      },
+      "ReviewEligibility": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "审核资格提示。projectReadable=当前项目可读；projectIndependence=本轮提交独立性与证据完整性；relatedCandidates=全部相关重复候选可见且未参与；eligible=下一必需动作可执行。最终 POST 在事务内重新校验。",
+        "required": [
+          "projectReadable",
+          "projectIndependence",
+          "relatedCandidates",
+          "pendingDuplicates",
+          "eligible",
+          "reasonCode"
+        ],
+        "properties": {
+          "projectReadable": {
+            "type": "boolean"
+          },
+          "projectIndependence": {
+            "$ref": "#/components/schemas/ActionHint"
+          },
+          "relatedCandidates": {
+            "$ref": "#/components/schemas/ActionHint"
+          },
+          "pendingDuplicates": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "eligible": {
+            "type": "boolean"
+          },
+          "reasonCode": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "CreateReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "project",
+          "createdVersion"
+        ],
+        "properties": {
+          "project": {
+            "$ref": "#/components/schemas/Project"
+          },
+          "createdVersion": {
+            "type": "integer",
+            "minimum": 1
           }
         }
       }

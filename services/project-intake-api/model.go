@@ -75,6 +75,11 @@ type Project struct {
 	Actions               map[string]ActionHint `json:"actions"`
 	AssignmentStatus      string                `json:"assignmentStatus"`
 	Replayed              bool                  `json:"replayed,omitempty"`
+	Review                *ReviewEligibility    `json:"review,omitempty"`
+	OwnerName             string                `json:"ownerName"`
+	CreatedByName         string                `json:"createdByName"`
+	CustodianName         string                `json:"custodianName"`
+	SubmittedByName       string                `json:"submittedByName"`
 	ProtectedUntil        *time.Time            `json:"protectedUntil"`
 	NextReviewAt          *time.Time            `json:"nextReviewAt"`
 	GovernanceHistory     []GovernanceEvent     `json:"governanceHistory,omitempty"`
@@ -102,9 +107,11 @@ type Activity struct {
 	Result         string    `json:"result"`
 	NextAction     string    `json:"nextAction"`
 	NextFollowupAt string    `json:"nextFollowupAt"`
+	ActorName      string    `json:"actorName,omitempty"`
 }
 type Audit struct {
 	Subject   string         `json:"subject"`
+	ActorName string         `json:"actorName"`
 	Details   map[string]any `json:"details"`
 	Action    string         `json:"action"`
 	Revision  int            `json:"revision"`

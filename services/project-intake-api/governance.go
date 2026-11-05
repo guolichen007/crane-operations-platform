@@ -12,6 +12,9 @@ import (
 
 type GovernanceEvent struct {
 	Actor     string    `json:"actor"`
+	ActorName string    `json:"actorName"`
+	FromName  string    `json:"fromOwnerName,omitempty"`
+	ToName    string    `json:"toOwnerName,omitempty"`
 	Action    string    `json:"action"`
 	Reason    string    `json:"reason"`
 	FromOwner string    `json:"fromOwner,omitempty"`
@@ -75,7 +78,9 @@ func validStage(from, to, status string, reason bool) bool {
 	return false
 }
 func (a *App) governanceHistory(ctx context.Context, p *Project) error {
-	rows, e := a.db.Query(ctx, `SELECT subject,decision,reason,'' AS from_owner,'' AS to_owner,created_at FROM approvals WHERE project_id=$1 UNION ALL SELECT coalesce(actor_subject,''),'ownership.transfer',reason,coalesce(from_subject,''),to_subject,created_at FROM ownership_history WHERE project_id=$1 ORDER BY created_at DESC`, p.ID)
+	rows, e := a.db.Query(ctx, `SELECT x.actor,x.action,x.reason,x.from_owner,x.to_owner,x.at,`+displayName("x.actor")+`,`+displayName("x.from_owner")+`,`+displayName("x.to_owner")+` FROM (
+ SELECT subject actor,decision action,reason,'' AS from_owner,'' AS to_owner,created_at at FROM approvals WHERE project_id=$1 UNION ALL
+ SELECT coalesce(actor_subject,''),'ownership.transfer',reason,coalesce(from_subject,''),to_subject,created_at FROM ownership_history WHERE project_id=$1) x ORDER BY x.at DESC`, p.ID)
 	if e != nil {
 		return e
 	}
@@ -83,7 +88,7 @@ func (a *App) governanceHistory(ctx context.Context, p *Project) error {
 	p.GovernanceHistory = []GovernanceEvent{}
 	for rows.Next() {
 		var ev GovernanceEvent
-		if e = rows.Scan(&ev.Actor, &ev.Action, &ev.Reason, &ev.FromOwner, &ev.ToOwner, &ev.At); e != nil {
+		if e = rows.Scan(&ev.Actor, &ev.Action, &ev.Reason, &ev.FromOwner, &ev.ToOwner, &ev.At, &ev.ActorName, &ev.FromName, &ev.ToName); e != nil {
 			return e
 		}
 		p.GovernanceHistory = append(p.GovernanceHistory, ev)
@@ -279,7 +284,10 @@ func (a *App) governance(w http.ResponseWriter, r *http.Request, u User) (bool, 
 		}
 		if action == "duplicate-decisions" {
 			for _, candidate := range related {
-				if e = reviewIndependence(ctx, tx, u, candidate); e != nil {
+				if candidate.ID == p.ID {
+					continue
+				}
+				if e = candidateIndependence(ctx, tx, u, candidate); e != nil {
 					return true, e
 				}
 			}

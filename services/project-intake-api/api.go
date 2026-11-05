@@ -69,6 +69,18 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 		if (ProjectPolicy{u}).Manage() {
 			u.BusinessActions["project.review"] = hint("")
 		}
+		// Navigation hints only; every endpoint re-authorizes on the server.
+		u.BusinessActions["project.assign"] = u.BusinessActions["project.review"]
+		u.BusinessActions["project.unassigned"] = hint("BUSINESS_PERMISSION_DENIED")
+		u.BusinessActions["staff.manage"] = hint("BUSINESS_PERMISSION_DENIED")
+		u.BusinessActions["team.manage"] = hint("BUSINESS_PERMISSION_DENIED")
+		if u.Role == adminRole {
+			u.BusinessActions["project.unassigned"] = hint("")
+			u.BusinessActions["team.manage"] = hint("")
+		}
+		if staffRole(u.Role) {
+			u.BusinessActions["staff.manage"] = hint("")
+		}
 		respond(w, 200, u)
 		return nil
 	}
@@ -99,6 +111,9 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 		}
 		respond(w, 200, map[string]any{"items": redact(ds, u)})
 		return nil
+	}
+	if strings.HasPrefix(path, "/api/v1/project-create-receipts/") && method == "GET" {
+		return a.createReceipt(w, r, u, strings.TrimPrefix(path, "/api/v1/project-create-receipts/"))
 	}
 	if path == "/api/v1/projects" {
 		if method == "GET" {
@@ -150,14 +165,14 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 			if e = a.governanceHistory(ctx, &p); e != nil {
 				return e
 			}
-			rows, e := a.db.Query(ctx, `SELECT type,occurred_at,summary,result,next_action,coalesce(to_char(next_followup_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),'') FROM project_activities WHERE project_id=$1 ORDER BY occurred_at DESC,created_at DESC`, id)
+			rows, e := a.db.Query(ctx, `SELECT a.type,a.occurred_at,a.summary,a.result,a.next_action,coalesce(to_char(a.next_followup_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),`+displayName("a.subject")+` FROM project_activities a WHERE a.project_id=$1 ORDER BY a.occurred_at DESC,a.created_at DESC`, id)
 			if e != nil {
 				return e
 			}
 			p.Activities = []Activity{}
 			for rows.Next() {
 				var x Activity
-				if e = rows.Scan(&x.Type, &x.OccurredAt, &x.Summary, &x.Result, &x.NextAction, &x.NextFollowupAt); e != nil {
+				if e = rows.Scan(&x.Type, &x.OccurredAt, &x.Summary, &x.Result, &x.NextAction, &x.NextFollowupAt, &x.ActorName); e != nil {
 					rows.Close()
 					return e
 				}
@@ -168,7 +183,7 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 			if e != nil {
 				return e
 			}
-			rows, e = a.db.Query(ctx, `SELECT action,revision,created_at,subject,details FROM audit_events WHERE project_id=$1 ORDER BY created_at DESC`, id)
+			rows, e = a.db.Query(ctx, `SELECT a.action,a.revision,a.created_at,a.subject,a.details,`+displayName("a.subject")+` FROM audit_events a WHERE a.project_id=$1 ORDER BY a.created_at DESC,a.id`, id)
 			if e != nil {
 				return e
 			}
@@ -177,7 +192,7 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 			for rows.Next() {
 				var x Audit
 				var details []byte
-				if e = rows.Scan(&x.Action, &x.Revision, &x.CreatedAt, &x.Subject, &details); e != nil {
+				if e = rows.Scan(&x.Action, &x.Revision, &x.CreatedAt, &x.Subject, &details, &x.ActorName); e != nil {
 					return e
 				}
 				if e = json.Unmarshal(details, &x.Details); e != nil {

@@ -174,8 +174,10 @@ func TestDatabaseStaffGovernance(t *testing.T) {
 	}
 	status, body = admin.call("GET", base+"/"+id, nil)
 	expect(t, status, 200, body)
-	if strings.Contains(string(body), p.ProjectName) {
-		t.Fatal("admin received project content")
+	// G2-0: admin manages all legal business projects and may hand them off;
+	// the staff detail therefore lists the open projects within admin scope.
+	if !strings.Contains(string(body), p.ProjectName) {
+		t.Fatal("admin cannot see handoff projects")
 	}
 
 	transfer := map[string]any{"version": changed.Version, "targetId": staffID("synthetic-c"), "reason": "合成移交", "projects": []map[string]any{

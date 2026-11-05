@@ -16,6 +16,11 @@ export async function request<T>(
   timeoutMs = 20000,
   idempotencyKey = ''
 ): Promise<T> {
+  // Creation intent keys are owned by the caller so that a retry after a lost
+  // response replays the same intent instead of creating a second project.
+  const creating = method === 'POST' && url === '/api/v1/projects';
+  if (creating && !/^[A-Za-z0-9_-]{16,128}$/.test(idempotencyKey))
+    throw new ApiError('缺少创建意图标识，请刷新后重试', 0, 'IDEMPOTENCY_KEY_REQUIRED');
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -23,7 +28,7 @@ export async function request<T>(
       method,
       credentials: 'same-origin',
       signal: controller.signal,
-      headers: { 'Content-Type': 'application/json', ...(method === 'POST' && url === '/api/v1/projects' ? { 'Idempotency-Key': idempotencyKey || crypto.randomUUID() } : {}), ...(csrf ? { 'X-CSRF-Token': csrf } : {}) },
+      headers: { 'Content-Type': 'application/json', ...(creating ? { 'Idempotency-Key': idempotencyKey } : {}), ...(csrf ? { 'X-CSRF-Token': csrf } : {}) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     const text = await r.text();

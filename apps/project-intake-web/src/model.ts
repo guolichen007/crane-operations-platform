@@ -9,6 +9,14 @@ export interface Location {
 }
 export type KnowledgeState = 'UNKNOWN' | 'KNOWN' | 'LEGACY_UNCONFIRMED';
 export interface ActionHint { allowed: boolean; reasonCode: string | null }
+export interface ReviewEligibility {
+  projectReadable: boolean;
+  projectIndependence: ActionHint;
+  relatedCandidates: ActionHint;
+  pendingDuplicates: number;
+  eligible: boolean;
+  reasonCode: string | null;
+}
 export interface Equipment {
  knowledge?: Record<string, KnowledgeState>;
  environmentFlags?: string[] | null;
@@ -55,9 +63,16 @@ export interface Activity {
   result: string;
   nextAction: string;
   nextFollowupAt: string;
+  actorName?: string;
 }
 export interface Project extends Input {
  documentHash: string;
+ review?: ReviewEligibility;
+ ownerName: string;
+ createdByName: string;
+ custodianName: string;
+ submittedByName: string;
+ replayed?: boolean;
  actions: Record<string, ActionHint>;
  teamId: string | null;
  draftCustodianSubject: string;
@@ -71,6 +86,9 @@ export interface Project extends Input {
   nextReviewAt: string | null;
   governanceHistory?: {
     actor: string;
+    actorName?: string;
+    fromOwnerName?: string;
+    toOwnerName?: string;
     action: string;
     reason: string;
     fromOwner?: string;
@@ -94,6 +112,7 @@ export interface Project extends Input {
     revision: number;
     createdAt: string;
     subject: string;
+    actorName?: string;
     details: Record<string, unknown>;
   }[];
 }

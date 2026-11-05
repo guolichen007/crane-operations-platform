@@ -52,4 +52,16 @@ describe('生产 HTTP 失败模型', () => {
     );
     await expect(request('/api/test')).rejects.toThrow('版本冲突');
   });
+  it('创建请求必须显式携带意图键且原样发送', async () => {
+    const seen: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (_u: string, init: RequestInit) => {
+      seen.push(String((init.headers as Record<string, string>)['Idempotency-Key']));
+      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }));
+    await expect(request('/api/v1/projects', 'POST', {})).rejects.toThrow('缺少创建意图标识');
+    const key = 'intent-key-0123456789';
+    await request('/api/v1/projects', 'POST', {}, '', 1000, key);
+    await request('/api/v1/projects', 'POST', {}, '', 1000, key);
+    expect(seen).toEqual([key, key]);
+  });
 });

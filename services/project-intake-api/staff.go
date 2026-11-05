@@ -254,9 +254,6 @@ func listStaff(ctx context.Context, tx pgx.Tx, actor User, r *http.Request) (any
 
 func staffProjects(ctx context.Context, tx pgx.Tx, actor User, m staffMember) ([]staffProject, error) {
 	items := make([]staffProject, 0)
-	if actor.Role == adminRole {
-		return items, nil
-	}
 	rows, err := tx.Query(ctx, `SELECT p.id::text,p.registration_no,p.project_name,p.intake_status,p.version,
   EXISTS(SELECT 1 FROM staff_handoffs h WHERE h.staff_id=$1 AND h.project_id=p.id)
   FROM intake_projects p WHERE p.owner_subject=$2 `+"AND "+projectScopeAt("p", "$5", "$3", "$4")+`
@@ -559,7 +556,9 @@ type transferResult struct {
 }
 
 func transferStaffProjects(ctx context.Context, tx pgx.Tx, actor User, from staffMember, in staffTransferInput) (any, error) {
-	if !manager(actor) || from.Role != salesRole {
+	// G2: admin manages all legal business projects, so it may hand off a sales
+	// member's projects. manager() keeps its manager/director meaning.
+	if !(manager(actor) || actor.Role == adminRole) || from.Role != salesRole {
 		return nil, staffDenied
 	}
 	if from.Version != in.Version {

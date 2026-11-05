@@ -321,7 +321,7 @@ onMounted(async () => {
       </div>
       <div class="staff-card panel">
         <h2>名下项目 · {{ member.projectCount }}</h2>
-        <p v-if="administrator" class="muted">人员管理仅展示项目计数。</p>
+        <p v-if="member.role !== 'baobei_sales'" class="muted">人员管理仅展示项目计数。</p>
         <template v-else>
           <p v-if="!projects.length" class="muted">没有待移交的未结束项目</p>
           <label v-for="item in projects" :key="item.id" class="staff-check">

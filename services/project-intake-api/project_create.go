@@ -160,3 +160,38 @@ func relatedReviewProjects(ctx context.Context, tx pgx.Tx, id string) ([]Project
 	}
 	return out, nil
 }
+
+// createReceipt lets the original actor recover a project created with a
+// client intent key after the response was lost, without resending the body.
+// It never reveals whether another account used the same key.
+func (a *App) createReceipt(w http.ResponseWriter, r *http.Request, u User, key string) error {
+	ctx := r.Context()
+	if !createKeyPattern.MatchString(key) {
+		return problem(400, "IDEMPOTENCY_KEY_REQUIRED")
+	}
+	var id string
+	var created int
+	err := a.db.QueryRow(ctx, `SELECT c.project_id::text,c.created_version FROM project_create_requests c JOIN app_sessions s ON s.subject=c.actor_subject
+ WHERE c.actor_subject=$1 AND c.idempotency_key=$2 AND s.token_hash=$3 AND s.expires_at>now()`, u.Subject, key, u.sessionHash).Scan(&id, &created)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return problem(404, "CREATE_RECEIPT_NOT_FOUND")
+	}
+	if err != nil {
+		return err
+	}
+	p, err := get(ctx, a.db, id, false)
+	if err != nil {
+		return err
+	}
+	// A creator who has since lost read scope (e.g. the project was handed to
+	// another sales owner) only learns that no receipt is available.
+	if !canRead(u, p) {
+		return problem(404, "CREATE_RECEIPT_NOT_FOUND")
+	}
+	if err = a.projectHints(ctx, a.db, u, &p); err != nil {
+		return err
+	}
+	p.Replayed = true
+	respond(w, 200, map[string]any{"project": p, "createdVersion": created})
+	return nil
+}
