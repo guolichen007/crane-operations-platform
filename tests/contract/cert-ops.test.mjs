@@ -51,6 +51,7 @@ function a1SecurityAudit(job) {
   const required = ['bash -n deploy/scripts/cert-renew.sh', 'bash -n deploy/scripts/provision-acme.sh', 'sudo bash tests/ops/verify-cert-units.sh', 'sudo env PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/ops -v'];
   const missing = required.filter((command) => !runs.includes(command));
   const dangerous = [];
+  if (job && typeof job === 'object' && 'if' in job) dangerous.push('job-level if: ' + job.if);
   for (const step of steps) {
     if (step && typeof step === 'object') {
       if ('if' in step) dangerous.push('if: ' + step.if);
@@ -104,4 +105,19 @@ jobs:
         run: echo silently skipped
 `);
   assert.ok(a1SecurityAudit(workflow.jobs['a1-security']).dangerous.length > 0, 'dangerous skip condition must be detected');
+});
+
+test('a1-security Job 级跳过配置必须失败', () => {
+  const workflow = YAML.parse(`
+jobs:
+  a1-security:
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - run: bash -n deploy/scripts/cert-renew.sh
+      - run: bash -n deploy/scripts/provision-acme.sh
+      - run: sudo bash tests/ops/verify-cert-units.sh
+      - run: sudo env PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/ops -v
+`);
+  assert.ok(a1SecurityAudit(workflow.jobs['a1-security']).dangerous.length > 0, 'job-level skip condition must be detected');
 });
