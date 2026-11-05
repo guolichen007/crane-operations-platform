@@ -330,11 +330,13 @@ async function assetModeCheck() {
       (req) => new URL(req.url()).pathname === '/api/v1/assets' && req.method() === 'GET',
       { timeout: 10000 }
     );
-    await page.getByRole('link', { name: '资产', exact: true }).click();
+    // The sidebar has one navigation hierarchy: 资产台账 inside the 资产与设备 group
+    // (the duplicate top-level 资产 link was removed).
+    await page.getByRole('navigation', { name: '业务导航' }).getByRole('link', { name: '资产台账', exact: true }).click();
     assert.equal(new URL((await assetApiRequest).url()).pathname, '/api/v1/assets');
     await expect(page.getByTestId('asset-center')).toBeVisible();
     await page.screenshot({ path: root + '/asset-center.png', fullPage: true });
-    record('A0 formal asset center /assets renders through the 资产 nav and loads from the Asset API');
+    record('A0 formal asset center /assets renders through the 资产台账 nav and loads from the Asset API');
   } finally {
     await browser?.close();
     assetCompose(['stop', 'cloud-api', 'device-simulator']);

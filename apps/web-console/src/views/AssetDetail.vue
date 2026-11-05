@@ -375,7 +375,7 @@ const statusText: Record<string, string> = {
 };
 </script>
 <template>
-  <section class="workspace-page asset-detail" data-testid="asset-detail">
+  <section class="workspace-page asset-detail" data-testid="asset-detail" :data-asset-id="asset?.id" :data-project-id="asset?.projectId">
     <header class="detail-head">
       <button class="ghost-action" aria-label="返回" @click="backToLedger">
         <ArrowLeft :size="15" />返回

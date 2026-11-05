@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { login, sessionCsrf } from './login';
-import { assertWriteTarget, code } from './run';
+import { assertWriteTarget, code, createAsset, expectUnobstructed } from './run';
 
 // G3-D3: one navigation hierarchy. Every business page appears exactly once in
 // the 业务导航 landmark; asset management is a disclosure group inside it with a
@@ -42,21 +42,45 @@ test('侧栏：单一导航层级、资产分组可键盘展开收起、折叠�
   await page.getByRole('button', { name: '展开侧栏' }).click();
 });
 
-// The command-bar scope: a project-filtering page shows the selector; a page that
-// does not filter by project shows a fixed "全部已授权项目" label instead.
-test('顶栏项目范围：过滤页显示选择器，非过滤页显示固定标签，总览为「地图聚焦项目」', async ({ page }) => {
-  await login(page, 'b4-admin');
-  await page.goto('/#/assets');
-  await expect(page.getByLabel('当前项目范围')).toBeVisible();
-  await expect(page.getByTestId('scope-fixed')).toHaveCount(0);
-  await page.goto('/#/catalog');
-  await expect(page.getByTestId('scope-fixed')).toContainText('全部已授权项目');
-  await expect(page.getByLabel('当前项目范围')).toHaveCount(0);
-  // The overview only focuses the map on a project; it is labelled as such.
-  await page.goto('/#/overview');
-  await expect(page.getByLabel('地图聚焦项目')).toBeVisible();
-  await expect(page.getByLabel('当前项目范围')).toHaveCount(0);
-});
+// The command-bar scope at every common desktop width (1280/1366/1440/1920):
+// on a filtering page the selector is visible, unobstructed and operable —
+// choosing a project narrows the current page (the route is kept), clearing it
+// returns to all authorized projects. The overview's selector only focuses the
+// map and is labelled 地图聚焦项目; pages without project filtering show a fixed
+// "全部已授权项目" label and no selector. Read-only.
+for (const [w, h] of [[1280, 720], [1366, 768], [1440, 900], [1920, 1080]] as const) {
+  test(`顶栏项目范围 ${w}×${h}：过滤页可选择/清除且保持当前页，总览为聚焦，非过滤页为固定标签`, async ({ page }) => {
+    await page.setViewportSize({ width: w, height: h });
+    await login(page, 'b4-admin');
+    await page.goto('/#/assets');
+    const scope = page.getByLabel('当前项目范围');
+    await expectUnobstructed(page, scope, '当前项目范围');
+    await expect(page.getByTestId('scope-fixed')).toHaveCount(0);
+    await scope.selectOption('P001');
+    await expect(page).toHaveURL(/#\/assets\?project=P001$/);
+    await expect(scope).toHaveValue('P001');
+    await expect(page.getByTestId('asset-center')).toBeVisible();
+    await scope.selectOption('');
+    await expect(page).toHaveURL(/#\/assets$/);
+    await expect(scope).toHaveValue('');
+
+    await page.goto('/#/catalog');
+    await expect(page.getByTestId('scope-fixed')).toContainText('全部已授权项目');
+    await expect(page.getByLabel('当前项目范围')).toHaveCount(0);
+    await expect(page.getByLabel('地图聚焦项目')).toHaveCount(0);
+
+    await page.goto('/#/overview');
+    const focus = page.getByLabel('地图聚焦项目');
+    await expectUnobstructed(page, focus, '地图聚焦项目');
+    await expect(page.getByLabel('当前项目范围')).toHaveCount(0);
+    await focus.selectOption('P001');
+    await expect(page).toHaveURL(/#\/overview\?project=P001$/);
+    await focus.selectOption('');
+    await expect(page).toHaveURL(/#\/overview$/);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+}
 
 // Asset ledger: an out-of-scope ?project= shows an explicit message and never a
 // false "暂无资产" empty table.
@@ -75,17 +99,20 @@ test('资产详情返回台账：保留合法项目范围与搜索条件', async
   await assertWriteTarget(page);
   const csrf = await sessionCsrf(page);
   const assetCode = code('CRN', 'BACK');
-  await page.evaluate(async ({ csrf, assetCode }) => {
-    await fetch('/api/v1/assets', {
-      method: 'POST',
-      headers: { 'X-CSRF-Token': csrf, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId: 'P001', assetType: 'CRANE', assetCode }),
-    });
-  }, { csrf, assetCode });
+  // No displayName: the server falls back to the code, so the code appears in two
+  // cells of the row — rows are located by their stable data-asset-id instead.
+  const created = await createAsset(page, csrf, { projectId: 'P001', assetType: 'CRANE', assetCode });
   await page.goto(`/#/assets?project=P001&q=${encodeURIComponent(assetCode)}`);
   await expect(page.locator('.asset-filters input')).toHaveValue(assetCode);
-  await page.getByTestId('asset-table').getByText(assetCode).click();
-  await expect(page.getByTestId('asset-detail')).toBeVisible();
+  const rows = page.getByTestId('asset-table').locator('tbody tr');
+  await expect(rows.filter({ has: page.locator('td[data-col="assetCode"]', { hasText: assetCode }) })).toHaveCount(1);
+  const row = page.locator(`tr[data-asset-id="${created.id}"]`);
+  await expect(row).toHaveCount(1);
+  await expect(row.locator('td[data-col="assetCode"]')).toHaveText(assetCode);
+  await row.click();
+  await expect(page).toHaveURL(new RegExp(`#/assets/${created.id}$`));
+  await expect(page.getByTestId('asset-detail')).toHaveAttribute('data-asset-id', created.id);
+  await expect(page.getByTestId('asset-detail')).toHaveAttribute('data-project-id', 'P001');
   await page.getByRole('button', { name: '返回' }).click();
   await expect(page).toHaveURL(/#\/assets\?/);
   const url = new URL(page.url().replace('#/', ''));
@@ -101,14 +128,7 @@ test('1280：资产编辑弹窗不横向溢出且保存可见', async ({ page })
   await login(page, 'b4-admin');
   await assertWriteTarget(page);
   const csrf = await sessionCsrf(page);
-  const created = await page.evaluate(async ({ csrf, assetCode }) => {
-    const res = await fetch('/api/v1/assets', {
-      method: 'POST',
-      headers: { 'X-CSRF-Token': csrf, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId: 'P001', assetType: 'CRANE', assetCode }),
-    });
-    return (await res.json()) as { id: string };
-  }, { csrf, assetCode: code('CRN', 'VIS1280') });
+  const created = await createAsset(page, csrf, { projectId: 'P001', assetType: 'CRANE', assetCode: code('CRN', 'NAV1280') });
   await page.goto(`/#/assets/${created.id}`);
   await page.getByRole('button', { name: '编辑', exact: true }).click();
   const form = page.getByTestId('asset-edit-form');

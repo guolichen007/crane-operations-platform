@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { login, sessionCsrf } from './login';
-import { code, assertWriteTarget } from './run';
+import { code, assertWriteTarget, createAsset } from './run';
 
 const assetCode = code('CRN', 'CRUD');
 const equipmentCode = code('EQ', 'CRUD');
@@ -91,14 +91,7 @@ test('If-Match 旧版本冲突：同一版本号顺序提交两次，第二次 4
   await assertWriteTarget(page);
   const csrf = await sessionCsrf(page);
   const codes = { base: code('CRN', '409'), a: code('CRN', '409A'), b: code('CRN', '409B') };
-  const created = await page.evaluate(async ({ csrf, codes }) => {
-    const res = await fetch('/api/v1/assets', {
-      method: 'POST',
-      headers: { 'X-CSRF-Token': csrf, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId: 'P001', assetType: 'CRANE', assetCode: codes.base }),
-    });
-    return (await res.json()) as { id: string; version: number };
-  }, { csrf, codes });
+  const created = await createAsset(page, csrf, { projectId: 'P001', assetType: 'CRANE', assetCode: codes.base });
 
   const results = await page.evaluate(async ({ id, csrf, codes }) => {
     const headers = { 'X-CSRF-Token': csrf, 'Content-Type': 'application/json', 'If-Match': '"1"' };
@@ -127,14 +120,7 @@ test('编辑固定打开时版本：后台被他人更新后保存得到 409，�
   await login(page, 'b4-admin');
   await assertWriteTarget(page);
   const csrf = await sessionCsrf(page);
-  const created = await page.evaluate(async ({ csrf, code }) => {
-    const res = await fetch('/api/v1/assets', {
-      method: 'POST',
-      headers: { 'X-CSRF-Token': csrf, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId: 'P001', assetType: 'CRANE', assetCode: code, displayName: '冲突测试' }),
-    });
-    return (await res.json()) as { id: string; version: number };
-  }, { csrf, code: code('CRN', 'PIN') });
+  const created = await createAsset(page, csrf, { projectId: 'P001', assetType: 'CRANE', assetCode: code('CRN', 'PIN'), displayName: '冲突测试' });
 
   await page.goto(`/#/assets/${created.id}`);
   await page.getByRole('button', { name: '编辑', exact: true }).click();
@@ -173,14 +159,7 @@ test('DirtyGuard：未改动关闭不提示；有改动关闭需确认', async (
   await login(page, 'b4-admin');
   await assertWriteTarget(page);
   const csrf = await sessionCsrf(page);
-  const created = await page.evaluate(async ({ csrf, code }) => {
-    const res = await fetch('/api/v1/assets', {
-      method: 'POST',
-      headers: { 'X-CSRF-Token': csrf, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId: 'P001', assetType: 'CRANE', assetCode: code }),
-    });
-    return (await res.json()) as { id: string };
-  }, { csrf, code: code('CRN', 'DIRTY') });
+  const created = await createAsset(page, csrf, { projectId: 'P001', assetType: 'CRANE', assetCode: code('CRN', 'DIRTY') });
   await page.goto(`/#/assets/${created.id}`);
 
   let prompts = 0;
@@ -204,16 +183,9 @@ test('DirtyGuard：未改动关闭不提示；有改动关闭需确认', async (
   await expect(page.getByTestId('asset-edit-form')).toBeVisible();
 });
 
-async function createViaApi(page: import('@playwright/test').Page, label: string, extra: Record<string, unknown> = {}) {
+async function createViaApi(page: import('@playwright/test').Page, label: string, extra: { displayName?: string } = {}) {
   const csrf = await sessionCsrf(page);
-  return page.evaluate(async ({ csrf, body }) => {
-    const res = await fetch('/api/v1/assets', {
-      method: 'POST',
-      headers: { 'X-CSRF-Token': csrf, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    return (await res.json()) as { id: string; version: number };
-  }, { csrf, body: { projectId: 'P001', assetType: 'CRANE', assetCode: code('CRN', label), ...extra } });
+  return createAsset(page, csrf, { projectId: 'P001', assetType: 'CRANE', assetCode: code('CRN', label), ...extra });
 }
 
 // G3-D2: after a 409, "start over from the latest version" never replaces a dirty

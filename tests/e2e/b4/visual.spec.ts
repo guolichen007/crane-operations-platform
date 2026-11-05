@@ -2,7 +2,7 @@ import { test, expect, type Page, type Locator } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { login, sessionCsrf } from './login';
-import { code, assertWriteTarget, RUN_ID } from './run';
+import { code, assertWriteTarget, createAsset as createAssetStrict, expectUnobstructed, RUN_ID } from './run';
 
 // G4-Q: real-browser visual regression of the asset business pages at
 // 1280×720 / 1366×768 / 1920×1080 against the isolated Keycloak + PostgreSQL
@@ -25,26 +25,6 @@ async function overflowPx(page: Page): Promise<number> {
   return page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 }
 
-/** Visible, inside the viewport, and the topmost element at its centre is itself (or a descendant). */
-async function expectUnobstructed(page: Page, target: Locator, label: string): Promise<void> {
-  await expect(target, `${label} 可见`).toBeVisible();
-  await target.scrollIntoViewIfNeeded();
-  const box = await target.boundingBox();
-  expect(box, `${label} 有布局`).not.toBeNull();
-  const vp = page.viewportSize()!;
-  const cx = box!.x + box!.width / 2;
-  const cy = box!.y + box!.height / 2;
-  expect(cx >= 0 && cx <= vp.width && cy >= 0 && cy <= vp.height, `${label} 中心在视口内`).toBe(true);
-  const handle = await target.elementHandle();
-  const hit = await page.evaluate(
-    ({ el, x, y }) => {
-      const top = document.elementFromPoint(x, y);
-      return !!top && (top === el || el!.contains(top));
-    },
-    { el: handle, x: cx, y: cy },
-  );
-  expect(hit, `${label} 未被浮层遮挡`).toBe(true);
-}
 
 async function capture(page: Page, scene: string, keyAction: Locator, label: string) {
   await expectUnobstructed(page, keyAction, label);
@@ -59,14 +39,7 @@ async function capture(page: Page, scene: string, keyAction: Locator, label: str
 
 async function createAsset(page: Page, label: string): Promise<{ id: string; version: number }> {
   const csrf = await sessionCsrf(page);
-  return page.evaluate(async ({ csrf, assetCode }) => {
-    const res = await fetch('/api/v1/assets', {
-      method: 'POST',
-      headers: { 'X-CSRF-Token': csrf, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId: 'P001', assetType: 'CRANE', assetCode, displayName: '视觉回归资产' }),
-    });
-    return (await res.json()) as { id: string; version: number };
-  }, { csrf, assetCode: code('CRN', label) });
+  return createAssetStrict(page, csrf, { projectId: 'P001', assetType: 'CRANE', assetCode: code('CRN', label), displayName: '视觉回归资产' });
 }
 
 for (const [w, h] of VIEWPORTS) {

@@ -70,11 +70,26 @@
 }
 .command-scope select {
   color: var(--text-2);
-  border: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  padding: 4px 22px 4px 8px;
   background: transparent;
   appearance: none;
   cursor: pointer;
-  max-width: 160px;
+  max-width: 180px;
+  text-overflow: ellipsis;
+}
+.command-scope select:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 1px;
+}
+.command-scope {
+  position: relative;
+}
+.command-scope > svg {
+  position: absolute;
+  right: 6px;
+  pointer-events: none;
 }
 .command-actions {
   margin-left: auto;
@@ -733,7 +748,15 @@
   background: var(--surface-900);
 }
 @media (max-width: 1500px) {
+  /* The project scope / map focus selector stays available at every common
+     desktop width (1280–1500); only its spacing and width are compacted. */
   .command-scope {
+    gap: 8px;
+  }
+  .command-scope select {
+    max-width: 150px;
+  }
+  .command-brand > div > small {
     display: none;
   }
   .command-actions {

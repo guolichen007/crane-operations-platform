@@ -105,7 +105,7 @@ const tasks = {
   test() {
     run(go, ['test', './...']);
     npm('test');
-    run(process.execPath, ['--test', 'tests/contract/contracts.test.mjs', 'tests/contract/asset-runtime.test.mjs', 'tests/contract/production-preflight.test.mjs', 'tests/contract/cert-ops.test.mjs', 'tests/contract/b4-preview-contract.test.mjs']);
+    run(process.execPath, ['--test', 'tests/contract/contracts.test.mjs', 'tests/contract/asset-runtime.test.mjs', 'tests/contract/production-preflight.test.mjs', 'tests/contract/cert-ops.test.mjs', 'tests/contract/b4-preview-contract.test.mjs', 'tests/contract/b4-codes.test.mjs']);
   },
   build() {
     run(go, ['build', './...']);

@@ -205,9 +205,9 @@ const statusText: Record<string, string> = {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="a in assetsQuery.data.value" :key="a.id" class="data-row" @click="router.push(`/assets/${a.id}`)">
-            <td>{{ a.assetCode ?? '—' }}</td>
-            <td>{{ a.displayName || a.assetCode || '—' }}</td>
+          <tr v-for="a in assetsQuery.data.value" :key="a.id" class="data-row" :data-asset-id="a.id" @click="router.push(`/assets/${a.id}`)">
+            <td data-col="assetCode">{{ a.assetCode ?? '—' }}</td>
+            <td data-col="displayName">{{ a.displayName || a.assetCode || '—' }}</td>
             <td>{{ projectLabel(a.projectId, grants) }}</td>
             <td>{{ a.assetType }}</td>
             <td>
