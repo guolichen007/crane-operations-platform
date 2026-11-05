@@ -25,12 +25,18 @@ async function api(p: Page, path: string, method = 'GET', body?: unknown) {
     { path, method, body }
   );
 }
+// Wait for the real save round-trip instead of a status text that a previous toast may still show.
+async function saveDraft(p: Page) {
+  const done = p.waitForResponse((r) => /\/api\/v1\/projects(\/[0-9a-f-]+)?$/.test(new URL(r.url()).pathname) && ['POST', 'PATCH'].includes(r.request().method()));
+  await action(p, 'project.save-draft').click();
+  expect((await done).status()).toBe(200);
+}
 const unique = (info: { project: { name: string } }, label: string) => `G2${label}-${info.project.name}-${Date.now()}`;
 const draftId = (p: Page) => new URL(p.url()).searchParams.get('draft') || p.url().split('/').at(-2)!;
 
 test('admin unassigned draft, real assignment, then admin cannot review own participation', async ({ page }, info) => {
   await login(page, 'synthetic-admin');
-  await action(page, 'project.create').click();
+  await action(page, 'project.create').first().click();
   await expect(page.getByRole('heading', { name: '新建项目' })).toBeVisible();
   const name = unique(info, '管理员代录');
   await page.locator('[name=customer]').fill(name + '客户');
@@ -80,7 +86,7 @@ test('admin unassigned draft, real assignment, then admin cannot review own part
 
 test('lost create response is recovered by receipt after retry and after refresh', async ({ page }, info) => {
   await login(page, 'synthetic-a');
-  await action(page, 'project.create').click();
+  await action(page, 'project.create').first().click();
   const name = unique(info, '回执恢复');
   let lose = true;
   const creates: string[] = [];
@@ -142,20 +148,17 @@ test('unknown stays null, legacy zero is not silently confirmed', async ({ page 
   await action(page, 'project.step-jump').filter({ hasText: '商务与跟进' }).click();
   await expect(page.getByText('历史记录为 0，尚未确认是否真实')).toBeVisible();
   await page.locator('[name=draftNextAction]').fill('合成核实金额');
-  await action(page, 'project.save-draft').click();
-  await expect(page.getByRole('status').filter({ hasText: '草稿已保存' }).first()).toBeVisible();
+  await saveDraft(page);
   let r = await api(page, '/api/v1/projects/' + created.body.id);
   expect(r.body).toMatchObject({ estimatedAmount: 0, nextAction: '合成核实金额' });
   expect(r.body.knowledge.estimatedAmount).toBe('LEGACY_UNCONFIRMED');
   await action(page, 'number.set-unknown').click();
-  await action(page, 'project.save-draft').click();
-  await expect(page.getByRole('status').filter({ hasText: '草稿已保存' }).first()).toBeVisible();
+  await saveDraft(page);
   r = await api(page, '/api/v1/projects/' + created.body.id);
   expect(r.body.estimatedAmount).toBeNull();
   expect(r.body.knowledge.estimatedAmount).toBe('UNKNOWN');
   await page.locator('[name=estimatedAmount]').fill('0');
-  await action(page, 'project.save-draft').click();
-  await expect(page.getByRole('status').filter({ hasText: '草稿已保存' }).first()).toBeVisible();
+  await saveDraft(page);
   r = await api(page, '/api/v1/projects/' + created.body.id);
   expect(r.body.estimatedAmount).toBe(0);
   expect(r.body.knowledge.estimatedAmount).toBe('KNOWN');

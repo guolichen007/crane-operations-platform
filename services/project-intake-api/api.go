@@ -112,6 +112,9 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 		respond(w, 200, map[string]any{"items": redact(ds, u)})
 		return nil
 	}
+	if path == "/api/v1/workspace-summary" && method == "GET" {
+		return a.summaryHandler(w, r, u)
+	}
 	if strings.HasPrefix(path, "/api/v1/project-create-receipts/") && method == "GET" {
 		return a.createReceipt(w, r, u, strings.TrimPrefix(path, "/api/v1/project-create-receipts/"))
 	}

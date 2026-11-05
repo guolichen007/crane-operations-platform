@@ -233,6 +233,10 @@ func TestDatabaseProductionPrivileges(t *testing.T) {
 	}
 	status, response = director.call("GET", "/api/v1/projects?pageSize=50", nil)
 	expect(t, status, 200, response)
+	for _, c := range []testClient{admin, director, manager, sales} {
+		status, response = c.call("GET", "/api/v1/workspace-summary", nil)
+		expect(t, status, 200, response)
+	}
 	if err := staff.QueryRow(ctx, `SELECT staff_version FROM app_users WHERE subject='synthetic-a'`).Scan(&sourceVersion); err != nil {
 		t.Fatal(err)
 	}

@@ -3395,6 +3395,36 @@
           }
         }
       }
+    },
+    "/api/v1/workspace-summary": {
+      "get": {
+        "operationId": "workspace.summary",
+        "summary": "当前角色授权范围内的首页任务计数",
+        "description": "overdue/upcoming7d与列表followup窗口同口径；reviewQueue为范围内SUBMITTED/UNDER_REVIEW（销售为0）；reviewable为当前人可独立作出下一必需决定的数量，与Project.review.eligible一致。",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "503": {
+            "description": "服务暂不可用"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4825,6 +4855,162 @@
           "createdVersion": {
             "type": "integer",
             "minimum": 1
+          }
+        }
+      },
+      "WorkspaceItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "registrationNo",
+          "projectName",
+          "customer",
+          "intakeStatus",
+          "salesStage",
+          "ownerName",
+          "updatedAt",
+          "nextFollowupAt",
+          "nextAction"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "registrationNo": {
+            "type": "string"
+          },
+          "projectName": {
+            "type": "string"
+          },
+          "customer": {
+            "type": "string"
+          },
+          "intakeStatus": {
+            "type": "string"
+          },
+          "salesStage": {
+            "type": "string"
+          },
+          "ownerName": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "nextFollowupAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "nextAction": {
+            "type": "string"
+          }
+        }
+      },
+      "WorkspaceSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "asOf",
+          "scope",
+          "counts",
+          "recent",
+          "followups"
+        ],
+        "description": "G2首页最小聚合：单SQL快照、同一asOf、与列表相同的ProjectPolicy范围。不含管道分栏、金额、漏斗或趋势（G3）。",
+        "properties": {
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "OWN",
+              "TEAM",
+              "ALL_ASSIGNED",
+              "ALL"
+            ]
+          },
+          "counts": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "total",
+              "drafts",
+              "returned",
+              "unassignedDrafts",
+              "submitted",
+              "underReview",
+              "approved",
+              "overdue",
+              "upcoming7d",
+              "reviewQueue",
+              "reviewable"
+            ],
+            "properties": {
+              "total": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "drafts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "returned": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "unassignedDrafts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "submitted": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "underReview": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "approved": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "overdue": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "upcoming7d": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "reviewQueue": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "reviewable": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "recent": {
+            "type": "array",
+            "maxItems": 6,
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceItem"
+            }
+          },
+          "followups": {
+            "type": "array",
+            "maxItems": 5,
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceItem"
+            }
           }
         }
       }
