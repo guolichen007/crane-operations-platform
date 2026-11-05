@@ -1,44 +1,46 @@
 # B4 Preview 隔离部署执行方案（仅准备，未获授权不部署）
 
-> 承接《Phase1-A1.1-R2-B4-Preview部署方案.md》，将其落实为可审查、可部署、可回滚的隔离环境清单。
-> 固定源码 SHA：`cab1c20053596b9c85d43d90271c8c48bfc7e2f3`（B4-R3 冻结 SHA，长期功能分支 HEAD）。
+> 承接《Phase1-A1.1-R2-B4-Preview部署方案.md》，落实为可审查、可部署、可回滚的隔离环境清单。
+> 本方案分两条基线记录：**R3 冻结基线** `cab1c20053596b9c85d43d90271c8c48bfc7e2f3` 与**当前候选 HEAD** `019415241584f70699becfcdad9ed94f99cf76c6`（长期分支，此后可能继续前移）。
+> 未获服务器变更授权前，不执行部署、不改 DNS/TLS/Ingress/Keycloak/PG。
 
-## 1. 环境边界
+## 1. 环境边界（与既有基座一致，不假定全新环境）
 
 | 项 | Preview | Production |
 | --- | --- | --- |
 | Compose 项目名 | `crane-b4-preview` | `u-dao-crane-ops` |
 | 域名 | `b4.crane.youdaozd.com` | `crane.youdaozd.com` |
-| 网络 | 独立 `b4-preview-frontend` + 内部 `backend` | `u-dao-crane-frontend` + 内部 `backend` |
+| 网络 | 既有 `u-dao-crane-b4-preview-frontend` + `u-dao-crane-b4-preview-api-frontend` + 内部 `backend` | `u-dao-crane-frontend` + 内部 `backend` |
 | 预留子网 | `10.240.40.0/24`（部署前 CC 复核） | 既有子网 |
-| 端口 | 18083（web）/ 18084（auth）/ 18443（https 前置） | 18081 / 18082 / 443 |
+| 端口 | 18083（web）/ 18085（auth）；无自建 ingress、无 18443 | 18081 / 18082 / 443 |
 | 数据卷 | `b4-preview-postgres` / `b4-preview-mqtt` | `crane-postgres` / `crane-mqtt` |
 | Secrets | `/srv/u-dao/secrets/crane-b4-preview/` | `/srv/u-dao/secrets/crane-ops/` |
 | 数据库 | 独立 `crane_app` / `crane_keycloak` | 正式库 |
-| OIDC | 独立 `crane-b4-preview` client、独立 redirect `.../auth/callback`、独立 realm | 正式 client/realm |
+| OIDC | 既有 realm `crane-preview` + 独立 client `crane-b4-preview`、redirect `.../auth/callback` | 正式 client/realm |
 | 数据 | 仅匿名 Demo/seed（inventory.example + 匿名登记） | 真实 Inventory |
 
-不访问生产 PG/Keycloak/MQTT；不接真实行车；不发送设备控制命令。
+- 既有基座（项目名/网络 label/卷 label/owner）以服务器 CC 只读核实为准；本文不假定是空环境。部署前用 `docker compose config --format json` 复核项目名、容器、卷、网络、密钥路径、关键端口、服务依赖、issuer、镜像与预期一致。
+- 不访问生产 PG/Keycloak/MQTT；不接真实行车；不发送设备控制命令。
 
-## 2. 镜像与固定
+## 2. 镜像与固定（独立 Preview candidate 制品链）
 
-- `CRANE_CLOUD_IMAGE` / `CRANE_WEB_IMAGE` 固定到对应冻结 SHA `cab1c20` 的**生产候选发布产物**（CI `production-release` 的 release-manifest.json artifact）中的 `@sha256` digest，禁止 `latest`/可变 tag。仓库不提交 release 产物，digest 由 OWNER 提供并以 trivy/SBOM 复核。
-- SBOM（`cloud-api.cdx.json` / `web-console.cdx.json`）随清单归档为部署证据。
+- `CRANE_CLOUD_IMAGE` / `CRANE_WEB_IMAGE` 固定到**当前候选 HEAD** 对应构建产物的 `@sha256` digest，禁止 `latest`/可变 tag。
+- 分支 `production-release` 在非 main 分支为 SKIPPED，**不产生可复用的 release-manifest artifact**；因此 Preview 镜像 digest 须由 OWNER 按「source SHA → build → digest → SBOM → Trivy 扫描 → deploy manifest」独立产出并复核，不得借用旧生产镜像或 `latest`。未经 OWNER 授权不推送部署镜像。
 
 ## 3. 身份验证路径
 
-- Keycloak 仅托管 Preview realm（`crane-preview`，与既有基座一致），独立 bootstrap 密码、独立 client `crane-b4-preview`、独立 client secret。
-- Preview redirect URI：`https://b4.crane.youdaozd.com/auth/callback`（需 DNS CNAME 与证书就绪后才可回调）。
-- Web Session 密钥（`session_server_secret`）独立随机生成，不复用 production。
-- 首次启动需运行 `provision-keycloak` 与匿名 seed（`tests/integration/a1fixture --operation seed`），仅写入 Preview 库。
+- 复用已合规存在的 Preview realm（`crane-preview`）与 client（`crane-b4-preview`）。issuer、redirect URI、webOrigins、KC_HOSTNAME 与回调 URL 以只读 discovery 为准，不输出 secret。
+- `tools/provision-keycloak` 硬编码 `crane`/`crane-bff`，**不得照原样执行于 Preview**。如需自动化，用独立 Preview-only 预检/初始化（见 G1.1-A），默认 dry-run、幂等、拒绝跨环境。
+- Web Session 密钥独立随机生成，不复用 production。
 
 ## 4. 证书生命周期（与生产分开）
 
-- `b4.crane.youdaozd.com` 使用独立 ACME 证书目录（`${CRANE_SECRET_DIR}/ingress`），与 `crane.youdaozd.com` 证书目录物理分离、互不覆盖。
-- 现有 `crane.youdaozd.com` 证书脚本**不直接改写域名上线**；Preview 证书需独立 renew 配置。
+- `b4.crane.youdaozd.com` 使用独立 ACME 证书目录，与 `crane.youdaozd.com` 证书目录物理分离。
+- 现有 `crane.youdaozd.com` 证书脚本不直接改写域名上线；Preview 证书独立 renew 配置。
 - 前置条件：为 `b4.crane.youdaozd.com` 增加 DNS CNAME（待 OWNER/服务器 CC 执行）。
+- TLS 终结由服务器 CC 既有前置代理负责（共享 Ingress 只读验证路由/`X-Forwarded-*`/受信代理 IP，不修改生产 Ingress）。
 
-## 5. 资源预算（单实例，匿名 seed 50 台行车 / 22 演示项目）
+## 5. 资源预算（单实例，匿名 seed）
 
 | 服务 | CPU | 内存 | 说明 |
 | --- | --- | --- | --- |
@@ -47,7 +49,6 @@
 | cloud-api | 1 vCPU | 512 MiB | `--migrate` + demo 数据 |
 | web-console | 0.25 vCPU | 128 MiB | 静态托管 |
 | mosquitto | 0.1 vCPU | 64 MiB | 隔离 broker |
-| ingress | 0.1 vCPU | 64 MiB | TLS 终结 |
 
 磁盘：PG 卷约 1–2 GiB；secrets/certs 约 10 MiB。总预算约 2.5 vCPU / 2.3 GiB。
 
@@ -58,30 +59,23 @@ backend=PASS frontend=PASS integration=PASS edge=PASS
 security=PASS a1-security=PASS r2-db-test=PASS repository-contract=PASS
 b4-business-acceptance=PASS
 ```
-（对应长期功能分支 CI Run #41958789287，已 9/9 SUCCESS。）
 
 ## 7. 部署 / 回滚（未授权不执行）
 
-部署（服务器 CC 复核网络/端口/密钥后）：
+部署（服务器 CC 复核后）：
 ```bash
 docker compose --project-name crane-b4-preview --env-file deploy/compose/b4-preview.env \
   -f deploy/compose/docker-compose.prod.yml -f deploy/compose/docker-compose.b4-preview.yml up -d
 ```
 
-回滚（保持生产不受影响）：
-```bash
-docker compose --project-name crane-b4-preview --env-file deploy/compose/b4-preview.env \
-  -f deploy/compose/docker-compose.prod.yml -f deploy/compose/docker-compose.b4-preview.yml down
-```
-- 删除 Preview 不删除生产；Preview 卷/网络独立，可整体 `down -v`（仅限 Preview，需确认非生产卷名）。
-- 不修改 main、不重启生产容器、不改正式数据库。
+回滚 = **恢复上一套经审查的 Preview 镜像/配置及数据库快照**（先有快照才谈回滚），不把 `docker compose down` / `down -v` 当常规回滚方案；不做数据清除操作。不修改 main、不重启生产容器、不改正式数据库。
 
-## 8. 待服务器 CC 复核项
+## 8. 待服务器 CC 只读复核项
 
 - `10.240.40.0/24` 是否确为预留且不与生产冲突。
-- `18083/18084/18443` 端口占用。
-- Preview 前端网络 `b4-preview-frontend` 与生产前置代理的连接方式（是否由生产 ingress 分流到 Preview web 端口，或独立入口）。
+- `18083/18085` 端口占用与既有容器映射一致。
+- 既有两张前端网络的归属与共享 Ingress 实际路由（DNS/TLS/回环/`X-Forwarded-*`/受信代理 IP）。
 
 ## 9. 不做
 
-不真实部署、不改 DNS、不访问真实 CA、不重启生产容器、不触碰正式库。
+不真实部署、不改 DNS/TLS/Ingress/Keycloak/PG、不重启生产容器、不触碰正式库。
