@@ -1,7 +1,7 @@
 # B4 Preview 隔离部署执行方案（仅准备，未获授权不部署）
 
 > 承接《Phase1-A1.1-R2-B4-Preview部署方案.md》，落实为可审查、可部署、可回滚的隔离环境清单。
-> 本方案分两条基线记录：**R3 冻结基线** `cab1c20053596b9c85d43d90271c8c48bfc7e2f3` 与**当前候选 HEAD** `019415241584f70699becfcdad9ed94f99cf76c6`（长期分支，此后可能继续前移）。
+> 本方案分两条基线记录：**R3 冻结基线** `cab1c20053596b9c85d43d90271c8c48bfc7e2f3` 与**当前候选 HEAD**（长期分支最新提交，以 `git rev-parse origin/feature/phase1-a1-1-r2-asset-operations` 为准；本文不写死，避免过时）。部署时镜像 digest 必须对应部署当刻核对过的候选 SHA。
 > 未获服务器变更授权前，不执行部署、不改 DNS/TLS/Ingress/Keycloak/PG。
 
 ## 1. 环境边界（与既有基座一致，不假定全新环境）
@@ -62,7 +62,19 @@ b4-business-acceptance=PASS
 
 ## 7. 部署 / 回滚（未授权不执行）
 
-部署（服务器 CC 复核后）：
+部署前只读检查（服务器 CC 执行，均不写入）：
+```bash
+# 1) Compose 契约：项目名/镜像 digest/端口仅 127.0.0.1/issuer/哨兵/网络/卷/密钥路径/无生产标识
+docker compose --project-name crane-b4-preview --env-file deploy/compose/b4-preview.env \
+  -f deploy/compose/docker-compose.prod.yml -f deploy/compose/docker-compose.b4-preview.yml \
+  config --format json > /tmp/b4-preview.resolved.json
+node tools/b4-preview-contract.mjs --resolved /tmp/b4-preview.resolved.json
+# 2) Keycloak 只读预检：issuer、realm 存在、client 唯一且 redirect/webOrigins 精确等于 Preview
+provision-keycloak --preview-precheck   # 需 KEYCLOAK_ADMIN_URL / PUBLIC_URL / KEYCLOAK_BOOTSTRAP_PASSWORD_FILE
+```
+仓库内 `node tools/b4-preview-contract.mjs`（无参数）只检查源 overlay 文件，不能替代上面的 resolved 检查。
+
+部署（以上全部通过后）：
 ```bash
 docker compose --project-name crane-b4-preview --env-file deploy/compose/b4-preview.env \
   -f deploy/compose/docker-compose.prod.yml -f deploy/compose/docker-compose.b4-preview.yml up -d
@@ -70,12 +82,18 @@ docker compose --project-name crane-b4-preview --env-file deploy/compose/b4-prev
 
 回滚 = **恢复上一套经审查的 Preview 镜像/配置及数据库快照**（先有快照才谈回滚），不把 `docker compose down` / `down -v` 当常规回滚方案；不做数据清除操作。不修改 main、不重启生产容器、不改正式数据库。
 
-## 8. 待服务器 CC 只读复核项
+## 8. Preview 浏览器验收的写入保护
+
+- `playwright.b4-preview.config.ts` 加载时校验 `A1_WEB_ORIGIN`：缺失、HTTP、非 `b4.crane.youdaozd.com`（含正式站）一律报错，不打开浏览器。
+- 运行时必须设 `B4_REQUIRED_ENVIRONMENT=b4-preview`：每个写入用例登录后先读服务端 `GET /api/v1/environment`（由 cloud-api 的 `CRANE_DEPLOYMENT_ENVIRONMENT` 提供，生产不设置、返回空），不一致即失败，不发写请求。
+- 所有测试编码带每次运行唯一的 `RUN_ID`（`CRN-B4-<RUN_ID>-...`），持久化的 Preview 库重复运行不会冲突；清理仅限本次 `RUN_ID` 前缀的匿名数据，禁止对生产执行。
+
+## 9. 待服务器 CC 只读复核项
 
 - `10.240.40.0/24` 是否确为预留且不与生产冲突。
 - `18083/18085` 端口占用与既有容器映射一致。
 - 既有两张前端网络的归属与共享 Ingress 实际路由（DNS/TLS/回环/`X-Forwarded-*`/受信代理 IP）。
 
-## 9. 不做
+## 10. 不做
 
 不真实部署、不改 DNS/TLS/Ingress/Keycloak/PG、不重启生产容器、不触碰正式库。

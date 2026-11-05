@@ -27,6 +27,8 @@ services:
       - b4-preview-mqtt:/mosquitto/data
   cloud-api:
     environment:
+      # Server-side environment sentinel read by the Preview UAT before any write.
+      CRANE_DEPLOYMENT_ENVIRONMENT: b4-preview
       PUBLIC_URL: ${CRANE_PUBLIC_URL:-https://b4.crane.youdaozd.com}
       OIDC_ISSUER: ${CRANE_AUTH_URL:-https://b4.crane.youdaozd.com}/realms/crane-preview
       OIDC_CLIENT_ID: crane-b4-preview
@@ -39,6 +41,10 @@ services:
       - ${CRANE_INVENTORY_FILE:?preview Inventory required}:/inventory/inventory.json:ro
       - ${CRANE_FLEET_FILE:?preview Fleet required}:/inventory/fleet.json:ro
       - ${CRANE_MQTT_DIR:?preview MQTT dir required}/cloud:/certs:ro
+    # The existing Preview base separates the web-facing and API-facing frontend
+    # networks; cloud-api joins both (plus the internal backend). Exact routing is
+    # confirmed read-only by the server CC before deployment.
+    networks: [backend, frontend, api-frontend]
   web-console:
     ports: ["127.0.0.1:${CRANE_WEB_PORT:-18083}:8080"]
 secrets:
@@ -55,3 +61,6 @@ networks:
   frontend:
     external: true
     name: ${CRANE_FRONTEND_NETWORK:-u-dao-crane-b4-preview-frontend}
+  api-frontend:
+    external: true
+    name: ${CRANE_API_FRONTEND_NETWORK:-u-dao-crane-b4-preview-api-frontend}
