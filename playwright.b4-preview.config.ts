@@ -10,7 +10,7 @@ export default defineConfig({
   expect: { timeout: 20000 },
   reporter: [['list'], ['html', { open: 'never', outputFolder: 'playwright-report/b4-preview' }]],
   use: {
-    baseURL: process.env.B4_PREVIEW_ORIGIN,
+    baseURL: process.env.A1_WEB_ORIGIN,
     ignoreHTTPSErrors: false, // Preview 必须验证真实证书，不关闭校验
     channel: 'chrome',
     viewport: { width: 1280, height: 720 },

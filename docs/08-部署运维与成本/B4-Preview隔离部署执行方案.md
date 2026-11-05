@@ -22,12 +22,12 @@
 
 ## 2. 镜像与固定
 
-- `CRANE_CLOUD_IMAGE` / `CRANE_WEB_IMAGE` 固定到 `release/phase1-a1/release-manifest.json` 中已发布的 `@sha256` digest（对应冻结 SHA `cab1c20`），禁止 `latest`/可变 tag。
+- `CRANE_CLOUD_IMAGE` / `CRANE_WEB_IMAGE` 固定到对应冻结 SHA `cab1c20` 的**生产候选发布产物**（CI `production-release` 的 release-manifest.json artifact）中的 `@sha256` digest，禁止 `latest`/可变 tag。仓库不提交 release 产物，digest 由 OWNER 提供并以 trivy/SBOM 复核。
 - SBOM（`cloud-api.cdx.json` / `web-console.cdx.json`）随清单归档为部署证据。
 
 ## 3. 身份验证路径
 
-- Keycloak 仅托管 Preview realm（`crane`），独立 bootstrap 密码、独立 client `crane-b4-preview`、独立 client secret。
+- Keycloak 仅托管 Preview realm（`crane-preview`，与既有基座一致），独立 bootstrap 密码、独立 client `crane-b4-preview`、独立 client secret。
 - Preview redirect URI：`https://b4.crane.youdaozd.com/auth/callback`（需 DNS CNAME 与证书就绪后才可回调）。
 - Web Session 密钥（`session_server_secret`）独立随机生成，不复用 production。
 - 首次启动需运行 `provision-keycloak` 与匿名 seed（`tests/integration/a1fixture --operation seed`），仅写入 Preview 库。
