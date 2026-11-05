@@ -168,6 +168,8 @@ jobs:
           if-no-files-found: ignore
           path: |
             test-results/b4-visual/**/*.png
+            test-results/b4-visual/*-index.json
+            test-results/b4-visual/*-index.md
             test-results/**/*.png
             playwright-report/b4/**
   production-release:
