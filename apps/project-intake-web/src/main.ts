@@ -11,6 +11,7 @@ import Detail from './Detail.vue';
 import StaffMembers from './StaffMembers.vue';
 import StaffTeams from './StaffTeams.vue';
 import { useApp } from './store';
+import { routeAllowed } from './navigation';
 import { loginErrorMessage } from './login-errors';
 import { clearStaffRoleDraft, readStaffRoleDraft } from './staff-role-draft';
 import './style.css';
@@ -27,6 +28,7 @@ const router = createRouter({
     { path: '/login', component: Login },
     { path: '/', component: Dashboard },
     { path: '/projects', component: Projects },
+    { path: '/unassigned', component: Projects },
     { path: '/followups', component: Projects },
     { path: '/pipeline', component: Projects },
     { path: '/statistics', component: Dashboard },
@@ -39,14 +41,6 @@ router.beforeEach(async (to) => {
   const app = useApp(pinia);
   if (!app.sessionChecked) await app.loadUser();
   if (!app.user && to.path !== '/login') return { path: '/login', replace: true };
-  if (
-    ['/reviews', '/duplicates'].includes(to.path) &&
-    !['baobei_manager', 'baobei_director'].includes(app.user?.role || '')
-  )
-    return '/';
-  if (to.path.startsWith('/team/members') &&
-      !['baobei_manager', 'baobei_director', 'baobei_admin'].includes(app.user?.role ?? '')) return '/';
-  if (to.path.startsWith('/settings/') && app.user?.role !== 'baobei_admin') return '/';
   if (app.user && to.path === '/login' && !loginErrorMessage(to.query.error)) return '/';
   if (app.user && to.path === '/') {
     const draft = readStaffRoleDraft();
@@ -54,9 +48,8 @@ router.beforeEach(async (to) => {
       return { path: '/team/members/' + draft.staffId, replace: true };
     if (draft) clearStaffRoleDraft();
   }
-  if ((to.path === '/new' || to.path.endsWith('/edit')) && app.user?.role !== 'baobei_sales')
-    return '/';
-  if (to.path === '/new' && !to.query.draft && !app.user?.permissions.includes('project.create'))
-    return '/';
+  // Continuing an existing draft is authorized per project by Project.actions.
+  if (to.path === '/new' && to.query.draft) return;
+  if (app.user && to.path !== '/login' && !routeAllowed(app.user, to.path)) return '/';
 });
 createApp(App).use(pinia).use(router).mount('#app');

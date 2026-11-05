@@ -12,37 +12,44 @@ import {
   LogOut,
   Users,
   Settings,
+  Inbox,
+  ClipboardCheck,
+  Copy,
 } from '@lucide/vue';
 import ActionButton from './ActionButton.vue';
 import Modal from './Modal.vue';
 import { useApp } from './store';
 import { clearStaffRoleDraft } from './staff-role-draft';
+import { navigation, navGroups, can, workspaceLabel, roleLabel, type NavItem } from './navigation';
 const app = useApp(),
   router = useRouter(),
   route = useRoute(),
   search = ref('');
-const baseNav = [
-  { path: '/', label: '工作台', icon: LayoutDashboard },
-  { path: '/projects', label: '我的报备', icon: FolderKanban },
-  { path: '/followups', label: '待跟进', icon: Clock3 },
-  { path: '/pipeline', label: '项目管道', icon: Columns3 },
-  { path: '/statistics', label: '统计', icon: ChartNoAxesCombined },
-];
-const nav = computed(() =>
-  app.user?.role === 'baobei_admin'
-    ? [
-        { path: '/settings/users', label: '人员管理', icon: Users },
-        { path: '/settings/teams', label: '团队管理', icon: Settings },
-      ]
-    : ['baobei_manager', 'baobei_director'].includes(app.user?.role || '')
-    ? [
-        ...baseNav,
-        { path: '/reviews', label: '报备审核', icon: FolderKanban },
-        { path: '/duplicates', label: '重复处理', icon: Columns3 },
-        { path: '/team/members', label: '团队成员', icon: Users },
-      ]
-    : baseNav
-);
+const icons = {
+  dashboard: LayoutDashboard,
+  clock: Clock3,
+  folder: FolderKanban,
+  inbox: Inbox,
+  columns: Columns3,
+  check: ClipboardCheck,
+  copy: Copy,
+  chart: ChartNoAxesCombined,
+  users: Users,
+  settings: Settings,
+};
+const nav = computed(() => navigation(app.user));
+const groups = computed(() => {
+  const out: { key: NavItem['group']; label: string; items: NavItem[] }[] = [];
+  for (const item of nav.value) {
+    let g = out.find((x) => x.key === item.group);
+    if (!g) out.push((g = { key: item.group, label: navGroups[item.group], items: [] }));
+    g.items.push(item);
+  }
+  return out;
+});
+const active = (path: string) =>
+  path === '/' ? route.path === '/' : route.path === path || route.path.startsWith(path + '/');
+const createLabel = computed(() => (app.user?.role === 'baobei_admin' ? '新建项目' : '新建报备'));
 async function logout() {
   await app.api('/auth/logout', 'POST', {});
   clearStaffRoleDraft();
@@ -61,49 +68,56 @@ window.addEventListener('error', showError);
 </script>
 <template>
   <div v-if="app.user && route.path !== '/login'" class="shell">
-    <aside class="sidebar">
-      <a href="/" class="brand" data-action-id="nav.open" @click.prevent="router.push('/')"><span class="brand-mark">U</span><span>项目报备中心<small>PROJECT INTAKE</small></span></a>
-      <div class="workspace-label">销售工作空间</div>
+    <aside class="sidebar" aria-label="主导航">
+      <a href="/" class="brand" data-action-id="nav.open" @click.prevent="router.push('/')"><span class="brand-mark" aria-hidden="true"></span><span>项目报备中心<small>U-DAO 行车项目</small></span></a>
+      <div class="workspace-label">{{ workspaceLabel(app.user) }}</div>
       <nav>
-        <ActionButton
-          v-for="item in nav"
-          :key="item.path"
-          action-id="nav.open"
-          :class="{ active: route.path === item.path }"
-          :run="() => router.push(item.path)"
-        >
-          <component :is="item.icon" :size="17" />{{ item.label }}
-        </ActionButton>
+        <template v-for="g in groups" :key="g.key">
+          <span class="nav-group">{{ g.label }}</span>
+          <ActionButton
+            v-for="item in g.items"
+            :key="item.path"
+            action-id="nav.open"
+            :class="{ active: active(item.path) }"
+            :aria-current="active(item.path) ? 'page' : undefined"
+            :title="item.label"
+            :run="() => router.push(item.path)"
+          >
+            <component :is="icons[item.icon as keyof typeof icons]" :size="17" aria-hidden="true" />{{ item.label }}
+          </ActionButton>
+        </template>
       </nav>
       <div class="sidebar-footer">
-        <span class="live-dot"></span>独立报备工作空间<br /><small>U-DAO · 让项目有序推进</small>
+        <span class="account-role">{{ roleLabel(app.user.role) }}</span>
+        <span>{{ app.user.name }}</span>
       </div>
     </aside>
     <div class="main">
       <header class="topbar">
         <form
           class="global-search"
+          role="search"
           data-action-id="global.search"
           @submit.prevent="router.push({ path: '/projects', query: { q: search } })"
         >
-          <Search :size="16" /><input
+          <Search :size="16" aria-hidden="true" /><input
             v-model="search"
             aria-label="全局搜索"
-            placeholder="搜索项目、客户或报备编号…"
-          /><kbd>↵</kbd>
+            placeholder="搜索项目、客户或报备编号"
+          />
         </form>
         <div class="top-actions">
           <ActionButton
-            v-if="app.user.role === 'baobei_sales'"
-            :disabled="!app.user.permissions.includes('project.create')"
+            v-if="app.user.role === 'baobei_sales' || can(app.user, 'project.create')"
+            :disabled="!can(app.user, 'project.create')"
             reason="当前账号未启用新建报备"
             action-id="project.create"
             primary
             :run="() => router.push('/new')"
           >
-            <Plus :size="16" /><span>新建报备</span>
-          </ActionButton><span class="avatar">{{ app.user.name.slice(-1) }}</span><span class="user-name">{{ app.user.name }}</span><ActionButton action-id="auth.logout" :run="logout" aria-label="退出登录">
-            <LogOut :size="16" />
+            <Plus :size="16" aria-hidden="true" /><span>{{ createLabel }}</span>
+          </ActionButton><span class="avatar" aria-hidden="true">{{ app.user.name.slice(-1) }}</span><span class="user-name">{{ app.user.name }}<small>{{ roleLabel(app.user.role) }}</small></span><ActionButton action-id="auth.logout" :run="logout" aria-label="退出登录">
+            <LogOut :size="16" aria-hidden="true" />
           </ActionButton>
         </div>
       </header>
