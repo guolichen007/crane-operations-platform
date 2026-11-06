@@ -60,7 +60,9 @@ type ReviewEligibility struct {
 	RelatedCandidates   ActionHint `json:"relatedCandidates"`
 	PendingDuplicates   int        `json:"pendingDuplicates"`
 	// Related candidates that only have migrated, partial evidence. For these
-	// "no participation found" is not proof of independence.
+	// "no participation found" is not proof of independence. Counted only
+	// within the viewer's read scope; hidden candidates are reported solely via
+	// RelatedCandidates=REVIEW_RELATED_PROJECT_RESTRICTED.
 	LegacyCandidates int     `json:"legacyCandidates"`
 	Eligible         bool    `json:"eligible"`
 	ReasonCode       *string `json:"reasonCode"`
@@ -80,7 +82,7 @@ func loadReviewFacts(ctx context.Context, q querier, u User, ids []string) (map[
  EXISTS(`+relatedCandidatesSQL("p")+` AND NOT `+projectScope("c")+`),
  EXISTS(`+relatedCandidatesSQL("p")+` AND `+candidateConflictSQL("c", "$1")+`),`+pendingCasesSQL("p")+`,
  (SELECT count(DISTINCT c.id) FROM duplicate_cases d JOIN intake_projects c ON c.id=d.candidate_id WHERE d.project_id=p.id
-  AND d.decision='PENDING' AND d.submission_revision=p.submission_revision AND NOT `+primaryCompleteSQL("c")+`)
+  AND d.decision='PENDING' AND d.submission_revision=p.submission_revision AND `+projectScope("c")+` AND NOT `+primaryCompleteSQL("c")+`)
  FROM intake_projects p WHERE p.id=ANY($4::uuid[])`, u.Subject, u.Role, u.TeamID, ids)
 	if err != nil {
 		return nil, err
