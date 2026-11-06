@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http/httptest"
 	"os"
 	"sort"
 	"strings"
@@ -24,7 +25,10 @@ func TestDatabaseG30ComparisonBaseline(t *testing.T) {
 	}
 	ctx := context.Background()
 	var out strings.Builder
-	fmt.Fprintf(&out, "| 候选数 | comparison() 查询数 | 中位耗时 | detail 查询数 | 中位耗时 |\n| --- | --- | --- | --- | --- |\n")
+	// G3-1 correction: the earlier "detail" column measured app.projectHints()
+	// only. The full GET /api/v1/projects/{id} endpoint is measured separately
+	// through real HTTP (session check, detail, activities, audit, governance).
+	fmt.Fprintf(&out, "| 候选数 | comparison() 查询数 | 中位 | projectHints() 查询数 | 中位 | GET /projects/{id} 查询数 | P50 | P95 | GET duplicate-comparison 查询数 | P50 | P95 |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n")
 	var plans strings.Builder
 	for _, n := range []int{1, 10, 50} {
 		f := g1FixtureFor(t)
@@ -54,10 +58,10 @@ func TestDatabaseG30ComparisonBaseline(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		measure := func(fn func() error) (int64, time.Duration) {
+		measureN := func(runs int, fn func() error) (int64, time.Duration, time.Duration) {
 			var ds []time.Duration
 			var q int64
-			for i := 0; i < 7; i++ {
+			for i := 0; i < runs; i++ {
 				counter.Store(0)
 				st := time.Now()
 				if err := fn(); err != nil {
@@ -67,11 +71,29 @@ func TestDatabaseG30ComparisonBaseline(t *testing.T) {
 				q = counter.Load()
 			}
 			sort.Slice(ds, func(i, j int) bool { return ds[i] < ds[j] })
-			return q, ds[len(ds)/2]
+			return q, ds[len(ds)/2], ds[(len(ds)*95+99)/100-1]
 		}
+		measure := func(fn func() error) (int64, time.Duration) { q, p50, _ := measureN(7, fn); return q, p50 }
 		cq, ct := measure(func() error { _, e := app.comparison(ctx, pool, proj, u); return e })
 		dq, dt := measure(func() error { x := proj; return app.projectHints(ctx, pool, u, &x) })
-		fmt.Fprintf(&out, "| %d | %d | %s | %d | %s |\n", n, cq, ct.Round(10*time.Microsecond), dq, dt.Round(10*time.Microsecond))
+		// Full HTTP endpoints on the traced pool, 40 runs each for P50/P95.
+		httpApp := &App{db: pool, cfg: Config{Env: "development", Dev: true}}
+		srv := httptest.NewServer(httpApp.handler())
+		httpApp.cfg.Origin = srv.URL
+		dir := login(t, srv, "synthetic-director")
+		get := func(path string) func() error {
+			return func() error {
+				if s, b := dir.call("GET", path, nil); s != 200 {
+					return fmt.Errorf("%s %d %s", path, s, b)
+				}
+				return nil
+			}
+		}
+		hq, h50, h95 := measureN(40, get("/api/v1/projects/"+p.ID))
+		xq, x50, x95 := measureN(40, get("/api/v1/projects/"+p.ID+"/duplicate-comparison"))
+		srv.Close()
+		r := func(d time.Duration) time.Duration { return d.Round(10 * time.Microsecond) }
+		fmt.Fprintf(&out, "| %d | %d | %s | %d | %s | %d | %s | %s | %d | %s | %s |\n", n, cq, r(ct), dq, r(dt), hq, r(h50), r(h95), xq, r(x50), r(x95))
 		if n == 50 {
 			for _, q := range []struct{ title, sql string }{
 				{"comparison 主查询", `EXPLAIN (ANALYZE, BUFFERS) SELECT id::text,candidate_id::text,score,risk,matched_signals,decision FROM duplicate_cases WHERE project_id='` + p.ID + `' AND (submission_revision=1 OR decision<>'PENDING') ORDER BY created_at DESC,id`},

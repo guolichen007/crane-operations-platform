@@ -5,12 +5,16 @@ BAOBEI_MAIN_MERGE=FORBIDDEN
 BAOBEI_R2_MERGE=FORBIDDEN
 BASE_SHA=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18
 BRANCH=product/baobei-v1
-CURRENT_BATCH=FULL_ROLE_G2
-STOP_AFTER_FULL_ROLE_G2=YES
+CURRENT_BATCH=FULL_ROLE_G3_1
+STOP_AFTER_FULL_ROLE_G3_1=YES
 
 目标：快速报项目、识别重复、明确归属并跟进。独立产品，永不合并 main/R2。
 
-## 当前实施：全角色G2
+## 当前实施：G3-1 产品与高级 UI 设计（设计门禁）
+
+基线 `f9cb114`。本批只交付研究、信息架构、视觉规范、KPI 字典、隐私 ADR 提案、G3-2 实施设计与 DESIGN_ONLY 原型，见 [26-G3-1产品与高级UI设计验收](26-G3-1产品与高级UI设计验收.md) 与 [25 执行令留存](25-G3-0独立审查与G3-1设计研究执行令.md)；G3-0 见 [24](24-G3-0数据安全与性能基线验收.md)。业务代码、权限、迁移与 OpenAPI 未改；G3-2 未授权。
+
+## 历史：全角色G2
 
 负责人以 G1 `095d54b07e8109ceae013b6253a36969ef83cf0f` 为基线授权 G2-0 至 G2-5。本批交付审核资格统一谓词（含经批准的历史候选规则修订）、创建意图回执、显示名、管理员批量交接、能力驱动导航、四步快速报备、项目中心与六区详情、服务端跟进窗口及首页最小聚合；验收见 [20-G2界面与工作台验收](20-G2界面与工作台验收.md)。无新增迁移。管道全量分栏、金额、漏斗与趋势属 G3，未授权；生产迁移仍 BLOCKED。
 

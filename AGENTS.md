@@ -1,6 +1,6 @@
 # 项目报备中心工程入口
 
-仅适用于 product/baobei-v1 独立 worktree。当前阶段 FULL_ROLE_G2，START_HEAD=095d54b07e8109ceae013b6253a36969ef83cf0f。负责人已批准G1并授权G2-0至G2-5（界面、销售/管理员工作台、最小聚合），设计见SSOT的14—18入口，G1验收见19，G2验收见20。只正常提交/push产品分支，等待同SHA原八门CI后STOP；不得自动进入G3，不授权生产、release ref或GHCR。
+仅适用于 product/baobei-v1 独立 worktree。当前阶段 FULL_ROLE_G3_1（设计门禁），START_HEAD=f9cb114e77bb0380592ee597ec84133bfcbc4b21。G2 见20，G3-0 见24，G3-1 执行令见25、验收见26；G3-1 只交付设计与契约，不改业务代码、权限、迁移或 OpenAPI。只正常提交/push产品分支，等待同SHA原八门CI后STOP；不得自动进入G3-2，不授权生产、release ref或GHCR。
 唯一事实源：docs/项目报备中心/00-项目总览与SSOT.md；UI 动作事实源：交互动作矩阵.md。
 固定基线 29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18；永久产品分支 product/baobei-v1。
 禁止合并 main / R2，禁止修改既有 Crane 代码、生产服务器、DNS、TLS、真实账号及现场数据。

@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Baobei G3-1 高保真原型（DESIGN_ONLY）</title>
+<style>
+:root{color-scheme:light;--ink:#1b2430;--ink-2:#3c4757;--ink-3:#5f6b7c;--ink-4:#8a94a3;--surface:#fff;--steel:#f2f4f7;--steel-2:#e8ecf1;--rule:#dce1e8;--blue:#1d4f91;--blue-2:#173f74;--blue-wash:#e9f0f9;--amber:#d99a0b;--amber-wash:#fdf4df;--amber-ink:#7a5300;--risk:#a8402e;--risk-wash:#fbece8;--done:#2d6e52;--done-wash:#e6f2ec;--r:6px}
+*{box-sizing:border-box}body{margin:0;font:15px/1.6 'HarmonyOS Sans SC','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',system-ui,sans-serif;color:var(--ink);background:var(--surface);font-variant-numeric:tabular-nums}
+.mark{position:fixed;z-index:99;top:8px;left:50%;transform:translateX(-50%);white-space:nowrap;background:var(--amber);color:#2a1d00;font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;letter-spacing:.02em}
+.shell{display:flex;min-height:100vh}.side{width:248px;background:var(--steel);border-right:1px solid var(--rule);padding:20px 12px;position:fixed;inset:0 auto 0 0}
+.brand{display:flex;gap:11px;align-items:center;font-weight:650;font-size:16px;margin:0 8px 22px}.bm{width:30px;height:30px;border-radius:5px;background:var(--blue);position:relative}.bm:before{content:'';position:absolute;left:5px;right:5px;top:8px;height:4px;background:var(--amber)}.bm:after{content:'';position:absolute;left:13px;top:12px;width:4px;height:10px;border-right:2px solid #fff;border-bottom:2px solid #fff;border-bottom-right-radius:4px}
+.brand small{display:block;font-size:12px;color:var(--ink-4);font-weight:400}.ws{font-size:13px;color:var(--ink-3);padding:0 12px}
+.grp{font-size:12px;color:var(--ink-4);padding:14px 12px 4px}.nav a{display:flex;gap:10px;align-items:center;padding:8px 12px;border-radius:var(--r);color:var(--ink-2);text-decoration:none;font-size:14px;position:relative}.nav a.on{background:#fff;box-shadow:inset 0 0 0 1px var(--rule);color:var(--blue);font-weight:600}.nav a.on:before{content:'';position:absolute;left:-12px;top:8px;bottom:8px;width:4px;border-radius:0 3px 3px 0;background:var(--amber)}
+.nav .n{margin-left:auto;font-size:12px;background:var(--blue-wash);color:var(--blue);border-radius:999px;padding:0 7px;font-weight:600}.nav .n.r{background:var(--risk-wash);color:var(--risk)}
+.ico{width:16px;height:16px;flex:none;opacity:.85}
+.main{margin-left:248px;flex:1;min-width:0}.top{height:64px;border-bottom:1px solid var(--rule);display:flex;align-items:center;gap:16px;padding:0 32px;background:#fff}
+.search{flex:1;max-width:420px;border:1px solid var(--rule);background:var(--steel);border-radius:var(--r);padding:8px 12px;color:var(--ink-4);font-size:14px}.sp{flex:1}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--rule);background:#fff;border-radius:var(--r);padding:8px 14px;font-size:14px;color:var(--ink-2);white-space:nowrap}.btn.p{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}.btn.s{padding:4px 10px;font-size:13px}.btn.g{border-color:transparent;background:transparent;color:var(--blue)}
+.who{display:flex;align-items:center;gap:8px;font-size:14px}.av{width:32px;height:32px;border-radius:50%;background:var(--blue-wash);color:var(--blue);display:grid;place-items:center;font-weight:600;font-size:13px}.who small{display:block;color:var(--ink-4);font-size:12px;line-height:1.2}
+.content{padding:28px 32px 48px;max-width:1360px}
+h1{font-size:26px;line-height:1.3;margin:0 0 4px;font-weight:650}h2{font-size:18px;margin:0;font-weight:620}h3{font-size:15px;margin:0;font-weight:600}
+.sub{color:var(--ink-3);font-size:14px;margin:0}.hd{display:flex;align-items:flex-end;gap:16px;margin-bottom:18px}.scope{font-size:13px;color:var(--ink-3);display:flex;gap:14px;flex-wrap:wrap}
+.grid{display:grid;gap:20px}.g2{grid-template-columns:minmax(0,3fr) minmax(0,2fr)}.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.panel{border:1px solid var(--rule);border-radius:var(--r);background:#fff}.ph{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--steel-2)}.ph .sp{flex:1}.ph small{color:var(--ink-3);font-size:13px}
+.row{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--steel-2)}.row:last-child{border-bottom:0}.row .t{flex:1;min-width:0}.row .t b{display:block;font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.row .t span{font-size:13px;color:var(--ink-3)}
+.tag{display:inline-flex;align-items:center;font-size:12px;padding:2px 8px;border-radius:999px;background:var(--steel);color:var(--ink-2);white-space:nowrap}.tag.ok{background:var(--done-wash);color:var(--done)}.tag.w{background:var(--amber-wash);color:var(--amber-ink)}.tag.r{background:var(--risk-wash);color:var(--risk)}.tag.b{background:var(--blue-wash);color:var(--blue)}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px;background:var(--ink-4)}.dot.r{background:var(--risk)}.dot.b{background:var(--blue)}.dot.ok{background:var(--done)}.dot.w{background:var(--amber)}
+.when{font-size:13px;color:var(--ink-3);white-space:nowrap}.when.r{color:var(--risk);font-weight:600}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--rule);border-radius:var(--r);overflow:hidden;margin-bottom:20px}.kpi{padding:14px 18px;border-right:1px solid var(--rule);position:relative}.kpi:last-child{border-right:0}.kpi:before{content:'';position:absolute;left:0;right:0;top:0;height:3px;background:var(--blue)}.kpi.r:before{background:var(--risk)}.kpi.w:before{background:var(--amber)}
+.kpi b{font-size:30px;line-height:1.15;display:block;font-weight:650}.kpi.r b{color:var(--risk)}.kpi span{font-size:14px;font-weight:600;color:var(--ink-2)}.kpi small{display:block;font-size:12px;color:var(--ink-3)}
+.bar{height:10px;border-radius:999px;background:var(--steel-2);overflow:hidden;display:flex}.bar i{display:block;height:100%}
+.funnel .fr{display:grid;grid-template-columns:88px 1fr 56px 96px;gap:10px;align-items:center;padding:7px 16px;font-size:13px}.funnel .fr .bar{height:14px;border-radius:3px;background:transparent}.funnel .fr .bar i{background:var(--blue);border-radius:3px}
+.path{display:flex;gap:2px;margin:6px 0 16px}.path span{flex:1;font-size:12px;text-align:center;padding:7px 4px;background:var(--steel-2);color:var(--ink-3);clip-path:polygon(0 0,calc(100% - 8px) 0,100% 50%,calc(100% - 8px) 100%,0 100%,8px 50%)}.path span.d{background:var(--done-wash);color:var(--done)}.path span.c{background:var(--blue);color:#fff;font-weight:600;box-shadow:inset 0 -3px 0 var(--amber)}.path span:first-child{clip-path:polygon(0 0,calc(100% - 8px) 0,100% 50%,calc(100% - 8px) 100%,0 100%)}
+table{width:100%;border-collapse:collapse;font-size:14px}th{font-weight:400;color:var(--ink-3);font-size:13px;text-align:left;padding:9px 12px;background:var(--steel);border-bottom:1px solid var(--rule);white-space:nowrap}td{padding:11px 12px;border-bottom:1px solid var(--steel-2);vertical-align:top}td small{display:block;color:var(--ink-3);font-size:12px}td.n{text-align:right}
+.lanes{display:grid;grid-template-columns:repeat(6,minmax(200px,1fr));gap:12px;overflow:auto}.lane{background:var(--steel);border-radius:var(--r);padding:10px}.lane h3{font-size:14px;display:flex;justify-content:space-between;margin-bottom:2px}.lane .meta{font-size:12px;color:var(--ink-3);margin-bottom:8px}.lane.cur{box-shadow:inset 0 3px 0 var(--amber)}
+.card{background:#fff;border:1px solid var(--rule);border-radius:var(--r);padding:10px 12px;margin-bottom:8px;font-size:13px}.card b{display:block;font-size:14px}.card .ft{display:flex;justify-content:space-between;align-items:center;margin-top:6px;color:var(--ink-3)}
+.note{background:var(--amber-wash);color:var(--amber-ink);border-radius:var(--r);padding:10px 14px;font-size:14px}.note.b{background:var(--blue-wash);color:var(--blue)}.note.r{background:var(--risk-wash);color:var(--risk)}
+.cmp{display:grid;grid-template-columns:120px 1fr 1fr;font-size:14px}.cmp div{padding:9px 12px;border-bottom:1px solid var(--steel-2)}.cmp .k{color:var(--ink-3)}.cmp .h{background:var(--steel);font-weight:600;font-size:13px}.cmp .same{background:#fff7e4}
+.steps{display:flex;gap:4px;margin:6px 0 20px}.steps span{flex:1;border-bottom:3px solid var(--steel-2);padding:8px 2px;font-size:14px;color:var(--ink-3)}.steps .c{border-color:var(--blue);color:var(--blue);font-weight:600}.steps .d{border-color:var(--done);color:var(--done)}
+.f{display:grid;grid-template-columns:1fr 1fr;gap:14px}.f label{display:grid;gap:6px;font-size:14px;color:var(--ink-2)}.f .w{grid-column:1/-1}.inp{border:1px solid var(--rule);border-radius:var(--r);padding:9px 11px;color:var(--ink);background:#fff;min-height:38px}.inp.e{color:var(--ink-4)}
+.tabbar{display:none}
+@media (max-width:700px){.side{display:none}.main{margin:0}.top{padding:0 12px;height:56px}.top .who span,.top .search{display:none}.content{padding:16px 14px 90px}.g2,.g3{grid-template-columns:1fr}.kpis{grid-template-columns:1fr 1fr}.kpi:nth-child(2n){border-right:0}.kpi{border-bottom:1px solid var(--rule)}h1{font-size:22px}.hd{flex-wrap:wrap}
+.tabbar{display:flex;position:fixed;left:0;right:0;bottom:0;height:62px;background:#fff;border-top:1px solid var(--rule)}.tabbar a{flex:1;display:grid;place-items:center;font-size:12px;color:var(--ink-3);text-decoration:none;padding-top:6px;position:relative}.tabbar a.on{color:var(--blue);font-weight:600}.tabbar a.on:before{content:'';position:absolute;top:0;left:22%;right:22%;height:3px;background:var(--amber);border-radius:0 0 3px 3px}
+.fab{position:fixed;right:14px;bottom:76px}.mark{top:auto;bottom:70px;font-size:11px}.funnel .fr{grid-template-columns:64px minmax(0,1fr) 34px;}.funnel .fr .when{display:none}.panel{overflow-x:auto}.path{overflow-x:auto;scrollbar-width:none}.path span{flex:0 0 74px}.cmp[style]{grid-template-columns:1fr!important}.hd .btn{margin-top:6px}.scope{gap:6px 12px}.lanes{grid-template-columns:repeat(6,82vw)}.cmp{grid-template-columns:1fr}.cmp .k{background:var(--steel);font-size:12px;padding:4px 12px}.cmp .h{display:none}.cmp div[data-l]:before{content:attr(data-l);display:block;font-size:12px;color:var(--ink-4)}table.resp thead{display:none}table.resp tr{display:block;border-bottom:1px solid var(--rule);padding:8px 0}table.resp td{display:flex;justify-content:space-between;border:0;padding:3px 4px}table.resp td:before{content:attr(data-l);color:var(--ink-3);font-size:13px}.f{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="mark">DESIGN_ONLY · 合成数据 · 非平台真实统计</div>
+<div id="app"></div>
+<script>
+const ICONS={"工作台": "M3 3h7v7H3zM14 3h7v4h-7zM14 11h7v10h-7zM3 14h7v7H3z", "待跟进": "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 4v5l3 2", "我的报备": "M4 5h6l2 2h8v12H4z", "团队项目": "M4 5h6l2 2h8v12H4z", "全部项目": "M4 5h6l2 2h8v12H4z", "待分配草稿": "M4 4h16v10h-5l-3 3-3-3H4z", "项目管道": "M4 4h4v16H4zM10 4h4v16h-4zM16 4h4v16h-4z", "报备审核": "M8 4h8v3H8zM6 6h12v15H6zm3 8 2 2 4-4", "重复处理": "M8 8h12v12H8zM4 4h12v2H6v10H4z", "统计": "M4 20V10M10 20V4M16 20v-8M22 20H2", "团队成员": "M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-6 9a6 6 0 0 1 12 0M17 11a3 3 0 1 0 0-6", "人员管理": "M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-6 9a6 6 0 0 1 12 0", "团队管理": "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v3M12 19v3M2 12h3M19 12h3"};
+const ico=(n)=>`<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICONS[n]||'M4 4h16v16H4z'}"/></svg>`;
+const Q=new URLSearchParams(location.search);const screen=Q.get('screen')||'index';
+const roles={sales:['销售工作空间','示例销售 A','销售','A'],manager:['主管工作空间','示例主管','销售主管','管'],director:['总监工作空间','示例总监','销售总监','监'],admin:['管理工作空间','示例管理员','管理员','员']};
+const navs={
+ sales:[['工作',[['工作台',1],['待跟进',0,'3','r']]],['项目中心',[['我的报备'],['项目管道']]],['审核与分析',[['统计']]]],
+ manager:[['工作',[['工作台',1],['待跟进',0,'3','r']]],['项目中心',[['团队项目'],['项目管道']]],['审核与分析',[['报备审核',0,'5'],['重复处理',0,'2'],['统计']]],['组织',[['团队成员']]]],
+ director:[['工作',[['工作台',1],['待跟进']]],['项目中心',[['全部项目'],['项目管道']]],['审核与分析',[['报备审核',0,'7'],['重复处理',0,'3','r'],['统计']]],['组织',[['团队成员']]]],
+ admin:[['工作',[['工作台',1],['待跟进']]],['项目中心',[['全部项目'],['待分配草稿',0,'4'],['项目管道']]],['审核与分析',[['报备审核',0,'2'],['重复处理'],['统计']]],['组织',[['人员管理',0,'1','r'],['团队管理']]]]};
+function shell(role,active,body,create){const r=roles[role];const nav=(navs[role]||[]).map(([g,items])=>`<div class="grp">${g}</div>`+items.map(([n,on,c,k])=>`<a class="${(active?n===active:on)?'on':''}">${ico(n)}${n}${c?`<span class="n ${k||''}">${c}</span>`:''}</a>`).join('')).join('');
+ const tabs=(navs[role]||[]).flatMap(([,i])=>i).slice(0,5).map(([n,on])=>`<a class="${(active?n===active:on)?'on':''}">${n}</a>`).join('');
+ return `<div class="shell"><aside class="side"><div class="brand"><span class="bm"></span><span>项目报备中心<small>U-DAO 行车项目</small></span></div><div class="ws">${r[0]}</div><nav class="nav">${nav}</nav></aside><div class="main"><header class="top"><div class="search">搜索项目、客户或报备编号</div><span class="sp"></span>${create?`<span class="btn p">＋ ${create}</span>`:''}<span class="who"><span class="av">${r[3]}</span><span>${r[1]}<small>${r[2]}</small></span></span></header><main class="content">${body}</main></div></div><nav class="tabbar">${tabs}</nav>`}
+const asof='统计时间 11月6日 14:20（服务端实时汇总）';
+const P=(name,cust,owner,tag,cls,when,wcls,extra='')=>`<div class="row"><div class="t"><b>${name}</b><span>${[cust,owner].filter(Boolean).join(' · ')}${extra}</span></div><span class="tag ${cls}">${tag}</span><span class="when ${wcls||''}">${when}</span></div>`;
+const screens={
+sales:()=>shell('sales',null,`
+<div class="hd"><div><h1>早上好，示例销售 A</h1><p class="sub">今天有 3 项跟进需要处理，2 份草稿可以继续。</p></div><span class="sp"></span><span class="btn p">＋ 快速报备</span></div>
+<div class="scope"><span>我的报备 · 共 24 项 · 有效报备 17 项</span><span>${asof}</span></div><br>
+<div class="grid g2"><section class="panel"><div class="ph"><h2>今天要做</h2><small>逾期 2 · 今日 1 · 退回待补 1</small><span class="sp"></span><span class="btn g">全部待跟进</span></div>
+${P('无锡钢铁二厂 · 炼钢车间防摇改造','无锡合成钢铁有限公司','下一步：提交技术方案','逾期 2 天','r','11/04','r')}
+${P('常州港务 · 门机远程操控','常州合成港务集团','下一步：现场勘察确认跨度','逾期 1 天','r','11/05','r')}
+${P('苏州重工 · 32t 桥式行车定位','苏州合成重工','下一步：电话确认采购窗口','今天','b','14:00','')}
+${P('南通船厂 · 分段车间自动化','南通合成船舶','主管退回：补充设备起升高度','退回补充','w','去补充','')}
+</section><section class="panel"><div class="ph"><h2>本周日程</h2><span class="sp"></span><small>11/06 – 11/12</small></div>
+<div class="row"><span class="when">周四</span><div class="t"><b>苏州重工 · 电话</b><span>确认采购窗口与预算</span></div></div>
+<div class="row"><span class="when">周五</span><div class="t"><b>镇江化工 · 拜访</b><span>技术交流：防爆要求</span></div></div>
+<div class="row"><span class="when">周二</span><div class="t"><b>扬州电力 · 方案</b><span>提交 2 台门式行车方案</span></div></div>
+</section></div><br>
+<div class="grid g2"><section class="panel"><div class="ph"><h2>继续草稿</h2><small>保存草稿不会建立销售保护</small></div>
+${P('盐城新能源 · 储运车间','待补：设备参数、项目类型','上次保存 10:12','草稿','','续填')}
+${P('泰州化纤 · 原料库','待补：信息来源','上次保存 昨天','草稿','','续填')}
+</section><section class="panel"><div class="ph"><h2>我的项目阶段</h2><small>数量（全量，服务端）</small></div>
+<div class="funnel">${[['需求确认',6],['技术交流',5],['现场勘察',4],['方案',3],['报价',2],['招投标',1]].map(([s,n])=>`<div class="fr"><span>${s}</span><span class="bar"><i style="width:${n*16}%"></i></span><b>${n}</b><span class="when">项</span></div>`).join('')}</div></section></div>`,'新建报备'),
+manager:()=>shell('manager',null,`
+<div class="hd"><div><h1>工作台</h1><p class="sub">本组有 5 项你可以独立审核，3 项跟进已逾期。</p></div></div>
+<div class="scope"><span>团队项目（华东一组）· 共 86 项</span><span>${asof}</span></div><br>
+<div class="kpis"><div class="kpi"><b>5</b><span>你可独立审核</span><small>本组待审 8 项，3 项需他人处理</small></div><div class="kpi r"><b>3</b><span>本组逾期跟进</span><small>涉及 2 名销售</small></div><div class="kpi"><b>11</b><span>未来 7 天跟进</span><small>不含已逾期</small></div><div class="kpi w"><b>2</b><span>待交接项目</span><small>来自已停用账号</small></div></div>
+<div class="grid g2"><section class="panel"><div class="ph"><h2>我可独立审核</h2><small>按等待时长</small><span class="sp"></span><span class="btn s">进入审核</span></div>
+${P('苏州重工 · 32t 桥式行车定位','示例销售 A · 已提交','等待 2 天','已提交','ok','审核','')}
+${P('无锡钢铁 · 炼钢车间防摇','示例销售 B · 1 个重复候选','等待 1 天','重复待审核','w','对比','')}
+${P('常州港务 · 门机远控','示例销售 A · 已提交','等待 5 小时','已提交','ok','审核','')}
+<div class="ph" style="border-top:1px solid var(--steel-2)"><h3>需他人处理 3 项</h3><span class="sp"></span><small>你参与过 1 · 跨组候选 1 · 历史证据待核验 1</small></div>
+</section><section class="panel"><div class="ph"><h2>团队负载</h2><small>在办 / 逾期 / 7 天到期</small></div>
+${[['示例销售 A',24,2,5],['示例销售 B',19,1,4],['示例销售 D',12,0,2]].map(([n,a,o,u])=>`<div class="row"><div class="t"><b>${n}</b><div class="bar" style="margin-top:6px"><i style="width:${a*3}%;background:var(--blue)"></i></div></div><span class="tag">${a} 在办</span><span class="tag ${o?'r':''}">${o} 逾期</span><span class="tag b">${u} 到期</span></div>`).join('')}
+</section></div>`),
+director:()=>shell('director',null,`
+<div class="hd"><div><h1>工作台</h1><p class="sub">3 个跨组重复只能由你裁决；阶段金额为已知金额，未知金额单列。</p></div></div>
+<div class="scope"><span>全部已分配项目 · 共 312 项（4 个团队）</span><span>${asof}</span></div><br>
+<div class="kpis"><div class="kpi r"><b>3</b><span>跨组重复待裁决</span><small>涉及 5 个候选</small></div><div class="kpi"><b>¥ 4,860 万</b><span>已知预估金额</span><small>有效报备 · 未知金额 41 项</small></div><div class="kpi w"><b>9</b><span>保护期即将到期</span><small>30 天内</small></div><div class="kpi"><b>4</b><span>你可独立审核</span><small>全局待审 23 项</small></div></div>
+<div class="grid g2"><section class="panel"><div class="ph"><h2>阶段分布</h2><small>有效报备 · 数量 / 已知金额 / 未知金额数</small></div><div class="funnel">
+${[['需求确认',84,'1,120 万',14],['技术交流',66,'1,030 万',9],['现场勘察',51,'860 万',7],['方案',38,'790 万',5],['报价',27,'620 万',3],['招投标',14,'310 万',2],['商务沟通',9,'95 万',1],['待签约',5,'35 万',0]].map(([s,n,m,u])=>`<div class="fr"><span>${s}</span><span class="bar"><i style="width:${n}%"></i></span><b>${n}</b><span class="when">${m} · 未知 ${u}</span></div>`).join('')}</div></section>
+<section class="panel"><div class="ph"><h2>跨组重复风险</h2><span class="sp"></span><span class="btn s">全部</span></div>
+${P('无锡钢铁 · 炼钢车间防摇','华东一组 ↔ 华东二组 · 2 个候选','HIGH','高风险','r','裁决','')}
+${P('南京汽车 · 总装车间','华东二组 ↔ 华中组 · 1 个候选','WARN','疑似','w','裁决','')}
+${P('合肥家电 · 原料库','华中组 ↔ 华东一组 · 2 个候选，含 1 个历史数据','WARN','疑似','w','裁决','')}
+</section></div><br>
+<section class="panel"><div class="ph"><h2>团队对比</h2><small>有效报备 · 逾期 · 已知金额</small></div><table><thead><tr><th>团队</th><th class="n">有效报备</th><th class="n">逾期跟进</th><th class="n">已知金额</th><th class="n">未知金额项</th><th>阶段构成</th></tr></thead><tbody>
+${[['华东一组',86,3,'1,620 万',9,[30,25,20,25]],['华东二组',92,6,'1,410 万',14,[35,30,20,15]],['华中组',71,2,'1,050 万',11,[25,30,25,20]],['华南组',63,4,'780 万',7,[40,25,20,15]]].map(([t,a,o,m,u,b])=>`<tr><td>${t}</td><td class="n">${a}</td><td class="n">${o}</td><td class="n">${m}</td><td class="n">${u}</td><td><div class="bar">${b.map((w,i)=>`<i style="width:${w}%;background:${['#1d4f91','#4f7cb8','#8fb0d9','#c9d8ec'][i]}"></i>`).join('')}</div></td></tr>`).join('')}</tbody></table></section>`),
+admin:()=>shell('admin',null,`
+<div class="hd"><div><h1>工作台</h1><p class="sub">4 份待分配草稿等待指派；1 名停用人员仍有在办项目。</p></div><span class="sp"></span><span class="btn">邀请销售</span></div>
+<div class="scope"><span>全部项目（含待分配）· 共 316 项</span><span>${asof}</span></div><br>
+<div class="kpis"><div class="kpi w"><b>4</b><span>待分配草稿</span><small>最早创建于 3 天前</small></div><div class="kpi"><b>2</b><span>你可独立审核</span><small>待审 23 项，你参与过 6 项</small></div><div class="kpi r"><b>1</b><span>人员治理异常</span><small>停用后仍有在办项目</small></div><div class="kpi"><b>3</b><span>待开通账号</span><small>等待受控回执</small></div></div>
+<div class="grid g2"><section class="panel"><div class="ph"><h2>待分配草稿</h2><small>只有管理员可见 · 指派后才能正式报备</small></div>
+${['宁波港 · 散货门机远控','杭州钢构 · 下料车间','温州化工 · 防爆行车','绍兴纺织 · 原料库'].map((n,i)=>`<div class="row"><div class="t"><b>${n}</b><span>保管人 示例管理员 · 创建于 ${i+1} 天前 · 待补 ${3-i%3} 项</span></div><span class="tag w">待分配</span><span class="btn s">指派</span></div>`).join('')}
+</section><section class="panel"><div class="ph"><h2>人员与团队</h2></div>
+${P('示例销售 E（已停用）','华东二组 · 在办 3 项','','需交接','r','交接','')}
+${P('新销售 · 待开通','华南组 · 已邀请 2 天','','待开通','w','查看','')}
+${P('身份同步','最近一次成功：今天 09:00','','正常','ok','','')}
+</section></div>`,'新建项目'),
+pipeline:()=>shell('director','项目管道',`
+<div class="hd"><div><h1>项目管道</h1><p class="sub">每栏为服务端全量计数，栏内独立分页；卡片圆点表示下一步状态。</p></div><span class="sp"></span><span class="btn">列表视图</span></div>
+<div class="scope"><span>全部已分配 · 有效报备 294 项</span><span><span class="dot r"></span>逾期 <span class="dot b"></span>已安排 <span class="dot"></span>未安排</span><span>${asof}</span></div><br>
+<div class="lanes">${[['需求确认',84,'1,120 万',14],['技术交流',66,'1,030 万',9],['现场勘察',51,'860 万',7],['方案',38,'790 万',5],['报价',27,'620 万',3],['招投标',14,'310 万',2]].map(([s,n,m,u],li)=>`<div class="lane ${li===3?'cur':''}"><h3>${s}<span>${n}</span></h3><div class="meta">已知 ${m} · 未知 ${u} 项</div>${[0,1,2].map(k=>`<div class="card"><b>${['无锡钢铁 · 炼钢车间','苏州重工 · 总装','常州港务 · 门机'][k]}</b>${['示例销售 A','示例销售 B','示例销售 D'][k]} · ${['68 万','未知','32 万'][k]}<div class="ft"><span><span class="dot ${['r','b',''][k]}"></span>${['逾期 2 天','11/08 拜访','未安排下一步'][k]}</span><span class="tag ${k===1?'w':''}">${['已批准','重复待审核','已提交'][k]}</span></div></div>`).join('')}<span class="btn g s">本栏下一页（3 / ${n}）</span></div>`).join('')}</div>`),
+projects:()=>shell('manager','团队项目',`
+<div class="hd"><div><h1>团队项目 <span class="sub">86</span></h1><p class="sub">范围：本组已分配项目 · ${asof}</p></div><span class="sp"></span><span class="btn">管道视图</span></div>
+<div class="scope"><span class="btn s">全部状态</span><span class="btn s">全部阶段</span><span class="btn s">负责人：全部</span><span class="btn s">下一步：逾期</span></div><br>
+<section class="panel"><table class="resp"><thead><tr><th>项目 / 客户</th><th>阶段</th><th>状态</th><th>负责人</th><th>下一步</th><th class="n">预估金额</th></tr></thead><tbody>
+${[['无锡钢铁 · 炼钢车间防摇','无锡合成钢铁','技术交流','已批准','ok','示例销售 A','提交技术方案','逾期 2 天','r','68 万'],['苏州重工 · 32t 定位','苏州合成重工','现场勘察','已提交','ok','示例销售 A','电话确认窗口','今天','b','未知'],['常州港务 · 门机远控','常州合成港务','方案','重复待审核','w','示例销售 B','等待审核','—','','32 万'],['南通船厂 · 分段车间','南通合成船舶','需求确认','退回补充','w','示例销售 D','补充起升高度','11/09','b','0（已确认）']].map(r=>`<tr><td data-l="项目"><b>${r[0]}</b><small>${r[1]}</small></td><td data-l="阶段">${r[2]}</td><td data-l="状态"><span class="tag ${r[4]}">${r[3]}</span></td><td data-l="负责人">${r[5]}</td><td data-l="下一步"><span class="dot ${r[8]}"></span>${r[6]}<small class="${r[8]==='r'?'when r':''}">${r[7]}</small></td><td data-l="金额" class="n">${r[9]}</td></tr>`).join('')}
+</tbody></table></section>`),
+review:()=>shell('manager','报备审核',`
+<div class="hd"><div><h1>报备审核</h1><p class="sub">列表与首页“你可独立审核”使用同一服务端口径。</p></div></div>
+<div class="scope"><span class="btn s" style="border-color:var(--blue);color:var(--blue);font-weight:600">我可独立审核 5</span><span class="btn s">需他人处理 3</span><span class="btn s">全部 8</span><span>${asof}</span></div><br>
+<div class="grid g2"><section class="panel">
+${P('苏州重工 · 32t 桥式行车定位','示例销售 A · 无重复候选','等待 2 天','可审核','ok','2 天','')}
+${P('无锡钢铁 · 炼钢车间防摇','示例销售 B · 1 个本组候选','等待 1 天','需先裁决重复','w','1 天','')}
+${P('常州港务 · 门机远控','示例销售 A','等待 5 小时','可审核','ok','5 小时','')}
+</section><section class="panel"><div class="ph"><h2>苏州重工 · 32t 桥式行车定位</h2></div><div style="padding:14px 16px">
+<div class="note b">你可以独立审核本项目：本轮独立性满足 · 无待裁决候选</div><br>
+<div class="cmp"><div class="k">客户</div><div style="grid-column:span 2">苏州合成重工有限公司</div><div class="k">设备</div><div style="grid-column:span 2">桥式行车 × 2 · 32 t · 跨度 22.5 m · 起升高度 未知</div><div class="k">需求</div><div style="grid-column:span 2">防摇、精准定位</div><div class="k">来源 / 可信度</div><div style="grid-column:span 2">终端客户 · 技术确认</div></div><br>
+<label style="display:grid;gap:6px;font-size:14px">审核原因 *<span class="inp e">填写核验依据</span></label><br><span class="btn p">批准</span> <span class="btn">退回补充</span> <span class="btn">拒绝</span></div></section></div>`),
+compare:()=>shell('manager','重复处理',`
+<div class="hd"><div><h1>重复对比</h1><p class="sub">无锡钢铁 · 炼钢车间防摇（BB-2026-000231）</p></div></div>
+<div class="note r">另有 1 个跨组候选（风险：高）你无权查看，需销售总监处理。为保护其他团队数据，不显示其相似度、匹配维度、地区与阶段。</div><br>
+<section class="panel"><div class="ph"><h2>本组候选 1 / 1</h2><span class="tag r">高风险</span><span class="tag b">证据完整</span><span class="sp"></span><small>相同客户 · 相同位置 · 相同设备类型及数量</small></div>
+<div class="cmp"><div class="k h">字段</div><div class="h">新报备（示例销售 B）</div><div class="h">已有报备（示例销售 A）</div>
+${[['客户','无锡合成钢铁有限公司','无锡合成钢铁有限公司',1],['省市','江苏 · 无锡','江苏 · 无锡',1],['厂区 / 车间','二厂 · 炼钢车间','二厂 · 炼钢车间',1],['设备','桥式 × 2 · 32 t','桥式 × 2 · 32 t',1],['需求','防摇、定位','防摇',0],['阶段','需求确认','技术交流',0],['报备时间','11/05 16:20','10/21 09:12',0]].map(([k,a,b,s])=>`<div class="k">${k}</div><div data-l="新报备" class="${s?'same':''}">${a}</div><div data-l="已有报备" class="${s?'same':''}">${b}</div>`).join('')}
+</div><div style="padding:14px 16px;display:flex;gap:8px;flex-wrap:wrap"><span class="btn">确认重复（拒绝新报备）</span><span class="btn" style="color:var(--ink-4)">不是重复并批准（存在跨组候选，需总监）</span></div></section>`),
+detail:()=>shell('sales','我的报备',`
+<div class="hd"><div><p class="sub">BB-2026-000231</p><h1>无锡钢铁二厂 · 炼钢车间防摇改造</h1><div class="scope"><span class="tag ok">已批准</span><span>负责人 · 我</span><span>保护期 有效（至 02/03）</span></div></div><span class="sp"></span><span class="btn">修改阶段</span> <span class="btn p">记录跟进</span></div>
+<div class="path">${['线索','需求确认','技术交流','现场勘察','方案','报价','招投标','商务沟通','待签约'].map((s,i)=>`<span class="${i<2?'d':i===2?'c':''}">${s}</span>`).join('')}</div>
+<div class="grid g3"><section class="panel" style="padding:14px 16px"><h3>下一步</h3><p style="margin:6px 0 0"><span class="dot r"></span><b>提交技术方案</b></p><p class="when r" style="margin:0">计划 11/04，已逾期 2 天</p></section>
+<section class="panel" style="padding:14px 16px"><h3>本阶段待补</h3><p style="margin:6px 0 0;font-size:14px">起升高度（未知）· 控制方式</p><span class="btn g s">去补充</span></section>
+<section class="panel" style="padding:14px 16px"><h3>最近跟进</h3><p style="margin:6px 0 0;font-size:14px">11/01 拜访 · 客户确认两台 32t 需防摇</p><p class="when">示例销售 A</p></section></div><br>
+<div class="steps"><span class="c">项目概要</span><span>设备与技术需求</span><span>跟进时间线</span><span>审批和重复风险</span><span>归属历史</span><span>操作审计</span></div>
+<section class="panel"><div class="cmp" style="grid-template-columns:140px 1fr 140px 1fr">${[['终端客户','无锡合成钢铁有限公司'],['项目类型','存量改造'],['项目来源','终端客户'],['信息可信度','技术确认'],['预估金额','68 万元'],['预期采购','2027-03'],['省市','江苏 · 无锡'],['厂区 / 车间','二厂 · 炼钢车间']].map(([k,v])=>`<div class="k">${k}</div><div>${v}</div>`).join('')}</div></section>`,'新建报备'),
+create:()=>shell('admin',null,`
+<div class="hd"><div><h1>新建项目</h1><p class="sub">先记下已知信息即可保存草稿；正式报备前再补齐必填项。</p></div><span class="sp"></span><span class="when">草稿已保存 · 14:18</span></div>
+<div class="grid g2" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr)"><section>
+<div class="steps"><span class="d">客户与项目</span><span class="c">设备与技术</span><span>商务与跟进</span><span>核对与提交</span></div>
+<div class="panel" style="padding:16px;border-left:4px solid var(--blue)"><h3>计划设备 1</h3><br><div class="f" style="grid-template-columns:repeat(3,1fr)"><label>设备类型<span class="inp">桥式行车</span></label><label>数量<span class="inp">2 台</span></label><label>额定起重量<span class="inp">32 t</span></label><label>跨度<span class="inp">22.5 m</span></label><label>起升高度<span class="inp e">未知可留空 · m</span></label><label>控制方式<span class="inp">司机室操作</span></label></div></div><br><span class="btn">＋ 添加计划设备</span></section>
+<aside class="panel"><div class="ph"><h2>归属与查重</h2></div><div style="padding:14px 16px;display:grid;gap:12px"><div><small class="when">负责人</small><br><b>待分配</b> · 保管人 示例管理员</div><div class="note">信息不足，尚无法完成查重：需要客户、项目名称和省市。</div><div><small class="when">核对后可指派</small><br><span class="inp" style="display:block">选择有效销售</span></div></div></aside></div>`,'新建项目'),
+};
+if(screen==='index'){document.getElementById('app').innerHTML=`<main class="content" style="margin:40px auto"><h1>G3-1 高保真原型目录</h1><p class="sub">全部为 DESIGN_ONLY 合成数据。宽度 ≤700px 时自动切换移动版式。</p><br>${Object.keys(screens).map(k=>`<p><a href="?screen=${k}">${k}</a></p>`).join('')}</main>`}else{document.getElementById('app').innerHTML=screens[screen]()}
+</script>
+</body>
+</html>
