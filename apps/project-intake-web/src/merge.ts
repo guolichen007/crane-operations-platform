@@ -55,7 +55,7 @@ export const fieldLabels: Record<string, string> = {
   projectName: '项目名称', customer: '终端客户', salesStage: '销售阶段', projectType: '项目类型', informationSource: '项目来源',
   confidenceLevel: '信息可信度', expectedPurchaseDate: '预期采购日期', requirementNotes: '主要需求说明', tenderNo: '招标编号', notes: '补充说明',
   nextAction: '下一步事项', nextFollowupAt: '下次跟进时间', estimatedAmount: '预估金额', requirements: '自动化需求分类', parties: '关系方',
-  plannedEquipment: '计划设备（增删）',
+  plannedEquipment: '计划设备（增删或顺序变化）',
   'location.province': '省', 'location.city': '市', 'location.district': '区县', 'location.industrialPark': '工业园区',
   'location.factoryName': '厂区', 'location.workshop': '车间', 'location.addressDetail': '详细地址',
   quantity: '数量', capacityTons: '额定起重量', spanM: '跨度', liftHeightM: '起升高度', equipmentType: '设备类型', manufacturer: '厂家',
@@ -141,8 +141,8 @@ function deviceUnits(i: number): Unit[] {
 /**
  * Compute a three-way merge. `choices` resolves conflicts by unit key.
  * Devices have no stable identity; they are merged field by field only when
- * all three versions have the same device count. If both sides changed the
- * device list and counts differ, the whole list is one conflict unit.
+ * all three versions have the same devices in the same slots (count and
+ * types). Otherwise, if both sides changed the list, it is one conflict unit.
  */
 export function merge(base: Input, local: Input, remote: Input, choices: Record<string, Side> = {}): MergeResult {
   const merged = clone(remote) as Input;
@@ -182,7 +182,14 @@ export function merge(base: Input, local: Input, remote: Input, choices: Record<
         ? (x.plannedEquipment || []).map((e, i) => `${i + 1}. ${e.equipmentType} × ${e.quantity ?? '未知'}`).join('；')
         : '无',
   };
-  if (lb === ll && ll === lr) {
+  // Devices have no stable identity. Field-by-field merging by position is only
+  // safe when both sides kept the same devices in the same slots (same count
+  // and every equipmentType unchanged). Any reorder, insert, delete or type
+  // change on a side makes positions untrustworthy: if the other side also
+  // touched the devices, the whole list is one manual decision.
+  const typesOf = (x: Input) => JSON.stringify((x.plannedEquipment || []).map((e) => e.equipmentType));
+  const aligned = lb === ll && ll === lr && typesOf(base) === typesOf(local) && typesOf(base) === typesOf(remote);
+  if (aligned) {
     for (let i = 0; i < lb; i++) deviceUnits(i).forEach(apply);
   } else {
     apply(listUnit);

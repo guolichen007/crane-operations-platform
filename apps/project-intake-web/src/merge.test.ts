@@ -153,3 +153,53 @@ describe('三向合并', () => {
       expect(covered.has(k === 'location' ? 'location' : k === 'plannedEquipment' ? 'pe' : k), k).toBe(true);
   });
 });
+
+describe('G2-R1.1 设备无稳定身份', () => {
+  const two = () => {
+    const b = baseInput();
+    const g = blankEquipment();
+    g.equipmentType = 'GANTRY';
+    g.quantity = 1;
+    g.capacityTons = 10;
+    g.knowledge = { quantity: 'KNOWN', capacityTons: 'KNOWN' };
+    b.plannedEquipment = [b.plannedEquipment[0], g];
+    return b;
+  };
+  it('本地重排两台设备、对方改第一台起重量：不得按下标合并，必须人工选择', () => {
+    const base = two(), local = clone(base), remote = clone(base);
+    local.plannedEquipment = [local.plannedEquipment[1], local.plannedEquipment[0]];
+    remote.plannedEquipment[0].capacityTons = 32; // 对方改的是桥式行车
+    const r = merge(base, local, remote);
+    expect(r.conflicts.map((c) => c.key)).toEqual(['plannedEquipment']);
+    // 未选择前不得产生把 32t 写到门式行车上的混合结果。
+    const gantry = r.merged.plannedEquipment.find((e) => e.equipmentType === 'GANTRY');
+    expect(gantry?.capacityTons).toBe(10);
+    const mine = merge(base, local, remote, { plannedEquipment: 'local' }).merged.plannedEquipment;
+    expect(mine.map((e) => [e.equipmentType, e.capacityTons])).toEqual([['GANTRY', 10], ['BRIDGE', 20]]);
+    const theirs = merge(base, local, remote, { plannedEquipment: 'remote' }).merged.plannedEquipment;
+    expect(theirs.map((e) => [e.equipmentType, e.capacityTons])).toEqual([['BRIDGE', 32], ['GANTRY', 10]]);
+  });
+  it('只有一方动了设备列表（含重排）时直接采纳该方，不产生冲突', () => {
+    const base = two(), local = clone(base), remote = clone(base);
+    local.plannedEquipment = [local.plannedEquipment[1], local.plannedEquipment[0]];
+    remote.projectName = '对方改名';
+    const r = merge(base, local, remote);
+    expect(r.conflicts).toEqual([]);
+    expect(r.merged.plannedEquipment.map((e) => e.equipmentType)).toEqual(['GANTRY', 'BRIDGE']);
+    expect(r.merged.projectName).toBe('对方改名');
+  });
+  it('双方改同一台的不同字段且未重排：仍逐字段合并（保留 G2-R1 行为）', () => {
+    const base = two(), local = clone(base), remote = clone(base);
+    local.plannedEquipment[0].spanM = 22.5;
+    remote.plannedEquipment[0].capacityTons = 32;
+    const r = merge(base, local, remote);
+    expect(r.conflicts).toEqual([]);
+    expect(r.merged.plannedEquipment[0]).toMatchObject({ spanM: 22.5, capacityTons: 32 });
+  });
+  it('双方都改设备且任一方改了设备类型（身份不可判定）时整体冲突', () => {
+    const base = two(), local = clone(base), remote = clone(base);
+    local.plannedEquipment[0].equipmentType = 'OTHER';
+    remote.plannedEquipment[0].capacityTons = 32;
+    expect(merge(base, local, remote).conflicts.map((c) => c.key)).toEqual(['plannedEquipment']);
+  });
+});

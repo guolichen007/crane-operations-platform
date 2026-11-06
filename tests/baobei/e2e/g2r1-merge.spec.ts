@@ -147,3 +147,43 @@ test('a second conflict during merge is compared again against the newer version
   const r = (await api(owner, '/api/v1/projects/' + created.id)).body;
   expect(r).toMatchObject({ projectName: name + '-本页', notes: '第一次他人修改', tenderNo: 'ZB-002', version: second.body.version + 1 });
 });
+
+test('reordered devices plus a remote capacity change need a manual whole-list choice', async ({ browser }, info) => {
+  const name = `R1.1重排-${info.project.name}-${Date.now()}`;
+  const owner = await session(browser, 'synthetic-c', info.project.use.viewport ?? null);
+  const two = {
+    ...base(name),
+    plannedEquipment: [
+      { equipmentType: 'BRIDGE', quantity: 2, capacityTons: 20, knowledge: { quantity: 'KNOWN', capacityTons: 'KNOWN' } },
+      { equipmentType: 'GANTRY', quantity: 1, capacityTons: 10, knowledge: { quantity: 'KNOWN', capacityTons: 'KNOWN' } },
+    ],
+  };
+  const created = (await api(owner, '/api/v1/projects', 'POST', two)).body;
+  await owner.goto(`/projects/${created.id}/edit`);
+  await expect(owner.locator('[name=projectName]')).toHaveValue(name);
+  // This editor reorders the devices: remove the bridge crane and add it back last.
+  await step(owner, '设备与技术');
+  await action(owner, 'equipment.remove').first().click();
+  await action(owner, 'equipment.add').click();
+  await owner.locator('[name=quantity1]').fill('2');
+  await owner.locator('[name=capacityTons1]').fill('20');
+  // Another session raises the bridge crane (index 0 on the server) to 32 t.
+  const other = await api(owner, '/api/v1/projects/' + created.id, 'PATCH', {
+    ...two,
+    plannedEquipment: [{ ...two.plannedEquipment[0], capacityTons: 32 }, two.plannedEquipment[1]],
+    version: created.version,
+  });
+  expect(other.status).toBe(200);
+  expect(await saveDraft(owner)).toBe(409);
+  // Without stable device identity there must be one whole-list decision.
+  const choice = owner.locator('.conflict-choice').filter({ hasText: '计划设备（增删或顺序变化）' });
+  await expect(choice).toHaveCount(1);
+  await expect(owner.locator('.conflict-choice').filter({ hasText: '计划设备 1 ·' })).toHaveCount(0);
+  await expect(action(owner, 'draft.conflict-merge')).toBeDisabled();
+  await choice.getByLabel('使用服务器版本').check();
+  const merged = owner.waitForResponse((r) => r.request().method() === 'PATCH' && r.url().includes('/api/v1/projects/'));
+  await action(owner, 'draft.conflict-merge').click();
+  expect((await merged).status()).toBe(200);
+  const r = (await api(owner, '/api/v1/projects/' + created.id)).body;
+  expect(r.plannedEquipment.map((e: { equipmentType: string; capacityTons: number }) => [e.equipmentType, e.capacityTons])).toEqual([['BRIDGE', 32], ['GANTRY', 10]]);
+});
