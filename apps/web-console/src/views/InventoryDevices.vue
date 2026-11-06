@@ -5,6 +5,8 @@ import { ArrowUpRight, Box, Search } from 'lucide-vue-next';
 import type { AssetDevice } from '../../../../contracts/typescript/types.gen';
 import { listAssets, listProjects } from '../cloud/api';
 import { useCloudQuery } from '../cloud/useCloudQuery';
+import { loadGeoManifest } from '../scene/geo-manifest';
+import { parseRegionParam, regionPathOf } from '../scene/region-path';
 import { assetSource, lifecycleName } from '../cloud/inventory';
 import StatusPill from '../components/StatusPill.vue';
 import MiniTrend from '../components/MiniTrend.vue';
@@ -14,14 +16,34 @@ const route = useRoute(),
   search = ref(''),
   selected = ref<AssetDevice>();
 const { data, error, loading } = useCloudQuery(async () => {
-  const [projects, assets] = await Promise.all([listProjects(), listAssets()]);
-  return { projects, assets };
+  const [projects, assets, manifest] = await Promise.all([
+    listProjects(),
+    listAssets(),
+    loadGeoManifest().catch(() => null),
+  ]);
+  return { projects, assets, manifest };
+});
+// ?region= comes from the homepage Inventory KPI (same scope as the card): a
+// project is in the region when the region is on its administrative path.
+const region = computed(() => parseRegionParam(route.query.region));
+const regionName = computed(() => (region.value ? data.value?.manifest?.[region.value]?.name ?? String(region.value) : ''));
+const inRegion = computed(() => {
+  const code = region.value;
+  const m = data.value?.manifest;
+  if (!code) return () => true;
+  const ok = new Set(
+    (data.value?.projects ?? [])
+      .filter((p) => p.adminCode && m && (regionPathOf(p.adminCode, m) ?? []).includes(code))
+      .map((p) => p.id)
+  );
+  return (projectId: string) => ok.has(projectId);
 });
 const assets = computed(
   () =>
     data.value?.assets.filter(
       (a) =>
         (!route.query.project || a.projectId === route.query.project) &&
+        inRegion.value(a.projectId) &&
         (a.displayName + a.assetDeviceId).toLowerCase().includes(search.value.toLowerCase())
     ) ?? []
 );
@@ -44,7 +66,10 @@ const names = computed(() => new Map(data.value?.projects.map((p) => [p.id, p.na
           v-model="search"
           aria-label="搜索行车资产"
           placeholder="搜索设备名称 / 资产编号" /></label
-      ><span>{{ assets.length }} 台资产 · 规划模拟不代表现场在线</span>
+      ><span data-testid="inventory-scope"
+        >{{ assets.length }} 台资产<template v-if="regionName"> · 行政区 {{ regionName }}</template> ·
+        规划模拟不代表现场在线</span
+      >
     </div>
     <p v-if="error" role="status">{{ error }}</p>
     <p v-else-if="loading">正在读取资产…</p>

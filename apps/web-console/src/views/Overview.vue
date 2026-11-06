@@ -6,11 +6,11 @@
 import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from 'vue';
 import './overview/home.css';
 import { storeToRefs } from 'pinia';
-import { X } from 'lucide-vue-next';
-import { useRoute } from 'vue-router';
+import { RefreshCw, X } from 'lucide-vue-next';
+import { useRoute, useRouter } from 'vue-router';
 import { useOperations } from '../stores/operations';
 import { sceneProvider } from '../scene/provider';
-import { homeMetrics, homeKpis, hasLocation } from '../scene/home-metrics';
+import { homeMetrics, homeKpis, hasLocation, homeDataState, hasNumbers, scopeLabel } from '../scene/home-metrics';
 import { formatCloudTime } from '../cloud/format';
 import { cloudMode } from '../cloud/api';
 import CloudRuntime from '../components/CloudRuntime.vue';
@@ -25,22 +25,68 @@ const SpatialStage3D = defineAsyncComponent(() => import('./overview/SpatialStag
 
 const store = useOperations();
 const route = useRoute();
-const { source, status, view, webglUnavailable, notice, regionStack, sceneState, cameraPreset, tour, selected, selectedProject } =
+const router = useRouter();
+const { source, status, view, webglUnavailable, notice, regionStack, sceneState, cameraPreset, tour, selected, selectedProject, dataState } =
   storeToRefs(store);
 const demo = sceneProvider.mode === 'demo';
 useHomeUrlSync();
 
-const metrics = computed(() =>
-  sceneProvider.loading.value && !sceneProvider.devices.value.length
-    ? null
-    : homeMetrics(sceneProvider.projects.value, sceneProvider.devices.value)
+// R1-1: one data state for every homepage number. Numbers exist only after a
+// successful fetch; a failed first fetch is "unavailable", not 0.
+watch(
+  () =>
+    homeDataState({
+      mode: sceneProvider.mode,
+      loading: sceneProvider.loading.value,
+      error: sceneProvider.error.value,
+      fetchedAt: sceneProvider.fetchedAt.value,
+    }),
+  (s) => (dataState.value = s),
+  { immediate: true }
 );
-const plannedDevices = computed(() => sceneProvider.realProjects.value.reduce((s, p) => s + p.quantity, 0));
-const kpis = computed(() => homeKpis(demo ? 'demo' : 'api', metrics.value, sceneProvider.alarmRecordCount.value, plannedDevices.value));
-const asOf = computed(() => (demo ? '本地演示数据' : sceneProvider.loadedAt.value ? `数据截至 ${formatCloudTime(sceneProvider.loadedAt.value)}` : '正在读取 Cloud API'));
+// R1-2: KPI / Attention base set = authorized ∩ source ∩ displayed region (scope
+// contract). The status filter and the selection never change these numbers.
+const metrics = computed(() =>
+  hasNumbers(dataState.value) ? homeMetrics(store.scopedProjects, store.scopedDevices) : null
+);
+const plannedDevices = computed(() =>
+  store.scopedProjects.filter((p) => p.dataSource === 'real').reduce((s, p) => s + p.quantity, 0)
+);
+const kpis = computed(() =>
+  homeKpis(demo ? 'demo' : 'api', metrics.value, sceneProvider.alarmRecordCount.value, plannedDevices.value)
+);
+const scopeText = computed(() => scopeLabel(demo ? 'demo' : 'api', store.scope, store.scopeName));
+// R1-3: fetchedAt is the client's fetch time, not a device observation time.
+const fetchedText = computed(() => formatCloudTime(sceneProvider.fetchedAt.value));
+const asOf = computed(() => {
+  if (demo) return '本地演示数据 · 非遥测';
+  switch (dataState.value) {
+    case 'loading':
+      return '正在拉取 Inventory API…';
+    case 'unavailable':
+      return 'Inventory API 拉取失败 · 暂无可用数据';
+    case 'refreshing':
+      return `最近拉取 ${fetchedText.value} · 正在更新…`;
+    case 'stale':
+      return `最近成功拉取 ${fetchedText.value} · 更新失败，数据已过期`;
+    default:
+      return `最近拉取 ${fetchedText.value} · 来源 Inventory API`;
+  }
+});
 const providerError = computed(() => sceneProvider.error.value);
-const noProjects = computed(() => !sceneProvider.loading.value && !providerError.value && sceneProvider.projects.value.length === 0);
-
+const noProjects = computed(() => dataState.value === 'ready' && sceneProvider.projects.value.length === 0);
+function reload() {
+  sceneProvider.refresh().catch(() => undefined);
+}
+/** KPI click: a status filter, or — for the Inventory card — the Inventory device workflow in the same scope. */
+function onKpi(filter: string, id: string) {
+  if (!demo && id === 'devices') {
+    const region = store.regionPath[store.regionPath.length - 1];
+    void router.push({ path: '/devices', query: region ? { region: String(region) } : {} });
+    return;
+  }
+  applyFilter(filter);
+}
 function applyFilter(filter: string) {
   status.value = filter as typeof status.value;
 }
@@ -59,11 +105,18 @@ const narrow = ref(false);
 const mq = matchMedia('(max-width: 1599px)');
 const onMq = () => (narrow.value = mq.matches);
 onMounted(() => {
+  // The page owns the data load (not the 3D stage): the 2D view and the WebGL
+  // fallback must get numbers too (found in R1-1 — before, ?view=2d stayed LOADING).
+  void sceneProvider.ensureLoaded().catch(() => undefined);
   onMq();
   mq.addEventListener('change', onMq);
   if (import.meta.env.DEV) (window as unknown as { __routeQuery?: () => unknown }).__routeQuery = () => route.query;
 });
 onUnmounted(() => mq.removeEventListener('change', onMq));
+// The overlay drawer covers the stage's right edge at narrow widths; the 3D camera
+// keeps the focused target clear of it (MapSceneManager.setInspectorWidth).
+const drawerOpen = computed(() => narrow.value && (!!selected.value || !!selectedProject.value));
+watch(drawerOpen, (open) => (store.inspectorInset = open ? 320 : 0), { immediate: true });
 </script>
 <template>
   <main
@@ -79,7 +132,26 @@ onUnmounted(() => mq.removeEventListener('change', onMq));
   >
     <header class="overview-intro home-head">
       <h1>全国设备运营态势<span>空间资产 · 协同运营</span></h1>
-      <span class="home-asof" data-testid="home-asof">{{ asOf }}</span>
+      <span
+        class="home-asof"
+        :class="'state-' + dataState"
+        data-testid="home-asof"
+        :data-state="dataState"
+        title="客户端最近一次成功拉取 Inventory API 的时间，不是设备遥测的观测时间"
+      >{{ asOf }}</span>
+      <button
+        v-if="!demo"
+        type="button"
+        class="home-refresh"
+        data-testid="home-refresh"
+        :disabled="dataState === 'loading' || dataState === 'refreshing'"
+        aria-label="重新拉取首页数据"
+        title="重新拉取首页数据"
+        @click="reload"
+      ><RefreshCw :size="13" /></button>
+      <span class="home-scope" data-testid="kpi-scope" title="KPI 与「需要关注」的统计范围；状态过滤只影响地图与列表展示，不改变指标">
+        统计范围 <b>{{ scopeText }}</b><i v-if="dataState === 'stale'" class="home-stale-tag" data-testid="kpi-stale">已过期</i>
+      </span>
       <div class="home-view-switch" role="group" aria-label="空间视图">
         <button type="button" :class="{ selected: view === '2d' }" :aria-pressed="view === '2d'" @click="setView('2d')">轻量视图</button>
         <button
@@ -98,14 +170,14 @@ onUnmounted(() => mq.removeEventListener('change', onMq));
     <p v-if="webglUnavailable" class="home-notice warn scene-error" role="alert" data-testid="webgl-fallback">
       三维沙盘不可用（{{ webglUnavailable }}），已切换到轻量视图。
     </p>
-    <p v-if="providerError" class="home-notice warn" role="alert" data-testid="home-load-error">
-      数据加载失败：{{ providerError }} <button type="button" class="ghost-action" @click="sceneProvider.refresh().catch(() => undefined)">重试</button>
+    <p v-if="providerError && dataState !== 'refreshing'" class="home-notice warn" role="alert" data-testid="home-load-error">
+      {{ dataState === 'stale' ? '数据更新失败，以下为上次成功拉取的结果（已过期）' : '数据加载失败，暂无可用数据' }}：{{ providerError }}
+      <button type="button" class="ghost-action" @click="reload">重试</button>
     </p>
-    <CloudRuntime v-if="cloudMode" compact />
-    <KpiStrip :kpis="kpis" :active="status" :loading="!metrics" @apply="applyFilter" />
-    <section class="home-grid" :class="{ narrow, 'drawer-open': narrow && (!!selected || !!selectedProject) }">
+    <KpiStrip :kpis="kpis" :active="status" :state="dataState" @apply="onKpi" />
+    <section class="home-grid" :class="{ narrow, 'drawer-open': drawerOpen }">
       <div class="home-left left-context" :class="{ compact: narrow }">
-        <AttentionPanel :metrics="metrics" :active="status" :compact="narrow" :demo="demo" @apply="applyFilter" />
+        <AttentionPanel :metrics="metrics" :state="dataState" :active="status" :compact="narrow" :demo="demo" @apply="applyFilter" />
         <RegionNavPanel v-if="!narrow" :demo="demo" />
       </div>
       <div class="sandbox-stage home-stage" data-testid="spatial-stage">
@@ -120,7 +192,10 @@ onUnmounted(() => mq.removeEventListener('change', onMq));
       <div class="home-below-nav"><RegionNavPanel :demo="demo" /></div>
       <InspectorPanel v-if="!selected && !selectedProject" :demo="demo" :drawer="false" />
     </section>
-    <EventStrip :demo="demo" />
+    <EventStrip :demo="demo" :state="dataState" />
+    <!-- Independent 15 s Cloud Runtime poll: its own source and refresh cycle,
+         kept apart from the homepage numbers above (R1-3). -->
+    <CloudRuntime v-if="cloudMode" compact />
     <span v-if="selected && !hasLocation(selected)" class="sr-only">该设备无空间位置</span>
     <span v-if="selectedProject && !hasLocation(selectedProject)" class="sr-only">该项目无空间位置</span>
   </main>

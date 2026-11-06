@@ -3,8 +3,8 @@ import { computed, ref, shallowRef } from 'vue';
 import { filterProjects } from '../data';
 import { sceneProvider } from '../scene/provider';
 import type { Device, DeviceStatus, SourceFilter } from '../data/types';
-import type { HomeView } from '../scene/home-metrics';
-import { hasLocation } from '../scene/home-metrics';
+import type { HomeDataState, HomeScope, HomeView } from '../scene/home-metrics';
+import { hasLocation, scopeProjects } from '../scene/home-metrics';
 import { countryLevel, type MapLevel } from '../three/map/DrilldownController';
 
 export type StatusFilter = DeviceStatus | 'all' | 'planned' | 'REAL_RUNNING' | 'UNLOCATED';
@@ -68,6 +68,20 @@ export const useOperations = defineStore('operations', () => {
       (d) => (source.value === 'all' || d.dataSource === source.value) && matchesStatus(d, status.value)
     )
   );
+  // Statistics scope (H1-R1-2 contract): authorized (the API only returns
+  // authorized data) ∩ source ∩ displayed region. The status filter and the
+  // focused project/device are deliberately NOT part of it, so a KPI never
+  // filters itself and a selection never changes the totals.
+  const scope = computed<HomeScope>(() => ({ source: source.value, regionPath: regionPath.value }));
+  const scopeName = computed(() => regionStack.value[regionStack.value.length - 1]?.name ?? '全国');
+  const scopedProjects = computed(() => scopeProjects(projects.value, scope.value));
+  const scopedDevices = computed(() => scopeProjects(devices.value, scope.value));
+  /** Devices the status filter shows inside the statistics scope (Inspector list, its total). */
+  const scopedVisibleDevices = computed(() => scopedDevices.value.filter((d) => matchesStatus(d, status.value)));
+  /** Width (px) of the overlay drawer covering the stage's right edge; the 3D camera keeps targets clear of it. */
+  const inspectorInset = ref(0);
+  /** Homepage data state (R1-1), derived by Overview from the provider. */
+  const dataState = ref<HomeDataState>('loading');
   function select(id: string | null) {
     selectedId.value = id;
     selectedProjectId.value = null;
@@ -92,6 +106,13 @@ export const useOperations = defineStore('operations', () => {
     selectedProject,
     visibleProjects,
     visibleDevices,
+    scope,
+    scopeName,
+    scopedProjects,
+    scopedDevices,
+    scopedVisibleDevices,
+    inspectorInset,
+    dataState,
     regionPath,
     regionStack,
     regionChildren,

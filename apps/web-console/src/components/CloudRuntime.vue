@@ -35,7 +35,9 @@ const sources = computed(() => {
 <template>
   <section class="cloud-runtime" :class="{ compact }" aria-label="Cloud实际运行状态" data-testid="cloud-runtime">
     <div class="runtime-title">
-      <strong>CLOUD RUNTIME · Cloud API</strong><router-link to="/devices">云端设备 →</router-link>
+      <strong>CLOUD RUNTIME · Cloud API</strong
+      ><small v-if="compact" class="runtime-cycle" data-testid="cloud-runtime-cycle">独立轮询 15 s · 不刷新首页指标</small
+      ><router-link to="/devices">云端设备 →</router-link>
     </div>
     <div class="runtime-metrics">
       <div v-for="[label, value, unit] in metrics" :key="label">
@@ -111,6 +113,10 @@ p {
 .cloud-runtime.compact .runtime-title {
   gap: 14px;
   font-size: 12px;
+}
+.runtime-cycle {
+  color: #92a4af;
+  font-size: 11px;
 }
 .cloud-runtime.compact .runtime-metrics {
   margin: 0;

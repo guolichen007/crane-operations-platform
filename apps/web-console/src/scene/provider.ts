@@ -21,8 +21,13 @@ export interface SceneDataProvider {
   readonly realProjects: ComputedRef<Project[]>;
   readonly loading: Ref<boolean>;
   readonly error: Ref<string>;
-  /** ISO time of the last successful load ('' for demo / not loaded) — a fetch time, not an observation time. */
-  readonly loadedAt: Ref<string>;
+  /**
+   * ISO time at which this client last fetched successfully ('' for demo / never).
+   * A client fetch time — NOT a device observation time (the Inventory API has no
+   * observedAt contract yet, H2). Old projects/devices are kept when a later fetch
+   * fails; `error` is then non-empty and the homepage marks the numbers stale.
+   */
+  readonly fetchedAt: Ref<string>;
   /** Number of alarm records the API returned (the API serves the latest ≤100) — not an open-alarm count. null in demo. */
   readonly alarmRecordCount: Ref<number | null>;
   /** Idempotent load: concurrent calls dedup; a failed load can be retried. */
@@ -74,7 +79,7 @@ function demoProvider(): SceneDataProvider {
     realProjects: computed(() => demoRealProjects),
     loading: shallowRef(false),
     error: shallowRef(''),
-    loadedAt: shallowRef(''),
+    fetchedAt: shallowRef(''),
     alarmRecordCount: shallowRef<number | null>(null),
     async ensureLoaded() {},
     async refresh() {},
@@ -87,7 +92,7 @@ function apiProvider(): SceneDataProvider {
   const events = shallowRef<SceneEvent[]>([]);
   const loading = shallowRef(true);
   const error = shallowRef('');
-  const loadedAt = shallowRef('');
+  const fetchedAt = shallowRef('');
   const alarmRecordCount = shallowRef<number | null>(null);
   let loaded = false;
   let inFlight: Promise<void> | null = null;
@@ -148,7 +153,7 @@ function apiProvider(): SceneDataProvider {
         color: '#ff665f',
       }));
       error.value = '';
-      loadedAt.value = new Date().toISOString();
+      fetchedAt.value = new Date().toISOString();
       alarmRecordCount.value = rawAlarms.length;
       loaded = true;
     } catch (e) {
@@ -167,7 +172,7 @@ function apiProvider(): SceneDataProvider {
     realProjects: computed(() => projects.value.filter((p) => p.dataSource === 'real')),
     loading,
     error,
-    loadedAt,
+    fetchedAt,
     alarmRecordCount,
     ensureLoaded() {
       if (loaded) return Promise.resolve();

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseRegionParam, regionPathOf, planRegionTransition, samePath, regionParamOf, type RegionManifest } from '../src/scene/region-path';
 import { parseHomeQuery, homeQueryFor, type HomeUrlState } from '../src/scene/home-url';
-import { safeRatio, homeMetrics, hasLocation, parseStatusParam, parseViewParam } from '../src/scene/home-metrics';
+import { safeRatio, homeMetrics, hasLocation, parseStatusParam, parseViewParam, homeDataState, hasNumbers, homeKpis, scopeProjects, scopeLabel, inRegion } from '../src/scene/home-metrics';
 import type { Device, Project } from '../src/data/types';
 
 const manifest: RegionManifest = {
@@ -118,5 +118,59 @@ describe('home-metrics', () => {
     expect(parseStatusParam('bogus')).toBeNull();
     expect(parseViewParam('2d')).toBe('2d');
     expect(parseViewParam('x')).toBe('3d');
+  });
+});
+
+describe('H1-R1 data state (no fabricated 0)', () => {
+  const st = (loading: boolean, error: string, fetchedAt: string) => homeDataState({ mode: 'api', loading, error, fetchedAt });
+  it('maps load lifecycle to a state; numbers only after a success', () => {
+    expect(st(true, '', '')).toBe('loading');
+    expect(st(false, '503', '')).toBe('unavailable');
+    expect(st(false, '', 'T')).toBe('ready');
+    expect(st(true, '', 'T')).toBe('refreshing');
+    expect(st(false, '503', 'T')).toBe('stale');
+    expect(homeDataState({ mode: 'demo', loading: false, error: '', fetchedAt: '' })).toBe('ready');
+    expect(['loading', 'unavailable'].map((s) => hasNumbers(s as never))).toEqual([false, false]);
+    expect(['ready', 'refreshing', 'stale'].map((s) => hasNumbers(s as never))).toEqual([true, true, true]);
+  });
+  it('no metrics → every KPI value is null (never 0)', () => {
+    for (const mode of ['api', 'demo'] as const)
+      for (const k of homeKpis(mode, null, null, 0).filter((k) => k.id !== 'planned')) expect(k.value).toBeNull();
+    expect(homeKpis('api', null, 5, 0).find((k) => k.id === 'alarm')!.detail).toBe('告警记录未加载');
+  });
+});
+
+describe('H1-R1 statistics scope contract', () => {
+  const zj = project({ id: 'ZJ', adminPath: [330000, 330400, 330481] });
+  const gd = project({ id: 'GD', adminPath: [440000, 440300] });
+  const demoGd = project({ id: 'DG', dataSource: 'demo', adminPath: [440000, 440100] });
+  const nowhere = project({ id: 'NO' });
+  it('region prefix match on the administrative path', () => {
+    expect(inRegion([330000, 330400], [])).toBe(true);
+    expect(inRegion([330000, 330400], [330000])).toBe(true);
+    expect(inRegion([330000], [330000, 330400])).toBe(false);
+    expect(inRegion([], [330000])).toBe(false);
+  });
+  it('base set = source ∩ region; unlocated projects only count at the country level', () => {
+    const all = [zj, gd, demoGd, nowhere];
+    expect(scopeProjects(all, { source: 'all', regionPath: [] }).map((p) => p.id)).toEqual(['ZJ', 'GD', 'DG', 'NO']);
+    expect(scopeProjects(all, { source: 'all', regionPath: [440000] }).map((p) => p.id)).toEqual(['GD', 'DG']);
+    expect(scopeProjects(all, { source: 'real', regionPath: [440000] }).map((p) => p.id)).toEqual(['GD']);
+    expect(scopeProjects(all, { source: 'demo', regionPath: [330000] })).toEqual([]);
+  });
+  it('one alarm in this province, more elsewhere → the scoped KPI counts only this province', () => {
+    const devices = [
+      device({ deviceId: 'z1', status: 'ALARM', adminPath: zj.adminPath }),
+      device({ deviceId: 'g1', status: 'ALARM', adminPath: gd.adminPath }),
+      device({ deviceId: 'g2', status: 'ALARM', adminPath: gd.adminPath }),
+    ];
+    const scope = { source: 'all' as const, regionPath: [330000] };
+    expect(homeMetrics(scopeProjects([zj, gd], scope), scopeProjects(devices, scope)).alarmDevices).toBe(1);
+    expect(homeMetrics([zj, gd], devices).alarmDevices).toBe(3);
+  });
+  it('scope label names the source and the region', () => {
+    expect(scopeLabel('api', { source: 'all', regionPath: [] }, '全国')).toBe('全部授权项目 · 全国');
+    expect(scopeLabel('demo', { source: 'real', regionPath: [330000] }, '浙江省')).toBe('匿名登记项目 · 浙江省');
+    expect(scopeLabel('demo', { source: 'all', regionPath: [] }, '全国')).toBe('全部展示（含演示） · 全国');
   });
 });

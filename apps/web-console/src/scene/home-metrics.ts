@@ -60,6 +60,46 @@ export function parseStatusParam(value: unknown): HomeStatusFilter | null {
     : null;
 }
 
+/**
+ * Data state of the homepage numbers (H1-R1-1). A number may only be shown when
+ * it comes from a successful load; a failed first load is "unavailable", never 0.
+ *   loading      — no successful load yet, request in flight      → placeholder
+ *   unavailable  — no successful load yet, last request failed      → "不可用"
+ *   ready        — last request succeeded                           → numbers
+ *   refreshing   — numbers from an earlier success, new request in flight
+ *   stale        — numbers from an earlier success, the latest request failed → numbers marked 过期
+ * An empty successful response is "ready" with zeros — the only case a 0 is shown.
+ */
+export type HomeDataState = 'loading' | 'unavailable' | 'ready' | 'refreshing' | 'stale';
+export function homeDataState(p: { mode: 'api' | 'demo'; loading: boolean; error: string; fetchedAt: string }): HomeDataState {
+  if (p.mode === 'demo') return 'ready';
+  const has = p.fetchedAt !== '';
+  if (!has) return p.loading ? 'loading' : p.error ? 'unavailable' : 'loading';
+  if (p.loading) return 'refreshing';
+  return p.error ? 'stale' : 'ready';
+}
+export const hasNumbers = (s: HomeDataState) => s === 'ready' || s === 'refreshing' || s === 'stale';
+
+/**
+ * Statistics scope contract (H1-R1-2, see docs/04-前端与可视化/Homepage-H1-R1-统计范围契约.md):
+ *   KPI / Attention base set  = authorized ∩ source ∩ displayed region
+ *   status filter             → only which devices are displayed (map, Inspector list); never the KPI base
+ *   focused project / device  → only the Inspector detail; never the KPI base
+ */
+export type HomeScope = { source: 'all' | 'real' | 'demo'; regionPath: readonly number[] };
+export function inRegion(adminPath: readonly number[], regionPath: readonly number[]): boolean {
+  return regionPath.every((c, i) => adminPath[i] === c);
+}
+export function scopeProjects<T extends Project>(items: readonly T[], s: HomeScope): T[] {
+  return items.filter((p) => (s.source === 'all' || p.dataSource === s.source) && inRegion(p.adminPath, s.regionPath));
+}
+/** Human-readable scope label shown next to the KPI strip (same words as the filters). */
+export function scopeLabel(mode: 'api' | 'demo', s: HomeScope, regionName: string): string {
+  const source =
+    mode === 'api' ? '全部授权项目' : s.source === 'real' ? '匿名登记项目' : s.source === 'demo' ? '演示设备' : '全部展示（含演示）';
+  return `${source} · ${s.regionPath.length ? regionName : '全国'}`;
+}
+
 export type HomeView = '2d' | '3d';
 /** `?view=` → view; anything else is the default (3D, see H1-0 design §7). */
 export function parseViewParam(value: unknown): HomeView {
@@ -76,6 +116,8 @@ export type HomeKpi = {
   filter: HomeStatusFilter | 'all';
   tone: 'neutral' | 'ok' | 'critical' | 'warning' | 'muted';
   tag?: string;
+  /** Tooltip explaining a scope exception (e.g. alarm records are not region-scoped). */
+  hint?: string;
 };
 
 /**
@@ -89,17 +131,21 @@ export function homeKpis(
   alarmRecords: number | null,
   plannedDevices: number,
 ): HomeKpi[] {
+  // m === null means "no successful data" (loading / unavailable): every value is
+  // null and rendered as a placeholder — never a fabricated 0.
   const v = (n: number) => (m ? n : null);
   if (mode === 'api')
     return [
-      { id: 'devices', label: 'Inventory 设备', value: v(m?.devices ?? 0), unit: '台', detail: m ? `${m.projects} 个项目 · 无空间位置 ${m.unlocated}` : '加载中', filter: 'all', tone: 'neutral', tag: 'INVENTORY' },
-      { id: 'real-running', label: '真实运行', value: v(m?.realRunning ?? 0), unit: '台', detail: m ? `REAL 在线 ${m.realOnline} · SIM 绑定 ${m.simulationBound}` : '加载中', filter: 'REAL_RUNNING', tone: 'ok' },
-      { id: 'alarm', label: '告警设备', value: v(m?.alarmDevices ?? 0), unit: '台', detail: alarmRecords === null ? '告警记录未加载' : `最近告警记录 ${alarmRecords} 条（非未处理数）`, filter: 'ALARM', tone: 'critical' },
+      // The Inventory card opens the Inventory device list for the same scope (a
+      // workflow, not a status filter — see the scope contract).
+      { id: 'devices', label: 'Inventory 设备', value: v(m?.devices ?? 0), unit: '台', detail: m ? `${m.projects} 个项目 · 无空间位置 ${m.unlocated}` : '—', hint: '点击打开同范围的 Inventory 设备清单', filter: 'all', tone: 'neutral', tag: 'INVENTORY' },
+      { id: 'real-running', label: '真实运行', value: v(m?.realRunning ?? 0), unit: '台', detail: m ? `REAL 在线 ${m.realOnline} · SIM 绑定 ${m.simulationBound}` : '—', filter: 'REAL_RUNNING', tone: 'ok' },
+      { id: 'alarm', label: '告警设备', value: v(m?.alarmDevices ?? 0), unit: '台', detail: !m || alarmRecords === null ? '告警记录未加载' : `最近告警记录 ${alarmRecords} 条（非未处理数）`, hint: '告警记录为全部授权范围最近 ≤100 条，不随来源/行政区变化；卡片数字为当前范围内的告警设备', filter: 'ALARM', tone: 'critical' },
       { id: 'offline', label: '离线 / 状态未知', value: v(m?.offline ?? 0), unit: '台', detail: '有 Runtime Binding 但未连接', filter: 'OFFLINE', tone: 'muted' },
       { id: 'not-commissioned', label: '尚未投运', value: v(m?.notCommissioned ?? 0), unit: '台', detail: '无 Runtime Binding', filter: 'NOT_COMMISSIONED', tone: 'warning' },
     ];
   return [
-    { id: 'devices', label: '设备总数', value: v(m?.devices ?? 0), unit: '台', detail: m ? `${m.projects} 个项目（含演示）` : '', filter: 'all', tone: 'neutral', tag: 'DEMO' },
+    { id: 'devices', label: '设备总数', value: v(m?.devices ?? 0), unit: '台', detail: m ? `${m.projects} 个项目` : '', filter: 'all', tone: 'neutral', tag: 'DEMO' },
     { id: 'running', label: '演示运行中', value: v(m?.running ?? 0), unit: '台', detail: '模拟运行态，非现场真实', filter: 'RUNNING', tone: 'ok', tag: 'DEMO' },
     { id: 'alarm', label: '告警设备', value: v(m?.alarmDevices ?? 0), unit: '台', detail: '固定模拟告警', filter: 'ALARM', tone: 'critical', tag: 'DEMO' },
     { id: 'offline', label: '离线', value: v(m?.offline ?? 0), unit: '台', detail: `维护中 ${m?.maintenance ?? 0} 台`, filter: 'OFFLINE', tone: 'muted', tag: 'DEMO' },

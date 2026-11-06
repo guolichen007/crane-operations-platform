@@ -13,19 +13,18 @@ import { hasLocation } from '../../scene/home-metrics';
 
 const props = defineProps<{ demo: boolean; drawer: boolean }>();
 const store = useOperations();
-const { selected, selectedProject, visibleProjects, visibleDevices, status, regionTarget, regionStack } = storeToRefs(store);
-const inScope = (adminPath: number[]) => regionTarget.value.every((c, i) => adminPath[i] === c);
+const { selected, selectedProject, scopedProjects, scopedVisibleDevices, status, scope, scopeName } = storeToRefs(store);
 const filtering = computed(() => status.value !== 'all');
-const scopeName = computed(() => regionStack.value[regionStack.value.length - 1]?.name ?? '全国');
-const devicesHere = computed(() =>
-  visibleDevices.value.filter((d) => (regionTarget.value.length ? inScope(d.adminPath) : true)).slice(0, 60)
-);
+// Same statistics scope as the KPI strip (source ∩ displayed region, H1-R1-2).
+// The header shows the full count; only the rendered rows are capped, and the cap
+// is stated, so the total can never be silently truncated.
+const LIST_CAP = 60;
+const devicesTotal = computed(() => scopedVisibleDevices.value.length);
+const devicesShown = computed(() => scopedVisibleDevices.value.slice(0, LIST_CAP));
 // Unfiltered list = registered (real) projects in scope, as the original
 // "近期实施计划" panel; demo fixtures appear only through filters/drill-down.
 const projectsHere = computed(() =>
-  visibleProjects.value.filter(
-    (p) => (p.dataSource === 'real' || regionTarget.value.length > 0) && (regionTarget.value.length ? inScope(p.adminPath) : true)
-  )
+  scopedProjects.value.filter((p) => p.dataSource === 'real' || scope.value.regionPath.length > 0)
 );
 const openDrawer = computed(() => !props.drawer || !!selected.value || !!selectedProject.value);
 function focusProject(id: string) {
@@ -62,10 +61,13 @@ function focusDevice(id: string) {
       <section class="inspector-list">
         <div class="panel-title">
           <h3>{{ statusText[status as keyof typeof statusText] ?? (status === 'UNLOCATED' ? '无空间位置' : status === 'REAL_RUNNING' ? '真实运行' : '登记项目') }}</h3>
-          <span>{{ devicesHere.length }} 台 · {{ scopeName }}</span>
+          <span data-testid="inspector-total" :data-total="devicesTotal">{{ devicesTotal }} 台 · {{ scopeName }}</span>
         </div>
-        <p v-if="!devicesHere.length" class="muted small" data-testid="inspector-empty">当前范围内没有符合该过滤条件的设备。</p>
-        <button v-for="d in devicesHere" :key="d.deviceId" class="plan-item inspector-device" :data-device-id="d.deviceId" @click="focusDevice(d.deviceId)">
+        <p v-if="!devicesTotal" class="muted small" data-testid="inspector-empty">当前范围内没有符合该过滤条件的设备。</p>
+        <p v-else-if="devicesTotal > devicesShown.length" class="muted small" data-testid="inspector-cap">
+          列表显示前 {{ devicesShown.length }} 台，共 {{ devicesTotal }} 台；完整清单见设备中心。
+        </p>
+        <button v-for="d in devicesShown" :key="d.deviceId" class="plan-item inspector-device" :data-device-id="d.deviceId" @click="focusDevice(d.deviceId)">
           <div class="plan-content">
             <div><strong>{{ d.deviceName }}</strong><i class="status-dot" :style="{ background: statusColor[d.status] }"></i></div>
             <p>{{ d.projectName }} · {{ hasLocation(d) ? d.locationLabel || '—' : '无空间位置' }}</p>
