@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { AssetDevice } from '../../../../contracts/typescript/types.gen';
-const props = defineProps<{ assets?: AssetDevice[]; inventoryMode?: boolean }>();
+const props = defineProps<{ assets?: AssetDevice[]; inventoryMode?: boolean; compact?: boolean }>();
 import { listDevices, listAlarms } from '../cloud/api';
 import { summarizeDevices } from '../cloud/format';
 import { useCloudQuery } from '../cloud/useCloudQuery';
@@ -33,7 +33,7 @@ const sources = computed(() => {
 });
 </script>
 <template>
-  <section class="cloud-runtime" aria-label="Cloud实际运行状态" data-testid="cloud-runtime">
+  <section class="cloud-runtime" :class="{ compact }" aria-label="Cloud实际运行状态" data-testid="cloud-runtime">
     <div class="runtime-title">
       <strong>CLOUD RUNTIME · Cloud API</strong><router-link to="/devices">云端设备 →</router-link>
     </div>
@@ -49,18 +49,21 @@ const sources = computed(() => {
       <button @click="refresh">重试</button>
     </p>
     <p v-else-if="loading">正在读取 Cloud API…</p>
-    <p v-else-if="!inventoryMode">
-      {{ data?.total }}台云设备已接入，位置元数据未配置；SIM 为模拟设备。实时查看按上游 LIVE
-      的设备数统计；告警为 API 最近最多100条记录，不代表未处理数量。
-    </p>
-    <p v-if="inventoryMode">
-      模拟运行源在线 {{ sources.simulation }} · 真实运行源在线 {{ sources.real }}；SIM
-      为模拟设备，不能代表现场在线。实时查看按上游LIVE设备计数；告警为最近最多100条记录，不代表未处理数量。
-    </p>
-    <p v-if="inventoryMode">
-      项目位置来自Inventory行政区配置；未配置时不生成地图点。历史/测试运行源不计作真实接入。
-    </p>
-    <p v-else>下方为空间沙盘：匿名登记 / DEMO 资产，与 Cloud 运行统计分开展示。</p>
+    <component :is="compact ? 'details' : 'div'" class="runtime-notes">
+      <summary v-if="compact">口径说明</summary>
+      <p v-if="!inventoryMode">
+        {{ data?.total }}台云设备已接入，位置元数据未配置；SIM 为模拟设备。实时查看按上游 LIVE
+        的设备数统计；告警为 API 最近最多100条记录，不代表未处理数量。
+      </p>
+      <p v-if="inventoryMode">
+        模拟运行源在线 {{ sources.simulation }} · 真实运行源在线 {{ sources.real }}；SIM
+        为模拟设备，不能代表现场在线。实时查看按上游LIVE设备计数；告警为最近最多100条记录，不代表未处理数量。
+      </p>
+      <p v-if="inventoryMode">
+        项目位置来自Inventory行政区配置；未配置时不生成地图点。历史/测试运行源不计作真实接入。
+      </p>
+      <p v-else>空间分布：匿名登记 / DEMO 资产，与 Cloud 运行统计分开展示。</p>
+    </component>
   </section>
 </template>
 <style scoped>
@@ -95,5 +98,44 @@ p {
   color: #92a4af;
   margin-top: 4px;
   line-height: 1.5;
+}
+.cloud-runtime.compact {
+  margin: 0;
+  padding: 6px 14px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  border-radius: 8px;
+}
+.cloud-runtime.compact .runtime-title {
+  gap: 14px;
+  font-size: 12px;
+}
+.cloud-runtime.compact .runtime-metrics {
+  margin: 0;
+  gap: 20px;
+  font-size: 12px;
+}
+.cloud-runtime.compact .runtime-metrics b {
+  font-size: 16px;
+}
+.cloud-runtime.compact .runtime-notes {
+  margin-left: auto;
+  font-size: 12px;
+  color: #92a4af;
+  position: relative;
+}
+.cloud-runtime.compact .runtime-notes summary {
+  cursor: pointer;
+}
+.cloud-runtime.compact .runtime-notes[open] > p {
+  position: absolute;
+  right: 0;
+  z-index: 40;
+  width: 420px;
+  padding: 8px 12px;
+  background: #102730;
+  border: 1px solid #28505b;
 }
 </style>

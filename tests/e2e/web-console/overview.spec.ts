@@ -32,11 +32,13 @@ for (const viewport of [
     expect(normal.country.minY).toBeGreaterThanOrEqual(0);
     expect(normal.country.maxY).toBeLessThanOrEqual(normal.stage.height);
     if (viewport.width === 1920) {
-      // Framing now uses the province surface extent (the decorative side walls
-      // are merged off-tree), so the map fills a slightly smaller but still
-      // centered share of the width.
-      expect(normal.country.pageWidthRatio).toBeGreaterThanOrEqual(0.52);
-      expect(normal.country.pageWidthRatio).toBeLessThanOrEqual(0.68);
+      // Framing uses the province surface extent (the decorative side walls are
+      // merged off-tree). H1: the canvas is the centre column of the Operations
+      // Center grid, no longer full page width, so the framing invariant is
+      // measured against the stage the camera frames (same bounds as before).
+      const stageRatio = normal.country.width / normal.stage.width;
+      expect(stageRatio).toBeGreaterThanOrEqual(0.52);
+      expect(stageRatio).toBeLessThanOrEqual(0.68);
     }
     await page.screenshot({ path: `test-results-v033/regression/country-${viewport.width}.png` });
     await page.getByRole('button', { name: '设备聚焦', exact: true }).click();
@@ -66,7 +68,8 @@ test('窗口变化后重新取景保持地图红线', async ({ page }) => {
   await load(page);
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.waitForTimeout(1500);
-  expect((await read(page)).country.pageWidthRatio).toBeGreaterThanOrEqual(0.55);
+  const d = await read(page);
+  expect(d.country.width / d.stage.width).toBeGreaterThanOrEqual(0.55);
 });
 test('全国省级汇总点击进入省，首页不再命中实际项目', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });

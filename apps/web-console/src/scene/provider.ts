@@ -3,6 +3,7 @@ import type { Project, Device, Lifecycle } from '../data/types';
 import { projects as demoAllProjects, devices as demoAllDevices, events as demoEvents, realProjects as demoRealProjects } from '../data';
 import { listProjects, listAssets, listDevices, listAlarms } from '../cloud/api';
 import { mapApiDevice } from './device-status';
+import { loadGeoManifest } from './geo-manifest';
 import type { InventoryProject } from '../../../../contracts/typescript/types.gen';
 
 export type SceneEvent = { time: string; kind: string; text: string; color: string };
@@ -20,6 +21,10 @@ export interface SceneDataProvider {
   readonly realProjects: ComputedRef<Project[]>;
   readonly loading: Ref<boolean>;
   readonly error: Ref<string>;
+  /** ISO time of the last successful load ('' for demo / not loaded) — a fetch time, not an observation time. */
+  readonly loadedAt: Ref<string>;
+  /** Number of alarm records the API returned (the API serves the latest ≤100) — not an open-alarm count. null in demo. */
+  readonly alarmRecordCount: Ref<number | null>;
   /** Idempotent load: concurrent calls dedup; a failed load can be retried. */
   ensureLoaded(): Promise<void>;
   refresh(): Promise<void>;
@@ -41,11 +46,8 @@ async function loadAdminParents(): Promise<Map<number, number>> {
   if (adminParents) return adminParents;
   const map = new Map<number, number>();
   try {
-    const res = await fetch(`${import.meta.env.BASE_URL}geo/geo-manifest.json`);
-    if (res.ok) {
-      const manifest = (await res.json()) as Record<string, { adcode: number; parent: number | null }>;
-      for (const r of Object.values(manifest)) if (r.parent !== null) map.set(r.adcode, r.parent);
-    }
+    const manifest = await loadGeoManifest();
+    for (const r of Object.values(manifest)) if (r.parent !== null) map.set(r.adcode, r.parent);
   } catch {
     // Fall through: an empty parent map yields [adminCode] as the path.
   }
@@ -72,6 +74,8 @@ function demoProvider(): SceneDataProvider {
     realProjects: computed(() => demoRealProjects),
     loading: shallowRef(false),
     error: shallowRef(''),
+    loadedAt: shallowRef(''),
+    alarmRecordCount: shallowRef<number | null>(null),
     async ensureLoaded() {},
     async refresh() {},
   };
@@ -83,6 +87,8 @@ function apiProvider(): SceneDataProvider {
   const events = shallowRef<SceneEvent[]>([]);
   const loading = shallowRef(true);
   const error = shallowRef('');
+  const loadedAt = shallowRef('');
+  const alarmRecordCount = shallowRef<number | null>(null);
   let loaded = false;
   let inFlight: Promise<void> | null = null;
 
@@ -142,6 +148,8 @@ function apiProvider(): SceneDataProvider {
         color: '#ff665f',
       }));
       error.value = '';
+      loadedAt.value = new Date().toISOString();
+      alarmRecordCount.value = rawAlarms.length;
       loaded = true;
     } catch (e) {
       error.value = (e as Error).message;
@@ -159,6 +167,8 @@ function apiProvider(): SceneDataProvider {
     realProjects: computed(() => projects.value.filter((p) => p.dataSource === 'real')),
     loading,
     error,
+    loadedAt,
+    alarmRecordCount,
     ensureLoaded() {
       if (loaded) return Promise.resolve();
       if (!inFlight) inFlight = load().finally(() => (inFlight = null));

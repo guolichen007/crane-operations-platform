@@ -19,7 +19,10 @@ test('默认透视、厚度、性能与统一动效时钟', async ({ page }) => 
   const a = await read(page);
   expect(a.camera.fov).toBeGreaterThanOrEqual(34);
   expect(a.projectedRatio).toBeGreaterThanOrEqual(0.4);
-  expect(a.sideSample.pixels).toBeGreaterThanOrEqual(6);
+  // Side-wall thickness relative to the framed stage. Before H1 the canvas was
+  // the full 1704 px page width and the wall had to be ≥ 6 px; the canvas is now
+  // the centre grid column, so the same ratio (6 / 1704) is asserted.
+  expect(a.sideSample.pixels / a.stage.width).toBeGreaterThanOrEqual(6 / 1704);
   await page.waitForTimeout(1100);
   const b = await read(page);
   expect(b.animation.sideFlowPhase).toBe(a.animation.sideFlowPhase);
