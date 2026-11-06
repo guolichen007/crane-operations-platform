@@ -141,8 +141,9 @@ function deviceUnits(i: number): Unit[] {
 /**
  * Compute a three-way merge. `choices` resolves conflicts by unit key.
  * Devices have no stable identity; they are merged field by field only when
- * all three versions have the same devices in the same slots (count and
- * types). Otherwise, if both sides changed the list, it is one conflict unit.
+ * all three versions have the same count, the same type in every slot, and no
+ * type repeats. Otherwise, if both sides changed the list, it is one conflict
+ * unit chosen by the user.
  */
 export function merge(base: Input, local: Input, remote: Input, choices: Record<string, Side> = {}): MergeResult {
   const merged = clone(remote) as Input;
@@ -187,8 +188,14 @@ export function merge(base: Input, local: Input, remote: Input, choices: Record<
   // and every equipmentType unchanged). Any reorder, insert, delete or type
   // change on a side makes positions untrustworthy: if the other side also
   // touched the devices, the whole list is one manual decision.
-  const typesOf = (x: Input) => JSON.stringify((x.plannedEquipment || []).map((e) => e.equipmentType));
-  const aligned = lb === ll && ll === lr && typesOf(base) === typesOf(local) && typesOf(base) === typesOf(remote);
+  // Position is used as identity only when it is unambiguous: the type at each
+  // slot is unchanged on both sides AND no type occurs twice. Two units of the
+  // same type can be swapped or retyped invisibly (model/maker are editable
+  // fields, not identity), so with duplicates we never guess.
+  const types = (x: Input) => (x.plannedEquipment || []).map((e) => e.equipmentType);
+  const typesOf = (x: Input) => JSON.stringify(types(x));
+  const unique = new Set(types(base)).size === lb;
+  const aligned = unique && lb === ll && ll === lr && typesOf(base) === typesOf(local) && typesOf(base) === typesOf(remote);
   if (aligned) {
     for (let i = 0; i < lb; i++) deviceUnits(i).forEach(apply);
   } else {

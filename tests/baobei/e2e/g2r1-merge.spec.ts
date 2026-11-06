@@ -187,3 +187,58 @@ test('reordered devices plus a remote capacity change need a manual whole-list c
   const r = (await api(owner, '/api/v1/projects/' + created.id)).body;
   expect(r.plannedEquipment.map((e: { equipmentType: string; capacityTons: number }) => [e.equipmentType, e.capacityTons])).toEqual([['BRIDGE', 32], ['GANTRY', 10]]);
 });
+
+test('G3-0: two same-type devices swapped while the other session edits model A need a whole-list choice', async ({ browser }, info) => {
+  const name = `G30同型-${info.project.name}-${Date.now()}`;
+  const owner = await session(browser, 'synthetic-c', info.project.use.viewport ?? null);
+  const twin = {
+    ...base(name),
+    plannedEquipment: [
+      { equipmentType: 'BRIDGE', model: 'A', quantity: 1, capacityTons: 20, knowledge: { quantity: 'KNOWN', capacityTons: 'KNOWN' } },
+      { equipmentType: 'BRIDGE', model: 'B', quantity: 1, capacityTons: 10, knowledge: { quantity: 'KNOWN', capacityTons: 'KNOWN' } },
+    ],
+  };
+  const created = (await api(owner, '/api/v1/projects', 'POST', twin)).body;
+  await owner.goto(`/projects/${created.id}/edit`);
+  await expect(owner.locator('[name=projectName]')).toHaveValue(name);
+  // Editor 1 swaps the devices by retyping the two rows (same types, models exchanged).
+  await step(owner, '设备与技术');
+  const rows = owner.locator('.equipment-row');
+  await rows.nth(0).getByLabel('型号').fill('B');
+  await owner.locator('[name=capacityTons0]').fill('10');
+  await rows.nth(1).getByLabel('型号').fill('A');
+  await owner.locator('[name=capacityTons1]').fill('20');
+  // Editor 2 raises model A to 32 t.
+  const other = await api(owner, '/api/v1/projects/' + created.id, 'PATCH', {
+    ...twin,
+    plannedEquipment: [{ ...twin.plannedEquipment[0], capacityTons: 32 }, twin.plannedEquipment[1]],
+    version: created.version,
+  });
+  expect(other.status).toBe(200);
+  expect(await saveDraft(owner)).toBe(409);
+  const choice = owner.locator('.conflict-choice').filter({ hasText: '计划设备（增删或顺序变化）' });
+  await expect(choice).toHaveCount(1);
+  await expect(owner.locator('.conflict-choice').filter({ hasText: '计划设备 1 ·' })).toHaveCount(0);
+  await expect(action(owner, 'draft.conflict-merge')).toBeDisabled();
+  await choice.getByLabel('使用服务器版本').check();
+  // A second remote save before merging: the next PATCH must 409 and re-compare.
+  const again = await api(owner, '/api/v1/projects/' + created.id, 'PATCH', {
+    ...twin,
+    plannedEquipment: [{ ...twin.plannedEquipment[0], capacityTons: 32 }, { ...twin.plannedEquipment[1], capacityTons: null, knowledge: { quantity: 'KNOWN', capacityTons: 'UNKNOWN' } }],
+    version: other.body.version,
+  });
+  expect(again.status).toBe(200);
+  const first = owner.waitForResponse((r) => r.request().method() === 'PATCH' && r.url().includes('/api/v1/projects/'));
+  await action(owner, 'draft.conflict-merge').click();
+  expect((await first).status()).toBe(409);
+  await expect(owner.locator('.conflict-panel')).toContainText('修订 ' + again.body.version);
+  // Having taken the server's device list, only the newer server changed it
+  // since: it is adopted without another question, nothing is guessed.
+  await expect(owner.locator('.conflict-choice')).toHaveCount(0);
+  const done = owner.waitForResponse((r) => r.request().method() === 'PATCH' && r.url().includes('/api/v1/projects/'));
+  await action(owner, 'draft.conflict-merge').click();
+  expect((await done).status()).toBe(200);
+  const r = (await api(owner, '/api/v1/projects/' + created.id)).body;
+  const byModel = Object.fromEntries(r.plannedEquipment.map((e: { model: string; capacityTons: number | null; knowledge: Record<string, string> }) => [e.model, [e.capacityTons, e.knowledge.capacityTons]]));
+  expect(byModel).toEqual({ A: [32, 'KNOWN'], B: [null, 'UNKNOWN'] });
+});

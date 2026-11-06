@@ -203,3 +203,58 @@ describe('G2-R1.1 设备无稳定身份', () => {
     expect(merge(base, local, remote).conflicts.map((c) => c.key)).toEqual(['plannedEquipment']);
   });
 });
+
+describe('G3-0 同类型设备无稳定身份', () => {
+  const twoBridges = () => {
+    const b = baseInput();
+    const a = blankEquipment();
+    a.model = 'A';
+    a.quantity = 1;
+    a.capacityTons = 20;
+    a.knowledge = { quantity: 'KNOWN', capacityTons: 'KNOWN' };
+    const bb = blankEquipment();
+    bb.model = 'B';
+    bb.quantity = 1;
+    bb.capacityTons = 10;
+    bb.knowledge = { quantity: 'KNOWN', capacityTons: 'KNOWN' };
+    b.plannedEquipment = [a, bb]; // 两台都是 BRIDGE
+    return b;
+  };
+  it('交换两台同类型设备 + 对方把 A 改为 32t：整组冲突，不按下标把 32t 写到 B', () => {
+    const base = twoBridges(), local = clone(base), remote = clone(base);
+    local.plannedEquipment = [local.plannedEquipment[1], local.plannedEquipment[0]];
+    remote.plannedEquipment[0].capacityTons = 32;
+    const r = merge(base, local, remote);
+    expect(r.conflicts.map((c) => c.key)).toEqual(['plannedEquipment']);
+    const byModel = (x: typeof r.merged) => Object.fromEntries(x.plannedEquipment.map((e) => [e.model, e.capacityTons]));
+    expect(byModel(r.merged)).toEqual({ A: 32, B: 10 });
+    expect(byModel(merge(base, local, remote, { plannedEquipment: 'local' }).merged)).toEqual({ A: 20, B: 10 });
+  });
+  it('多台同类型设备双方都改（未重排、不同字段）也不猜身份：整组冲突', () => {
+    const base = twoBridges(), local = clone(base), remote = clone(base);
+    local.plannedEquipment[1].spanM = 18;
+    remote.plannedEquipment[0].capacityTons = 32;
+    expect(merge(base, local, remote).conflicts.map((c) => c.key)).toEqual(['plannedEquipment']);
+  });
+  it('类型互不相同的设备双方改不同字段仍逐台合并（保留安全场景）', () => {
+    const base = twoBridges();
+    base.plannedEquipment[1].equipmentType = 'GANTRY';
+    const local = clone(base), remote = clone(base);
+    local.plannedEquipment[1].spanM = 18;
+    remote.plannedEquipment[0].capacityTons = 32;
+    const r = merge(base, local, remote);
+    expect(r.conflicts).toEqual([]);
+    expect(r.merged.plannedEquipment.map((e) => [e.capacityTons, e.spanM])).toEqual([[32, null], [10, 18]]);
+  });
+  it('只有一方改设备时，同类型多台也直接采纳该方（含已知性）', () => {
+    const base = twoBridges(), local = clone(base), remote = clone(base);
+    local.plannedEquipment = [local.plannedEquipment[1], local.plannedEquipment[0]];
+    local.plannedEquipment[0].capacityTons = null;
+    local.plannedEquipment[0].knowledge = { quantity: 'KNOWN', capacityTons: 'UNKNOWN' };
+    remote.projectName = '他改名';
+    const r = merge(base, local, remote);
+    expect(r.conflicts).toEqual([]);
+    expect(r.merged.plannedEquipment[0]).toMatchObject({ model: 'B', capacityTons: null });
+    expect(r.merged.plannedEquipment[0].knowledge?.capacityTons).toBe('UNKNOWN');
+  });
+});
