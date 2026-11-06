@@ -2172,3 +2172,77 @@ td.unassigned,
   flex: none;
   margin-top: 3px;
 }
+
+/* G3-2B review queue: three server-filtered views and touch-friendly cards. */
+.queue-views {
+  display: flex;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+.queue-views button {
+  flex: 1 1 auto;
+  min-height: 40px;
+  gap: 6px;
+}
+.queue-views .count {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+.review-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+  margin: 12px 0;
+}
+.review-cards > button.review-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 8px;
+  text-align: left;
+  padding: 14px 16px;
+  min-height: 44px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+  white-space: normal;
+}
+.review-card-head {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+}
+.review-card-head strong {
+  overflow-wrap: anywhere;
+}
+.review-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.review-card-next {
+  font-size: 14px;
+}
+.review-card-who {
+  font-size: 13px;
+  color: var(--amber-ink);
+}
+.review-card-who.ok {
+  color: var(--blue);
+  font-weight: 600;
+}
+@media (max-width: 700px) {
+  .review-cards {
+    grid-template-columns: 1fr;
+  }
+  .queue-views button {
+    flex-basis: 30%;
+    padding-inline: 6px;
+    font-size: 13px;
+    line-height: 1.3;
+  }
+}

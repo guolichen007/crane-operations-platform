@@ -15,6 +15,7 @@ export interface ReviewEligibility {
   relatedCandidates: ActionHint;
   pendingDuplicates: number;
   legacyCandidates?: number;
+  nextAction?: 'approve' | 'duplicate-decisions';
   eligible: boolean;
   reasonCode: string | null;
 }
@@ -85,6 +86,8 @@ export interface Project extends Input {
  protectionBasis: string;
   protectedUntil: string | null;
   nextReviewAt: string | null;
+  // Frozen submission time of the current round (review queue only).
+  submittedAt?: string | null;
   governanceHistory?: {
     actor: string;
     actorName?: string;

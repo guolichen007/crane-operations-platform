@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue';
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
 import { useApp } from './store';
 import { hintReason, recovery, RESTRICTED_RELATED_MESSAGE } from './reasons';
 import { type Project, type RestrictedRelated, statuses, stages, sources, confidences, when } from './model';
 import ActionButton from './ActionButton.vue';
 import Modal from './Modal.vue';
+type Eligibility = 'reviewable' | 'blocked' | 'all';
+const pageSize = 20;
+function eligibilityFrom(v: unknown): Eligibility {
+  return v === 'blocked' || v === 'all' ? v : 'reviewable';
+}
 interface Case {
   id: string;
   score: number;
@@ -22,6 +27,13 @@ const app = useApp(),
   total = ref(0),
   page = ref(1),
   kind = ref(route.path === '/duplicates' ? 'duplicates' : 'pending'),
+  eligibility = ref<Eligibility>(eligibilityFrom(route.query.eligibility)),
+  counts = ref<Record<Eligibility, number> | null>(null),
+  asOf = ref(''),
+  loadState = ref<'loading' | 'ready' | 'error'>('loading'),
+  loadFailure = ref(''),
+  openFailure = ref(''),
+  decideFailure = ref(''),
   selected = ref<Project | null>(null),
   cases = ref<Case[]>([]),
   restricted = ref<RestrictedRelated | null>(null),
@@ -31,28 +43,94 @@ const app = useApp(),
   acknowledge = ref(false);
 const legacyPending = computed(() => cases.value.some((c) => c.decision === 'PENDING' && c.evidenceGrade === 'LEGACY_PARTIAL_EVIDENCE'));
 const comparison = computed(() => route.path === '/duplicates');
+// The pending queue is filtered on the server by review eligibility (G3-2B);
+// duplicates/protection queues keep their original semantics.
+const usesEligibility = computed(() => !comparison.value && kind.value === 'pending');
+let loadSeq = 0,
+  openSeq = 0;
 async function load() {
-  const b = await app.api<{ items: Project[]; total: number }>(
-    `/api/v1/reviews?kind=${kind.value}&page=${page.value}`
-  );
-  items.value = b.items;
-  total.value = b.total;
+  const seq = ++loadSeq;
+  loadState.value = 'loading';
+  loadFailure.value = '';
+  const query = usesEligibility.value
+    ? `kind=pending&eligibility=${eligibility.value}&page=${page.value}&pageSize=${pageSize}`
+    : `kind=${kind.value}&page=${page.value}`;
+  try {
+    const b = await app.api<{ items: Project[]; total: number; counts?: Record<Eligibility, number>; asOf?: string }>(`/api/v1/reviews?${query}`);
+    // A slower response for an earlier view must not overwrite the current one.
+    if (seq !== loadSeq) return;
+    items.value = b.items;
+    total.value = b.total;
+    counts.value = b.counts ?? null;
+    asOf.value = b.asOf ?? '';
+    loadState.value = 'ready';
+  } catch (e) {
+    if (seq !== loadSeq) return;
+    items.value = [];
+    loadFailure.value = recovery(e).message;
+    loadState.value = 'error';
+  }
 }
-onMounted(() => load().catch((e) => (app.error = e.message)));
+onMounted(load);
+function chooseEligibility(next: Eligibility) {
+  if (next === eligibility.value) return;
+  void router.replace({ query: { ...route.query, eligibility: next } });
+}
+watch(
+  () => route.query.eligibility,
+  (v) => {
+    const next = eligibilityFrom(v);
+    if (next === eligibility.value) return;
+    eligibility.value = next;
+    page.value = 1;
+    void load();
+  }
+);
 async function open(p: Project) {
+  const seq = ++openSeq;
   // Clear first so nothing from a previous project is shown while loading or after an error.
   selected.value = null;
   cases.value = [];
   restricted.value = null;
-  const b = await app.api<{ project: Project; cases: Case[]; restrictedRelated: RestrictedRelated | null }>(
-    `/api/v1/projects/${p.id}/duplicate-comparison`
-  );
-  cases.value = b.cases;
-  restricted.value = b.restrictedRelated;
-  selected.value = b.project;
+  openFailure.value = '';
+  try {
+    const b = await app.api<{ project: Project; cases: Case[]; restrictedRelated: RestrictedRelated | null }>(
+      `/api/v1/projects/${p.id}/duplicate-comparison`
+    );
+    // Rapidly opening another project must not show this (older) result.
+    if (seq !== openSeq) return;
+    cases.value = b.cases;
+    restricted.value = b.restrictedRelated;
+    selected.value = b.project;
+  } catch (e) {
+    if (seq !== openSeq) return;
+    const r = recovery(e);
+    openFailure.value = r.message;
+    if (r.kind === 'missing' || r.kind === 'conflict') void load();
+  }
+}
+const viewLabels: Record<Eligibility, string> = { reviewable: '我可审核', blocked: '需要其他人处理', all: '全部待审' };
+const emptyText: Record<Eligibility, string> = {
+  reviewable: '当前没有你可以立即审核的报备。',
+  blocked: '没有需要其他人处理的报备。',
+  all: '范围内没有待审核的报备。',
+};
+function nextStep(p: Project) {
+  if (!p.review) return '待审核';
+  return p.review.nextAction === 'duplicate-decisions' ? '完成重复裁决' : '审核：批准、退回或拒绝';
+}
+// Waiting time only from the frozen submission time; never from updatedAt.
+function waiting(p: Project) {
+  if (!p.submittedAt) return '提交时间未记录';
+  const ms = (asOf.value ? Date.parse(asOf.value) : Date.now()) - Date.parse(p.submittedAt);
+  const hours = Math.max(0, Math.floor(ms / 3_600_000));
+  if (hours < 1) return '等待不足 1 小时';
+  if (hours < 48) return `已等待 ${hours} 小时`;
+  return `已等待 ${Math.floor(hours / 24)} 天`;
 }
 function prompt(action: string, id = '') {
   operation.value = action;
+  decideFailure.value = '';
   caseId.value = id;
   reason.value = '';
   acknowledge.value = false;
@@ -72,10 +150,16 @@ async function decide() {
   try {
     await app.api(`/api/v1/projects/${selected.value.id}/${endpoint}`, 'POST', body);
   } catch (e) {
-    throw new Error(recovery(e).message);
+    const r = recovery(e);
+    // Stale list or button state: refresh the queue; the server decision stands.
+    if (r.kind === 'conflict' || r.kind === 'missing' || r.kind === 'forbidden') void load();
+    // Shown inside the dialog: the page banner is behind the modal. Input is kept.
+    decideFailure.value = r.message;
+    throw new Error(r.message);
   }
   operation.value = '';
   selected.value = null;
+  restricted.value = null;
   app.toast('审核结论已保存，列表已更新');
   await load();
 }
@@ -108,14 +192,14 @@ const fields = [
       <h1>
         {{ comparison ? '重复处理' : '报备审核' }} <small>{{ total }}</small>
       </h1>
-      <p class="muted">核验信息与归属，保留每一次决策的依据。</p>
+      <p class="muted">核验信息与归属，保留每一次决策的依据。<template v-if="usesEligibility && asOf">统计时间 {{ when(asOf) }}</template></p>
     </div>
     <label v-if="!comparison">审核队列<select
       v-model="kind"
       aria-label="审核队列"
       @change="
         page = 1;
-        load().catch((e) => (app.error = e.message));
+        load();
       "
     >
       <option value="pending">待审核</option>
@@ -123,12 +207,49 @@ const fields = [
       <option value="protection">保护资格待复核</option>
     </select></label>
   </div>
-  <div class="review-list">
-    <ActionButton v-for="p in items" :key="p.id" action-id="review.open" :run="() => open(p)">
-      <span class="mono">{{ p.registrationNo }}</span><strong>{{ p.projectName }}</strong><span class="muted">{{ p.customer }} · {{ p.location.city }}</span><span class="badge">{{ statuses[p.intakeStatus] }}</span><span class="badge">保护期 {{ protectionLabels[p.protectionStatus] }}</span>
+  <div v-if="usesEligibility" class="segmented queue-views" role="tablist" aria-label="审核资格">
+    <ActionButton
+      v-for="v in (['reviewable', 'blocked', 'all'] as const)"
+      :key="v"
+      action-id="review.view"
+      role="tab"
+      :aria-selected="eligibility === v"
+      :class="{ selected: eligibility === v }"
+      :run="() => chooseEligibility(v)"
+    >
+      {{ viewLabels[v] }}<span class="count">{{ counts ? counts[v] : '…' }}</span>
     </ActionButton>
   </div>
-  <p v-if="!items.length" class="empty muted">当前没有需要处理的报备。</p>
+  <p v-if="openFailure" class="form-alert" role="alert">{{ openFailure }}</p>
+  <p v-if="loadState === 'loading'" class="muted" role="status" aria-busy="true">正在加载审核队列…</p>
+  <div v-else-if="loadState === 'error'" class="form-alert" role="alert">
+    无法加载审核队列：{{ loadFailure }}
+    <ActionButton action-id="project.reload" :run="load">重新加载</ActionButton>
+  </div>
+  <template v-else>
+    <div v-if="usesEligibility" class="review-cards">
+      <ActionButton
+        v-for="p in items"
+        :key="p.id"
+        action-id="review.open"
+        :class="['review-card', { blocked: !p.review?.eligible }]"
+        :run="() => open(p)"
+      >
+        <span class="review-card-head"><strong>{{ p.projectName }}</strong><span class="mono">{{ p.registrationNo }}</span></span>
+        <span class="review-card-meta"><span class="badge">{{ statuses[p.intakeStatus] }}</span><span>{{ waiting(p) }}</span></span>
+        <span class="review-card-next">下一步：{{ nextStep(p) }}</span>
+        <span :class="['review-card-who', { ok: p.review?.eligible }]">
+          {{ p.review?.eligible ? '你可以审核' : '需要其他人处理：' + hintReason({ allowed: false, reasonCode: p.review?.reasonCode ?? null }) }}
+        </span>
+      </ActionButton>
+    </div>
+    <div v-else class="review-list">
+      <ActionButton v-for="p in items" :key="p.id" action-id="review.open" :run="() => open(p)">
+        <span class="mono">{{ p.registrationNo }}</span><strong>{{ p.projectName }}</strong><span class="muted">{{ p.customer }} · {{ p.location.city }}</span><span class="badge">{{ statuses[p.intakeStatus] }}</span><span class="badge">保护期 {{ protectionLabels[p.protectionStatus] }}</span>
+      </ActionButton>
+    </div>
+    <p v-if="!items.length" class="empty muted">{{ usesEligibility ? emptyText[eligibility] : '当前没有需要处理的报备。' }}</p>
+  </template>
   <div class="pagination">
     <span>{{ total }} 项 · 第 {{ page }} 页</span><ActionButton
       action-id="project.page-prev"
@@ -144,7 +265,7 @@ const fields = [
       上一页
     </ActionButton><ActionButton
       action-id="project.page-next"
-      :disabled="page * 20 >= total"
+      :disabled="page * pageSize >= total"
       reason="没有下一页"
       :run="
         async () => {
@@ -268,6 +389,7 @@ const fields = [
     "
     @update:open="closeOperation"
   >
+    <p v-if="decideFailure" class="form-alert" role="alert">{{ decideFailure }}<template v-if="decideFailure.includes('其他人更新')">。审核队列已刷新，请关闭后重新打开该项目。</template></p>
     <label v-if="operation === 'duplicate.dismiss' && legacyPending" class="legacy-ack"><input v-model="acknowledge" type="checkbox" name="acknowledgeLegacyEvidence" />我已核实：历史候选证据不完整，我确认与其无利益关联并对“不是重复并批准”的结论负责。确认内容会写入审计。</label>
     <label>审核原因 *<textarea
       v-model="reason"

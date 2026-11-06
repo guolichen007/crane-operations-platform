@@ -172,6 +172,9 @@ func (a *App) governance(w http.ResponseWriter, r *http.Request, u User) (bool, 
 			fail(w, 403, "FORBIDDEN", "没有审核权限")
 			return true, nil
 		}
+		if r.URL.Query().Has("eligibility") {
+			return true, a.reviewQueueHandler(w, r, u)
+		}
 		params := map[string]string{"review": "pending", "page": r.URL.Query().Get("page"), "pageSize": "20"}
 		kind := r.URL.Query().Get("kind")
 		if kind == "duplicates" {

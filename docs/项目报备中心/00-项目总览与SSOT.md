@@ -5,12 +5,16 @@ BAOBEI_MAIN_MERGE=FORBIDDEN
 BAOBEI_R2_MERGE=FORBIDDEN
 BASE_SHA=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18
 BRANCH=product/baobei-v1
-CURRENT_BATCH=FULL_ROLE_G3_2A
-STOP_AFTER_FULL_ROLE_G3_2A=YES
+CURRENT_BATCH=FULL_ROLE_G3_2B
+STOP_AFTER_FULL_ROLE_G3_2B=YES
 
 目标：快速报项目、识别重复、明确归属并跟进。独立产品，永不合并 main/R2。
 
-## 当前实施：G3-2A 跨组重复候选隐私收口
+## 当前实施：G3-2B 审核队列与工作台一致性
+
+基线 `07215c9`（Run 42183762931 八门通过）。`GET /api/v1/reviews?kind=pending&eligibility=reviewable|blocked|all` 在数据库内用与首页相同的 `reviewableSQL`/`projectScope` 过滤、按冻结提交时间与 ID 稳定排序分页，单一只读快照返回 `items`、`total`、`counts`、`asOf`；未传 eligibility 时保持原行为。首页“你可独立审核”跳转“我可审核”视图；审核队列分“我可审核 / 需要其他人处理 / 全部待审”。审核 POST 事务不变。验收见 [28-G3-2B审核队列与工作台一致性验收](28-G3-2B审核队列与工作台一致性验收.md)。G3-2C/G3-3 未开始；生产仍 BLOCKED。
+
+## 历史：G3-2A 跨组重复候选隐私收口
 
 基线 `8caed95`（含 `ed9f239` 退出登录竞态修复）。本批只做不可读相关候选的最小披露：受限账号在重复对比、候选列表、实时查重、项目详情审核提示与审核列表中只得到一条固定提示 `restrictedRelated`（存在需上级核验的相关候选 + 处理路径），不再得到隐藏候选的数量、风险、评分、信号、地区、阶段、时间、裁决、ID 或证据等级；服务端裁决、独立性、冻结证据与重复判断仍使用全部候选。OpenAPI、Go、TS 与页面同批更新，无新迁移。验收见 [27-G3-2A跨组候选隐私收口验收](27-G3-2A跨组候选隐私收口验收.md)。G3-2B/G3-2C 未开始；生产仍 BLOCKED。
 

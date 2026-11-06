@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Project Intake API",
-    "version": "1.2.2-g32a",
+    "version": "1.3.0-g32b",
     "description": "全角色项目资源授权、不可覆盖提交证据、管理员未分配草稿及幂等创建；G2 增加审核资格提示、创建意图回执、显示名称与首页最小聚合。完整经营分析不在G2。"
   },
   "servers": [
@@ -1306,14 +1306,38 @@
             }
           },
           {
+            "name": "eligibility",
+            "in": "query",
+            "schema": {
+              "enum": [
+                "reviewable",
+                "blocked",
+                "all"
+              ]
+            },
+            "description": "仅适用于 kind=pending（或省略 kind）"
+          },
+          {
             "name": "page",
             "in": "query",
             "schema": {
               "type": "integer",
               "minimum": 1
             }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            },
+            "description": "仅在传入 eligibility 时生效"
           }
-        ]
+        ],
+        "description": "审核队列。kind=pending 时可加 eligibility=reviewable|blocked|all，服务端按 reviewableSQL 与 projectScope 过滤、按提交时间升序与 ID 稳定排序并分页。eligibility 与 kind=duplicates/protection 组合、非法 eligibility、page<1、pageSize 不在 1–100 时返回 400 INVALID_FILTER。销售角色 403。"
       }
     },
     "/api/v1/projects/{id}/approve": {
@@ -4143,6 +4167,12 @@
             "type": "string",
             "maxLength": 200,
             "description": "仅显示名称；空字符串表示无对应人员（如待分配）。不含邮箱或身份标识。"
+          },
+          "submittedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "当前提交轮次冻结提交记录的时间；仅审核队列（eligibility）返回。用于计算等待时长，不以 updatedAt 代替；历史迁移数据可能为 null。"
           }
         }
       },
@@ -4194,6 +4224,7 @@
           "items",
           "total"
         ],
+        "description": "未传 eligibility 时只返回 items、total（G3-2B 前语义）。传入 eligibility 时同一只读快照事务内生成 items、total、counts 与 asOf。",
         "properties": {
           "items": {
             "type": "array",
@@ -4202,7 +4233,39 @@
             }
           },
           "total": {
-            "type": "integer"
+            "type": "integer",
+            "description": "当前 eligibility 视图的条数，等于 counts[eligibility]"
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time",
+            "description": "本响应快照的数据库事务时间（UTC）。列表、total 与 counts 均为该快照的结果；与首页另一次请求之间的真实业务变更可能造成差异。"
+          },
+          "counts": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "reviewable",
+              "blocked",
+              "all"
+            ],
+            "properties": {
+              "reviewable": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "当前账号可执行下一项必要审核动作的待审项目数，与首页 counts.reviewable 同一谓词"
+              },
+              "blocked": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "范围内待审但当前账号无法执行下一项必要动作的项目数；原因见各项 review.reasonCode"
+              },
+              "all": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "范围内全部待审（SUBMITTED、UNDER_REVIEW）项目数，与首页 counts.reviewQueue 同一谓词"
+              }
+            }
           }
         }
       },
@@ -4877,6 +4940,14 @@
             "type": "integer",
             "minimum": 0,
             "description": "本轮待裁决、调用者可读且历史证据不完整的候选数量"
+          },
+          "nextAction": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "duplicate-decisions"
+            ],
+            "description": "下一项必要审核动作：本轮存在待裁决重复（含不可读候选）时为 duplicate-decisions，否则为 approve。"
           }
         }
       },

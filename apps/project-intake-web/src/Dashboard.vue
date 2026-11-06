@@ -59,7 +59,7 @@ const tiles = computed<Tile[]>(() => {
   const t: Tile[] = [];
   if (role.value === 'baobei_admin') t.push({ key: 'unassignedDrafts', label: '待分配草稿', note: '指派有效销售后才能正式报备', to: '/unassigned', tone: 'attention' });
   if (can(app.user, 'project.review'))
-    t.push({ key: 'reviewable', label: '你可独立审核', note: `范围内待审 ${c('reviewQueue')} 项，其余需他人处理`, to: '/reviews' });
+    t.push({ key: 'reviewable', label: '你可独立审核', note: `范围内待审 ${c('reviewQueue')} 项，其余需他人处理`, to: '/reviews?eligibility=reviewable' });
   t.push({ key: 'overdue', label: '已逾期跟进', note: '下次跟进时间已过', to: '/followups?window=overdue', tone: 'risk' });
   t.push({ key: 'upcoming7d', label: '未来 7 天跟进', note: '不含已逾期', to: '/followups?window=upcoming' });
   t.push({ key: 'drafts', label: '草稿', note: `另有退回补充 ${c('returned')} 项`, to: '/projects?status=DRAFT' });

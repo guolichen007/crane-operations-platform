@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 )
 
 // G3-2A: minimum disclosure for related duplicate candidates the caller cannot
@@ -66,6 +67,7 @@ func TestDatabaseG32APrivacy(t *testing.T) {
 		b.WriteString("\n# 受限视角差异\n" + report.String())
 		_ = os.WriteFile(path, []byte(b.String()), 0o600)
 	}
+	t.Logf("RAW_SECRET_MARKERS=%d", privacySecretChecks)
 	if len(leaks) > 0 {
 		sort.Strings(leaks)
 		t.Fatalf("受限视角可从响应推断隐藏候选（%d 处）：\n%s", len(leaks), strings.Join(leaks, "\n"))
@@ -94,6 +96,8 @@ func TestDatabaseG32APrivacy(t *testing.T) {
 		}
 	}
 }
+
+var privacySecretChecks int
 
 type hiddenSpec struct {
 	customer, province, city, factory, equipment, stage string
@@ -156,11 +160,22 @@ func runPrivacyVariant(t *testing.T, hidden []hiddenSpec) (map[string]map[string
 	submitDoc(f.sales, visible)
 	submitDoc(f.other, visible)
 	hiddenIDs := []string{}
+	secrets := []string{}
 	for _, h := range hidden {
 		in := doc(h.customer, h.province, h.city, h.factory, h.equipment, h.qty, h.stage)
 		in.TenderNo = h.tender
+		// Unique markers that only exist on the hidden candidate.
+		in.RequirementNotes = fmt.Sprintf("隐藏需求标记%d", len(hiddenIDs))
+		in.ExpectedPurchaseDate = fmt.Sprintf("2028-0%d-15", len(hiddenIDs)+3)
 		p := submitDoc(c, in)
 		hiddenIDs = append(hiddenIDs, p.ID)
+		secrets = append(secrets, p.ID, p.RegistrationNo, in.RequirementNotes, in.ExpectedPurchaseDate)
+		if h.customer != visible.Customer {
+			secrets = append(secrets, h.customer, h.province, h.city, h.factory, h.equipment, h.stage)
+		}
+		if h.stage != visible.SalesStage && h.stage != "L1_REQUIREMENT" {
+			secrets = append(secrets, h.stage)
+		}
 		if h.legacy {
 			g1Exec(t, f.db, `ALTER TABLE intake_projects DROP CONSTRAINT IF EXISTS submission_projection`)
 			g1Exec(t, f.db, `UPDATE intake_projects SET intake_status='APPROVED',evidence_state='INCOMPLETE',submission_revision=0,submitted_by_subject=NULL WHERE id=$1`, p.ID)
@@ -178,6 +193,25 @@ func runPrivacyVariant(t *testing.T, hidden []hiddenSpec) (map[string]map[string
 	if hiddenCases != len(hidden) {
 		t.Fatalf("fixture: 期望 %d 个跨组候选，实际 %d", len(hidden), hiddenCases)
 	}
+	// Raw (un-normalized) identifiers and timestamps of hidden rows. The case
+	// row's created_at is the primary's own submit transaction time (visible),
+	// so only the hidden candidate's own timestamps are secret.
+	rows, e := f.db.Query(ctx, `SELECT d.id::text,d.created_at,c.created_at,c.updated_at FROM duplicate_cases d JOIN intake_projects c ON c.id=d.candidate_id WHERE d.project_id=$1 AND c.owner_subject='synthetic-c'`, primary.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for rows.Next() {
+		var caseID string
+		var ts [3]time.Time
+		if e = rows.Scan(&caseID, &ts[0], &ts[1], &ts[2]); e != nil {
+			t.Fatal(e)
+		}
+		secrets = append(secrets, caseID)
+		for _, x := range ts[1:] {
+			secrets = append(secrets, x.UTC().Format(time.RFC3339Nano), x.Local().Format(time.RFC3339Nano), x.UTC().Format("2006-01-02T15:04:05.000000"))
+		}
+	}
+	rows.Close()
 	views := map[string]map[string]string{}
 	raw := map[string]string{}
 	clients := map[string]testClient{"manager": f.manager, "sales": f.other, "director": f.director, "admin": f.admin}
@@ -200,6 +234,19 @@ func runPrivacyVariant(t *testing.T, hidden []hiddenSpec) (map[string]map[string
 			raw[who+" "+call.key] = string(b)
 		}
 	}
+	// Un-normalized check: the restricted raw bodies must not contain any
+	// hidden identifier, field value or timestamp.
+	for _, who := range []string{"manager", "sales"} {
+		for _, call := range calls {
+			body := raw[who+" "+call.key]
+			for _, secret := range secrets {
+				if secret != "" && strings.Contains(body, secret) {
+					t.Fatalf("%s %s 原文包含隐藏候选信息 %q", who, call.key, secret)
+				}
+			}
+		}
+	}
+	privacySecretChecks += len(secrets)
 	// Server-side rules still apply to hidden candidates: the restricted
 	// manager cannot decide (direct POST, guessing the visible case), while the
 	// director can complete a decision with the full candidate set.

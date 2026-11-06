@@ -67,9 +67,12 @@ type ReviewEligibility struct {
 	// "no participation found" is not proof of independence. Counted only
 	// within the viewer's read scope; hidden candidates are reported solely via
 	// RelatedCandidates=REVIEW_RELATED_PROJECT_RESTRICTED.
-	LegacyCandidates int     `json:"legacyCandidates"`
-	Eligible         bool    `json:"eligible"`
-	ReasonCode       *string `json:"reasonCode"`
+	LegacyCandidates int `json:"legacyCandidates"`
+	// NextAction is the next required review step: approve when no duplicate
+	// case of the current round is pending, otherwise duplicate-decisions.
+	NextAction string  `json:"nextAction"`
+	Eligible   bool    `json:"eligible"`
+	ReasonCode *string `json:"reasonCode"`
 }
 
 type reviewFacts struct {
@@ -235,6 +238,7 @@ func (a *App) batchHints(ctx context.Context, q querier, u User, ps []*Project) 
 			if f.pending > 0 {
 				next = "duplicate-decisions"
 			}
+			r.NextAction = next
 			r.Eligible = p.Actions[next].Allowed
 			r.ReasonCode = p.Actions[next].ReasonCode
 			p.Review = r

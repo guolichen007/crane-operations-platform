@@ -82,7 +82,10 @@ type Project struct {
 	SubmittedByName       string                `json:"submittedByName"`
 	ProtectedUntil        *time.Time            `json:"protectedUntil"`
 	NextReviewAt          *time.Time            `json:"nextReviewAt"`
-	GovernanceHistory     []GovernanceEvent     `json:"governanceHistory,omitempty"`
+	// SubmittedAt is the frozen submission time of the current round; only
+	// the review queue fills it (G3-2B). Never derived from updatedAt.
+	SubmittedAt       *time.Time        `json:"submittedAt,omitempty"`
+	GovernanceHistory []GovernanceEvent `json:"governanceHistory,omitempty"`
 	Input
 	ID               string     `json:"id"`
 	RegistrationNo   string     `json:"registrationNo"`
