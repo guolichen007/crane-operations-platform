@@ -24,6 +24,7 @@ import {
 import { consistent } from './numeric';
 import { readIntent, startIntent, markSent, clearIntent, type CreateIntent } from './create-intent';
 import { recovery, hintReason } from './reasons';
+import { merge, unresolved, type Side } from './merge';
 import ActionButton from './ActionButton.vue';
 import NumberField from './NumberField.vue';
 
@@ -44,6 +45,7 @@ const app = useApp(),
   leaving = ref(false),
   submitting = ref(false),
   conflict = ref<Project | null>(null),
+  choices = ref<Record<string, Side>>({}),
   candidates = ref<{ subject: string; name: string }[] | null>(null),
   assignTarget = ref(''),
   assignReason = ref('创建时指派销售负责人'),
@@ -81,8 +83,17 @@ function body(): Input {
   }));
   return b;
 }
+// Server-side content this editor last loaded or saved: the merge base.
+let base: Input = blank();
+const pick = (p: Project): Input => {
+  const out = blank();
+  for (const key of Object.keys(out) as (keyof Input)[]) Object.assign(out, { [key]: JSON.parse(JSON.stringify(p[key] ?? blank()[key])) });
+  out.version = p.version;
+  return out;
+};
 function adopt(p: Project) {
   project.value = p;
+  base = pick(p);
   for (const key of Object.keys(blank()) as (keyof Input)[]) Object.assign(form, { [key]: JSON.parse(JSON.stringify(p[key] ?? blank()[key])) });
   form.version = p.version;
   followLocal.value = toLocal(p.nextFollowupAt);
@@ -149,6 +160,7 @@ async function save(silent = false): Promise<void> {
       const recovered = await recoverIntent();
       if (recovered) {
         project.value = recovered;
+        base = pick(recovered);
         recoveredNow = true;
         form.version = recovered.version;
       } else {
@@ -161,6 +173,7 @@ async function save(silent = false): Promise<void> {
     const created = creating || recoveredNow;
     id.value = p.id;
     project.value = p;
+    base = pick(p);
     form.version = p.version;
     savedSignature.value = signature;
     saved.value = '草稿已保存';
@@ -178,6 +191,7 @@ async function save(silent = false): Promise<void> {
   } catch (e) {
     if (e instanceof ApiError && e.status === 409 && e.code === 'VERSION_CONFLICT' && id.value) {
       conflict.value = await app.api<Project>('/api/v1/projects/' + id.value).catch(() => null);
+      choices.value = {};
       saved.value = '版本冲突，自动保存已暂停';
       throw new Error('项目已被其他人更新，自动保存已暂停；你的输入仍保留');
     }
@@ -193,30 +207,28 @@ async function save(silent = false): Promise<void> {
     saving.value = false;
   }
 }
-const conflictFields = computed(() => {
-  const c = conflict.value;
-  if (!c) return [];
-  const pairs: [string, string, string][] = [
-    ['客户', form.customer, c.customer],
-    ['项目名称', form.projectName, c.projectName],
-    ['省市', form.location.province + form.location.city, c.location.province + c.location.city],
-    ['主要需求', form.requirementNotes, c.requirementNotes],
-    ['预估金额', String(form.estimatedAmount ?? '未知'), String(c.estimatedAmount ?? '未知')],
-    ['下一步', form.nextAction || '', c.nextAction || ''],
-    ['计划设备数', String(form.plannedEquipment.length), String(c.plannedEquipment.length)],
-  ];
-  return pairs.filter(([, a, b]) => a !== b);
-});
+// Three-way merge against the version that caused the 409. Only fields
+// changed on both sides need a decision; nothing is overwritten silently.
+const mergeResult = computed(() => (conflict.value ? merge(base, body(), pick(conflict.value), choices.value) : null));
+const openConflicts = computed(() => (mergeResult.value ? unresolved(mergeResult.value, choices.value) : []));
 function takeServer() {
   if (!conflict.value) return;
   adopt(conflict.value);
   conflict.value = null;
   saved.value = '已载入最新版本';
 }
-async function keepMine() {
-  if (!conflict.value) return;
-  form.version = conflict.value.version;
+async function applyMerge() {
+  const c = conflict.value, r = mergeResult.value;
+  if (!c || !r || openConflicts.value.length) return;
+  const merged = r.merged;
+  for (const key of Object.keys(blank()) as (keyof Input)[]) Object.assign(form, { [key]: JSON.parse(JSON.stringify(merged[key] ?? blank()[key])) });
+  followLocal.value = toLocal(merged.nextFollowupAt);
+  base = pick(c);
+  project.value = c;
+  form.version = c.version;
   conflict.value = null;
+  choices.value = {};
+  // A further 409 re-opens the panel against the newer server version.
   await save();
 }
 
@@ -381,15 +393,30 @@ onBeforeUnmount(() => {
         <ActionButton action-id="project.step-jump" :run="() => { step = i + 1; }"><span class="step-dot"><Check v-if="step > i + 1" :size="14" /><template v-else>{{ i + 1 }}</template></span>{{ label }}</ActionButton>
       </li>
     </ol>
-    <div v-if="conflict" class="conflict-panel" role="alert">
+    <div v-if="conflict && mergeResult" class="conflict-panel" role="alert">
       <h2>项目已被其他人更新</h2>
-      <p>自动保存已暂停，你的输入仍保留。以下字段与服务器最新版本（修订 {{ conflict.version }}）不同：</p>
-      <table class="diff">
-        <thead><tr><th>字段</th><th>你的输入</th><th>服务器版本</th></tr></thead>
-        <tbody><tr v-for="[label, mine, theirs] in conflictFields" :key="label"><td>{{ label }}</td><td>{{ mine || '空' }}</td><td>{{ theirs || '空' }}</td></tr></tbody>
-      </table>
+      <p>自动保存已暂停，你的输入仍保留。系统已与服务器最新版本（修订 {{ conflict.version }}）逐字段比对：</p>
+      <ul class="merge-summary">
+        <li>采纳对方修改 {{ mergeResult.fromRemote.length }} 项<template v-if="mergeResult.remoteChanges.length">：{{ mergeResult.remoteChanges.join('；') }}</template></li>
+        <li>保留你的修改 {{ mergeResult.fromLocal.length }} 项<template v-if="mergeResult.localChanges.length">：{{ mergeResult.localChanges.join('；') }}</template></li>
+        <li v-if="mergeResult.conflicts.length">双方改了同一字段 {{ mergeResult.conflicts.length }} 项，需要逐项选择。</li>
+        <li v-else>没有同一字段的冲突，可以直接合并保存。</li>
+      </ul>
+      <fieldset v-for="c in mergeResult.conflicts" :key="c.key" class="conflict-choice">
+        <legend>{{ c.label }}</legend>
+        <label><input v-model="choices[c.key]" type="radio" :name="'merge-' + c.key" value="local" />使用我的输入：{{ c.local }}</label>
+        <label><input v-model="choices[c.key]" type="radio" :name="'merge-' + c.key" value="remote" />使用服务器版本：{{ c.remote }}</label>
+      </fieldset>
       <div class="actions">
-        <ActionButton action-id="draft.conflict-reload" :run="takeServer">载入服务器版本</ActionButton><ActionButton action-id="draft.conflict-keep" primary :run="keepMine">以我的输入为准保存</ActionButton>
+        <ActionButton action-id="draft.conflict-reload" :run="takeServer">放弃我的修改，载入服务器版本</ActionButton><ActionButton
+          action-id="draft.conflict-merge"
+          primary
+          :disabled="openConflicts.length > 0"
+          :reason="'还有 ' + openConflicts.length + ' 项需要选择'"
+          :run="applyMerge"
+        >
+          合并并保存
+        </ActionButton>
       </div>
     </div>
     <fieldset :disabled="!ready || submitting" class="form-body">

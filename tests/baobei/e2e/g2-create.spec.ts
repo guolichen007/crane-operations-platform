@@ -179,9 +179,14 @@ test('409 stops autosave, keeps input, shows differences and recovers', async ({
   await expect(page.locator('.conflict-panel')).toContainText('他人修改');
   await expect(page.locator('[name=projectName]')).toHaveValue(name + '-我的修改');
   await expect(action(page, 'project.save-draft')).toBeDisabled();
-  await action(page, 'draft.conflict-keep').click();
+  // Disjoint fields: my name and the other tab's customer are both kept.
+  await expect(page.locator('.conflict-choice')).toHaveCount(0);
+  const merged = page.waitForResponse((r) => r.request().method() === 'PATCH' && r.url().includes('/api/v1/projects/'));
+  await action(page, 'draft.conflict-merge').click();
+  expect((await merged).status()).toBe(200);
   await expect(page.locator('.conflict-panel')).toHaveCount(0);
   const r = await api(page, '/api/v1/projects/' + created.body.id);
   expect(r.body.projectName).toBe(name + '-我的修改');
+  expect(r.body.customer).toBe(name + '-他人修改');
   expect(r.body.version).toBe(other.body.version + 1);
 });

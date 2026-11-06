@@ -2125,3 +2125,29 @@ td.unassigned,
     font-size: 28px;
   }
 }
+
+/* G2-R1 three-way merge panel. */
+.merge-summary {
+  margin: 4px 0 12px;
+  padding-left: 18px;
+  color: var(--ink-2);
+}
+.conflict-choice {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 10px 14px 12px;
+  margin: 0 0 10px;
+  color: var(--ink);
+}
+.conflict-choice legend {
+  font-weight: 600;
+  padding: 0 4px;
+}
+.conflict-choice label {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 4px 0;
+  overflow-wrap: anywhere;
+}
