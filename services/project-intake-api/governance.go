@@ -29,6 +29,9 @@ type decisionInput struct {
 	SalesStage      string         `json:"salesStage,omitempty"`
 	Decision        string         `json:"decision,omitempty"`
 	CaseID          string         `json:"caseId,omitempty"`
+	// Required for DISTINCT_APPROVED when any related candidate only has
+	// legacy partial evidence; recorded in the audit event.
+	AcknowledgeLegacyEvidence bool `json:"acknowledgeLegacyEvidence,omitempty"`
 }
 type Comparison struct {
 	ID         string   `json:"id"`
@@ -38,6 +41,11 @@ type Comparison struct {
 	Decision   string   `json:"decision"`
 	Candidate  *Project `json:"candidate,omitempty"`
 	Restricted bool     `json:"restricted"`
+	// COMPLETE_VERIFIED: the candidate has a frozen, complete submission and
+	// its participants are known. LEGACY_PARTIAL_EVIDENCE: migrated history;
+	// absence of a participation record does not prove non-participation.
+	// Only shown when the candidate itself is readable.
+	EvidenceGrade string `json:"evidenceGrade,omitempty"`
 }
 
 func mustJSON(v any) []byte {
@@ -46,6 +54,12 @@ func mustJSON(v any) []byte {
 		panic("internal JSON encoding")
 	}
 	return b
+}
+func evidenceGrade(p Project) string {
+	if p.EvidenceState == "COMPLETE" && p.SubmissionRevision > 0 {
+		return "COMPLETE_VERIFIED"
+	}
+	return "LEGACY_PARTIAL_EVIDENCE"
 }
 func manager(u User) bool { return u.Role == "baobei_manager" || u.Role == "baobei_director" }
 func validStage(from, to, status string, reason bool) bool {
@@ -129,6 +143,7 @@ func (a *App) comparison(ctx context.Context, q querier, p Project, u User) ([]C
 		}
 		if canRead(u, candidate) {
 			out[i].Candidate = &candidate
+			out[i].EvidenceGrade = evidenceGrade(candidate)
 		} else {
 			out[i].Restricted = true
 		}
@@ -397,6 +412,23 @@ func (a *App) governance(w http.ResponseWriter, r *http.Request, u User) (bool, 
 				fail(w, 409, "INVALID_STATE", "重复候选已处理或不属于该报备")
 				return true, nil
 			}
+			legacy := []string{}
+			for _, candidate := range related {
+				if candidate.ID != p.ID && evidenceGrade(candidate) == "LEGACY_PARTIAL_EVIDENCE" {
+					legacy = append(legacy, candidate.ID)
+				}
+			}
+			if in.Decision == "DISTINCT_APPROVED" && len(legacy) > 0 && !in.AcknowledgeLegacyEvidence {
+				return true, problem(409, "LEGACY_EVIDENCE_ACK_REQUIRED")
+			}
+			grades := map[string]string{}
+			for _, candidate := range related {
+				if candidate.ID != p.ID {
+					grades[candidate.ID] = evidenceGrade(candidate)
+				}
+			}
+			details["candidateEvidence"] = grades
+			details["legacyEvidenceAcknowledged"] = len(legacy) > 0 && in.AcknowledgeLegacyEvidence
 			decision = in.Decision
 			status = "REJECTED"
 			event = "duplicate.confirm"

@@ -2151,3 +2151,24 @@ td.unassigned,
   padding: 4px 0;
   overflow-wrap: anywhere;
 }
+.legacy-evidence {
+  background: var(--amber-wash);
+  color: var(--amber-ink);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  font-size: 14px;
+}
+.legacy-ack {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+  color: var(--amber-ink);
+}
+.legacy-ack input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  flex: none;
+  margin-top: 3px;
+}

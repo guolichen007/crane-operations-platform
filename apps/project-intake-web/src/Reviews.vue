@@ -14,6 +14,7 @@ interface Case {
   decision: string;
   restricted: boolean;
   candidate?: Project;
+  evidenceGrade?: 'COMPLETE_VERIFIED' | 'LEGACY_PARTIAL_EVIDENCE';
 }
 const app = useApp(),
   route = useRoute(),
@@ -26,7 +27,9 @@ const app = useApp(),
   cases = ref<Case[]>([]),
   operation = ref(''),
   caseId = ref(''),
-  reason = ref('');
+  reason = ref(''),
+  acknowledge = ref(false);
+const legacyPending = computed(() => cases.value.some((c) => c.decision === 'PENDING' && c.evidenceGrade === 'LEGACY_PARTIAL_EVIDENCE'));
 const comparison = computed(() => route.path === '/duplicates');
 async function load() {
   const b = await app.api<{ items: Project[]; total: number }>(
@@ -47,6 +50,7 @@ function prompt(action: string, id = '') {
   operation.value = action;
   caseId.value = id;
   reason.value = '';
+  acknowledge.value = false;
 }
 async function decide() {
   if (!selected.value) return;
@@ -57,6 +61,7 @@ async function decide() {
     body.decision =
       operation.value === 'duplicate.confirm' ? 'CONFIRMED_DUPLICATE' : 'DISTINCT_APPROVED';
     body.caseId = caseId.value;
+    if (operation.value === 'duplicate.dismiss' && legacyPending.value) body.acknowledgeLegacyEvidence = acknowledge.value;
     body.relatedVersions = Object.fromEntries(cases.value.filter((c) => c.candidate).map((c) => [c.candidate!.id, c.candidate!.version]));
   }
   try {
@@ -162,6 +167,9 @@ const fields = [
           {{ c.risk==='HIGH'?'高风险':'疑似重复' }} · {{ c.score }} 分 · {{ c.signals.join(' / ') || '历史候选' }} ·
           {{ decisionLabels[c.decision]||'已处理' }}
         </div>
+        <p v-if="c.evidenceGrade === 'LEGACY_PARTIAL_EVIDENCE'" class="legacy-evidence" role="note">
+          该候选来自历史数据，提交与参与记录不完整。系统只能排除已知参与人；“未发现参与记录”不等于已证明你未参与过该项目。
+        </p>
         <p v-if="c.restricted" class="muted">
           此候选属于其他团队，需销售总监核验；详细信息已隐藏。
         </p>
@@ -257,6 +265,7 @@ const fields = [
     "
     @update:open="closeOperation"
   >
+    <label v-if="operation === 'duplicate.dismiss' && legacyPending" class="legacy-ack"><input v-model="acknowledge" type="checkbox" name="acknowledgeLegacyEvidence" />我已核实：历史候选证据不完整，我确认与其无利益关联并对“不是重复并批准”的结论负责。确认内容会写入审计。</label>
     <label>审核原因 *<textarea
       v-model="reason"
       name="reviewReason"
@@ -273,8 +282,8 @@ const fields = [
       </ActionButton><ActionButton
         action-id="review.confirm"
         primary
-        :disabled="!reason.trim()"
-        reason="请填写审核原因"
+        :disabled="!reason.trim() || (operation === 'duplicate.dismiss' && legacyPending && !acknowledge)"
+        :reason="!reason.trim() ? '请填写审核原因' : '请确认历史证据不完整的责任声明'"
         :run="decide"
       >
         确认并保存结论

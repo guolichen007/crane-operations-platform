@@ -12,6 +12,7 @@ export const reasonText: Record<string, string> = {
   REVIEW_EVIDENCE_INCOMPLETE: '历史提交证据不完整，需走独立核验流程',
   REVIEW_RELATED_PROJECT_RESTRICTED: '存在你无权查看的相关候选，需由更大范围的审核人处理',
   DUPLICATE_DECISION_REQUIRED: '请先完成重复裁决',
+  LEGACY_EVIDENCE_ACK_REQUIRED: '相关候选为历史数据、证据不完整，需确认责任声明后才能排除重复并批准',
   DUPLICATE_ALREADY_CONFIRMED: '已确认为重复报备，不能再次提交',
   VERSION_CONFLICT: '项目已被其他人更新',
   IDEMPOTENCY_CONFLICT: '本次创建与先前提交的内容不一致，请刷新后继续',

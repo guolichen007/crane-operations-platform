@@ -59,13 +59,16 @@ type ReviewEligibility struct {
 	ProjectIndependence ActionHint `json:"projectIndependence"`
 	RelatedCandidates   ActionHint `json:"relatedCandidates"`
 	PendingDuplicates   int        `json:"pendingDuplicates"`
-	Eligible            bool       `json:"eligible"`
-	ReasonCode          *string    `json:"reasonCode"`
+	// Related candidates that only have migrated, partial evidence. For these
+	// "no participation found" is not proof of independence.
+	LegacyCandidates int     `json:"legacyCandidates"`
+	Eligible         bool    `json:"eligible"`
+	ReasonCode       *string `json:"reasonCode"`
 }
 
 type reviewFacts struct {
 	primaryConflict, primaryComplete, candidateRestricted, candidateConflict bool
-	pending                                                                  int
+	pending, legacy                                                          int
 }
 
 func loadReviewFacts(ctx context.Context, q querier, u User, ids []string) (map[string]reviewFacts, error) {
@@ -75,7 +78,9 @@ func loadReviewFacts(ctx context.Context, q querier, u User, ids []string) (map[
 	}
 	rows, err := q.Query(ctx, `SELECT p.id::text,`+primaryConflictSQL("p", "$1")+`,`+primaryCompleteSQL("p")+`,
  EXISTS(`+relatedCandidatesSQL("p")+` AND NOT `+projectScope("c")+`),
- EXISTS(`+relatedCandidatesSQL("p")+` AND `+candidateConflictSQL("c", "$1")+`),`+pendingCasesSQL("p")+`
+ EXISTS(`+relatedCandidatesSQL("p")+` AND `+candidateConflictSQL("c", "$1")+`),`+pendingCasesSQL("p")+`,
+ (SELECT count(DISTINCT c.id) FROM duplicate_cases d JOIN intake_projects c ON c.id=d.candidate_id WHERE d.project_id=p.id
+  AND d.decision='PENDING' AND d.submission_revision=p.submission_revision AND NOT (c.evidence_state='COMPLETE' AND c.submission_revision>0))
  FROM intake_projects p WHERE p.id=ANY($4::uuid[])`, u.Subject, u.Role, u.TeamID, ids)
 	if err != nil {
 		return nil, err
@@ -84,7 +89,7 @@ func loadReviewFacts(ctx context.Context, q querier, u User, ids []string) (map[
 	for rows.Next() {
 		var id string
 		var f reviewFacts
-		if err = rows.Scan(&id, &f.primaryConflict, &f.primaryComplete, &f.candidateRestricted, &f.candidateConflict, &f.pending); err != nil {
+		if err = rows.Scan(&id, &f.primaryConflict, &f.primaryComplete, &f.candidateRestricted, &f.candidateConflict, &f.pending, &f.legacy); err != nil {
 			return nil, err
 		}
 		out[id] = f
@@ -217,7 +222,7 @@ func (a *App) batchHints(ctx context.Context, q querier, u User, ps []*Project) 
 		}
 		p.Review = nil
 		if hasFacts {
-			r := &ReviewEligibility{ProjectReadable: true, ProjectIndependence: hint(firstCode(policy.Action(*p, "return"), primary)), RelatedCandidates: hint(related), PendingDuplicates: f.pending}
+			r := &ReviewEligibility{ProjectReadable: true, ProjectIndependence: hint(firstCode(policy.Action(*p, "return"), primary)), RelatedCandidates: hint(related), PendingDuplicates: f.pending, LegacyCandidates: f.legacy}
 			next := "approve"
 			if f.pending > 0 {
 				next = "duplicate-decisions"

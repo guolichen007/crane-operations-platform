@@ -34,8 +34,37 @@ func TestDatabaseG2Contract(t *testing.T) {
 				t.Fatalf("director hint should allow decision: %+v %+v", detail.Review, detail.Actions["duplicate-decisions"])
 			}
 			cases := comparisonCases(t, f.director, fresh)
-			s, b = g1Decision(f.director, fresh, "duplicate-decisions", map[string]any{"caseId": cases[0].ID, "decision": decision})
+			// The second round also matches the first fresh filing (COMPLETE); grade each candidate.
+			var legacyCase Comparison
+			for _, c := range cases {
+				want := "COMPLETE_VERIFIED"
+				if c.Candidate != nil && c.Candidate.ID == legacy.ID {
+					want, legacyCase = "LEGACY_PARTIAL_EVIDENCE", c
+				}
+				if c.EvidenceGrade != want {
+					t.Fatal("evidence grade", c.EvidenceGrade, want)
+				}
+			}
+			if legacyCase.ID == "" || detail.Review.LegacyCandidates != 1 {
+				t.Fatal("legacy candidate missing", detail.Review.LegacyCandidates)
+			}
+			extra := map[string]any{"caseId": legacyCase.ID, "decision": decision}
+			if decision == "DISTINCT_APPROVED" {
+				// Approving as distinct against partial legacy evidence needs an explicit acknowledgement.
+				s, b = g1Decision(f.director, fresh, "duplicate-decisions", extra)
+				expect(t, s, 409, b)
+				if !strings.Contains(string(b), "LEGACY_EVIDENCE_ACK_REQUIRED") {
+					t.Fatal(string(b))
+				}
+				extra["acknowledgeLegacyEvidence"] = true
+			}
+			s, b = g1Decision(f.director, fresh, "duplicate-decisions", extra)
 			out := projectFrom(t, s, b)
+			var details string
+			_ = f.db.QueryRow(ctx, `SELECT details::text FROM audit_events WHERE project_id=$1 AND action LIKE 'duplicate.%' ORDER BY created_at DESC LIMIT 1`, fresh.ID).Scan(&details)
+			if !strings.Contains(details, "LEGACY_PARTIAL_EVIDENCE") || (decision == "DISTINCT_APPROVED") != strings.Contains(details, `"legacyEvidenceAcknowledged": true`) {
+				t.Fatal("audit lacks candidate evidence grade or acknowledgement", details)
+			}
 			want := map[string]string{"DISTINCT_APPROVED": "APPROVED", "CONFIRMED_DUPLICATE": "REJECTED"}[decision]
 			if out.IntakeStatus != want {
 				t.Fatal(decision, out.IntakeStatus)

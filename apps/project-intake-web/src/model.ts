@@ -14,6 +14,7 @@ export interface ReviewEligibility {
   projectIndependence: ActionHint;
   relatedCandidates: ActionHint;
   pendingDuplicates: number;
+  legacyCandidates?: number;
   eligible: boolean;
   reasonCode: string | null;
 }

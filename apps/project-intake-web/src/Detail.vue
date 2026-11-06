@@ -313,6 +313,7 @@ const reviewSummary = computed(() => {
           <ul>
             <li>项目可读：是</li>
             <li>本轮独立性：{{ p.review.projectIndependence.allowed ? '满足' : hintReason(p.review.projectIndependence) }}</li>
+            <li v-if="p.review.legacyCandidates">其中 {{ p.review.legacyCandidates }} 个候选为历史数据，证据不完整，只能排除已知参与人</li>
             <li>相关候选：{{ !p.review.pendingDuplicates ? '无待裁决候选' : p.review.relatedCandidates.allowed ? '均可见且未参与' : hintReason(p.review.relatedCandidates) }}</li>
           </ul>
         </div>

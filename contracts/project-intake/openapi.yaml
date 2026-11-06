@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Project Intake API",
-    "version": "1.2.0-g2",
+    "version": "1.2.1-g2r1",
     "description": "全角色项目资源授权、不可覆盖提交证据、管理员未分配草稿及幂等创建；G2 增加审核资格提示、创建意图回执、显示名称与首页最小聚合。完整经营分析不在G2。"
   },
   "servers": [
@@ -2200,6 +2200,10 @@
                       "minimum": 1
                     },
                     "description": "从comparison可见候选ID到version的完整映射；缺项、额外项或过期409"
+                  },
+                  "acknowledgeLegacyEvidence": {
+                    "type": "boolean",
+                    "description": "DISTINCT_APPROVED 且任一相关候选为 LEGACY_PARTIAL_EVIDENCE 时必须为 true，否则 409 LEGACY_EVIDENCE_ACK_REQUIRED；与各候选证据等级一并写入审计。"
                   }
                 }
               }
@@ -4222,6 +4226,14 @@
                 },
                 "candidate": {
                   "$ref": "#/components/schemas/Project"
+                },
+                "evidenceGrade": {
+                  "type": "string",
+                  "enum": [
+                    "COMPLETE_VERIFIED",
+                    "LEGACY_PARTIAL_EVIDENCE"
+                  ],
+                  "description": "仅对可读候选返回。LEGACY_PARTIAL_EVIDENCE 表示历史迁移数据，未发现参与记录不等于已证明未参与。"
                 }
               }
             }
@@ -4838,6 +4850,11 @@
           "reasonCode": {
             "type": "string",
             "nullable": true
+          },
+          "legacyCandidates": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "本轮待裁决候选中历史证据不完整的数量"
           }
         }
       },
