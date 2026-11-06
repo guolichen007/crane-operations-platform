@@ -86,6 +86,7 @@ jobs:
           path: |
             test-results/premium-*/**/*.png
             test-results/premium-homepage-h1-*/**/metrics-*.json
+            test-results/premium-homepage-h1-r1-*/**/inspector-usable-*.json
   integration:
     runs-on: ubuntu-latest
     timeout-minutes: 25

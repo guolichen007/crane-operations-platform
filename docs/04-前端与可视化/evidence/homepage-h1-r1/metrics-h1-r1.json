@@ -1,0 +1,297 @@
+{
+ "note": "local chrome-headless-shell + SwiftShader (no GPU), mocked API; before = 9b34de1 re-measured with the same spec",
+ "layout": {
+  "1280x720-3d": {
+   "before_9b34de1": {
+    "viewport": "1280x720",
+    "view": "3d",
+    "netMapPct": 40.2,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   },
+   "after": {
+    "viewport": "1280x720",
+    "view": "3d",
+    "netMapPct": 48,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   }
+  },
+  "1280x720-2d": {
+   "before_9b34de1": {
+    "viewport": "1280x720",
+    "view": "2d",
+    "netMapPct": 42.4,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   },
+   "after": {
+    "viewport": "1280x720",
+    "view": "2d",
+    "netMapPct": 50.1,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   }
+  },
+  "1366x768-3d": {
+   "before_9b34de1": {
+    "viewport": "1366x768",
+    "view": "3d",
+    "netMapPct": 42.2,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   },
+   "after": {
+    "viewport": "1366x768",
+    "view": "3d",
+    "netMapPct": 51,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   }
+  },
+  "1366x768-2d": {
+   "before_9b34de1": {
+    "viewport": "1366x768",
+    "view": "2d",
+    "netMapPct": 44.1,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   },
+   "after": {
+    "viewport": "1366x768",
+    "view": "2d",
+    "netMapPct": 52.9,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   }
+  },
+  "1440x900-3d": {
+   "before_9b34de1": {
+    "viewport": "1440x900",
+    "view": "3d",
+    "netMapPct": 48.1,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   },
+   "after": {
+    "viewport": "1440x900",
+    "view": "3d",
+    "netMapPct": 55.8,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   }
+  },
+  "1440x900-2d": {
+   "before_9b34de1": {
+    "viewport": "1440x900",
+    "view": "2d",
+    "netMapPct": 49.7,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   },
+   "after": {
+    "viewport": "1440x900",
+    "view": "2d",
+    "netMapPct": 57.3,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   }
+  },
+  "1920x1080-3d": {
+   "before_9b34de1": {
+    "viewport": "1920x1080",
+    "view": "3d",
+    "netMapPct": 37.6,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   },
+   "after": {
+    "viewport": "1920x1080",
+    "view": "3d",
+    "netMapPct": 42.1,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   }
+  },
+  "1920x1080-2d": {
+   "before_9b34de1": {
+    "viewport": "1920x1080",
+    "view": "2d",
+    "netMapPct": 38.6,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   },
+   "after": {
+    "viewport": "1920x1080",
+    "view": "2d",
+    "netMapPct": 43.1,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   }
+  },
+  "2560x1440-3d": {
+   "before_9b34de1": {
+    "viewport": "2560x1440",
+    "view": "3d",
+    "netMapPct": 44.3,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   },
+   "after": {
+    "viewport": "2560x1440",
+    "view": "3d",
+    "netMapPct": 44.3,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   }
+  },
+  "2560x1440-2d": {
+   "before_9b34de1": {
+    "viewport": "2560x1440",
+    "view": "2d",
+    "netMapPct": 44.9,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   },
+   "after": {
+    "viewport": "2560x1440",
+    "view": "2d",
+    "netMapPct": 44.9,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   }
+  }
+ },
+ "inspectorUsable": {
+  "1280x720": {
+   "viewport": "1280x720",
+   "usableMapPct": 32.2,
+   "usableWidth": 642,
+   "usableHeight": 494
+  },
+  "1440x900": {
+   "viewport": "1440x900",
+   "usableMapPct": 40.2,
+   "usableWidth": 802,
+   "usableHeight": 674
+  },
+  "1366x768": {
+   "viewport": "1366x768",
+   "usableMapPct": 35.7,
+   "usableWidth": 728,
+   "usableHeight": 542
+  }
+ },
+ "firstContent_viteBuildPreview_1440x900_5runs": [
+  {
+   "view": "2d",
+   "run": 1,
+   "kpiMs": 327,
+   "mapMs": 332,
+   "jsKB": 296,
+   "threeKB": 0,
+   "geoKB": 1072
+  },
+  {
+   "view": "2d",
+   "run": 2,
+   "kpiMs": 198,
+   "mapMs": 208,
+   "jsKB": 296,
+   "threeKB": 0,
+   "geoKB": 1072
+  },
+  {
+   "view": "2d",
+   "run": 3,
+   "kpiMs": 201,
+   "mapMs": 211,
+   "jsKB": 296,
+   "threeKB": 0,
+   "geoKB": 1072
+  },
+  {
+   "view": "2d",
+   "run": 4,
+   "kpiMs": 198,
+   "mapMs": 210,
+   "jsKB": 296,
+   "threeKB": 0,
+   "geoKB": 1072
+  },
+  {
+   "view": "2d",
+   "run": 5,
+   "kpiMs": 201,
+   "mapMs": 209,
+   "jsKB": 296,
+   "threeKB": 0,
+   "geoKB": 1072
+  },
+  {
+   "view": "3d",
+   "run": 1,
+   "kpiMs": 182,
+   "mapMs": 2144,
+   "jsKB": 1347,
+   "threeKB": 1039,
+   "geoKB": 1072
+  },
+  {
+   "view": "3d",
+   "run": 2,
+   "kpiMs": 225,
+   "mapMs": 2044,
+   "jsKB": 1347,
+   "threeKB": 1039,
+   "geoKB": 1072
+  },
+  {
+   "view": "3d",
+   "run": 3,
+   "kpiMs": 216,
+   "mapMs": 2021,
+   "jsKB": 1347,
+   "threeKB": 1039,
+   "geoKB": 1072
+  },
+  {
+   "view": "3d",
+   "run": 4,
+   "kpiMs": 252,
+   "mapMs": 1997,
+   "jsKB": 1347,
+   "threeKB": 1039,
+   "geoKB": 1072
+  },
+  {
+   "view": "3d",
+   "run": 5,
+   "kpiMs": 199,
+   "mapMs": 2010,
+   "jsKB": 1347,
+   "threeKB": 1039,
+   "geoKB": 1072
+  }
+ ]
+}

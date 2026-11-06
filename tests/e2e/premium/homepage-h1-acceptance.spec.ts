@@ -109,9 +109,12 @@ async function measure(page: Page) {
   });
 }
 
+// H1-R1-6: 1280/1366 restored to the H0 review target of 45 % (was 40 % in H1);
+// met by layout (stage fills the first screen, Cloud Runtime moved below the
+// fold), not by changing the metric. Wider viewports keep 35 % (three columns).
 const thresholds: Record<string, number> = {
-  '1280x720': 40,
-  '1366x768': 40,
+  '1280x720': 45,
+  '1366x768': 45,
   '1440x900': 35,
   '1920x1080': 35,
   '2560x1440': 35,
@@ -349,9 +352,12 @@ test('弱网（每个 API 请求延迟 2.5 s）：加载中显示占位而非 0�
   await fixture(page, { delayMs: 2500 });
   await page.goto('/#/overview');
   await expect(page.locator('[data-kpi=devices] .home-kpi-value')).toHaveText(/—/);
-  await expect(page.getByTestId('home-asof')).toContainText('正在读取');
+  await expect(page.getByTestId('home-asof')).toHaveAttribute('data-state', 'loading');
+  await expect(page.getByTestId('home-asof')).toContainText('正在拉取');
   await expect(page.locator('[data-kpi=devices] .home-kpi-value')).toContainText('10', {
     timeout: 20000,
   });
-  await expect(page.getByTestId('home-asof')).toContainText('数据截至');
+  // R1-3: a client fetch time, labelled as such — never "数据截至" (telemetry as-of).
+  await expect(page.getByTestId('home-asof')).toContainText('最近拉取');
+  await expect(page.getByTestId('home-asof')).not.toContainText('数据截至');
 });
