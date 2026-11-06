@@ -55,11 +55,20 @@ func mustJSON(v any) []byte {
 	}
 	return b
 }
-func evidenceGrade(p Project) string {
-	if p.EvidenceState == "COMPLETE" && p.SubmissionRevision > 0 {
-		return "COMPLETE_VERIFIED"
+
+// evidenceGrade reads the immutable frozen submission, not only the project
+// row projection: COMPLETE_VERIFIED requires the projection to be COMPLETE and
+// the frozen record for that exact revision to exist and be COMPLETE.
+func evidenceGrade(ctx context.Context, q querier, p Project) (string, error) {
+	var ok bool
+	err := q.QueryRow(ctx, `SELECT `+primaryCompleteSQL("p")+` FROM intake_projects p WHERE p.id=$1`, p.ID).Scan(&ok)
+	if err != nil {
+		return "", err
 	}
-	return "LEGACY_PARTIAL_EVIDENCE"
+	if ok {
+		return "COMPLETE_VERIFIED", nil
+	}
+	return "LEGACY_PARTIAL_EVIDENCE", nil
 }
 func manager(u User) bool { return u.Role == "baobei_manager" || u.Role == "baobei_director" }
 func validStage(from, to, status string, reason bool) bool {
@@ -143,7 +152,9 @@ func (a *App) comparison(ctx context.Context, q querier, p Project, u User) ([]C
 		}
 		if canRead(u, candidate) {
 			out[i].Candidate = &candidate
-			out[i].EvidenceGrade = evidenceGrade(candidate)
+			if out[i].EvidenceGrade, e = evidenceGrade(ctx, q, candidate); e != nil {
+				return nil, e
+			}
 		} else {
 			out[i].Restricted = true
 		}
@@ -413,19 +424,22 @@ func (a *App) governance(w http.ResponseWriter, r *http.Request, u User) (bool, 
 				return true, nil
 			}
 			legacy := []string{}
+			grades := map[string]string{}
 			for _, candidate := range related {
-				if candidate.ID != p.ID && evidenceGrade(candidate) == "LEGACY_PARTIAL_EVIDENCE" {
+				if candidate.ID == p.ID {
+					continue
+				}
+				grade, e := evidenceGrade(ctx, tx, candidate)
+				if e != nil {
+					return true, e
+				}
+				grades[candidate.ID] = grade
+				if grade == "LEGACY_PARTIAL_EVIDENCE" {
 					legacy = append(legacy, candidate.ID)
 				}
 			}
 			if in.Decision == "DISTINCT_APPROVED" && len(legacy) > 0 && !in.AcknowledgeLegacyEvidence {
 				return true, problem(409, "LEGACY_EVIDENCE_ACK_REQUIRED")
-			}
-			grades := map[string]string{}
-			for _, candidate := range related {
-				if candidate.ID != p.ID {
-					grades[candidate.ID] = evidenceGrade(candidate)
-				}
 			}
 			details["candidateEvidence"] = grades
 			details["legacyEvidenceAcknowledged"] = len(legacy) > 0 && in.AcknowledgeLegacyEvidence
