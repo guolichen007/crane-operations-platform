@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>Operations Center H1 原型（静态，不含真实数据）</title>
+<style>
+/* Tokens copied from apps/web-console/src/design/tokens.css (Premium 深蓝品牌). */
+:root {
+  --brand-900:#06152d; --surface-950:#06111e; --surface-900:#091725; --surface-850:#0d2132; --surface-hover:#132d43;
+  --accent-blue:#2c8fff; --accent-cyan:#31d6e8; --success:#33d1a0; --warning:#f4b740; --critical:#ff5d6c;
+  --text-1:#eaf4ff; --text-2:#8fa8be; --text-3:#5c7791; --line-soft:#58abda2e; --line-strong:#58abda55;
+  --r:10px; --fs-xs:11px; --fs-s:12px; --fs-m:13px; --fs-l:16px; --fs-num:28px;
+  font-family: Inter,'Microsoft YaHei','PingFang SC',system-ui,sans-serif; font-variant-numeric: tabular-nums;
+  color:var(--text-1); background:var(--surface-950);
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+body { height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+.cmd { height:56px; flex-shrink:0; display:flex; align-items:center; gap:20px; padding:0 20px; background:linear-gradient(100deg,var(--surface-900),var(--brand-900)); border-bottom:1px solid var(--line-soft); }
+.brand { font-size:22px; color:var(--accent-blue); letter-spacing:1px; }
+.brand-t { font-size:13px; color:var(--text-1); }
+.scope { margin-left:8px; border:1px solid var(--line-soft); border-radius:6px; padding:5px 10px; font-size:var(--fs-s); color:var(--text-2); }
+.cmd .right { margin-left:auto; display:flex; gap:16px; font-size:var(--fs-xs); color:var(--text-2); align-items:center; }
+.body { flex:1; display:flex; min-height:0; }
+.rail { width:200px; flex-shrink:0; background:var(--surface-900); border-right:1px solid var(--line-soft); padding:16px 8px; font-size:var(--fs-m); color:var(--text-2); display:flex; flex-direction:column; gap:4px; }
+.rail a { padding:9px 12px; border-radius:8px; }
+.rail a.on { color:var(--accent-blue); background:linear-gradient(90deg,#2c8fff20,transparent); }
+.rail .sub { padding-left:28px; font-size:var(--fs-s); }
+main { flex:1; min-width:0; overflow-y:auto; display:flex; flex-direction:column; gap:12px; padding:14px 20px 16px; }
+.head { display:flex; align-items:center; gap:16px; }
+.head h1 { font-size:20px; font-weight:600; }
+.head .asof { font-size:var(--fs-xs); color:var(--text-2); }
+.seg { margin-left:auto; display:flex; border:1px solid var(--line-soft); border-radius:8px; overflow:hidden; }
+.seg button { background:none; border:0; color:var(--text-2); padding:6px 14px; font-size:var(--fs-s); }
+.seg button.on { background:#2c8fff26; color:var(--accent-cyan); }
+.kpis { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px; }
+.kpi { background:var(--surface-900); border:1px solid var(--line-soft); border-radius:var(--r); padding:10px 14px; display:flex; flex-direction:column; gap:2px; cursor:pointer; position:relative; }
+.kpi:hover { border-color:var(--line-strong); background:var(--surface-850); }
+.kpi.sel { border-color:var(--accent-blue); box-shadow:inset 0 0 0 1px var(--accent-blue); }
+.kpi span { font-size:var(--fs-s); color:var(--text-2); }
+.kpi b { font-size:var(--fs-num); font-weight:500; line-height:1.15; }
+.kpi b small { font-size:var(--fs-s); color:var(--text-2); margin-left:4px; }
+.kpi em { font-style:normal; font-size:var(--fs-xs); color:var(--text-3); }
+.kpi .tag { position:absolute; right:10px; top:10px; font-size:10px; border:1px solid var(--line-strong); color:var(--text-2); padding:0 5px; border-radius:4px; }
+.crit b { color:var(--critical); } .warn b { color:var(--warning); } .ok b { color:var(--success); }
+.grid { display:grid; grid-template-columns:var(--att,248px) minmax(0,1fr) var(--ins,300px); gap:12px; height:clamp(420px, calc(100vh - 56px - 14px - 44px - 82px - 96px - 36px), 980px); min-height:420px; }
+.panel { background:var(--surface-900); border:1px solid var(--line-soft); border-radius:var(--r); padding:12px; overflow:auto; }
+.panel h3 { font-size:var(--fs-m); font-weight:600; display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+.panel h3 small { font-size:var(--fs-xs); color:var(--text-3); font-weight:400; }
+.att { display:flex; flex-direction:column; gap:6px; }
+.att .row { display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:8px; border:1px solid transparent; cursor:pointer; font-size:var(--fs-m); }
+.att .row:hover { background:var(--surface-850); border-color:var(--line-soft); }
+.att .row i { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.att .row b { margin-left:auto; font-size:var(--fs-l); font-weight:500; }
+.att .row.na { color:var(--text-3); cursor:default; } .att .row.na b { font-size:var(--fs-xs); color:var(--text-3); }
+.att .note { font-size:var(--fs-xs); color:var(--text-3); margin-top:6px; line-height:1.5; }
+.stage { position:relative; border-radius:var(--r); border:1px solid var(--line-soft); overflow:hidden; background: radial-gradient(ellipse at 55% 45%, #1d4a7a40, transparent 60%), var(--brand-900); }
+.stage .layer { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
+.stage .layer[hidden] { display:none; }
+.stage img.map3d { width:100%; height:100%; object-fit:cover; object-position:50% 55%; }
+.stage .svg2d svg { width:86%; height:86%; }
+.stage .svg2d { background: var(--brand-900); }
+.stage .svg2d path { fill:#123657; stroke:#3f86c2; stroke-width:.12; }
+.stage .svg2d path.has { fill:#1b5b8f; } .stage .svg2d path.alarm { fill:#5a2230; stroke:var(--critical); }
+.crumb { position:absolute; left:14px; top:12px; font-size:var(--fs-s); color:var(--text-2); display:flex; gap:6px; align-items:center; }
+.crumb b { color:var(--text-1); font-weight:500; }
+.tools { position:absolute; right:12px; top:12px; display:flex; gap:6px; }
+.tools span { border:1px solid var(--line-soft); background:#06152dcc; border-radius:7px; padding:5px 9px; font-size:var(--fs-xs); color:var(--text-2); }
+.dock { position:absolute; left:50%; bottom:14px; transform:translateX(-50%); display:flex; gap:2px; background:#06152dd9; border:1px solid var(--line-soft); border-radius:10px; padding:4px; }
+.dock span { padding:7px 16px; font-size:var(--fs-m); color:var(--text-2); border-radius:7px; }
+.dock span.on { background:#38e1ff29; color:#5fe0ff; }
+.legal { position:absolute; left:14px; bottom:12px; font-size:10px; color:var(--text-3); max-width:240px; line-height:1.4; }
+.ins .kv { display:grid; grid-template-columns:1fr auto; gap:6px 10px; font-size:var(--fs-s); color:var(--text-2); margin-bottom:12px; }
+.ins .kv b { color:var(--text-1); font-weight:500; text-align:right; }
+.ins .item { display:flex; justify-content:space-between; padding:9px 0; border-top:1px solid var(--line-soft); font-size:var(--fs-m); }
+.ins .item small { color:var(--text-3); font-size:var(--fs-xs); }
+.events { flex-shrink:0; background:var(--surface-900); border:1px solid var(--line-soft); border-radius:var(--r); padding:10px 14px; display:flex; gap:24px; align-items:center; font-size:var(--fs-s); }
+.events strong { font-size:var(--fs-m); white-space:nowrap; }
+.events .ev { display:flex; gap:8px; color:var(--text-2); white-space:nowrap; }
+.events time { color:var(--text-3); }
+.events .meta { margin-left:auto; color:var(--text-3); font-size:var(--fs-xs); white-space:nowrap; }
+.proto { position:fixed; right:8px; bottom:6px; font-size:10px; color:#f4b740aa; pointer-events:none; }
+/* Breakpoints (design §3) */
+@media (max-width:1439px) { :root { --fs-num:26px; } .grid { --att:56px; --ins:0px; } .att .row span, .att .note, .att h3 { display:none; } .att .row b { margin:0; font-size:var(--fs-m); } .att .row { justify-content:center; padding:9px 4px; flex-direction:column; gap:4px; } .ins-wrap { display:none; } .rail { width:56px; } .rail a span, .rail .sub { display:none; } }
+@media (min-width:1440px) and (max-width:1919px) { .grid { --att:232px; --ins:288px; } }
+@media (min-width:1920px) { .grid { --att:260px; --ins:320px; } }
+</style>
+</head>
+<body data-mode="3d">
+<header class="cmd"><span class="brand">U·DAO</span><span class="brand-t">友道智造 / 全国行车设备运营平台</span>
+  <span class="scope">地图聚焦项目：不聚焦（全部已授权项目） ▾</span>
+  <div class="right"><span>● 会话已验证</span><span>11/06 16:49:15</span><span>审查员</span></div></header>
+<div class="body">
+  <nav class="rail"><a class="on">▣ <span>数字沙盘</span></a><a>▤ <span>项目组合</span></a><a>▥ <span>项目</span></a><a>▦ <span>资产与设备</span></a><a class="sub">资产台账</a><a class="sub">位置中心</a><a class="sub">设备目录</a><a>◔ <span>运营</span></a><a>△ <span>告警</span></a></nav>
+  <main>
+    <div class="head"><h1>全国设备运营态势</h1><span class="asof">数据截至 16:49:15 · Cloud API 最近同步 · 原型数值来自 H0 测量用匿名示例</span>
+      <div class="seg" role="tablist"><button id="b2d">轻量视图</button><button id="b3d" class="on">三维沙盘</button></div></div>
+    <section class="kpis" aria-label="核心指标（点击即过滤）">
+      <div class="kpi"><span>Inventory 设备</span><b>10<small>台</small></b><em>9 个项目 · 未配置位置 9</em><i class="tag">INVENTORY</i></div>
+      <div class="kpi ok"><span>真实运行</span><b>0<small>台</small></b><em>REAL · 在线 0 · 运行 0</em></div>
+      <div class="kpi crit sel"><span>告警设备</span><b>1<small>台</small></b><em>最近告警记录 1 条（非未处理数）</em></div>
+      <div class="kpi"><span>离线 / 状态未知</span><b>0<small>台</small></b><em>有 Runtime Binding 但未连接</em></div>
+      <div class="kpi warn"><span>尚未投运</span><b>9<small>台</small></b><em>无 Runtime Binding · SIM 1 台另计</em></div>
+    </section>
+    <section class="grid">
+      <aside class="panel att" aria-label="需要关注">
+        <h3>需要关注 <small>按严重度</small></h3>
+        <div class="row"><i style="background:var(--critical)"></i><span>告警设备</span><b>1</b></div>
+        <div class="row"><i style="background:var(--text-3)"></i><span>离线 / 未知</span><b>0</b></div>
+        <div class="row"><i style="background:var(--warning)"></i><span>尚未投运</span><b>9</b></div>
+        <div class="row"><i style="background:#7b8ea3"></i><span>无空间位置</span><b>9</b></div>
+        <div class="row na"><i style="background:#2b3d4f"></i><span>维护工单</span><b>未接入</b></div>
+        <div class="row na"><i style="background:#2b3d4f"></i><span>检验到期</span><b>未接入</b></div>
+        <p class="note">点击条目 = 设置过滤器（写入 URL ?status=），地图与右侧列表同步过滤；再次点击取消。</p>
+      </aside>
+      <div class="stage" aria-label="空间分布">
+        <div class="layer l3d"><img class="map3d" src="map-3d-sample.jpg" alt="三维沙盘（现有 MapSceneManager 渲染截图）" /></div>
+        <div class="layer svg2d" hidden></div>
+        <div class="crumb"><b>全国</b><span>· 点击省份下钻</span></div>
+        <div class="tools"><span>运营视角 | 立体视角</span><span>↺</span><span>⌖</span></div>
+        <div class="dock"><span class="on">行政区</span><span>资产</span><span>告警</span></div>
+        <p class="legal">开发边界：DataV.GeoAtlas · 仅限内部原型，未经审图；公开展示前须替换合规地图并标注来源 / 审图号</p>
+      </div>
+      <div class="ins-wrap"><aside class="panel ins" aria-label="Inspector" style="height:100%">
+        <h3>告警设备 <small>过滤：告警</small></h3>
+        <div class="kv"><span>范围</span><b>全部授权项目</b><span>空间</span><b>全国</b><span>数据时间</span><b>16:49:15</b></div>
+        <div class="item"><span>SIM-020 · 负载告警<br /><small>Project-A · 无空间位置</small></span><small>16:49</small></div>
+        <div class="item"><span style="color:var(--text-3)">其余项目在过滤下隐藏</span></div>
+      </aside></div>
+    </section>
+    <section class="events" aria-label="最近事件"><strong>最近事件</strong>
+      <div class="ev"><time>2026-10-22 16:49:15</time><span style="color:var(--critical)">告警</span><span>Cloud 测试负载告警 · SIM-020</span></div>
+      <span class="meta">最近 100 条告警记录中的最新 1 条 · 非未处理告警数 · 上海时间</span></section>
+  </main>
+</div>
+<p class="proto">H1-0 静态原型 · 非实现</p>
+<script>
+// Inline the SVG for the 2D mode and mark provinces (prototype only).
+fetch('china-2d-provinces.svg').then(r => r.text()).then(t => {
+  const l = document.querySelector('.svg2d'); l.innerHTML = t;
+  for (const c of ['330000','440000','510000','460000','530000']) l.querySelector(`[data-code="${c}"]`)?.classList.add('has');
+});
+const set = (m) => { document.body.dataset.mode = m; document.querySelector('.l3d').hidden = m !== '3d'; document.querySelector('.svg2d').hidden = m !== '2d';
+  b2d.classList.toggle('on', m === '2d'); b3d.classList.toggle('on', m === '3d'); };
+b2d.onclick = () => set('2d'); b3d.onclick = () => set('3d');
+if (location.hash === '#2d') set('2d');
+</script>
+</body>
+</html>

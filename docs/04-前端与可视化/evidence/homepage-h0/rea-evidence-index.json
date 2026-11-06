@@ -45,7 +45,8 @@
     "Network content reads settle within 5 seconds each and the observer does not request bodies from unfinished responses.",
     "Playwright scenario events do not expose request initiator stacks; receipt order does not prove causality.",
     "Storage values are hashed only after declared-secret redaction."
-   ]
+   ],
+   "classification": "exploratory-failed"
   },
   {
    "scenario": "p1-alarm-to-detail",
@@ -131,7 +132,8 @@
     "Network content reads settle within 5 seconds each and the observer does not request bodies from unfinished responses.",
     "Playwright scenario events do not expose request initiator stacks; receipt order does not prove causality.",
     "Storage values are hashed only after declared-secret redaction."
-   ]
+   ],
+   "classification": "formal"
   },
   {
    "scenario": "p2",
@@ -229,7 +231,8 @@
     "Network content reads settle within 5 seconds each and the observer does not request bodies from unfinished responses.",
     "Playwright scenario events do not expose request initiator stacks; receipt order does not prove causality.",
     "Storage values are hashed only after declared-secret redaction."
-   ]
+   ],
+   "classification": "formal"
   },
   {
    "scenario": "p3",
@@ -327,7 +330,8 @@
     "Network content reads settle within 5 seconds each and the observer does not request bodies from unfinished responses.",
     "Playwright scenario events do not expose request initiator stacks; receipt order does not prove causality.",
     "Storage values are hashed only after declared-secret redaction."
-   ]
+   ],
+   "classification": "formal"
   },
   {
    "scenario": "p4-1280",
@@ -389,7 +393,8 @@
     "Network content reads settle within 5 seconds each and the observer does not request bodies from unfinished responses.",
     "Playwright scenario events do not expose request initiator stacks; receipt order does not prove causality.",
     "Storage values are hashed only after declared-secret redaction."
-   ]
+   ],
+   "classification": "formal"
   },
   {
    "scenario": "p4-1366",
@@ -451,7 +456,8 @@
     "Network content reads settle within 5 seconds each and the observer does not request bodies from unfinished responses.",
     "Playwright scenario events do not expose request initiator stacks; receipt order does not prove causality.",
     "Storage values are hashed only after declared-secret redaction."
-   ]
+   ],
+   "classification": "formal"
   },
   {
    "scenario": "s1",
@@ -507,6 +513,130 @@
     "Network content reads settle within 5 seconds each and the observer does not request bodies from unfinished responses.",
     "Playwright scenario events do not expose request initiator stacks; receipt order does not prove causality.",
     "Storage values are hashed only after declared-secret redaction."
+   ],
+   "classification": "exploratory-failed"
+  }
+ ],
+ "external_public_demos": [
+  {
+   "scenario": "g1",
+   "evidence_id": "ev_68bc3ed5e4d15709adbefc92c86b2a4f8d5eb830d0bce67c07dacf5b9d0b5193",
+   "start_url": "https://play.grafana.org/d/qD-rVv6Mz/state-timeline-and-status-history?orgId=1&from=now-6h&to=now",
+   "steps": [
+    {
+     "step_id": "scenario_start",
+     "status": "completed",
+     "after_url": "https://play.grafana.org/d/qD-rVv6Mz/state-timeline-and-status-history?orgId=1&from=now-6h&to=now"
+    },
+    {
+     "step_id": "loaded",
+     "status": "completed",
+     "after_url": "https://play.grafana.org/d/qD-rVv6Mz/state-timeline-and-status-history?orgId=1&from=now-6h&to=now&timezone=browser"
+    },
+    {
+     "step_id": "settle",
+     "status": "completed",
+     "after_url": "https://play.grafana.org/d/qD-rVv6Mz/state-timeline-and-status-history?orgId=1&from=now-6h&to=now&timezone=browser"
+    },
+    {
+     "step_id": "open-picker",
+     "status": "completed",
+     "after_url": "https://play.grafana.org/d/qD-rVv6Mz/state-timeline-and-status-history?orgId=1&from=now-6h&to=now&timezone=browser"
+    },
+    {
+     "step_id": "picker",
+     "status": "completed",
+     "after_url": "https://play.grafana.org/d/qD-rVv6Mz/state-timeline-and-status-history?orgId=1&from=now-6h&to=now&timezone=browser"
+    },
+    {
+     "step_id": "last-24h",
+     "status": "completed",
+     "after_url": "https://play.grafana.org/d/qD-rVv6Mz/state-timeline-and-status-history?orgId=1&from=now-24h&to=now&timezone=browser"
+    },
+    {
+     "step_id": "applied",
+     "status": "completed",
+     "after_url": "https://play.grafana.org/d/qD-rVv6Mz/state-timeline-and-status-history?orgId=1&from=now-24h&to=now&timezone=browser"
+    },
+    {
+     "step_id": "history-back",
+     "status": "completed",
+     "after_url": "https://play.grafana.org/d/qD-rVv6Mz/state-timeline-and-status-history?orgId=1&from=now-6h&to=now"
+    },
+    {
+     "step_id": "reloaded",
+     "status": "completed",
+     "after_url": "https://play.grafana.org/d/qD-rVv6Mz/state-timeline-and-status-history?orgId=1&from=now-6h&to=now&timezone=browser"
+    }
+   ]
+  },
+  {
+   "scenario": "g2",
+   "evidence_id": "ev_de82723e08f787f3439047cf9e4144c34f0c9f192bb59aaa9574e59eaf1b8387",
+   "start_url": "https://play.grafana.org/d/testdata-nested-variables-drilldown?orgId=1&from=now-6h&to=now",
+   "steps": [
+    {
+     "step_id": "scenario_start",
+     "status": "completed",
+     "after_url": "https://play.grafana.org/d/testdata-nested-variables-drilldown?orgId=1&from=now-6h&to=now"
+    },
+    {
+     "step_id": "loaded",
+     "status": "completed",
+     "after_url": "https://play.grafana.org/d/testdata-nested-variables-drilldown/templating-nested-variables-drilldown?orgId=1&from=now-6h&to=now&timezone=browser&var-datacenter=A&var-server=$__all&var-pod=$__all"
+    },
+    {
+     "step_id": "settle",
+     "status": "completed",
+     "after_url": "https://play.grafana.org/d/testdata-nested-variables-drilldown/templating-nested-variables-drilldown?orgId=1&from=now-6h&to=now&timezone=browser&var-datacenter=A&var-server=$__all&var-pod=$__all"
+    },
+    {
+     "step_id": "deep-var",
+     "status": "completed",
+     "after_url": "https://play.grafana.org/d/testdata-nested-variables-drilldown?orgId=1&from=now-6h&to=now&var-datacenter=B&var-server=BB&viewPanel=panel-4"
+    },
+    {
+     "step_id": "deep-settle",
+     "status": "completed",
+     "after_url": "https://play.grafana.org/d/testdata-nested-variables-drilldown/templating-nested-variables-drilldown?orgId=1&from=now-6h&to=now&var-datacenter=B&var-server=BB&viewPanel=panel-4&timezone=browser&var-pod=$__all"
+    },
+    {
+     "step_id": "esc",
+     "status": "completed",
+     "after_url": "https://play.grafana.org/d/testdata-nested-variables-drilldown/templating-nested-variables-drilldown?orgId=1&from=now-6h&to=now&var-datacenter=B&var-server=BB&timezone=browser&var-pod=$__all"
+    },
+    {
+     "step_id": "after-esc",
+     "status": "completed",
+     "after_url": "https://play.grafana.org/d/testdata-nested-variables-drilldown/templating-nested-variables-drilldown?orgId=1&from=now-6h&to=now&var-datacenter=B&var-server=BB&timezone=browser&var-pod=$__all"
+    },
+    {
+     "step_id": "bad-var",
+     "status": "completed",
+     "after_url": "https://play.grafana.org/d/testdata-nested-variables-drilldown?orgId=1&from=now-6h&to=now&var-datacenter=ZZZ-NOT-EXIST"
+    },
+    {
+     "step_id": "bad-settle",
+     "status": "completed",
+     "after_url": "https://play.grafana.org/d/testdata-nested-variables-drilldown/templating-nested-variables-drilldown?orgId=1&from=now-6h&to=now&var-datacenter=ZZZ-NOT-EXIST&timezone=browser&var-server=$__all&var-pod=$__all"
+    }
+   ]
+  },
+  {
+   "scenario": "t1",
+   "evidence_id": "ev_50a71c3f8ee0ee8870296299e215cc1092da9d8edc60bc955642b1ce0ed9074f",
+   "start_url": "https://demo.thingsboard.io/",
+   "steps": [
+    {
+     "step_id": "scenario_start",
+     "status": "completed",
+     "after_url": "https://demo.thingsboard.io/"
+    },
+    {
+     "step_id": "settle",
+     "status": "completed",
+     "after_url": "https://demo.thingsboard.io/login"
+    }
    ]
   }
  ]

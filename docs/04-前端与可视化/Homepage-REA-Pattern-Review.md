@@ -17,7 +17,9 @@
 | 目标 | 仅本仓库 `d97c0a7` 的本地 web-console（demo 模式 dev server，无身份认证）。**未分析任何第三方商业平台**；第三方模式沿用已有《B4 数字孪生 REA 模式研究》中基于公开文档的结论，本轮没有新增可观察证据，下文明确标为「既有文献结论」 |
 | 版本差异 | 官方文档（main）描述了 `validate-browser-scenario`，6.8.0 CLI 不存在该命令；`browser.args` 不被接受（WebGL 仍可用） |
 
-运行的 REA 场景（Evidence ID 见 `evidence/homepage-h0/rea-evidence-index.json`）：
+运行的 REA 场景（Evidence ID 见 `evidence/homepage-h0/rea-evidence-index.json`，其中 `classification` 区分正式与探索性运行）：
+
+**正式运行：5 组，全部步骤完成**（P4 含 1280 与 1366 两次运行，按场景计为第 4 组的两个视口）。另有 **2 次探索性运行失败**，未用于任何结论：`min`（定位器 `.province-summary` 命中 34 个元素，严格模式失败）与 `s1`（第一次因 `browser.args` 不被接受而报输入错误，修正后又因 vite 进程随上一次 bash 调用退出而连接被拒）。H0 初版文档未写明这 2 次失败，此处更正。
 
 | 场景 | 视口 | 步骤 | Evidence |
 |---|---|---|---|
@@ -87,11 +89,45 @@
 - **适配方案**：见设计文档 §4 线框；1280/1366 下左右栏变为可收起抽屉，地图至少占视口 45 %。
 - **验证方法**：Playwright 在 1280/1366/1440/1920/2560 断言：地图净可见面积占比阈值（1280 ≥ 40 %）、关键控件 elementFromPoint 命中自身、无横向溢出、可见文本最小 10 px。
 
-## 5. 既有文献结论（本轮未新增观察）
+## 5. 第三方公开 Demo 研究（H1-3 补充）
+
+只在无需登录的公开范围内操作；没有登录、注册、绕过认证或抓取私有代码。所有运行使用同一 rea-agents 6.8.0 `capture-browser-scenario`，Evidence 见 `rea-evidence-index.json` 的 `external_public_demos`。
+
+### 5.1 Grafana：URL 中的时间上下文与变量（已实际观察）
+
+- **来源**：`https://play.grafana.org`（Grafana 官方公开演示站，匿名可读，版本 13.4.0），仪表板 `qD-rVv6Mz`（State timeline）与 `testdata-nested-variables-drilldown`。
+- **可复现步骤**（Evidence `ev_68bc3ed5…`、`ev_de82723e…`）：
+  1. 打开 `…/d/qD-rVv6Mz/…?orgId=1&from=now-6h&to=now`。
+  2. 点击时间选择器 → 选择 "Last 24 hours"。
+  3. `goto` 回到 `from=now-6h` 的原始 URL（等价于用户用历史/分享链接回到旧状态）。
+  4. 打开嵌套变量仪表板，`goto` 带 `var-datacenter=B&var-server=BB&viewPanel=panel-4` 的深链 → 按 Esc。
+  5. `goto` 带不存在的变量值 `var-datacenter=ZZZ-NOT-EXIST`。
+- **实际观察**：
+  - 加载后 URL 被规范化补全：追加 `timezone=browser`，变量默认值写入 `var-server=$__all&var-pod=$__all`——URL 始终是完整状态的序列化，而不是只记用户改过的项。
+  - 选择 Last 24 hours 后 URL 立即变为 `from=now-24h`，且保持**相对时间**表达（不是绝对时间戳），分享出去仍是「最近 24 小时」。
+  - 通过 URL 回到 `from=now-6h` 时界面恢复为 Last 6 hours。
+  - `viewPanel=panel-4` 深链直接打开单面板视图，面包屑显示 "View panel"，变量 `B / BB` 生效、`pod` 选项按 `server` 级联（BBA…BBH）（`ext-grafana-viewpanel-vars.webp`）。按 Esc 后 URL **只移除** `viewPanel`，其余状态保留。
+  - 不存在的变量值 `ZZZ-NOT-EXIST` 被原样接受并显示在选择器中，面板渲染出空结果，没有回退或提示（`ext-grafana-invalid-var.webp`）。
+- **局限**：只观察了匿名可读仪表板；未观察编辑、登录后的权限过滤；未检查浏览器原生前进/后退按钮（REA 6.8.0 动作集无 back/forward，用 `goto` 代替），因此「历史栈条目粒度」未直接观察到。
+- **对本项目的适配**：
+  - 首页 URL 应在加载后被**规范化**：缺省值不必全部写入，但已生效的范围（`project`、`region`）要写回，保证复制的链接可复现当前画面。
+  - 浮层/聚焦类状态（Inspector 打开的资产）用独立参数（`asset=`），关闭时只删除该参数——对应 Grafana `viewPanel`。
+  - **不照搬** Grafana 对非法变量的「原样接受」：本项目 `region` 未知或无权限时必须回退到全国并给出提示（H1-2 D3 要求），因为空地图会被误读为「该区域无设备」。
+  - 时间上下文目前首页没有用户可选时间范围（数据为最近同步快照），本轮不新增时间选择器；仅显示「数据截至」时间（H2）。
+
+### 5.2 ThingsBoard：Dashboard State（NOT_OBSERVED，仅公开文档）
+
+- **来源**：`https://demo.thingsboard.io`（官方 Demo）与 `https://thingsboard.io/docs/user-guide/dashboards/`、`/docs/user-guide/actions/`。
+- **实际观察**：打开 Demo 直接重定向到 `/login`（`ext-thingsboard-demo-login.webp`，Evidence `ev_50a71c3f…`）。仪表板需要账号，按授权边界**未登录、未注册**，因此 Dashboard State 的交互行为为 **NOT_OBSERVED**。
+- **公开文档记载（非观察）**：仪表板由多个命名 state 组成，有一个 root state（如设备列表）和详情 state（如单设备）；widget 动作类型包括「Navigate to new dashboard state」「Update current dashboard state（只更新实体上下文，不切换 state）」「Navigate to other dashboard」；地图 widget 支持 marker/polygon 点击作为动作来源。
+- **对本项目的适配（基于文档，需在授权环境验证）**：首页的「全国 → 区域 → 项目 → 设备」可视为同一页面的 state 序列；地图点击、列表点击、Attention 点击都应映射到同一组状态转换（本项目用 URL 参数 + Pinia 实现），而不是各组件各自持有选中状态。「只更新实体上下文」对应本项目在同一区域内切换选中资产（只改 `asset=`，不重新钻取）。
+- **验证方法**：如 OWNER 提供 ThingsBoard 授权账号，可用同一 REA 场景格式记录 state 切换时的 URL 变化。
+
+## 6. 既有文献结论（本轮未新增观察）
 
 《Phase1-A1.1-R2-B4-数字孪生REA模式研究》中 DataV / ThingJS / Hightopo / AntV L7 / deck.gl / Cesium 的结论继续有效：拾取优先级、语义缩放、标签分层、InstancedMesh 状态色、IDLE 不空转。本轮没有在授权范围内访问这些商业平台的实际产品，不能作为新的「实际观察」。
 
-## 6. 尚未观察 / 限制
+## 7. 尚未观察 / 限制
 
 - 真实 Keycloak + PostgreSQL 环境的首页（REA 未连接；B4 CI 环境为 Playwright 专用，未接入 REA）。
 - 真实 GPU 下的帧时间与交互延迟（SwiftShader 不代表 GPU）。
