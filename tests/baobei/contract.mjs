@@ -35,6 +35,9 @@ for (const file of readdirSync('apps/project-intake-web/src').filter((f) => f.en
   }
 }
 assert(actions >= 20);
+// Test isolation: only the B3 staff spec may use the accounts it irreversibly suspends.
+for (const file of readdirSync('tests/baobei/e2e').filter((f) => f.endsWith('.ts') && f !== 'staff.spec.ts'))
+  assert(!/['"`]synthetic-staff-/.test(readFileSync(resolve('tests/baobei/e2e', file), 'utf8')), file + ' uses a B3-suspended account');
 console.log(`OpenAPI, transfer schema/hash and ${actions} action bindings PASS`);
 
 assert.equal(

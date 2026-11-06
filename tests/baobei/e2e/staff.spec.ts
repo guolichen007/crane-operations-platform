@@ -6,7 +6,12 @@ test.use({ actionTimeout: 10000 });
 async function login(page: Page, subject: string) {
   await page.goto('/login');
   await page.locator('select').selectOption(subject);
+  const response = page.waitForResponse((r) => new URL(r.url()).pathname === '/auth/dev');
   await action(page, 'auth.dev-login').click();
+  // B3 suspends its own dedicated synthetic-staff-* account; reactivation needs
+  // a maintenance receipt, so a second run on the same database cannot log in.
+  if ((await response).status() === 403)
+    throw new Error(`fixture: ${subject} was suspended by an earlier run; B3 needs a fresh synthetic database`);
   await expect(page.getByRole('heading', { name: '工作台', exact: true })).toBeVisible();
 }
 
