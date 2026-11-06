@@ -1,0 +1,14 @@
+# Gitleaks fingerprint exceptions — each entry is one exact commit:file:rule:line.
+# Never add path or rule wildcards here; new findings must keep failing the scan.
+#
+# 2026-11-06 generic-api-key, commit 46a50f0 (branch product/baobei-v1, not in
+# feature/phase1-a1-1-r2-asset-operations history). Reached by this branch's
+# security job because CI checks out all refs (fetch-depth 0) and `gitleaks git`
+# scans every ref. The match is `const key = 'intent-key-…'` in a Vitest unit
+# test: a 21-char synthetic Idempotency-Key (charset [a-z0-9-], prefix
+# "intent-key-") sent to a stubbed fetch — no service, account or token exists
+# behind it. Removed from the file in a87e4bd; present in no branch tip.
+# Verified 2026-11-06 with gitleaks v8.30.1 --redact=100: full history → 1
+# finding (this one); with this entry → no leaks; a newly committed synthetic
+# key still fails (counter-proof).
+46a50f040a09507e3cade02ea4d9e50e6b0942a1:apps/project-intake-web/src/api-client.test.ts:generic-api-key:62

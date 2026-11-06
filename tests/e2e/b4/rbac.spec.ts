@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { login } from './login';
-import { code, assertWriteTarget } from './run';
+import { code, assertWriteTarget, createAsset } from './run';
+import { sessionCsrf } from './login';
 
 // Gate D: role matrix, project isolation and CSRF are asserted on both surfaces —
 // the UI hides the write entry, and the server rejects the same write. Each case
@@ -22,6 +23,11 @@ for (const c of roleCases) {
     await expect(page.getByTestId('asset-center')).toBeVisible();
     await expect(page.getByTestId('asset-create')).toHaveCount(c.createVisible);
     const assetCode = code('CRN', 'RBAC-' + c.user.toUpperCase());
+    if (c.status === 201) {
+      // Success path: strict create (exact 201, id, code and project checked).
+      await createAsset(page, await sessionCsrf(page), { projectId: 'P001', assetType: 'CRANE', assetCode });
+      return;
+    }
     const status = await page.evaluate(async (assetCode) => {
       const s = await (await fetch('/auth/session')).json();
       const res = await fetch('/api/v1/assets', {
