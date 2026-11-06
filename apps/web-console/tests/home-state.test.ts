@@ -66,6 +66,9 @@ describe('home-url', () => {
     const w = homeQueryFor(state({ regionPath: [330000], regionTarget: [330000] }), { other: 'x' });
     expect(w).toEqual({ query: { other: 'x', region: '330000' }, history: 'push' });
   });
+  it('reset to country while the scene is still deep: region is removed (no stale value to re-apply)', () => {
+    expect(homeQueryFor(state({ regionPath: [330000, 330400, 330481], regionTarget: [] }), { region: '330481', asset: 'D1' })).toEqual({ query: {}, history: 'push' });
+  });
   it('does not write intermediate levels while converging to a deep link', () => {
     // URL asks for 330481; scene has only reached 330000 so far.
     expect(homeQueryFor(state({ regionPath: [330000], regionTarget: [330000, 330400, 330481] }), { region: '330481' })).toBeNull();

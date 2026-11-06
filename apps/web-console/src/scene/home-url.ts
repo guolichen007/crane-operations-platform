@@ -2,7 +2,7 @@
 // tested). The store is the single source of truth; the URL is a serialization
 // of it. Reading and writing are separate functions so a caller can compare and
 // skip no-op writes, which is what prevents URL ↔ Pinia ↔ Scene loops.
-import { parseRegionParam, regionParamOf, samePath } from './region-path';
+import { parseRegionParam, regionParamOf } from './region-path';
 import { parseStatusParam, parseViewParam, type HomeStatusFilter, type HomeView } from './home-metrics';
 
 export type HomeQuery = Record<string, string | undefined>;
@@ -53,16 +53,19 @@ export type HomeQueryWrite = { query: HomeQuery; history: 'push' | 'replace' } |
 
 /**
  * The query the current state should be serialized to, or null when the URL
- * already matches. Region is written only when the displayed path has reached
- * the requested one (no intermediate levels during a multi-step drill), so a
- * deep link is never truncated by its own convergence. Navigation-like changes
+ * already matches. Region is the requested path's leaf (see below), so a deep
+ * link is never truncated by its own convergence. Navigation-like changes
  * (region / selection) push a history entry; filter/view changes replace.
  */
 export function homeQueryFor(state: HomeUrlState, current: Record<string, unknown>): HomeQueryWrite {
   const next: HomeQuery = {};
   for (const [k, v] of Object.entries(current)) if (typeof v === 'string') next[k] = v;
-  const converged = samePath(state.regionPath, state.regionTarget);
-  if (converged) next.region = regionParamOf(state.regionPath);
+  // The requested path is what the URL represents: it is set by the URL itself
+  // (deep link) or by a user action, and the scene converges to it. Serializing
+  // the displayed path instead would either truncate a deep link mid-drill or
+  // keep a stale region while the scene backs out (which the URL would then
+  // re-apply — a loop).
+  next.region = regionParamOf(state.regionTarget);
   next.asset = state.selectedId || undefined;
   next.project = state.selectedId ? undefined : state.selectedProjectId || undefined;
   next.status = state.status !== 'all' ? state.status : undefined;

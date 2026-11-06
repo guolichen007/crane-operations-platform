@@ -1,8 +1,12 @@
-// H0 homepage audit (baseline d97c0a7): reproductions of confirmed defects on the
-// current Overview. Each is marked test.fail(): it PASSES in CI while the defect
-// exists, and turns red as soon as H1/H2 fixes it — the marker must then be
-// removed so the test becomes a regular guard. Real browser, mocked API (no
-// server writes). See docs/04-前端与可视化/Homepage-H0-首页审查与布局设计.md.
+// Homepage defect counter-proofs. Real browser, mocked API (no server writes).
+//
+// H0-D1 (empty province counted as a province) and H0-D2 (UTC event time) are
+// H2 data-correctness items and remain expected failures: D2 here (test.fail),
+// D1 at its source in apps/web-console/tests/data.test.ts (it.fails) because the
+// H1 homepage no longer renders the province count. Each turns red when fixed.
+//
+// H0-D3 (region deep link) and H0-D4 (left navigation occluded) were fixed in
+// H1 and are now required tests driven by real mouse/keyboard input.
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { cloudDevice, cloudAlarm, cloudTime } from '../../../apps/web-console/tests/cloud-fixtures';
@@ -14,68 +18,175 @@ const session = {
   csrfToken: 'synthetic-csrf-test-only', expiresAt: '2099-01-01T00:00:00Z', idleExpiresAt: '2099-01-01T00:00:00Z',
 };
 
-/** The anonymous example inventory as served: no project has a province configured. */
-async function inventoryFixture(page: Page) {
+/** Example inventory with P001 located in Haining (330481) so drill-down has real content. */
+async function inventoryFixture(page: Page, opts: { located?: boolean; empty?: boolean } = {}) {
   await page.route('**/auth/session', (r) => r.fulfill({ json: session }));
-  const projects = example.projects.map((p: { id: string }) => ({
-    ...p, adminCode: null, simulatedCount: 0, runtimeDeviceCount: 0, realConnectedCount: 0,
-    assetDeviceCount: example.assetDevices.filter((a: { projectId: string }) => a.projectId === p.id).length,
-  }));
-  const assets = example.assetDevices.map((a: object) => ({ ...a, runtimeSource: null, runtimeDeviceId: null, connectivity: null }));
+  const projects = opts.empty
+    ? []
+    : example.projects.map((p: { id: string }, i: number) => ({
+        ...p,
+        adminCode: opts.located && i === 0 ? 330481 : null,
+        simulatedCount: 0, runtimeDeviceCount: 0, realConnectedCount: 0,
+        assetDeviceCount: example.assetDevices.filter((a: { projectId: string }) => a.projectId === p.id).length,
+      }));
+  const assets = opts.empty ? [] : example.assetDevices.map((a: object) => ({ ...a, runtimeSource: null, runtimeDeviceId: null, connectivity: null }));
   await page.route('**/api/v1/**', (r) => {
     const path = new URL(r.request().url()).pathname;
     return r.fulfill({
       json: path === '/api/v1/projects' ? projects : path === '/api/v1/assets/devices' ? assets
-        : path === '/api/v1/devices' ? [cloudDevice('SIM-P001-01')] : path === '/api/v1/alarms' ? [cloudAlarm()] : {},
+        : path === '/api/v1/devices' ? (opts.empty ? [] : [cloudDevice('SIM-P001-01')]) : path === '/api/v1/alarms' ? (opts.empty ? [] : [cloudAlarm()]) : {},
     });
   });
 }
-async function open(page: Page) {
-  await page.goto('/#/overview');
+async function open(page: Page, hash = '/#/overview') {
+  await page.goto(hash);
   await expect(page.locator('.province-summary')).toHaveCount(34);
   await expect(page.locator('.scene-loading')).toBeHidden();
 }
+const main = (page: Page) => page.locator('main.overview');
+const regionParam = (page: Page) => new URL(page.url().replace('#/', '')).searchParams.get('region');
 
-test('H0-D1 省级覆盖：所有项目均未配置省份时，不得显示「覆盖 1 个省级区域」', async ({ page }) => {
-  test.fail(true, 'H0-D1: aggregate() counts the empty province "" as one province');
-  await inventoryFixture(page);
-  await open(page);
-  // Every example project has province "" — the true count of covered provinces is 0.
-  expect(example.projects.every((p: { province: string }) => p.province === '')).toBe(true);
-  await expect(page.locator('.kpi-strip')).not.toContainText('覆盖 1 个省级区域');
-});
+/** Click a visible, unobstructed element with the real mouse (fails if covered). */
+async function realClick(page: Page, selector: string) {
+  const el = page.locator(selector).first();
+  await el.scrollIntoViewIfNeeded();
+  const box = (await el.boundingBox())!;
+  const x = box.x + box.width / 2, y = box.y + box.height / 2;
+  const hit = await page.evaluate(({ x, y, selector }) => {
+    const top = document.elementFromPoint(x, y);
+    const target = document.querySelector(selector);
+    return !!top && !!target && (top === target || target.contains(top));
+  }, { x, y, selector });
+  expect(hit, `${selector} 未被遮挡`).toBe(true);
+  await page.mouse.click(x, y);
+}
 
 test('H0-D2 事件时间：Cloud 告警时间按上海时区显示，而不是截取 UTC 字符串', async ({ page }) => {
-  test.fail(true, 'H0-D2: provider.ts renders sentAt.slice(11, 19), i.e. UTC, next to a Shanghai clock');
+  test.fail(true, 'H0-D2 (H2): provider.ts renders sentAt.slice(11, 19), i.e. UTC, next to a Shanghai clock');
   await inventoryFixture(page);
   await open(page);
-  // cloudTime = 2026-10-22T08:49:15Z → 16:49:15 in Asia/Shanghai.
-  expect(cloudTime.startsWith('2026-10-22T08:49:15')).toBe(true);
+  expect(cloudTime.startsWith('2026-10-22T08:49:15')).toBe(true); // → 16:49:15 Asia/Shanghai
   await expect(page.locator('.event-item time').first()).toHaveText('16:49:15');
 });
 
-test('H0-D3 地图钻取写回 URL：进入省级后地址带 ?region=，刷新可恢复', async ({ page }) => {
-  test.fail(true, 'H0-D3: ?region= is read on load but never written back on drill-down (one-way link)');
-  await inventoryFixture(page);
+test('D3 真实鼠标逐级钻取：省→市→县写回 ?region=，刷新恢复，后退/前进正确', async ({ page }) => {
+  test.setTimeout(150000);
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await inventoryFixture(page, { located: true });
   await open(page);
-  // The chip is occluded by the event strip at this size (H0-D4), so the drill is
-  // triggered through the DOM to isolate this defect from that one.
-  await page.locator('.region-chips button').first().dispatchEvent('click');
-  await expect(page.locator('main.overview')).not.toHaveAttribute('data-adcode', '100000');
-  await expect(page).toHaveURL(/[?&]region=\d{6}/, { timeout: 5000 });
+  for (const code of ['330000', '330400', '330481']) {
+    await realClick(page, `[data-testid=region-nav] [data-region-code="${code}"]`);
+    await expect(main(page)).toHaveAttribute('data-adcode', code);
+    await expect(main(page)).toHaveAttribute('data-scene-state', 'REGION_IDLE');
+    await expect.poll(() => regionParam(page)).toBe(code);
+  }
+  await expect(page.getByRole('navigation', { name: '行政区路径' })).toContainText('海宁市');
+  // Refresh restores the full path, not just the leaf.
+  await page.reload();
+  await expect(main(page)).toHaveAttribute('data-adcode', '330481', { timeout: 30000 });
+  await expect(page.getByRole('navigation', { name: '行政区路径' })).toContainText('浙江省');
+  await expect(page.getByRole('navigation', { name: '行政区路径' })).toContainText('嘉兴市');
+  // Back → 嘉兴, back → 浙江, forward → 嘉兴.
+  await page.goBack();
+  await expect.poll(() => regionParam(page)).toBe('330400');
+  await expect(main(page)).toHaveAttribute('data-adcode', '330400', { timeout: 20000 });
+  await page.goBack();
+  await expect(main(page)).toHaveAttribute('data-adcode', '330000', { timeout: 20000 });
+  await page.goForward();
+  await expect(main(page)).toHaveAttribute('data-adcode', '330400', { timeout: 20000 });
+  await expect.poll(() => regionParam(page)).toBe('330400');
+  // Breadcrumb (real click) back to the country clears ?region=.
+  await page.getByRole('navigation', { name: '行政区路径' }).getByRole('button', { name: '全国' }).click();
+  await expect(main(page)).toHaveAttribute('data-adcode', '100000', { timeout: 20000 });
+  await expect.poll(() => regionParam(page)).toBeNull();
 });
 
-test('H0-D4 1366×768：行政区导航入口未被底部事件条遮挡', async ({ page }) => {
-  test.fail(true, 'H0-D4: left-context sections overlap (chips under .source-filter after scroll; under .event-strip before) at 1280–1920');
-  await page.setViewportSize({ width: 1366, height: 768 });
-  await inventoryFixture(page);
+test('D3 直接打开 ?region=330481 恢复海宁市上下文（三维与二维一致）', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await inventoryFixture(page, { located: true });
+  await page.goto('/#/overview?region=330481');
+  await expect(main(page)).toHaveAttribute('data-adcode', '330481', { timeout: 30000 });
+  await expect(page.getByRole('navigation', { name: '行政区路径' })).toContainText('浙江省');
+  expect(regionParam(page)).toBe('330481');
+  // Switching to 2D keeps the same context (shared store, no second state).
+  await page.getByRole('button', { name: '轻量视图' }).click();
+  await expect(page.getByTestId('spatial-2d')).toHaveAttribute('data-region', '330481');
+  await expect(page).toHaveURL(/view=2d/);
+  expect(regionParam(page)).toBe('330481');
+});
+
+test('D3 未知区域回退全国并提示；URL 以 replace 清理（后退不再落回坏链接），无循环写入', async ({ page }) => {
+  await inventoryFixture(page, { located: true });
   await open(page);
-  const chip = page.locator('.region-chips button').first();
-  await chip.scrollIntoViewIfNeeded();
-  const box = (await chip.boundingBox())!;
-  const topmost = await page.evaluate(({ x, y }) => {
-    const el = document.elementFromPoint(x, y) as HTMLElement | null;
-    return el?.closest('.region-chips') ? 'chip' : el?.className ?? 'none';
-  }, { x: box.x + box.width / 2, y: box.y + box.height / 2 });
-  expect(topmost).toBe('chip');
+  const before = await page.evaluate(() => history.length);
+  await page.evaluate(() => { location.hash = '#/overview?region=999999'; });
+  await expect(page.getByTestId('home-notice')).toContainText('999999');
+  await expect(main(page)).toHaveAttribute('data-adcode', '100000');
+  await expect.poll(() => regionParam(page)).toBeNull();
+  await page.waitForTimeout(1500);
+  // The bad entry was replaced in place: exactly one new history entry (the
+  // user's own navigation), and its URL is now the corrected one.
+  expect(await page.evaluate(() => history.length)).toBe(before + 1);
+  expect(page.url()).not.toContain('999999');
+  const stable = page.url();
+  await page.waitForTimeout(1000);
+  expect(page.url()).toBe(stable); // no further writes (no loop)
+  await page.goBack();
+  await expect.poll(() => page.url()).not.toContain('999999');
+  await page.goto('/#/overview?region=abc');
+  await expect(page.getByTestId('home-notice')).toBeVisible();
+  await expect.poll(() => regionParam(page)).toBeNull();
+});
+
+test('D3 快速切换区域：旧的异步钻取失效，最终停在最后一次目标', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await inventoryFixture(page, { located: true });
+  await open(page);
+  // Three targets in quick succession, without waiting for the camera.
+  await page.evaluate(() => { location.hash = '#/overview?region=330481'; });
+  await page.evaluate(() => { location.hash = '#/overview?region=440000'; });
+  await page.evaluate(() => { location.hash = '#/overview?region=510000'; });
+  await expect(main(page)).toHaveAttribute('data-adcode', '510000', { timeout: 30000 });
+  await expect(main(page)).toHaveAttribute('data-scene-state', 'REGION_IDLE');
+  await page.waitForTimeout(1500);
+  await expect(main(page)).toHaveAttribute('data-adcode', '510000');
+  expect(regionParam(page)).toBe('510000');
+});
+
+for (const [w, h] of [[1280, 720], [1366, 768], [1920, 1080]] as const)
+  test(`D4 ${w}×${h}：行政区按钮可见、未被遮挡、真实鼠标与键盘均可操作`, async ({ page }) => {
+    await page.setViewportSize({ width: w, height: h });
+    await inventoryFixture(page, { located: true });
+    await open(page);
+    await realClick(page, '[data-testid=region-nav] [data-region-code="330000"]');
+    await expect(main(page)).toHaveAttribute('data-adcode', '330000', { timeout: 20000 });
+    // Keyboard: Tab to the next level's first chip and press Enter.
+    await expect(main(page)).toHaveAttribute('data-scene-state', 'REGION_IDLE');
+    const chip = page.locator('[data-testid=region-nav] [data-region-code="330400"]');
+    await chip.focus();
+    await expect(chip).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(main(page)).toHaveAttribute('data-adcode', '330400', { timeout: 20000 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+  });
+
+test('D4 125% 缩放（1280×720 屏幕 ≈ 1024×576 CSS px）：无横向溢出，导航可用', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 576 });
+  await inventoryFixture(page, { located: true });
+  await open(page);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+  await realClick(page, '[data-testid=region-nav] [data-region-code="330000"]');
+  await expect(main(page)).toHaveAttribute('data-adcode', '330000', { timeout: 20000 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+});
+
+test('空数据：无项目时显示明确空态，定位按钮禁用，统计无 NaN', async ({ page }) => {
+  await inventoryFixture(page, { empty: true });
+  await page.goto('/#/overview');
+  await expect(page.locator('.scene-loading')).toBeHidden();
+  await expect(page.getByTestId('home-empty')).toBeVisible();
+  await expect(page.getByRole('button', { name: '聚焦首个登记项目' })).toBeDisabled();
+  const text = await page.getByTestId('home-kpis').innerText();
+  expect(text).not.toMatch(/NaN|Infinity/);
+  await expect(page.locator('[data-kpi=devices] .home-kpi-value')).toContainText('0');
 });

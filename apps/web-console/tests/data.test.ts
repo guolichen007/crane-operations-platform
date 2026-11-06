@@ -88,3 +88,14 @@ it('云南三机状态与固定遥测在子集展开时不变', () => {
   for (const p of [...realProjects, ...demoProjects])
     expect(expandProjects([p])).toEqual(devices.filter((d) => d.id === p.id));
 });
+
+// H0-D1 (H2 item, kept as an expected failure): aggregate() counts projects with
+// no province configured as one province. The H1 homepage no longer renders this
+// number, so the counter-proof is kept here at the source of the defect. Remove
+// `.fails` when H2 fixes aggregate().
+describe('H0-D1 省份空值（H2 修复项）', () => {
+  it.fails('未配置省份的项目不计入覆盖省份数', () => {
+    const unconfigured = realProjects.slice(0, 2).map((p) => ({ ...p, province: '' }));
+    expect(aggregate(unconfigured).provinces).toBe(0);
+  });
+});
