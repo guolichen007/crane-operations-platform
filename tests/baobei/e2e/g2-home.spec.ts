@@ -29,7 +29,8 @@ async function api(p: Page, path: string, method = 'GET', body?: unknown) {
 const tile = (p: Page, label: string) => action(p, 'dashboard.task').filter({ hasText: label });
 
 test('home counts equal server totals beyond 100 records and tiles open the same list', async ({ page }, info) => {
-  await login(page, 'synthetic-staff-desktop');
+  // synthetic-staff-* accounts are suspended by staff.spec; use a sales account no suite changes.
+  await login(page, 'synthetic-c');
   const tag = `G2首页-${info.project.name}-${Date.now()}`;
   // 105 drafts so that any "first 100 records" computation would be wrong.
   for (let i = 0; i < 105; i++) expect((await api(page, '/api/v1/projects', 'POST', { projectName: `${tag}-${i}`, version: 1 })).status).toBe(200);
@@ -69,7 +70,7 @@ test('admin home: zero data, unassigned draft and reviewable count follow indepe
 });
 
 test('home distinguishes empty scope, network failure and no permission', async ({ page }) => {
-  await login(page, 'synthetic-staff-mobile');
+  await login(page, 'synthetic-c');
   const s = (await api(page, '/api/v1/workspace-summary')).body;
   if (s.counts.total === 0) {
     await expect(page.getByRole('heading', { name: '还没有报备' })).toBeVisible();
