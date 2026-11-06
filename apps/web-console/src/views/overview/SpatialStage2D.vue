@@ -5,18 +5,19 @@
 // clicking a region drills (store.navigateRegion), project/device lists open the
 // Inspector — no separate business state. It never loads Three.js, and it is the
 // fallback when WebGL is unavailable.
-import { computed, onUnmounted, ref, shallowRef, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { geoMercator } from 'd3-geo';
 import type { Feature, FeatureCollection } from 'geojson';
 import { ChevronRight, ArrowLeft } from 'lucide-vue-next';
 import { useOperations } from '../../stores/operations';
+import { sceneProvider } from '../../scene/provider';
 import { loadGeoManifest, childEntries, type GeoManifest } from '../../scene/geo-manifest';
 import { countryLevel, type MapLevel } from '../../three/map/DrilldownController';
 import { statusText, statusColor } from '../../data/types';
 
 const store = useOperations();
-const { visibleDevices, regionTarget, regionStack } = storeToRefs(store);
+const { visibleDevices, regionTarget, regionStack, selectedId, selectedProjectId } = storeToRefs(store);
 const W = 1000;
 const H = 640;
 const manifest = shallowRef<GeoManifest | null>(null);
@@ -70,9 +71,33 @@ async function load() {
   }
 }
 watch(() => regionTarget.value.join(','), () => void load(), { immediate: true });
+// Focus requests (Inspector lists, ?project= / ?asset= deep links). 2D has no
+// camera, so a request only selects — the same store action the 3D stage uses
+// after flying, so both views end in the same selection state.
+watch(
+  () => store.focusRequest?.seq,
+  () => {
+    const req = store.focusRequest;
+    if (!req) return;
+    store.focusRequest = null;
+    if (req.kind === 'device') {
+      if (sceneProvider.devices.value.some((d) => d.deviceId === req.id)) store.select(req.id);
+    } else if (sceneProvider.projects.value.some((p) => p.id === req.id)) store.selectProject(req.id);
+  },
+  { immediate: true }
+);
+// Esc mirrors the 3D stage: close the selection (and the narrow-width drawer)
+// first, otherwise go up one region level.
+function handleKey(e: KeyboardEvent) {
+  if (e.key !== 'Escape') return;
+  if (selectedId.value || selectedProjectId.value) store.select(null);
+  else if (regionTarget.value.length) store.navigateRegion(regionTarget.value.slice(0, -1));
+}
+onMounted(() => window.addEventListener('keydown', handleKey));
 onUnmounted(() => {
   alive = false;
   seq++;
+  window.removeEventListener('keydown', handleKey);
 });
 
 const country = computed(() => leaf.value === 100000);

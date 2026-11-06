@@ -83,7 +83,9 @@ jobs:
         with:
           name: premium-ui-visual-${{ github.sha }}
           if-no-files-found: ignore
-          path: test-results/premium-*/**/*.png
+          path: |
+            test-results/premium-*/**/*.png
+            test-results/premium-homepage-h1-*/**/metrics-*.json
   integration:
     runs-on: ubuntu-latest
     timeout-minutes: 25

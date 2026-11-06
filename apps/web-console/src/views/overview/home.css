@@ -304,7 +304,7 @@ button.attention-row:hover {
 }
 .home-stage .map-topline {
   left: 14px;
-  right: 14px;
+  right: calc(var(--drawer-inset, 0px) + 14px);
   top: 12px;
 }
 .home-stage .breadcrumb button {
@@ -319,18 +319,18 @@ button.attention-row:hover {
 }
 .home-stage .observation-switch {
   top: 48px;
-  right: 14px;
+  right: calc(var(--drawer-inset, 0px) + 14px);
 }
 .home-stage .map-view-switch button,
 .home-stage .observation-switch button {
   font-size: var(--fs-xs);
 }
 .home-stage .map-tools {
-  right: 14px;
+  right: calc(var(--drawer-inset, 0px) + 14px);
   bottom: 14px;
 }
 .home-stage .south-sea-inset-note {
-  right: 92px;
+  right: calc(var(--drawer-inset, 0px) + 92px);
   bottom: 18px;
   font-size: 10px;
 }
@@ -536,7 +536,7 @@ button.attention-row:hover {
 }
 .stage2d-legend {
   position: absolute;
-  right: 14px;
+  right: calc(var(--drawer-inset, 0px) + 14px);
   bottom: 12px;
   margin: 0;
   font-size: var(--fs-xs);
@@ -571,13 +571,13 @@ button.attention-row:hover {
 }
 
 /* Breakpoints. */
-@media (min-width: 1440px) and (max-width: 1919px) {
+@media (min-width: 1600px) and (max-width: 1919px) {
   .home-oc {
     --att: 232px;
     --ins: 288px;
   }
 }
-@media (max-width: 1439px) {
+@media (max-width: 1599px) {
   .home-oc {
     --att: 64px;
     --ins: 0px;
@@ -586,6 +586,11 @@ button.attention-row:hover {
   }
   .home-grid {
     grid-template-columns: var(--att) minmax(0, 1fr);
+  }
+  /* The fixed drawer (320 px + 12 px gap) sits over the stage's right edge:
+     move the stage's right-anchored controls clear of it so they stay usable. */
+  .home-grid.drawer-open {
+    --drawer-inset: 320px;
   }
   .home-oc .home-inspector.drawer {
     position: fixed;

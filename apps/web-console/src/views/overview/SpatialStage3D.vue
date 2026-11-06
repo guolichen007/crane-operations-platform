@@ -151,8 +151,8 @@ function handleKey(e: KeyboardEvent) {
   if (e.key === 'Escape') {
     stopTour();
     if (/^(PROJECT|DEVICE)_/.test(cameraPreset.value)) void resetCountry();
+    else if (store.selectedId || store.selectedProjectId) store.select(null); // close the Inspector/drawer first
     else if (regionStack.value.length > 1) crumb(regionStack.value.length - 2);
-    else store.select(null);
   }
   if (isDev && e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'd') {
     e.preventDefault();

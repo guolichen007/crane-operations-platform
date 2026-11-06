@@ -1,0 +1,126 @@
+{
+ "metric": "净可见面积 = |stage∩viewport| − Σ|overlay∩stage∩viewport|，除以视口面积（H1-0 设计 §2）",
+ "fixture": "VITE_DATA_MODE=api + OIDC，mock API（inventory.example.yaml，P001 定位海宁），headless Chromium + SwiftShader，deviceScaleFactor 1",
+ "before": {
+  "sha": "76e1cef（H0，首页未改）",
+  "script": "measure-h0-before.mjs",
+  "note": "H0 首页 KPI 8 张、最小字号 7px 见 ../homepage-h0/layout-metrics-d97c0a7.json",
+  "results": [
+   {
+    "viewport": "1280x720",
+    "sha": "76e1cef",
+    "netMapPct": 13.1,
+    "overflowX": 0
+   },
+   {
+    "viewport": "1366x768",
+    "sha": "76e1cef",
+    "netMapPct": 16.5,
+    "overflowX": 0
+   },
+   {
+    "viewport": "1440x900",
+    "sha": "76e1cef",
+    "netMapPct": 19.6,
+    "overflowX": 0
+   },
+   {
+    "viewport": "1920x1080",
+    "sha": "76e1cef",
+    "netMapPct": 27.6,
+    "overflowX": 0
+   },
+   {
+    "viewport": "2560x1440",
+    "sha": "76e1cef",
+    "netMapPct": 42,
+    "overflowX": 0
+   }
+  ]
+ },
+ "after": {
+  "spec": "tests/e2e/premium/homepage-h1-acceptance.spec.ts",
+  "results": [
+   {
+    "viewport": "1280x720",
+    "view": "2d",
+    "netMapPct": 42.4,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   },
+   {
+    "viewport": "1280x720",
+    "view": "3d",
+    "netMapPct": 40.2,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   },
+   {
+    "viewport": "1366x768",
+    "view": "2d",
+    "netMapPct": 44.1,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   },
+   {
+    "viewport": "1366x768",
+    "view": "3d",
+    "netMapPct": 42.2,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   },
+   {
+    "viewport": "1440x900",
+    "view": "2d",
+    "netMapPct": 49.7,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   },
+   {
+    "viewport": "1440x900",
+    "view": "3d",
+    "netMapPct": 48.1,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   },
+   {
+    "viewport": "1920x1080",
+    "view": "2d",
+    "netMapPct": 38.6,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   },
+   {
+    "viewport": "1920x1080",
+    "view": "3d",
+    "netMapPct": 37.6,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   },
+   {
+    "viewport": "2560x1440",
+    "view": "2d",
+    "netMapPct": 44.9,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   },
+   {
+    "viewport": "2560x1440",
+    "view": "3d",
+    "netMapPct": 44.3,
+    "overflowX": 0,
+    "minFont": 10,
+    "kpiCards": 5
+   }
+  ]
+ }
+}

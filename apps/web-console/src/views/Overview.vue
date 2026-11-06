@@ -52,9 +52,11 @@ watch(webglUnavailable, (v) => {
   if (v) view.value = '2d';
 });
 
-// Breakpoint: below 1440 the Inspector is a drawer shown only with a selection.
+// Breakpoint: below 1600 the Inspector is a drawer shown only with a selection and
+// Attention is a narrow strip, so common laptop widths (1280–1536) keep the map as
+// the largest element (H1-0 design §3).
 const narrow = ref(false);
-const mq = matchMedia('(max-width: 1439px)');
+const mq = matchMedia('(max-width: 1599px)');
 const onMq = () => (narrow.value = mq.matches);
 onMounted(() => {
   onMq();
@@ -101,7 +103,7 @@ onUnmounted(() => mq.removeEventListener('change', onMq));
     </p>
     <CloudRuntime v-if="cloudMode" compact />
     <KpiStrip :kpis="kpis" :active="status" :loading="!metrics" @apply="applyFilter" />
-    <section class="home-grid" :class="{ narrow }">
+    <section class="home-grid" :class="{ narrow, 'drawer-open': narrow && (!!selected || !!selectedProject) }">
       <div class="home-left left-context" :class="{ compact: narrow }">
         <AttentionPanel :metrics="metrics" :active="status" :compact="narrow" :demo="demo" @apply="applyFilter" />
         <RegionNavPanel v-if="!narrow" :demo="demo" />
