@@ -59,9 +59,9 @@ describe('生产 HTTP 失败模型', () => {
       return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
     }));
     await expect(request('/api/v1/projects', 'POST', {})).rejects.toThrow('缺少创建意图标识');
-    const key = 'intent-key-0123456789';
-    await request('/api/v1/projects', 'POST', {}, '', 1000, key);
-    await request('/api/v1/projects', 'POST', {}, '', 1000, key);
-    expect(seen).toEqual([key, key]);
+    const intent = 'intent-' + 'x'.repeat(16); // synthetic creation intent, not a credential
+    await request('/api/v1/projects', 'POST', {}, '', 1000, intent);
+    await request('/api/v1/projects', 'POST', {}, '', 1000, intent);
+    expect(seen).toEqual([intent, intent]);
   });
 });
