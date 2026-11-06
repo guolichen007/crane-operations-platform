@@ -1,0 +1,513 @@
+{
+ "tool": "rea-agents 6.8.0 (npm registry, MIT, dist.integrity sha512-9QDeRnGqEDzABZyr04eLnBXBv/c6I9/TWu/6M0MD4pEfkySI/BIgwTODIbAReX3C1x6hjw9+Jlx4A2yUSPZ9ww==)",
+ "node": "v22.23.4",
+ "target": "local authorized web-console dev server (VITE demo mode) at d97c0a7",
+ "runs": [
+  {
+   "scenario": "min",
+   "evidence_id": "ev_87600730738e8fb05bbfd15f5ea4a2a7757a0a197bd8937cf7b78f17f726af3f",
+   "provider": {
+    "id": "rea-playwright-browser-scenario",
+    "name": "REA Playwright browser scenario capture provider",
+    "version": "1"
+   },
+   "browser": {
+    "mode": "launch",
+    "process_ownership": "provider-owned",
+    "cleanup": "terminated-owned-process",
+    "product": "Chromium",
+    "version": "156.0.8078.4"
+   },
+   "viewport": {
+    "width": 1280,
+    "height": 720,
+    "device_scale_factor": 1
+   },
+   "steps": [
+    {
+     "step_id": "scenario_start",
+     "status": "completed",
+     "elapsed_ms": 673,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "settle",
+     "status": "failed",
+     "elapsed_ms": 2893,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    }
+   ],
+   "api_requests": [],
+   "limitations": [
+    "Event sequence records provider receipt order; simultaneous browser causality is not inferred.",
+    "Network content is retained only when selected; Playwright response-body bytes are API results and are not guaranteed to match wire bytes.",
+    "Request bytes are limited to what Playwright exposes; not_exposed does not establish body absence or multipart file coverage.",
+    "Network content reads settle within 5 seconds each and the observer does not request bodies from unfinished responses.",
+    "Playwright scenario events do not expose request initiator stacks; receipt order does not prove causality.",
+    "Storage values are hashed only after declared-secret redaction."
+   ]
+  },
+  {
+   "scenario": "p1-alarm-to-detail",
+   "evidence_id": "ev_1bfc898921febc5a658874794b2df5060b22f93521c7d03119661b9a211252a3",
+   "provider": {
+    "id": "rea-playwright-browser-scenario",
+    "name": "REA Playwright browser scenario capture provider",
+    "version": "1"
+   },
+   "browser": {
+    "mode": "launch",
+    "process_ownership": "provider-owned",
+    "cleanup": "terminated-owned-process",
+    "product": "Chromium",
+    "version": "156.0.8078.4"
+   },
+   "viewport": {
+    "width": 1920,
+    "height": 1080,
+    "device_scale_factor": 1
+   },
+   "steps": [
+    {
+     "step_id": "scenario_start",
+     "status": "completed",
+     "elapsed_ms": 550,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "loaded",
+     "status": "completed",
+     "elapsed_ms": 4146,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "intro-settle",
+     "status": "completed",
+     "elapsed_ms": 4246,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "alarm-mode",
+     "status": "completed",
+     "elapsed_ms": 760,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "alarm-settle",
+     "status": "completed",
+     "elapsed_ms": 1737,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "alarm-filter",
+     "status": "completed",
+     "elapsed_ms": 654,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "f",
+     "status": "completed",
+     "elapsed_ms": 1039,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "alarms-nav",
+     "status": "completed",
+     "elapsed_ms": 310,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "alarm-page",
+     "status": "completed",
+     "elapsed_ms": 2104,
+     "after_url": "http://127.0.0.1:5173/#/alarms"
+    }
+   ],
+   "api_requests": [],
+   "limitations": [
+    "Event sequence records provider receipt order; simultaneous browser causality is not inferred.",
+    "Network content is retained only when selected; Playwright response-body bytes are API results and are not guaranteed to match wire bytes.",
+    "Request bytes are limited to what Playwright exposes; not_exposed does not establish body absence or multipart file coverage.",
+    "Network content reads settle within 5 seconds each and the observer does not request bodies from unfinished responses.",
+    "Playwright scenario events do not expose request initiator stacks; receipt order does not prove causality.",
+    "Storage values are hashed only after declared-secret redaction."
+   ]
+  },
+  {
+   "scenario": "p2",
+   "evidence_id": "ev_1ccd6f6dda1f91caed670ace7812d1d5f872ac2d13a46171bbba37202002746c",
+   "provider": {
+    "id": "rea-playwright-browser-scenario",
+    "name": "REA Playwright browser scenario capture provider",
+    "version": "1"
+   },
+   "browser": {
+    "mode": "launch",
+    "process_ownership": "provider-owned",
+    "cleanup": "terminated-owned-process",
+    "product": "Chromium",
+    "version": "156.0.8078.4"
+   },
+   "viewport": {
+    "width": 1920,
+    "height": 1080,
+    "device_scale_factor": 1
+   },
+   "steps": [
+    {
+     "step_id": "scenario_start",
+     "status": "completed",
+     "elapsed_ms": 695,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "loaded",
+     "status": "completed",
+     "elapsed_ms": 5723,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "intro-settle",
+     "status": "completed",
+     "elapsed_ms": 4347,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "province",
+     "status": "completed",
+     "elapsed_ms": 2927,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "province-settle",
+     "status": "completed",
+     "elapsed_ms": 2795,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "city",
+     "status": "completed",
+     "elapsed_ms": 800,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "city-settle",
+     "status": "completed",
+     "elapsed_ms": 3192,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "county-or-project",
+     "status": "completed",
+     "elapsed_ms": 2510,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "county-settle",
+     "status": "completed",
+     "elapsed_ms": 3320,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "back-country",
+     "status": "completed",
+     "elapsed_ms": 5161,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "back-settle",
+     "status": "completed",
+     "elapsed_ms": 2767,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    }
+   ],
+   "api_requests": [],
+   "limitations": [
+    "Event sequence records provider receipt order; simultaneous browser causality is not inferred.",
+    "Network content is retained only when selected; Playwright response-body bytes are API results and are not guaranteed to match wire bytes.",
+    "Request bytes are limited to what Playwright exposes; not_exposed does not establish body absence or multipart file coverage.",
+    "Network content reads settle within 5 seconds each and the observer does not request bodies from unfinished responses.",
+    "Playwright scenario events do not expose request initiator stacks; receipt order does not prove causality.",
+    "Storage values are hashed only after declared-secret redaction."
+   ]
+  },
+  {
+   "scenario": "p3",
+   "evidence_id": "ev_15300437bc198217e5be07d3609feb74a9eb04c95e1fb448a7a07430a602655b",
+   "provider": {
+    "id": "rea-playwright-browser-scenario",
+    "name": "REA Playwright browser scenario capture provider",
+    "version": "1"
+   },
+   "browser": {
+    "mode": "launch",
+    "process_ownership": "provider-owned",
+    "cleanup": "terminated-owned-process",
+    "product": "Chromium",
+    "version": "156.0.8078.4"
+   },
+   "viewport": {
+    "width": 1920,
+    "height": 1080,
+    "device_scale_factor": 1
+   },
+   "steps": [
+    {
+     "step_id": "scenario_start",
+     "status": "completed",
+     "elapsed_ms": 635,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "loaded",
+     "status": "completed",
+     "elapsed_ms": 4672,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "intro-settle",
+     "status": "completed",
+     "elapsed_ms": 4242,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "open-search",
+     "status": "completed",
+     "elapsed_ms": 182,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "type",
+     "status": "completed",
+     "elapsed_ms": 173,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "results",
+     "status": "completed",
+     "elapsed_ms": 209,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "choose",
+     "status": "completed",
+     "elapsed_ms": 3087,
+     "after_url": "http://127.0.0.1:5173/#/overview?asset=DEMO-001-A"
+    },
+    {
+     "step_id": "inspector",
+     "status": "completed",
+     "elapsed_ms": 1610,
+     "after_url": "http://127.0.0.1:5173/#/overview?asset=DEMO-001-A"
+    },
+    {
+     "step_id": "focus-settle",
+     "status": "completed",
+     "elapsed_ms": 2771,
+     "after_url": "http://127.0.0.1:5173/#/overview?asset=DEMO-001-A"
+    },
+    {
+     "step_id": "detail-link",
+     "status": "completed",
+     "elapsed_ms": 635,
+     "after_url": "http://127.0.0.1:5173/#/overview?asset=DEMO-001-A"
+    },
+    {
+     "step_id": "detail-settle",
+     "status": "completed",
+     "elapsed_ms": 2624,
+     "after_url": "http://127.0.0.1:5173/#/monitor?device=DEMO-001-A"
+    }
+   ],
+   "api_requests": [],
+   "limitations": [
+    "Event sequence records provider receipt order; simultaneous browser causality is not inferred.",
+    "Network content is retained only when selected; Playwright response-body bytes are API results and are not guaranteed to match wire bytes.",
+    "Request bytes are limited to what Playwright exposes; not_exposed does not establish body absence or multipart file coverage.",
+    "Network content reads settle within 5 seconds each and the observer does not request bodies from unfinished responses.",
+    "Playwright scenario events do not expose request initiator stacks; receipt order does not prove causality.",
+    "Storage values are hashed only after declared-secret redaction."
+   ]
+  },
+  {
+   "scenario": "p4-1280",
+   "evidence_id": "ev_8fea13f63aefe30a3ea91ae16060f357808c92cd2eca7c07d770066b32468fc5",
+   "provider": {
+    "id": "rea-playwright-browser-scenario",
+    "name": "REA Playwright browser scenario capture provider",
+    "version": "1"
+   },
+   "browser": {
+    "mode": "launch",
+    "process_ownership": "provider-owned",
+    "cleanup": "terminated-owned-process",
+    "product": "Chromium",
+    "version": "156.0.8078.4"
+   },
+   "viewport": {
+    "width": 1280,
+    "height": 720,
+    "device_scale_factor": 1
+   },
+   "steps": [
+    {
+     "step_id": "scenario_start",
+     "status": "completed",
+     "elapsed_ms": 573,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "loaded",
+     "status": "completed",
+     "elapsed_ms": 3477,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "intro-settle",
+     "status": "completed",
+     "elapsed_ms": 4113,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "dock-asset",
+     "status": "completed",
+     "elapsed_ms": 1155,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "s",
+     "status": "completed",
+     "elapsed_ms": 1622,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    }
+   ],
+   "api_requests": [],
+   "limitations": [
+    "Event sequence records provider receipt order; simultaneous browser causality is not inferred.",
+    "Network content is retained only when selected; Playwright response-body bytes are API results and are not guaranteed to match wire bytes.",
+    "Request bytes are limited to what Playwright exposes; not_exposed does not establish body absence or multipart file coverage.",
+    "Network content reads settle within 5 seconds each and the observer does not request bodies from unfinished responses.",
+    "Playwright scenario events do not expose request initiator stacks; receipt order does not prove causality.",
+    "Storage values are hashed only after declared-secret redaction."
+   ]
+  },
+  {
+   "scenario": "p4-1366",
+   "evidence_id": "ev_e607f9799952460dc7faccf1b1b4fbfffe26f1c3299d05a8ccc7c47efe55c5fd",
+   "provider": {
+    "id": "rea-playwright-browser-scenario",
+    "name": "REA Playwright browser scenario capture provider",
+    "version": "1"
+   },
+   "browser": {
+    "mode": "launch",
+    "process_ownership": "provider-owned",
+    "cleanup": "terminated-owned-process",
+    "product": "Chromium",
+    "version": "156.0.8078.4"
+   },
+   "viewport": {
+    "width": 1366,
+    "height": 768,
+    "device_scale_factor": 1
+   },
+   "steps": [
+    {
+     "step_id": "scenario_start",
+     "status": "completed",
+     "elapsed_ms": 533,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "loaded",
+     "status": "completed",
+     "elapsed_ms": 2909,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "intro-settle",
+     "status": "completed",
+     "elapsed_ms": 4134,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "dock-asset",
+     "status": "completed",
+     "elapsed_ms": 1247,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "s",
+     "status": "completed",
+     "elapsed_ms": 1653,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    }
+   ],
+   "api_requests": [],
+   "limitations": [
+    "Event sequence records provider receipt order; simultaneous browser causality is not inferred.",
+    "Network content is retained only when selected; Playwright response-body bytes are API results and are not guaranteed to match wire bytes.",
+    "Request bytes are limited to what Playwright exposes; not_exposed does not establish body absence or multipart file coverage.",
+    "Network content reads settle within 5 seconds each and the observer does not request bodies from unfinished responses.",
+    "Playwright scenario events do not expose request initiator stacks; receipt order does not prove causality.",
+    "Storage values are hashed only after declared-secret redaction."
+   ]
+  },
+  {
+   "scenario": "s1",
+   "evidence_id": "ev_a43ac2a887c2fffe7a18d36bfa10baa551d11822d05d1724d92dce6d3b0da2aa",
+   "provider": {
+    "id": "rea-playwright-browser-scenario",
+    "name": "REA Playwright browser scenario capture provider",
+    "version": "1"
+   },
+   "browser": {
+    "mode": "launch",
+    "process_ownership": "provider-owned",
+    "cleanup": "terminated-owned-process",
+    "product": "Chromium",
+    "version": "156.0.8078.4"
+   },
+   "viewport": {
+    "width": 1920,
+    "height": 1080,
+    "device_scale_factor": 1
+   },
+   "steps": [
+    {
+     "step_id": "scenario_start",
+     "status": "completed",
+     "elapsed_ms": 559,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "loaded",
+     "status": "failed",
+     "elapsed_ms": 4300,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "alarm-mode",
+     "status": "cancelled",
+     "elapsed_ms": 0,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    },
+    {
+     "step_id": "settle",
+     "status": "cancelled",
+     "elapsed_ms": 0,
+     "after_url": "http://127.0.0.1:5173/#/overview"
+    }
+   ],
+   "api_requests": [],
+   "limitations": [
+    "Event sequence records provider receipt order; simultaneous browser causality is not inferred.",
+    "Network content is retained only when selected; Playwright response-body bytes are API results and are not guaranteed to match wire bytes.",
+    "Request bytes are limited to what Playwright exposes; not_exposed does not establish body absence or multipart file coverage.",
+    "Network content reads settle within 5 seconds each and the observer does not request bodies from unfinished responses.",
+    "Playwright scenario events do not expose request initiator stacks; receipt order does not prove causality.",
+    "Storage values are hashed only after declared-secret redaction."
+   ]
+  }
+ ]
+}

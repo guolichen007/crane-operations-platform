@@ -1,0 +1,397 @@
+{
+  "sha": "d97c0a7ea879929d543d734baa90ac4245f0f570",
+  "mode": "VITE_DATA_MODE=api + OIDC, mocked API (premium fixture)",
+  "results": [
+    {
+      "viewport": "1280x720",
+      "scrollW": 1280,
+      "scrollH": 720,
+      "mainScrollH": 656,
+      "intro": {
+        "x": 216,
+        "y": 64,
+        "w": 1064,
+        "h": 74,
+        "visible": true
+      },
+      "cloudRuntime": {
+        "x": 244,
+        "y": 138,
+        "w": 1008,
+        "h": 116,
+        "visible": true
+      },
+      "kpi": {
+        "x": 216,
+        "y": 264,
+        "w": 1064,
+        "h": 166,
+        "visible": true
+      },
+      "kpiCards": 8,
+      "stage": {
+        "x": 216,
+        "y": 430,
+        "w": 1064,
+        "h": 225,
+        "visible": true
+      },
+      "canvas": {
+        "w": 1064,
+        "h": 224,
+        "y": 431
+      },
+      "left": {
+        "x": 230,
+        "y": 439,
+        "w": 202,
+        "h": 171,
+        "visible": true
+      },
+      "right": {
+        "x": 996,
+        "y": 439,
+        "w": 270,
+        "h": 206,
+        "visible": true
+      },
+      "events": {
+        "x": 216,
+        "y": 655,
+        "w": 1064,
+        "h": 65,
+        "visible": true
+      },
+      "visibleMapArea": 126336,
+      "visibleMapPct": 13.7,
+      "canvasAboveFoldPct": 100,
+      "minFont": 7,
+      "minSel": "tiny-badge:SIM",
+      "tinyTextNodes": 116,
+      "controls": {
+        "sceneDock": "ok",
+        "viewSwitch": "ok",
+        "observation": "ok",
+        "mapTools": "ok",
+        "breadcrumb": "ok",
+        "regionChip": "covered-by:event-strip",
+        "eventFirst": "ok",
+        "scopeSelect": "ok"
+      }
+    },
+    {
+      "viewport": "1366x768",
+      "scrollW": 1366,
+      "scrollH": 768,
+      "mainScrollH": 704,
+      "intro": {
+        "x": 216,
+        "y": 64,
+        "w": 1150,
+        "h": 74,
+        "visible": true
+      },
+      "cloudRuntime": {
+        "x": 244,
+        "y": 138,
+        "w": 1094,
+        "h": 116,
+        "visible": true
+      },
+      "kpi": {
+        "x": 216,
+        "y": 264,
+        "w": 1150,
+        "h": 166,
+        "visible": true
+      },
+      "kpiCards": 8,
+      "stage": {
+        "x": 216,
+        "y": 430,
+        "w": 1150,
+        "h": 273,
+        "visible": true
+      },
+      "canvas": {
+        "w": 1150,
+        "h": 272,
+        "y": 431
+      },
+      "left": {
+        "x": 230,
+        "y": 439,
+        "w": 202,
+        "h": 219,
+        "visible": true
+      },
+      "right": {
+        "x": 1082,
+        "y": 439,
+        "w": 270,
+        "h": 254,
+        "visible": true
+      },
+      "events": {
+        "x": 216,
+        "y": 703,
+        "w": 1150,
+        "h": 65,
+        "visible": true
+      },
+      "visibleMapArea": 176800,
+      "visibleMapPct": 16.9,
+      "canvasAboveFoldPct": 100,
+      "minFont": 7,
+      "minSel": "tiny-badge:SIM",
+      "tinyTextNodes": 116,
+      "controls": {
+        "sceneDock": "ok",
+        "viewSwitch": "ok",
+        "observation": "ok",
+        "mapTools": "ok",
+        "breadcrumb": "ok",
+        "regionChip": "covered-by:event-strip",
+        "eventFirst": "ok",
+        "scopeSelect": "ok"
+      }
+    },
+    {
+      "viewport": "1440x900",
+      "scrollW": 1440,
+      "scrollH": 900,
+      "mainScrollH": 836,
+      "intro": {
+        "x": 216,
+        "y": 64,
+        "w": 1224,
+        "h": 90,
+        "visible": true
+      },
+      "cloudRuntime": {
+        "x": 244,
+        "y": 154,
+        "w": 1168,
+        "h": 116,
+        "visible": true
+      },
+      "kpi": {
+        "x": 216,
+        "y": 280,
+        "w": 1224,
+        "h": 191,
+        "visible": true
+      },
+      "kpiCards": 8,
+      "stage": {
+        "x": 216,
+        "y": 471,
+        "w": 1224,
+        "h": 353,
+        "visible": true
+      },
+      "canvas": {
+        "w": 1224,
+        "h": 352,
+        "y": 472
+      },
+      "left": {
+        "x": 230,
+        "y": 480,
+        "w": 202,
+        "h": 299,
+        "visible": true
+      },
+      "right": {
+        "x": 1156,
+        "y": 480,
+        "w": 270,
+        "h": 329,
+        "visible": true
+      },
+      "events": {
+        "x": 216,
+        "y": 824,
+        "w": 1224,
+        "h": 76,
+        "visible": true
+      },
+      "visibleMapArea": 254848,
+      "visibleMapPct": 19.7,
+      "canvasAboveFoldPct": 100,
+      "minFont": 7,
+      "minSel": "tiny-badge:SIM",
+      "tinyTextNodes": 116,
+      "controls": {
+        "sceneDock": "ok",
+        "viewSwitch": "ok",
+        "observation": "ok",
+        "mapTools": "ok",
+        "breadcrumb": "ok",
+        "regionChip": "covered-by:event-strip",
+        "eventFirst": "ok",
+        "scopeSelect": "ok"
+      }
+    },
+    {
+      "viewport": "1920x1080",
+      "scrollW": 1920,
+      "scrollH": 1080,
+      "mainScrollH": 1016,
+      "intro": {
+        "x": 216,
+        "y": 64,
+        "w": 1704,
+        "h": 105,
+        "visible": true
+      },
+      "cloudRuntime": {
+        "x": 244,
+        "y": 169,
+        "w": 1648,
+        "h": 116,
+        "visible": true
+      },
+      "kpi": {
+        "x": 216,
+        "y": 295,
+        "w": 1704,
+        "h": 217,
+        "visible": true
+      },
+      "kpiCards": 8,
+      "stage": {
+        "x": 216,
+        "y": 512,
+        "w": 1704,
+        "h": 484,
+        "visible": true
+      },
+      "canvas": {
+        "w": 1704,
+        "h": 483,
+        "y": 513
+      },
+      "left": {
+        "x": 232,
+        "y": 521,
+        "w": 222,
+        "h": 430,
+        "visible": true
+      },
+      "right": {
+        "x": 1626,
+        "y": 521,
+        "w": 278,
+        "h": 460,
+        "visible": true
+      },
+      "events": {
+        "x": 216,
+        "y": 996,
+        "w": 1704,
+        "h": 84,
+        "visible": true
+      },
+      "visibleMapArea": 566076,
+      "visibleMapPct": 27.3,
+      "canvasAboveFoldPct": 100,
+      "minFont": 7,
+      "minSel": "tiny-badge:SIM",
+      "tinyTextNodes": 82,
+      "controls": {
+        "sceneDock": "ok",
+        "viewSwitch": "ok",
+        "observation": "ok",
+        "mapTools": "ok",
+        "breadcrumb": "ok",
+        "regionChip": "covered-by:event-strip",
+        "eventFirst": "ok",
+        "scopeSelect": "ok"
+      }
+    },
+    {
+      "viewport": "2560x1440",
+      "scrollW": 2560,
+      "scrollH": 1440,
+      "mainScrollH": 1376,
+      "intro": {
+        "x": 216,
+        "y": 64,
+        "w": 2344,
+        "h": 105,
+        "visible": true
+      },
+      "cloudRuntime": {
+        "x": 244,
+        "y": 169,
+        "w": 2288,
+        "h": 116,
+        "visible": true
+      },
+      "kpi": {
+        "x": 216,
+        "y": 295,
+        "w": 2344,
+        "h": 217,
+        "visible": true
+      },
+      "kpiCards": 8,
+      "stage": {
+        "x": 216,
+        "y": 512,
+        "w": 2344,
+        "h": 844,
+        "visible": true
+      },
+      "canvas": {
+        "w": 2344,
+        "h": 843,
+        "y": 513
+      },
+      "left": {
+        "x": 232,
+        "y": 521,
+        "w": 222,
+        "h": 790,
+        "visible": true
+      },
+      "right": {
+        "x": 2266,
+        "y": 521,
+        "w": 278,
+        "h": 820,
+        "visible": true
+      },
+      "events": {
+        "x": 216,
+        "y": 1356,
+        "w": 2344,
+        "h": 84,
+        "visible": true
+      },
+      "visibleMapArea": 1527516,
+      "visibleMapPct": 41.4,
+      "canvasAboveFoldPct": 100,
+      "minFont": 7,
+      "minSel": "tiny-badge:SIM",
+      "tinyTextNodes": 82,
+      "controls": {
+        "sceneDock": "ok",
+        "viewSwitch": "ok",
+        "observation": "ok",
+        "mapTools": "ok",
+        "breadcrumb": "ok",
+        "regionChip": "ok",
+        "eventFirst": "ok",
+        "scopeSelect": "ok"
+      }
+    }
+  ],
+  "requests": [
+    "GET /api/v1/devices",
+    "GET /api/v1/alarms",
+    "GET /api/v1/projects",
+    "GET /api/v1/assets/devices"
+  ]
+}
