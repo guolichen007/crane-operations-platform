@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Project Intake API",
-    "version": "1.2.1-g2r1",
+    "version": "1.2.2-g32a",
     "description": "全角色项目资源授权、不可覆盖提交证据、管理员未分配草稿及幂等创建；G2 增加审核资格提示、创建意图回执、显示名称与首页最小聚合。完整经营分析不在G2。"
   },
   "servers": [
@@ -855,12 +855,19 @@
               "application/json": {
                 "schema": {
                   "type": "object",
+                  "required": [
+                    "items",
+                    "restrictedRelated"
+                  ],
                   "properties": {
                     "items": {
                       "type": "array",
                       "items": {
                         "$ref": "#/components/schemas/DuplicateCandidate"
                       }
+                    },
+                    "restrictedRelated": {
+                      "$ref": "#/components/schemas/RestrictedRelated"
                     }
                   }
                 }
@@ -1045,12 +1052,19 @@
               "application/json": {
                 "schema": {
                   "type": "object",
+                  "required": [
+                    "items",
+                    "restrictedRelated"
+                  ],
                   "properties": {
                     "items": {
                       "type": "array",
                       "items": {
                         "$ref": "#/components/schemas/DuplicateCandidate"
                       }
+                    },
+                    "restrictedRelated": {
+                      "$ref": "#/components/schemas/RestrictedRelated"
                     }
                   }
                 }
@@ -4159,11 +4173,11 @@
           },
           "candidateId": {
             "type": "string",
-            "description": "仅全局 director 可见"
+            "description": "销售角色不返回"
           },
           "projectName": {
             "type": "string",
-            "description": "仅全局 director 可见"
+            "description": "销售角色不返回"
           },
           "signals": {
             "type": "array",
@@ -4171,7 +4185,8 @@
               "type": "string"
             }
           }
-        }
+        },
+        "description": "仅包含调用者可读的候选；不可读候选不占数组位置，仅通过 restrictedRelated 提示。"
       },
       "ReviewQueue": {
         "type": "object",
@@ -4221,9 +4236,6 @@
                 "decision": {
                   "type": "string"
                 },
-                "restricted": {
-                  "type": "boolean"
-                },
                 "candidate": {
                   "$ref": "#/components/schemas/Project"
                 },
@@ -4236,9 +4248,18 @@
                   "description": "仅对可读候选返回。LEGACY_PARTIAL_EVIDENCE 表示历史迁移数据，未发现参与记录不等于已证明未参与。"
                 }
               }
-            }
+            },
+            "description": "仅包含调用者可读的候选，按创建时间倒序、报备编号排序。不可读候选不出现，不留占位。"
+          },
+          "restrictedRelated": {
+            "$ref": "#/components/schemas/RestrictedRelated"
           }
-        }
+        },
+        "required": [
+          "project",
+          "cases",
+          "restrictedRelated"
+        ]
       },
       "StaffCapability": {
         "type": "string",
@@ -4842,7 +4863,8 @@
           },
           "pendingDuplicates": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 0,
+            "description": "本轮待裁决且调用者可读的候选数量；不可读候选不计数，只通过 relatedCandidates=REVIEW_RELATED_PROJECT_RESTRICTED 表达。服务端裁决仍使用全部候选。"
           },
           "eligible": {
             "type": "boolean"
@@ -4854,7 +4876,7 @@
           "legacyCandidates": {
             "type": "integer",
             "minimum": 0,
-            "description": "本轮待裁决候选中历史证据不完整的数量"
+            "description": "本轮待裁决、调用者可读且历史证据不完整的候选数量"
           }
         }
       },
@@ -5028,6 +5050,37 @@
             "items": {
               "$ref": "#/components/schemas/WorkspaceItem"
             }
+          }
+        }
+      },
+      "RestrictedRelated": {
+        "type": "object",
+        "nullable": true,
+        "additionalProperties": false,
+        "description": "G3-2A 最小披露提示：存在至少一个当前账号无权读取的相关候选。内容只取决于调用者角色，不含隐藏候选数量、风险、评分、匹配信号、客户、地区、设备、需求、时间、阶段、裁决状态、候选 ID、case ID 或证据等级；不存在隐藏候选时为 null。",
+        "required": [
+          "code",
+          "message",
+          "route"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "RESTRICTED_RELATED_PRESENT"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "固定中文提示。审核角色：检测到需要跨组核验的相关项目。当前账号无权查看详情，请销售总监处理。销售：检测到可能重复的已有报备。当前账号无权查看详情，提交后由审核人员核验。"
+          },
+          "route": {
+            "type": "string",
+            "enum": [
+              "SALES_DIRECTOR",
+              "REVIEWER"
+            ],
+            "description": "处理路径：SALES_DIRECTOR=由销售总监处理；REVIEWER=提交后由审核人员核验（销售视角）"
           }
         }
       }

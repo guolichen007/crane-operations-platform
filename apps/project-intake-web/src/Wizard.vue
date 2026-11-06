@@ -19,6 +19,8 @@ import {
   type Input,
   type Project,
   type Duplicate,
+  type DuplicateCheckResult,
+  type RestrictedRelated,
   type KnowledgeState,
 } from './model';
 import { consistent } from './numeric';
@@ -39,6 +41,7 @@ const app = useApp(),
   saved = ref(''),
   savedAt = ref(''),
   dups = ref<Duplicate[]>([]),
+  dupRestricted = ref<RestrictedRelated | null>(null),
   dupState = ref<'insufficient' | 'checking' | 'none' | 'found' | 'error'>('insufficient'),
   ready = ref(false),
   loadError = ref(''),
@@ -249,16 +252,21 @@ function runDuplicateCheck(delay = 450) {
   const seq = ++dupSeq;
   if (!dupReady.value) {
     dups.value = [];
+    dupRestricted.value = null;
     dupState.value = 'insufficient';
     return;
   }
   dupState.value = 'checking';
+  dups.value = [];
+  dupRestricted.value = null;
   duplicateTimer = setTimeout(async () => {
     try {
-      const b = await app.api<{ items: Duplicate[] }>('/api/v1/duplicate-checks', 'POST', body());
+      const b = await app.api<DuplicateCheckResult>('/api/v1/duplicate-checks', 'POST', body());
       if (seq !== dupSeq) return;
       dups.value = b.items;
-      dupState.value = b.items.length ? 'found' : 'none';
+      dupRestricted.value = b.restrictedRelated ?? null;
+      // A hidden match is still a match: never report "no duplicates" when a notice is present.
+      dupState.value = b.items.length || dupRestricted.value ? 'found' : 'none';
     } catch {
       if (seq === dupSeq) dupState.value = 'error';
     }
@@ -543,6 +551,7 @@ onBeforeUnmount(() => {
             <div>
               {{ dupMessage }}
               <p v-for="(d, i) in dups" :key="i">{{ d.message }} · {{ d.region }} · {{ stages[d.salesStage] }} · {{ new Date(d.createdAt).toLocaleDateString('zh-CN') }}</p>
+              <p v-if="dupRestricted" data-testid="restricted-related">{{ dupRestricted.message }}</p>
             </div>
           </div>
         </section>
@@ -565,6 +574,7 @@ onBeforeUnmount(() => {
         <div>
           {{ dupMessage }}
           <p v-for="(d, i) in dups" :key="i">{{ d.message }} · {{ d.region }} · {{ stages[d.salesStage] }} · {{ new Date(d.createdAt).toLocaleDateString('zh-CN') }}</p>
+          <p v-if="dupRestricted" data-testid="restricted-related">{{ dupRestricted.message }}</p>
         </div>
       </div>
     </fieldset>

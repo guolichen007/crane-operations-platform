@@ -40,7 +40,7 @@ type Comparison struct {
 	Signals    []string `json:"signals"`
 	Decision   string   `json:"decision"`
 	Candidate  *Project `json:"candidate,omitempty"`
-	Restricted bool     `json:"restricted"`
+	Restricted bool     `json:"-"` // server-only since G3-2A; restricted cases are never serialized
 	// COMPLETE_VERIFIED: the candidate has a frozen, complete submission and
 	// its participants are known. LEGACY_PARTIAL_EVIDENCE: migrated history;
 	// absence of a participation record does not prove non-participation.
@@ -119,7 +119,11 @@ func (a *App) governanceHistory(ctx context.Context, p *Project) error {
 	return rows.Err()
 }
 func (a *App) comparison(ctx context.Context, q querier, p Project, u User) ([]Comparison, error) {
-	rows, e := q.Query(ctx, `SELECT id::text,candidate_id::text,score,risk,matched_signals,decision FROM duplicate_cases WHERE project_id=$1 AND (submission_revision=$2 OR decision<>'PENDING') ORDER BY created_at DESC,id`, p.ID, p.SubmissionRevision)
+	// Stable order from each candidate's own registration number: cases of one
+	// submission share created_at, and a random-UUID tie-break made the order
+	// of visible cases vary between requests.
+	rows, e := q.Query(ctx, `SELECT d.id::text,d.candidate_id::text,d.score,d.risk,d.matched_signals,d.decision FROM duplicate_cases d JOIN intake_projects c ON c.id=d.candidate_id
+ WHERE d.project_id=$1 AND (d.submission_revision=$2 OR d.decision<>'PENDING') ORDER BY d.created_at DESC,c.registration_no,d.id`, p.ID, p.SubmissionRevision)
 	if e != nil {
 		return nil, e
 	}
@@ -253,7 +257,8 @@ func (a *App) governance(w http.ResponseWriter, r *http.Request, u User) (bool, 
 		if e = a.projectHints(ctx, a.db, u, &p); e != nil {
 			return true, e
 		}
-		respond(w, 200, map[string]any{"project": p, "cases": cases})
+		visible, restricted := projectComparison(cases, u)
+		respond(w, 200, map[string]any{"project": p, "cases": visible, "restrictedRelated": restricted})
 		return true, nil
 	}
 	if method != "POST" {

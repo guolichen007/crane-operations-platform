@@ -126,6 +126,16 @@ export interface User {
   permissions: string[];
   businessActions?: Record<string, ActionHint>;
 }
+// G3-2A: the only disclosure about related candidates the viewer cannot read.
+export interface RestrictedRelated {
+  code: 'RESTRICTED_RELATED_PRESENT';
+  message: string;
+  route: 'SALES_DIRECTOR' | 'REVIEWER';
+}
+export interface DuplicateCheckResult {
+  items: Duplicate[];
+  restrictedRelated: RestrictedRelated | null;
+}
 export interface Duplicate {
   risk: string;
   score: number;

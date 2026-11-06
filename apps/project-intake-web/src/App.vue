@@ -69,7 +69,7 @@ window.addEventListener('error', showError);
 <template>
   <div v-if="app.user && route.path !== '/login'" class="shell">
     <aside class="sidebar" aria-label="主导航">
-      <a href="/" class="brand" data-action-id="nav.open" @click.prevent="router.push('/')"><span class="brand-mark" aria-hidden="true"></span><span>项目报备中心<small>U-DAO 行车项目</small></span></a>
+      <a href="/" class="brand" data-action-id="nav.open" @click.prevent="router.push('/')"><span class="brand-mark" aria-hidden="true"></span><span>项目报备中心<small>优道行车项目</small></span></a>
       <div class="workspace-label">{{ workspaceLabel(app.user) }}</div>
       <nav>
         <template v-for="g in groups" :key="g.key">

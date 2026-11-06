@@ -139,8 +139,10 @@ func TestDatabaseG2Contract(t *testing.T) {
 		if d.Actions["duplicate-decisions"].Allowed || code(d.Actions["duplicate-decisions"]) != "REVIEW_RELATED_PROJECT_RESTRICTED" || d.Review.RelatedCandidates.Allowed {
 			t.Fatal("restricted hint", d.Actions["duplicate-decisions"], d.Review)
 		}
-		if code(d.Actions["approve"]) != "DUPLICATE_DECISION_REQUIRED" || d.Review.PendingDuplicates != 1 {
-			t.Fatal("pending hint", d.Actions["approve"])
+		// Approval is still blocked by the hidden pending case, but its count is
+		// not disclosed to the restricted manager (G3-2A).
+		if code(d.Actions["approve"]) != "DUPLICATE_DECISION_REQUIRED" || d.Review.PendingDuplicates != 0 {
+			t.Fatal("pending hint", d.Actions["approve"], d.Review.PendingDuplicates)
 		}
 	})
 

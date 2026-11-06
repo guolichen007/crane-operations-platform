@@ -333,9 +333,12 @@ func TestDatabaseG1(t *testing.T) {
 		s, b = g1Decision(f.admin, second, "duplicate-decisions", extra)
 		expect(t, s, 403, b)
 		var pending int
-		_ = f.db.QueryRow(ctx, `SELECT count(*) FROM duplicate_cases WHERE project_id=$1 AND decision='PENDING'`, second.ID).Scan(&pending)
-		if pending != len(comparison.Cases) {
-			t.Fatal("partial decision")
+		// G3-2A: the manager's comparison lists only readable candidates; every
+		// case (visible or hidden) must still be PENDING after the rejected POST.
+		var total int
+		_ = f.db.QueryRow(ctx, `SELECT count(*) FILTER (WHERE decision='PENDING'),count(*) FROM duplicate_cases WHERE project_id=$1`, second.ID).Scan(&pending, &total)
+		if pending != total || total <= len(comparison.Cases) {
+			t.Fatal("partial decision", pending, total, len(comparison.Cases))
 		}
 		versions := relatedVersionsFor(f.director, second)
 		versions[base.ID]++

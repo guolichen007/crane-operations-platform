@@ -5,12 +5,16 @@ BAOBEI_MAIN_MERGE=FORBIDDEN
 BAOBEI_R2_MERGE=FORBIDDEN
 BASE_SHA=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18
 BRANCH=product/baobei-v1
-CURRENT_BATCH=FULL_ROLE_G3_1
-STOP_AFTER_FULL_ROLE_G3_1=YES
+CURRENT_BATCH=FULL_ROLE_G3_2A
+STOP_AFTER_FULL_ROLE_G3_2A=YES
 
 目标：快速报项目、识别重复、明确归属并跟进。独立产品，永不合并 main/R2。
 
-## 当前实施：G3-1 产品与高级 UI 设计（设计门禁）
+## 当前实施：G3-2A 跨组重复候选隐私收口
+
+基线 `8caed95`（含 `ed9f239` 退出登录竞态修复）。本批只做不可读相关候选的最小披露：受限账号在重复对比、候选列表、实时查重、项目详情审核提示与审核列表中只得到一条固定提示 `restrictedRelated`（存在需上级核验的相关候选 + 处理路径），不再得到隐藏候选的数量、风险、评分、信号、地区、阶段、时间、裁决、ID 或证据等级；服务端裁决、独立性、冻结证据与重复判断仍使用全部候选。OpenAPI、Go、TS 与页面同批更新，无新迁移。验收见 [27-G3-2A跨组候选隐私收口验收](27-G3-2A跨组候选隐私收口验收.md)。G3-2B/G3-2C 未开始；生产仍 BLOCKED。
+
+## 历史：G3-1 产品与高级 UI 设计（设计门禁）
 
 基线 `f9cb114`。本批只交付研究、信息架构、视觉规范、KPI 字典、隐私 ADR 提案、G3-2 实施设计与 DESIGN_ONLY 原型，见 [26-G3-1产品与高级UI设计验收](26-G3-1产品与高级UI设计验收.md) 与 [25 执行令留存](25-G3-0独立审查与G3-1设计研究执行令.md)；G3-0 见 [24](24-G3-0数据安全与性能基线验收.md)。业务代码、权限、迁移与 OpenAPI 未改；G3-2 未授权。
 

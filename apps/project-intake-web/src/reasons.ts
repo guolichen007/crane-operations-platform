@@ -1,6 +1,9 @@
 import { ApiError } from './api-client';
 import type { ActionHint } from './model';
 
+// G3-2A fixed notice: never carries a count, risk or any candidate detail.
+export const RESTRICTED_RELATED_MESSAGE = '检测到需要跨组核验的相关项目。当前账号无权查看详情，请销售总监处理。';
+
 // Fixed server reason codes rendered as plain guidance.
 export const reasonText: Record<string, string> = {
   OWNER_REQUIRED: '需先指派一名有效销售负责人',
@@ -10,7 +13,7 @@ export const reasonText: Record<string, string> = {
   NOT_FOUND: '项目不存在或不在你的范围内',
   REVIEW_CONFLICT: '你参与过此项目，需由其他独立审核人处理',
   REVIEW_EVIDENCE_INCOMPLETE: '历史提交证据不完整，需走独立核验流程',
-  REVIEW_RELATED_PROJECT_RESTRICTED: '存在你无权查看的相关候选，需由更大范围的审核人处理',
+  REVIEW_RELATED_PROJECT_RESTRICTED: RESTRICTED_RELATED_MESSAGE,
   DUPLICATE_DECISION_REQUIRED: '请先完成重复裁决',
   LEGACY_EVIDENCE_ACK_REQUIRED: '相关候选为历史数据、证据不完整，需确认责任声明后才能排除重复并批准',
   DUPLICATE_ALREADY_CONFIRMED: '已确认为重复报备，不能再次提交',

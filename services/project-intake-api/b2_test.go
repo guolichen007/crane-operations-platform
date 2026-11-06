@@ -197,15 +197,22 @@ func TestDatabaseB2(t *testing.T) {
 		s, b := mgr.call("GET", "/api/v1/projects/"+p.ID+"/duplicate-comparison", nil)
 		expect(t, s, 200, b)
 		var out struct {
-			Cases []Comparison `json:"cases"`
+			Cases      []Comparison       `json:"cases"`
+			Restricted *RestrictedRelated `json:"restrictedRelated"`
 		}
 		_ = json.Unmarshal(b, &out)
-		if len(out.Cases) != 1 || !out.Cases[0].Restricted || out.Cases[0].Candidate != nil || strings.Contains(string(b), "synthetic-c") {
+		// G3-2A: no case object, ID, score or signal for the hidden candidate;
+		// only the fixed notice routing to the sales director.
+		if len(out.Cases) != 0 || out.Restricted == nil || out.Restricted.Route != "SALES_DIRECTOR" || strings.Contains(string(b), "synthetic-c") || strings.Contains(string(b), `"score"`) {
 			t.Fatal("cross team disclosure", string(b))
 		}
-		s, b = decision(mgr, p, "duplicate-decisions", map[string]any{"caseId": out.Cases[0].ID, "decision": "DISTINCT_APPROVED"})
+		var hiddenCase string
+		if e = db.QueryRow(ctx, `SELECT id::text FROM duplicate_cases WHERE project_id=$1`, p.ID).Scan(&hiddenCase); e != nil {
+			t.Fatal(e)
+		}
+		s, b = decision(mgr, p, "duplicate-decisions", map[string]any{"caseId": hiddenCase, "decision": "DISTINCT_APPROVED"})
 		expect(t, s, 403, b)
-		s, b = decision(director, p, "duplicate-decisions", map[string]any{"caseId": out.Cases[0].ID, "decision": "DISTINCT_APPROVED"})
+		s, b = decision(director, p, "duplicate-decisions", map[string]any{"caseId": hiddenCase, "decision": "DISTINCT_APPROVED"})
 		expect(t, s, 200, b)
 	})
 	t.Run("protection-idempotency-no-transfer-and-policy", func(t *testing.T) {

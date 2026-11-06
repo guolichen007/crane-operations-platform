@@ -58,7 +58,11 @@ type ReviewEligibility struct {
 	ProjectReadable     bool       `json:"projectReadable"`
 	ProjectIndependence ActionHint `json:"projectIndependence"`
 	RelatedCandidates   ActionHint `json:"relatedCandidates"`
-	PendingDuplicates   int        `json:"pendingDuplicates"`
+	// Pending duplicate cases whose candidate the viewer can read. Hidden
+	// candidates are never counted here (G3-2A); their presence is reported only
+	// through RelatedCandidates=REVIEW_RELATED_PROJECT_RESTRICTED. Decision
+	// gating still uses every pending case on the server.
+	PendingDuplicates int `json:"pendingDuplicates"`
 	// Related candidates that only have migrated, partial evidence. For these
 	// "no participation found" is not proof of independence. Counted only
 	// within the viewer's read scope; hidden candidates are reported solely via
@@ -70,7 +74,7 @@ type ReviewEligibility struct {
 
 type reviewFacts struct {
 	primaryConflict, primaryComplete, candidateRestricted, candidateConflict bool
-	pending, legacy                                                          int
+	pending, visiblePending, legacy                                          int
 }
 
 func loadReviewFacts(ctx context.Context, q querier, u User, ids []string) (map[string]reviewFacts, error) {
@@ -82,7 +86,9 @@ func loadReviewFacts(ctx context.Context, q querier, u User, ids []string) (map[
  EXISTS(`+relatedCandidatesSQL("p")+` AND NOT `+projectScope("c")+`),
  EXISTS(`+relatedCandidatesSQL("p")+` AND `+candidateConflictSQL("c", "$1")+`),`+pendingCasesSQL("p")+`,
  (SELECT count(DISTINCT c.id) FROM duplicate_cases d JOIN intake_projects c ON c.id=d.candidate_id WHERE d.project_id=p.id
-  AND d.decision='PENDING' AND d.submission_revision=p.submission_revision AND `+projectScope("c")+` AND NOT `+primaryCompleteSQL("c")+`)
+  AND d.decision='PENDING' AND d.submission_revision=p.submission_revision AND `+projectScope("c")+` AND NOT `+primaryCompleteSQL("c")+`),
+ (SELECT count(*) FROM duplicate_cases d JOIN intake_projects c ON c.id=d.candidate_id WHERE d.project_id=p.id
+  AND d.decision='PENDING' AND d.submission_revision=p.submission_revision AND `+projectScope("c")+`)
  FROM intake_projects p WHERE p.id=ANY($4::uuid[])`, u.Subject, u.Role, u.TeamID, ids)
 	if err != nil {
 		return nil, err
@@ -91,7 +97,7 @@ func loadReviewFacts(ctx context.Context, q querier, u User, ids []string) (map[
 	for rows.Next() {
 		var id string
 		var f reviewFacts
-		if err = rows.Scan(&id, &f.primaryConflict, &f.primaryComplete, &f.candidateRestricted, &f.candidateConflict, &f.pending, &f.legacy); err != nil {
+		if err = rows.Scan(&id, &f.primaryConflict, &f.primaryComplete, &f.candidateRestricted, &f.candidateConflict, &f.pending, &f.legacy, &f.visiblePending); err != nil {
 			return nil, err
 		}
 		out[id] = f
@@ -224,7 +230,7 @@ func (a *App) batchHints(ctx context.Context, q querier, u User, ps []*Project) 
 		}
 		p.Review = nil
 		if hasFacts {
-			r := &ReviewEligibility{ProjectReadable: true, ProjectIndependence: hint(firstCode(policy.Action(*p, "return"), primary)), RelatedCandidates: hint(related), PendingDuplicates: f.pending, LegacyCandidates: f.legacy}
+			r := &ReviewEligibility{ProjectReadable: true, ProjectIndependence: hint(firstCode(policy.Action(*p, "return"), primary)), RelatedCandidates: hint(related), PendingDuplicates: f.visiblePending, LegacyCandidates: f.legacy}
 			next := "approve"
 			if f.pending > 0 {
 				next = "duplicate-decisions"

@@ -228,7 +228,7 @@ onMounted(async () => {
   <section class="staff-page">
     <div class="page-heading">
       <div>
-        <div class="eyebrow">SALES OPERATIONS / 人员治理</div>
+        <div class="eyebrow">销售运营 / 人员治理</div>
         <h1>{{ memberId ? '成员详情' : administrator ? '人员管理' : '团队成员' }}</h1>
         <p class="muted">账号状态、业务权限与项目交接</p>
       </div>

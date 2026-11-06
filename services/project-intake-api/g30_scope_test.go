@@ -44,7 +44,8 @@ func TestDatabaseG30LegacyCountScope(t *testing.T) {
 	if mgr[0] != mgr[1] {
 		t.Fatalf("restricted manager can infer hidden candidate evidence: %+v vs %+v", mgr[0], mgr[1])
 	}
-	if mgr[0].Legacy != 0 || mgr[0].Pending != 1 {
+	// G3-2A: hidden pending cases are not counted for the restricted manager.
+	if mgr[0].Legacy != 0 || mgr[0].Pending != 0 {
 		t.Fatal("restricted manager view", mgr[0])
 	}
 	// The director sees the candidate and must still get the real count.

@@ -102,14 +102,15 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 			return nil
 		}
 		if in.Customer == "" || in.ProjectName == "" || in.Location.Province == "" || in.Location.City == "" {
-			respond(w, 200, map[string]any{"items": []Duplicate{}})
+			respond(w, 200, map[string]any{"items": []Duplicate{}, "restrictedRelated": nil})
 			return nil
 		}
 		ds, e := a.duplicates(ctx, a.db, in, "")
 		if e != nil {
 			return e
 		}
-		respond(w, 200, map[string]any{"items": redact(ds, u)})
+		items, restricted := projectDuplicates(ds, u)
+		respond(w, 200, map[string]any{"items": items, "restrictedRelated": restricted})
 		return nil
 	}
 	if path == "/api/v1/workspace-summary" && method == "GET" {
@@ -191,7 +192,7 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 			if e != nil {
 				return e
 			}
-			rows, e = a.db.Query(ctx, `SELECT a.action,a.revision,a.created_at,a.subject,a.details,`+displayName("a.subject")+` FROM audit_events a WHERE a.project_id=$1 ORDER BY a.created_at DESC,a.id`, id)
+			rows, e = a.db.Query(ctx, `SELECT a.action,a.revision,a.created_at,a.subject,a.details,`+displayName("a.subject")+` FROM audit_events a WHERE a.project_id=$1 ORDER BY a.created_at DESC,a.revision DESC,a.action,a.id`, id)
 			if e != nil {
 				return e
 			}
@@ -220,7 +221,8 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 			if e != nil {
 				return e
 			}
-			respond(w, 200, map[string]any{"items": redact(ds, u)})
+			items, restricted := projectDuplicates(ds, u)
+			respond(w, 200, map[string]any{"items": items, "restrictedRelated": restricted})
 		default:
 			fail(w, 404, "NOT_FOUND", "接口不存在")
 		}

@@ -67,7 +67,7 @@ async function retry() {
 <template>
   <div class="login">
     <div class="login-box">
-      <div class="eyebrow">U-DAO / PROJECT INTAKE</div>
+      <div class="eyebrow">优道 / 项目报备</div>
       <h1>每一个项目，<br />都有清晰的起点。</h1>
       <p class="muted">项目报备 · 归属确认 · 销售跟进</p>
       <p v-if="notice" class="login-notice" role="alert">{{ notice }}</p>

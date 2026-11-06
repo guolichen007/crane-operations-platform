@@ -44,7 +44,7 @@ onMounted(async () => {
 <template>
   <section class="staff-page">
     <div class="page-heading">
-      <div><div class="eyebrow">ACCESS SETTINGS / 组织设置</div><h1>团队管理</h1><p class="muted">维护团队名称和人员归属入口</p></div>
+      <div><div class="eyebrow">权限设置 / 组织设置</div><h1>团队管理</h1><p class="muted">维护团队名称和人员归属入口</p></div>
       <ActionButton action-id="team.create" primary :run="() => edit(null)">新建团队</ActionButton>
     </div>
     <div class="staff-list" aria-label="团队列表">

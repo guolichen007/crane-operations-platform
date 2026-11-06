@@ -235,10 +235,13 @@ func TestDatabase(t *testing.T) {
 		s, b := cb.call("POST", "/api/v1/duplicate-checks", in)
 		expect(t, s, 200, b)
 		var out struct {
-			Items []Duplicate `json:"items"`
+			Items      []Duplicate        `json:"items"`
+			Restricted *RestrictedRelated `json:"restrictedRelated"`
 		}
 		_ = json.Unmarshal(b, &out)
-		if len(out.Items) != 1 || out.Items[0].CandidateID != "" || out.Items[0].ProjectName != "" || bytes.Contains(b, []byte(p.ID)) {
+		// G3-2A: another sales owner's project is unreadable, so it yields only
+		// the fixed notice; no ID, name, score, region or stage.
+		if len(out.Items) != 0 || out.Restricted == nil || bytes.Contains(b, []byte(p.ID)) || bytes.Contains(b, []byte(`"score"`)) {
 			t.Fatal("privacy", string(b))
 		}
 		_, e = db.Exec(ctx, `INSERT INTO organization_aliases(normalized_alias,organization_id) SELECT $1,id FROM organizations WHERE normalized_name=$2`, normalize("Synthetic Alias"), normalize(in.Customer))
@@ -248,8 +251,9 @@ func TestDatabase(t *testing.T) {
 		in.Customer = "Synthetic Alias"
 		s, b = cb.call("POST", "/api/v1/duplicate-checks", in)
 		expect(t, s, 200, b)
+		out.Restricted = nil
 		_ = json.Unmarshal(b, &out)
-		if len(out.Items) != 1 {
+		if out.Restricted == nil {
 			t.Fatal("alias not scored")
 		}
 	})

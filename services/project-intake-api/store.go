@@ -102,7 +102,7 @@ func (a *App) duplicates(ctx context.Context, q querier, p Input, exclude string
 	if t.Warn < 1 || t.High < t.Warn || t.High > 100 {
 		return nil, errors.New("invalid thresholds")
 	}
-	rows, e := q.Query(ctx, `SELECT p.id::text,coalesce(p.owner_subject,''),coalesce(p.team_id::text,''),p.document,p.created_at,similarity(p.normalized_project_name,$1),EXISTS(SELECT 1 FROM project_parties pp JOIN organizations o ON o.id=pp.organization_id LEFT JOIN organization_aliases al ON al.organization_id=o.id WHERE pp.project_id=p.id AND pp.role='END_CUSTOMER' AND (o.normalized_name=$2 OR al.normalized_alias=$2)) FROM intake_projects p WHERE p.intake_status IN ('SUBMITTED','UNDER_REVIEW','APPROVED') AND ($3='' OR p.id::text<>$3)`, normalize(p.ProjectName), normalize(p.Customer), exclude)
+	rows, e := q.Query(ctx, `SELECT p.id::text,coalesce(p.owner_subject,''),coalesce(p.team_id::text,''),p.document,p.created_at,similarity(p.normalized_project_name,$1),EXISTS(SELECT 1 FROM project_parties pp JOIN organizations o ON o.id=pp.organization_id LEFT JOIN organization_aliases al ON al.organization_id=o.id WHERE pp.project_id=p.id AND pp.role='END_CUSTOMER' AND (o.normalized_name=$2 OR al.normalized_alias=$2)) FROM intake_projects p WHERE p.intake_status IN ('SUBMITTED','UNDER_REVIEW','APPROVED') AND ($3='' OR p.id::text<>$3) ORDER BY p.registration_no,p.id`, normalize(p.ProjectName), normalize(p.Customer), exclude)
 	if e != nil {
 		return nil, e
 	}
@@ -132,17 +132,6 @@ func (a *App) duplicates(ctx context.Context, q querier, p Input, exclude string
 		out = append(out, Duplicate{source: Project{OwnerSubject: owner, TeamID: team}, Signals: duplicateSignals(p, q, sim, same), CandidateID: id, Score: n, Risk: risk, Region: q.Location.Province + " / " + q.Location.City, CreatedAt: at, SalesStage: q.SalesStage, Message: "疑似已有报备，需要主管确认", ProjectName: q.ProjectName})
 	}
 	return out, rows.Err()
-}
-func redact(ds []Duplicate, u User) []Duplicate {
-	out := make([]Duplicate, len(ds))
-	copy(out, ds)
-	for i := range out {
-		if u.Role == salesRole || !canRead(u, out[i].source) {
-			out[i].CandidateID = ""
-			out[i].ProjectName = ""
-		}
-	}
-	return out
 }
 
 // listParams are the only accepted project list filters. Unknown keys are

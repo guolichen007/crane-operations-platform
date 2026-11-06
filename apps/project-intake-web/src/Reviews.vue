@@ -2,8 +2,8 @@
 import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
 import { useApp } from './store';
-import { hintReason, recovery } from './reasons';
-import { type Project, statuses, stages, sources, confidences, when } from './model';
+import { hintReason, recovery, RESTRICTED_RELATED_MESSAGE } from './reasons';
+import { type Project, type RestrictedRelated, statuses, stages, sources, confidences, when } from './model';
 import ActionButton from './ActionButton.vue';
 import Modal from './Modal.vue';
 interface Case {
@@ -12,7 +12,6 @@ interface Case {
   risk: string;
   signals: string[];
   decision: string;
-  restricted: boolean;
   candidate?: Project;
   evidenceGrade?: 'COMPLETE_VERIFIED' | 'LEGACY_PARTIAL_EVIDENCE';
 }
@@ -25,6 +24,7 @@ const app = useApp(),
   kind = ref(route.path === '/duplicates' ? 'duplicates' : 'pending'),
   selected = ref<Project | null>(null),
   cases = ref<Case[]>([]),
+  restricted = ref<RestrictedRelated | null>(null),
   operation = ref(''),
   caseId = ref(''),
   reason = ref(''),
@@ -40,11 +40,16 @@ async function load() {
 }
 onMounted(() => load().catch((e) => (app.error = e.message)));
 async function open(p: Project) {
-  const b = await app.api<{ project: Project; cases: Case[] }>(
+  // Clear first so nothing from a previous project is shown while loading or after an error.
+  selected.value = null;
+  cases.value = [];
+  restricted.value = null;
+  const b = await app.api<{ project: Project; cases: Case[]; restrictedRelated: RestrictedRelated | null }>(
     `/api/v1/projects/${p.id}/duplicate-comparison`
   );
-  selected.value = b.project;
   cases.value = b.cases;
+  restricted.value = b.restrictedRelated;
+  selected.value = b.project;
 }
 function prompt(action: string, id = '') {
   operation.value = action;
@@ -156,12 +161,13 @@ const fields = [
     title="报备审核与重复对比"
     description="逐项核验候选，跨团队信息由销售总监处理。"
     sheet
-    @update:open="selected = null"
+    @update:open="selected = null; restricted = null"
   >
     <template v-if="selected">
       <h2>{{ selected.projectName }}</h2>
       <p class="muted">{{ selected.registrationNo }} · 负责人 {{ selected.ownerName || '姓名待核对' }}</p>
       <p v-if="selected.review && !selected.review.eligible" class="review-eligibility" role="status">{{ hintReason({ allowed: false, reasonCode: selected.review.reasonCode }) }}</p>
+      <p v-if="restricted" class="restricted-related note" role="note" data-testid="restricted-related">{{ RESTRICTED_RELATED_MESSAGE }}</p>
       <template v-for="c in cases" :key="c.id">
         <div class="note">
           {{ c.risk==='HIGH'?'高风险':'疑似重复' }} · {{ c.score }} 分 · {{ c.signals.join(' / ') || '历史候选' }} ·
@@ -170,10 +176,7 @@ const fields = [
         <p v-if="c.evidenceGrade === 'LEGACY_PARTIAL_EVIDENCE'" class="legacy-evidence" role="note">
           该候选来自历史数据，提交与参与记录不完整。系统只能排除已知参与人；“未发现参与记录”不等于已证明你未参与过该项目。
         </p>
-        <p v-if="c.restricted" class="muted">
-          此候选属于其他团队，需销售总监核验；详细信息已隐藏。
-        </p>
-        <div v-else-if="c.candidate" class="comparison-grid">
+        <div v-if="c.candidate" class="comparison-grid">
           <div class="comparison-heading">新报备</div>
           <div class="comparison-heading">已有报备</div>
           <template v-for="[label, value] in fields" :key="label">
@@ -190,16 +193,16 @@ const fields = [
         <div v-if="c.decision === 'PENDING'" class="actions">
           <ActionButton
             action-id="duplicate.confirm"
-            :disabled="c.restricted || !selected.actions?.['duplicate-decisions']?.allowed"
-            :reason="c.restricted ? '跨团队候选需销售总监处理' : hintReason(selected.actions?.['duplicate-decisions'])"
+            :disabled="!!restricted || !selected.actions?.['duplicate-decisions']?.allowed"
+            :reason="hintReason(selected.actions?.['duplicate-decisions'])"
             :run="() => prompt('duplicate.confirm', c.id)"
           >
             确认重复
           </ActionButton><ActionButton
             action-id="duplicate.dismiss"
             primary
-            :disabled="cases.some((x) => x.decision === 'PENDING' && x.restricted) || !selected.actions?.['duplicate-decisions']?.allowed"
-            :reason="hintReason(selected.actions?.['duplicate-decisions'], '存在不可见候选，需总监核验')"
+            :disabled="!!restricted || !selected.actions?.['duplicate-decisions']?.allowed"
+            :reason="hintReason(selected.actions?.['duplicate-decisions'])"
             :run="() => prompt('duplicate.dismiss', c.id)"
           >
             不是重复并批准
