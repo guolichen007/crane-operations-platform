@@ -31,7 +31,9 @@ export class CameraRig {
     this.height = height;
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
-    if (this.inspectorWidth && width > 1000)
+    // Keep the offset whenever enough uncovered stage remains (the homepage drawer
+    // is 320 px over a 960 px stage at 1280×720; the old 1000 px floor disabled it).
+    if (this.inspectorWidth && width - this.inspectorWidth >= 480)
       this.camera.setViewOffset(width, height, this.inspectorWidth / 2, 0, width, height);
     else this.camera.clearViewOffset();
   }

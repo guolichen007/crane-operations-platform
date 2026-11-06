@@ -21,6 +21,7 @@
   display: flex;
   align-items: center;
   gap: 16px;
+  min-width: 0;
   padding: 0;
   flex-shrink: 0;
 }
@@ -35,6 +36,66 @@
 .home-asof {
   font-size: var(--fs-xs);
   color: var(--text-2);
+  white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.home-oc .home-head h1 {
+  flex-shrink: 0;
+}
+.home-asof.state-stale,
+.home-asof.state-unavailable {
+  color: var(--warning);
+}
+.home-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-left: -8px;
+  color: var(--text-2);
+  background: transparent;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.home-refresh:disabled {
+  opacity: 0.45;
+  cursor: progress;
+}
+.home-scope {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.home-scope b {
+  color: var(--text-1);
+  font-weight: 500;
+}
+.home-stale-tag {
+  margin-left: 6px;
+  padding: 0 5px;
+  font-style: normal;
+  font-size: 10px;
+  color: var(--warning);
+  border: 1px solid var(--warning);
+  border-radius: 4px;
+}
+.home-kpi .home-stale-tag {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  margin: 0;
+}
+.home-kpis.state-stale .home-kpi-value {
+  opacity: 0.6;
+}
+.home-kpis.state-unavailable .home-kpi-value {
+  font-size: 18px;
+  color: var(--warning);
+  line-height: 1.6;
 }
 .home-view-switch {
   margin-left: auto;
@@ -159,7 +220,10 @@
   display: grid;
   grid-template-columns: var(--att) minmax(0, 1fr) var(--ins);
   gap: 12px;
-  height: clamp(420px, calc(100dvh - 64px - 250px), 980px);
+  /* R1-6: the stage fills the first screen below head + KPI strip (64 top bar
+     + 12 padding + 31 head + 10 gap + 87 KPI + 10 gap + 12 bottom margin ≈ 226).
+     CloudRuntime (independent poll) moved below the event strip. */
+  height: clamp(420px, calc(100dvh - 226px), 980px);
   min-height: 420px;
   flex-shrink: 0;
 }
@@ -584,6 +648,9 @@ button.attention-row:hover {
     --fs-num: 26px;
     padding: 10px 14px 12px;
   }
+  .home-oc .home-head h1 span {
+    display: none;
+  }
   .home-grid {
     grid-template-columns: var(--att) minmax(0, 1fr);
   }
@@ -626,4 +693,31 @@ button.attention-row:hover {
   .home-below {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* R1-5 recoverable 3D failures: actions inside the error banner. */
+.home-stage .scene-recover {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 30;
+}
+.home-stage .scene-recover button {
+  padding: 3px 10px;
+  font-size: var(--fs-xs);
+  color: var(--text-1);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* R1-4: selection highlight in 2D, and the 2D map keeps clear of the open drawer. */
+.stage2d-map path.selected {
+  fill: #2a7fc4;
+  stroke: var(--accent-cyan);
+  stroke-width: 2;
+}
+.home-grid.drawer-open .stage2d-map {
+  padding-right: calc(var(--drawer-inset, 0px) + 8px);
 }

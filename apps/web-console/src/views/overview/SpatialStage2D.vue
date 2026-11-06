@@ -86,8 +86,8 @@ watch(
   },
   { immediate: true }
 );
-// Esc mirrors the 3D stage: close the selection (and the narrow-width drawer)
-// first, otherwise go up one region level.
+// Esc — same rule as the 3D stage: 1st Esc closes the detail (and the
+// narrow-width drawer), 2nd Esc goes up one region level; only "返回全国" resets.
 function handleKey(e: KeyboardEvent) {
   if (e.key !== 'Escape') return;
   if (selectedId.value || selectedProjectId.value) store.select(null);
@@ -146,6 +146,17 @@ function pathOf(f: Feature): string {
   return d;
 }
 
+// Region containing the current selection at the displayed depth — highlighted
+// like the 3D focus, so the selection stays visible next to the open drawer (R1-4).
+const selectedRegion = computed(() => {
+  const id = selectedId.value ?? selectedProjectId.value;
+  if (!id) return null;
+  const item =
+    sceneProvider.devices.value.find((d) => d.deviceId === id) ?? sceneProvider.projects.value.find((p) => p.id === id);
+  const depth = regionTarget.value.length;
+  if (!item || (depth && item.adminPath[depth - 1] !== leaf.value)) return null;
+  return item.adminPath[depth] ?? (depth ? leaf.value : null);
+});
 const devicesByRegion = computed(() => {
   const depth = regionTarget.value.length;
   const counts = new Map<number, { total: number; alarm: number }>();
@@ -197,7 +208,7 @@ function crumb(i: number) {
           v-for="r in regions"
           :key="r.code"
           :d="r.d"
-          :class="{ has: r.count > 0, alarm: r.alarm > 0, drillable: r.code !== leaf }"
+          :class="{ has: r.count > 0, alarm: r.alarm > 0, drillable: r.code !== leaf, selected: r.code === selectedRegion }"
           :data-region-code="r.code"
           @click="drill(r.code)"
         >

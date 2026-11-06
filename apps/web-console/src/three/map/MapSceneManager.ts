@@ -156,11 +156,13 @@ export class MapSceneManager {
     this.resize();
     this.loop = new SceneLoop((dt, t) => this.update(dt, t), this.scheduler);
   }
-  async init() {
+  /** Load the country boundaries. Resolves false (after reporting the error) when a map resource failed; safe to call again to retry. */
+  async init(): Promise<boolean> {
+    if (this.countryBox.isEmpty() === false && this.country.children.length) return true;
     try {
       await this.loader.init();
       const data = await this.loader.children(100000);
-      if (!this.alive) return;
+      if (!this.alive) return false;
       for (const f of data.features) {
         if (!this.loader.manifest[Number(f.properties?.adcode)]) continue;
         const region = buildRegion(f);
@@ -187,9 +189,19 @@ export class MapSceneManager {
       );
       this.refreshLabelsAndMarkers();
       this.notify();
+      return true;
     } catch (e) {
       this.callbacks.error(String(e));
+      return false;
     }
+  }
+  /** The WebGL canvas (for context-loss listeners). */
+  get canvas(): HTMLCanvasElement {
+    return this.renderer.domElement;
+  }
+  /** Request a frame after an external change (e.g. a restored WebGL context). */
+  redraw() {
+    this.scheduler.invalidate();
   }
   private activateLabel(target: InteractionPick) {
     this.interaction.lastPick = target;
@@ -1012,6 +1024,29 @@ export class MapSceneManager {
     });
     return points;
   }
+  /** Screen rect (CSS px, relative to the host) of the focused device marker or project context; null when nothing is focused. */
+  private focusedScreenRect() {
+    let box: Box3 | null = null;
+    if (this.focusedDeviceId) {
+      const marker = this.markers.children.find((g) => g.userData.device?.deviceId === this.focusedDeviceId);
+      if (marker) box = new Box3().setFromObject(marker);
+    } else if (this.focusedProjectId) {
+      const p = this.shownProjects.find((x) => x.id === this.focusedProjectId);
+      const pos = p ? this.projectOf(p) : null;
+      if (pos) box = new Box3(new Vector3(pos[0] - 0.05, 0.9, pos[1] - 0.05), new Vector3(pos[0] + 0.05, 1.2, pos[1] + 0.05));
+    }
+    if (!box) return null;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    const v = new Vector3();
+    for (const x of [box.min.x, box.max.x])
+      for (const y of [box.min.y, box.max.y])
+        for (const z of [box.min.z, box.max.z]) {
+          v.set(x, y, z).project(this.rig.camera);
+          const sx = ((v.x + 1) * this.width) / 2, sy = ((1 - v.y) * this.height) / 2;
+          x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy);
+        }
+    return { left: x0, top: y0, right: x1, bottom: y1, kind: this.focusedDeviceId ? 'device' : 'project' };
+  }
   private focusedAssetBounds() {
     const marker = this.markers.children.find(
       (g) => g.userData.device?.deviceId === this.focusedDeviceId
@@ -1057,6 +1092,8 @@ export class MapSceneManager {
         observation: this.rig.observation,
       },
       focusedAssetBounds: this.focusedAssetBounds(),
+      focusedScreenRect: this.focusedScreenRect(),
+      viewOffset: this.rig.camera.view?.enabled ? this.rig.camera.view.offsetX : 0,
       mapDepth: 0.72,
       bevelThickness: 0.055,
       projectedRatio: (maxY - minY) / (maxX - minX),

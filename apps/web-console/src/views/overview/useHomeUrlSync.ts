@@ -95,7 +95,11 @@ export function useHomeUrlSync() {
   }
 
   function write() {
-    if (applying || route.path !== '/overview') return;
+    // A pending focus intent (deep link / list click) has not set the selection
+    // yet: serializing now would drop ?project= / ?asset= when the region changes
+    // in the same navigation (H1-R1 finding). The watcher below re-runs write()
+    // once the active view consumes the request.
+    if (applying || route.path !== '/overview' || store.focusRequest) return;
     const w = homeQueryFor(
       {
         regionPath: store.regionPath,
@@ -115,7 +119,7 @@ export function useHomeUrlSync() {
 
   watch(() => route.query, () => void apply(), { immediate: true });
   watch(
-    () => [store.regionPath.join(','), store.regionTarget.join(','), store.selectedId, store.selectedProjectId, store.status, store.view],
+    () => [store.regionPath.join(','), store.regionTarget.join(','), store.selectedId, store.selectedProjectId, store.status, store.view, store.focusRequest?.seq ?? 0],
     () => write()
   );
 }

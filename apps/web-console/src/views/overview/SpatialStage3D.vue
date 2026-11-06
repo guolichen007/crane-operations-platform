@@ -94,6 +94,34 @@ async function runFocus() {
 watch(() => [store.focusRequest?.seq, ready.value], () => void runFocus());
 
 watch([selected, selectedProject], () => scene?.setSelection(selected.value?.deviceId ?? selectedProject.value?.id ?? null));
+
+// ---- detail close / drawer inset (R1-4) ----
+// Closing a project/asset detail (Esc, the panel's close button, browser Back)
+// returns the camera to the CURRENT region level — never straight to the
+// country; only "返回全国" does that. The narrow-width drawer covers the stage's
+// right edge, so the camera keeps the focus target in the uncovered part via the
+// existing MapSceneManager.setInspectorWidth() (projection offset, no new camera).
+const focusPreset = () => !!scene && /^(PROJECT|DEVICE)_/.test(scene.rig.preset);
+function restoreRegionView() {
+  if (!scene || scene.drill.busy || !focusPreset()) return;
+  void scene.back(scene.drill.stack.length - 1);
+}
+async function applyInset(px: number) {
+  if (!scene) return;
+  scene.setInspectorWidth(px);
+  if (!scene.drill.busy) return;
+  // A drill/focus transition was framed with the previous offset: reframe once it settles.
+  while (alive && scene.drill.busy) await sleep(80);
+  if (alive && store.inspectorInset === px) scene.setInspectorWidth(px);
+}
+watch(
+  () => [store.inspectorInset, store.selectedId, store.selectedProjectId] as const,
+  ([inset, sid, pid], old) => {
+    if (!scene || !ready.value) return;
+    if (!sid && !pid && (old?.[1] || old?.[2])) restoreRegionView();
+    if (inset !== old?.[0]) void applyInset(inset);
+  }
+);
 watch([visibleProjects, visibleDevices], () => scene?.setFilter(visibleProjects.value, visibleDevices.value));
 
 // ---- user controls ----
@@ -149,9 +177,11 @@ function pauseTour() {
 }
 function handleKey(e: KeyboardEvent) {
   if (e.key === 'Escape') {
+    // Same rule as the 2D stage: 1st Esc closes the detail (camera back to the
+    // current region), 2nd Esc goes up one region level. Never jumps to the country.
     stopTour();
-    if (/^(PROJECT|DEVICE)_/.test(cameraPreset.value)) void resetCountry();
-    else if (store.selectedId || store.selectedProjectId) store.select(null); // close the Inspector/drawer first
+    if (store.selectedId || store.selectedProjectId) store.select(null); // watcher restores the region view
+    else if (focusPreset()) restoreRegionView();
     else if (regionStack.value.length > 1) crumb(regionStack.value.length - 2);
   }
   if (isDev && e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'd') {
@@ -164,7 +194,8 @@ function userStop(e: PointerEvent) {
 }
 
 onMounted(async () => {
-  void sceneProvider.ensureLoaded();
+  // Data loading is owned by Overview (single owner): a second ensureLoaded()
+  // here would silently retry a failed first load and hide the failure (R1-1).
   window.addEventListener('keydown', handleKey);
   window.addEventListener('start-tour', playTour);
   document.addEventListener('pointerdown', userStop, true);
@@ -197,9 +228,18 @@ onMounted(async () => {
       start: () => scene?.startPerfRecording(),
       stop: () => scene?.stopPerfRecording(),
     });
-    await scene.init();
+    // R1-5: a map resource failure is recoverable (retry button), and a lost
+    // WebGL context that is not restored in time falls back to the 2D view —
+    // the stage must never stay blank.
+    scene.canvas.addEventListener('webglcontextlost', onContextLost, false);
+    scene.canvas.addEventListener('webglcontextrestored', onContextRestored, false);
+    if (!(await scene.init())) {
+      resourceFailed.value = true;
+      return;
+    }
     if (!alive || !document.contains(host.value!)) return;
     scene.setFilter(visibleProjects.value, visibleDevices.value);
+    if (store.inspectorInset) scene.setInspectorWidth(store.inspectorInset);
     ready.value = true;
     void converge();
   } catch (e) {
@@ -212,6 +252,9 @@ onMounted(async () => {
 });
 onUnmounted(() => {
   alive = false;
+  clearTimeout(lostTimer);
+  scene?.canvas.removeEventListener('webglcontextlost', onContextLost, false);
+  scene?.canvas.removeEventListener('webglcontextrestored', onContextRestored, false);
   runToken++;
   window.removeEventListener('keydown', handleKey);
   window.removeEventListener('start-tour', playTour);
@@ -220,6 +263,48 @@ onUnmounted(() => {
   scene?.dispose();
   tour.value = 'stopped';
 });
+
+// ---- recoverability (R1-5) ----
+const resourceFailed = ref(false);
+const contextLost = ref(false);
+const CONTEXT_RESTORE_MS = 3000;
+let lostTimer: ReturnType<typeof setTimeout> | undefined;
+function onContextLost(e: Event) {
+  e.preventDefault(); // allow the browser to restore the context
+  contextLost.value = true;
+  clearTimeout(lostTimer);
+  lostTimer = setTimeout(() => {
+    if (alive && contextLost.value) store.webglUnavailable = 'WebGL 上下文丢失且未恢复';
+  }, CONTEXT_RESTORE_MS);
+}
+function onContextRestored() {
+  clearTimeout(lostTimer);
+  contextLost.value = false;
+  scene?.redraw();
+}
+async function retryResources() {
+  if (!scene) return;
+  resourceFailed.value = false;
+  error.value = '';
+  loading.value = true;
+  try {
+    if (!(await scene.init())) {
+      resourceFailed.value = true;
+      return;
+    }
+    if (!alive) return;
+    scene.setFilter(visibleProjects.value, visibleDevices.value);
+    if (store.inspectorInset) scene.setInspectorWidth(store.inspectorInset);
+    ready.value = true;
+    void converge();
+    if (sceneProvider.mode === 'demo' && !tourCtl) tourCtl = createTour();
+  } finally {
+    loading.value = false;
+  }
+}
+function useLightView() {
+  store.view = '2d';
+}
 
 function createTour() {
   const real = () => sceneProvider.realProjects.value;
@@ -246,7 +331,16 @@ defineExpose({ playTour });
 <template>
   <div class="map-canvas" ref="host" role="img" aria-label="全国行车三维地图，支持鼠标拖动、缩放和点击行政区"></div>
   <div v-if="loading" class="scene-loading"><span></span>正在构建空间沙盘</div>
-  <div v-if="error" class="scene-error" role="alert">{{ error }}<button @click="error = ''">关闭</button></div>
+  <div v-if="resourceFailed" class="scene-error scene-recover" role="alert" data-testid="scene-resource-error">
+    地图资源加载失败：{{ error || '未知错误' }}
+    <button type="button" @click="retryResources">重试</button>
+    <button type="button" @click="useLightView">切换轻量视图</button>
+  </div>
+  <div v-else-if="contextLost" class="scene-error scene-recover" role="alert" data-testid="scene-context-lost">
+    三维渲染上下文已丢失，正在等待恢复…
+    <button type="button" @click="useLightView">切换轻量视图</button>
+  </div>
+  <div v-else-if="error" class="scene-error" role="alert">{{ error }}<button @click="error = ''">关闭</button></div>
   <div class="map-topline">
     <nav class="breadcrumb" aria-label="行政区路径">
       <button v-for="(s, i) in regionStack" :key="s.adcode" @click="crumb(i)">
