@@ -132,6 +132,8 @@ test('lost create response is recovered by receipt after retry and after refresh
   const own = await api(page, '/api/v1/project-create-receipts/' + key);
   expect(own.status).toBe(200);
   await action(page, 'auth.logout').click();
+  // Wait for the logout to finish: /login redirects to / while the session is still valid.
+  await expect(page).toHaveURL('/login');
   await login(page, 'synthetic-b');
   const other = await api(page, '/api/v1/project-create-receipts/' + key);
   expect(other.status).toBe(404);

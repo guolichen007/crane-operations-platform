@@ -111,6 +111,8 @@ test('E2 admin full path with zero sales: draft → assign → submit → blocke
   const denied = await api(page, `/api/v1/projects/${id}/approve`, 'POST', { version: (await api(page, '/api/v1/projects/' + id)).body.version, reason: '证据：自审尝试' });
   expect(denied.status).toBe(403);
   await action(page, 'auth.logout').click();
+  // Wait for the logout to finish: /login redirects to / while the session is still valid.
+  await expect(page).toHaveURL('/login');
   await login(page, 'synthetic-manager');
   await page.goto('/projects/' + id);
   await action(page, 'project.tab').filter({ hasText: '审批和重复风险' }).click();

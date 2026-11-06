@@ -35,6 +35,15 @@ for (const file of readdirSync('apps/project-intake-web/src').filter((f) => f.en
   }
 }
 assert(actions >= 20);
+// Logout race guard: a click on auth.logout must be followed by waiting for /login,
+// otherwise the next login can be redirected to / by a still-valid session.
+for (const file of readdirSync('tests/baobei/e2e').filter((f) => f.endsWith('.ts'))) {
+  const lines = readFileSync(resolve('tests/baobei/e2e', file), 'utf8').split('\n');
+  lines.forEach((line, i) => {
+    if (/action\((page|p|b)\s*,\s*'auth\.logout'\)\.click\(\)/.test(line))
+      assert(lines.slice(i + 1, i + 4).some((l) => /toHaveURL\('\/login'\)/.test(l)), `${file}:${i + 1} logout without waiting for /login`);
+  });
+}
 // Test isolation: only the B3 staff spec may use the accounts it irreversibly suspends.
 for (const file of readdirSync('tests/baobei/e2e').filter((f) => f.endsWith('.ts') && f !== 'staff.spec.ts'))
   assert(!/['"`]synthetic-staff-/.test(readFileSync(resolve('tests/baobei/e2e', file), 'utf8')), file + ' uses a B3-suspended account');
