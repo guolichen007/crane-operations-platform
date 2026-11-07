@@ -68,7 +68,8 @@ export function parseStatusParam(value: unknown): HomeStatusFilter | null {
  *   ready        — last request succeeded                           → numbers
  *   refreshing   — numbers from an earlier success, new request in flight
  *   stale        — numbers from an earlier success, the latest request failed → numbers marked 过期
- * An empty successful response is "ready" with zeros — the only case a 0 is shown.
+ * After a complete successful load any count may legitimately be 0 (including an
+ * empty response); only unknown/failed data (loading/unavailable) must not show a number.
  */
 export type HomeDataState = 'loading' | 'unavailable' | 'ready' | 'refreshing' | 'stale';
 export function homeDataState(p: { mode: 'api' | 'demo'; loading: boolean; error: string; fetchedAt: string }): HomeDataState {

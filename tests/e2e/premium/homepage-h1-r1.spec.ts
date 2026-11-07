@@ -152,10 +152,12 @@ test.describe('R1-1 API 故障不显示假 0', () => {
     await expect(kpi(page, 'devices')).toHaveText('3台');
     await expect(kpi(page, 'alarm')).toHaveText('1台');
     await expect(attention(page, 'alarm')).toHaveText('1');
+    // A legitimate 0 after a complete successful load (no REAL device is running).
+    await expect(kpi(page, 'real-running')).toHaveText('0台');
     await expect(page.getByTestId('home-load-error')).toHaveCount(0);
   });
 
-  test('成功返回空列表才显示 0', async ({ page }) => {
+  test('成功拉取后合法计数可以为 0（含空列表全部为 0），未知/失败才不可用', async ({ page }) => {
     await api(page, [], []);
     await page.goto('/#/overview?view=2d');
     await expect(page.getByTestId('home-kpis')).toHaveAttribute('data-state', 'ready');
@@ -293,6 +295,65 @@ test.describe('R1-2 统计范围契约', () => {
     await expect(page.getByTestId('inventory-asset')).toHaveCount(2);
     await expect(page.getByTestId('inventory-scope')).toContainText('浙江省');
   });
+});
+
+test('R1-2 /devices?region= 只收窄授权数据：不扩大授权、与 ?project= 叠加、后退回首页、异常参数不显示假 0', async ({ page }) => {
+  // The session is only authorized for ZJ and GD; the API (server-side) returns only those.
+  const projects: Proj[] = [
+    { id: 'ZJ', name: '浙江项目', adminCode: 330481, devices: 2 },
+    { id: 'GD', name: '广东项目', adminCode: 440300, devices: 1 },
+    { id: 'NOLOC', name: '无位置项目', adminCode: null, devices: 1 },
+  ];
+  await api(page, projects, [
+    { id: 'ZJ-1', projectId: 'ZJ' },
+    { id: 'ZJ-2', projectId: 'ZJ' },
+    { id: 'GD-1', projectId: 'GD' },
+    { id: 'NL-1', projectId: 'NOLOC' },
+  ]);
+  const rows = page.getByTestId('inventory-asset');
+  // Original list query unchanged.
+  await page.goto('/#/devices');
+  await expect(rows).toHaveCount(4);
+  await page.goto('/#/devices?project=GD');
+  await expect(rows).toHaveCount(1);
+  // Region narrows; combined with project it is an intersection (never a union).
+  await page.goto('/#/devices?region=330000');
+  await expect(rows).toHaveCount(2);
+  await page.goto('/#/devices?region=330000&project=GD');
+  await expect(rows).toHaveCount(0);
+  await expect(page.getByTestId('inventory-region-empty')).toContainText('浙江省');
+  // A region with no authorized project shows an explained empty list, not other projects.
+  await page.goto('/#/devices?region=110000');
+  await expect(rows).toHaveCount(0);
+  await expect(page.getByTestId('inventory-region-empty')).toContainText('北京市');
+  // Unknown region: explicit error, no count.
+  await page.goto('/#/devices?region=999999');
+  await expect(page.getByTestId('inventory-region-error')).toContainText('不存在');
+  await expect(page.getByTestId('inventory-scope')).toContainText('— 台资产');
+  await expect(rows).toHaveCount(0);
+  // Malformed region: ignored with a notice, full authorized list.
+  await page.goto('/#/devices?region=abc');
+  await expect(page.getByTestId('inventory-region-ignored')).toBeVisible();
+  await expect(rows).toHaveCount(4);
+  // Browser history: home → KPI → /devices?region → Back returns to the same home scope.
+  await page.goto('/#/overview?view=2d&region=330000');
+  await expect(kpi(page, 'devices')).toHaveText('2台');
+  await page.locator('[data-kpi=devices]').click();
+  await expect(page).toHaveURL(/#\/devices\?region=330000/);
+  await page.goBack();
+  await expect(page).toHaveURL(/#\/overview\?.*region=330000/);
+  await expect(page.getByTestId('kpi-scope')).toContainText('浙江省');
+  await page.goForward();
+  await expect(rows).toHaveCount(2);
+});
+
+test('R1-2 /devices?region= 行政区清单不可用：报错且不显示任何设备或 0', async ({ page }) => {
+  await api(page, located, locatedAssets);
+  await page.route('**/geo/geo-manifest.json', (r) => r.fulfill({ status: 500, body: 'x' }));
+  await page.goto('/#/devices?region=330000');
+  await expect(page.getByTestId('inventory-region-error')).toContainText('行政区数据不可用');
+  await expect(page.getByTestId('inventory-asset')).toHaveCount(0);
+  await expect(page.getByTestId('inventory-scope')).toContainText('— 台资产');
 });
 
 // ---------------------------------------------------------------- R1-3

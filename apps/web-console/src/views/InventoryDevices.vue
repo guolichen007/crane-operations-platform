@@ -25,19 +25,34 @@ const { data, error, loading } = useCloudQuery(async () => {
 });
 // ?region= comes from the homepage Inventory KPI (same scope as the card): a
 // project is in the region when the region is on its administrative path.
-const region = computed(() => parseRegionParam(route.query.region));
-const regionName = computed(() => (region.value ? data.value?.manifest?.[region.value]?.name ?? String(region.value) : ''));
+// The region only NARROWS what the authorized API returned; it can never widen
+// it. Failure modes are explicit (H1-R1 closure): a malformed or unknown region,
+// or an unavailable region manifest, is reported — never shown as "0 devices".
+const rawRegion = computed(() => (typeof route.query.region === 'string' ? route.query.region : ''));
+const region = computed(() => parseRegionParam(rawRegion.value));
+const regionState = computed<'none' | 'malformed' | 'unavailable' | 'unknown' | 'ok'>(() => {
+  if (!rawRegion.value) return 'none';
+  if (region.value === null) return 'malformed';
+  if (!data.value) return 'ok'; // still loading
+  if (!data.value.manifest) return 'unavailable';
+  return data.value.manifest[region.value] ? 'ok' : 'unknown';
+});
+const regionName = computed(() =>
+  region.value && regionState.value === 'ok' ? data.value?.manifest?.[region.value]?.name ?? '' : ''
+);
 const inRegion = computed(() => {
   const code = region.value;
   const m = data.value?.manifest;
-  if (!code) return () => true;
+  if (regionState.value === 'none' || regionState.value === 'malformed') return () => true;
+  if (!code || !m || regionState.value !== 'ok') return () => false;
   const ok = new Set(
     (data.value?.projects ?? [])
-      .filter((p) => p.adminCode && m && (regionPathOf(p.adminCode, m) ?? []).includes(code))
+      .filter((p) => p.adminCode && (regionPathOf(p.adminCode, m) ?? []).includes(code))
       .map((p) => p.id)
   );
   return (projectId: string) => ok.has(projectId);
 });
+const regionBlocked = computed(() => regionState.value === 'unavailable' || regionState.value === 'unknown');
 const assets = computed(
   () =>
     data.value?.assets.filter(
@@ -67,14 +82,26 @@ const names = computed(() => new Map(data.value?.projects.map((p) => [p.id, p.na
           aria-label="搜索行车资产"
           placeholder="搜索设备名称 / 资产编号" /></label
       ><span data-testid="inventory-scope"
-        >{{ assets.length }} 台资产<template v-if="regionName"> · 行政区 {{ regionName }}</template> ·
+        >{{ regionBlocked ? '—' : assets.length }} 台资产<template v-if="regionName"> · 行政区 {{ regionName }}</template> ·
         规划模拟不代表现场在线</span
       >
     </div>
     <p v-if="error" role="status">{{ error }}</p>
     <p v-else-if="loading">正在读取资产…</p>
+    <p v-else-if="regionState === 'unavailable'" role="alert" data-testid="inventory-region-error">
+      行政区数据不可用，无法按行政区 {{ region }} 筛选；未显示任何设备，请刷新重试或<RouterLink to="/devices">查看全部授权设备</RouterLink>。
+    </p>
+    <p v-else-if="regionState === 'unknown'" role="alert" data-testid="inventory-region-error">
+      行政区 {{ region }} 不存在；<RouterLink to="/devices">查看全部授权设备</RouterLink>。
+    </p>
+    <p v-else-if="!assets.length && regionName" class="no-data" data-testid="inventory-region-empty">
+      {{ regionName }} 范围内没有您有权查看的 Inventory 设备。
+    </p>
     <p v-else-if="!assets.length" class="no-data">
       设备档案待补充 · 尚未接入Cloud；不代表离线故障。
+    </p>
+    <p v-if="regionState === 'malformed'" role="status" data-testid="inventory-region-ignored">
+      无效的行政区参数「{{ rawRegion }}」，已忽略并显示全部授权设备。
     </p>
     <div class="device-center-layout">
       <div class="premium-device-list">
