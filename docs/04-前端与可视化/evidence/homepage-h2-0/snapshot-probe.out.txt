@@ -1,0 +1,9 @@
+== READ COMMITTED, two statements (writer commits in between) ==
+assets=1
+boundREAL=2
+== REPEATABLE READ READ ONLY, two statements ==
+assets=2
+boundREAL=2
+== single statement (implicit READ COMMITTED, sleep between the two scans) ==
+assets=3 boundREAL=3
+final assets=4

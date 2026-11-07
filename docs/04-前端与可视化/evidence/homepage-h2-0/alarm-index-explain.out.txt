@@ -1,0 +1,80 @@
+alarms=400000 size=38 MB
+=== NO INDEX: window count ===
+  Buffers: shared hit=1652 read=1394 written=64
+        Buffers: shared hit=1652 read=1394 written=64
+              Buffers: shared hit=1652 read=1394 written=64
+                    Buffers: shared hit=1652 read=1394 written=64
+                    ->  Hash Join (actual time=7.689..8.308 rows=660 loops=2)
+                          Buffers: shared hit=1614 read=1394 written=64
+                          ->  Parallel Seq Scan on alarms al (actual time=7.319..7.653 rows=6666 loops=2)
+                                Buffers: shared hit=1548 read=1394 written=64
+                                Buffers: shared hit=52
+                                ->  Hash Join (actual time=0.022..0.283 rows=300 loops=2)
+                                      Buffers: shared hit=52
+                                      ->  Seq Scan on devices d (actual time=0.006..0.150 rows=3000 loops=2)
+                                            Buffers: shared hit=50
+                                            Buffers: shared hit=2
+=== NO INDEX: existing ListScoped (latest 100) ===
+        ->  Sort (actual time=19.636..19.639 rows=70 loops=2)
+              Sort Key: a.observed_at DESC
+              Sort Method: top-N heapsort  Memory: 34kB
+              Worker 0:  Sort Method: top-N heapsort  Memory: 34kB
+                    ->  Parallel Seq Scan on alarms a (actual time=0.027..7.963 rows=200000 loops=2)
+                                ->  Seq Scan on devices d (actual time=0.004..0.148 rows=3000 loops=2)
+                                      ->  Seq Scan on project_memberships m (actual time=0.003..0.004 rows=20 loops=2)
+Execution Time: 21.831 ms
+=== CREATE INDEX CONCURRENTLY alarms(observed_at) and alarms(device_id, observed_at DESC) ===
+Time: 96.501 ms
+Time: 187.996 ms
+alarms_pkey=15 MB
+alarms_observed_at=8792 kB
+alarms_device_observed=12 MB
+=== WITH INDEXES: window count ===
+  Buffers: shared hit=75 read=89
+  ->  Hash Join (actual time=0.463..2.169 rows=1321 loops=1)
+        Buffers: shared hit=75 read=89
+        ->  Index Scan using alarms_observed_at on alarms al (actual time=0.013..1.054 rows=13333 loops=1)
+              Buffers: shared hit=72 read=66
+              Buffers: shared hit=3 read=23
+              ->  Hash Join (actual time=0.017..0.401 rows=300 loops=1)
+                    Buffers: shared hit=3 read=23
+                    ->  Seq Scan on devices d (actual time=0.002..0.263 rows=3000 loops=1)
+                          Buffers: shared hit=2 read=23
+                          Buffers: shared hit=1
+                          ->  Seq Scan on project_memberships m (actual time=0.001..0.003 rows=20 loops=1)
+                                Buffers: shared hit=1
+  Buffers: shared hit=244 read=24
+=== WITH INDEXES: existing ListScoped ===
+Limit (actual time=0.017..1.703 rows=100 loops=1)
+              ->  Index Scan Backward using alarms_observed_at on alarms a (actual time=0.005..0.090 rows=1000 loops=1)
+                    ->  Index Scan using devices_pkey on devices d (actual time=0.001..0.001 rows=1 loops=1000)
+              ->  Index Only Scan using project_memberships_scope on project_memberships m (actual time=0.001..0.001 rows=0 loops=200)
+Execution Time: 1.783 ms
+=== CONCURRENTLY inside a transaction (goose default) ===
+ERROR:  CREATE INDEX CONCURRENTLY cannot run inside a transaction block
+== both indexes ==
+Execution Time: 2.430 ms
+Execution Time: 1.964 ms
+Execution Time: 2.014 ms
+        ->  Index Scan using alarms_observed_at on alarms al (actual time=0.007..0.850 rows=13333 loops=1)
+== only (device_id, observed_at DESC) ==
+Execution Time: 1.797 ms
+Execution Time: 1.272 ms
+Execution Time: 1.198 ms
+        ->  Index Only Scan using alarms_device_observed on alarms al (actual time=0.002..0.002 rows=4 loops=300)
+== no index ==
+Execution Time: 10.271 ms
+Execution Time: 10.942 ms
+Execution Time: 10.096 ms
+== CIC while alarms are being inserted (writer inserts 20k rows in 1k-row commits) ==
+CREATE INDEX
+Time: 353.121 ms
+writer done
+rows=420000
+valid=true
+index_count=420000
+== failed CIC leaves an INVALID index; re-run without IF NOT EXISTS fails, recovery = DROP INDEX CONCURRENTLY + re-create ==
+ERROR:  could not create unique index "bad_uniq"
+bad_uniq valid=false
+NOTICE:  relation "bad_uniq" already exists, skipping
+dropped invalid index
