@@ -1,0 +1,74 @@
+--- Q1 asset rows (asset center and Inventory read the same table) ---
+ asset_rows | distinct_ids 
+------------+--------------
+          5 |            5
+(1 row)
+
+--- Q2 runtime identities per asset (SIM+REAL both possible) ---
+ asset_device_id | runtimes |   string_agg    
+-----------------+----------+-----------------
+ A1              |        2 | REAL,SIMULATION
+ B1              |        1 | SIMULATION
+(2 rows)
+
+--- Q3 naive join counts would double count A1 ---
+ naive_join_rows | distinct_assets 
+-----------------+-----------------
+               3 |               2
+(1 row)
+
+--- Q4 current Inventory.Assets picks ONE runtime per asset: REAL first even if offline ---
+ id | source_mode |   id    |  conn   
+----+-------------+---------+---------
+ A1 | REAL        | EDGE-A1 | OFFLINE
+ A2 |             |         | 
+ B1 | SIMULATION  | SIM-B1  | 
+ L1 |             |         | 
+ N1 |             |         | 
+(5 rows)
+
+--- Q5 Inventory.Projects hides lifecycle NULL projects but Assets does not filter them ---
+ inventory_projects | assets_in_hidden_projects 
+--------------------+---------------------------
+                  3 |                         1
+(1 row)
+
+--- Q6 retired assets still listed by Inventory.Assets (no asset_status filter) ---
+ id | asset_status 
+----+--------------
+ A2 | RETIRED
+(1 row)
+
+--- Q7 alarms on devices without an asset (unattributable to an asset) ---
+ message_id | asset_device_id 
+------------+-----------------
+ m3         | 
+(1 row)
+
+--- Q8 alarm devices vs alarm records (A1 has 2 records, 1 device) ---
+ records | devices 
+---------+---------
+       3 |       2
+(1 row)
+
+--- Q9 same display name in different projects ---
+ display_name | count | string_agg  
+--------------+-------+-------------
+ 1号行车      |     2 | PA/A1,PB/B1
+(1 row)
+
+--- Q10 observed_at vs updated_at times available ---
+ device_id |      last_seen       |          updated_at           
+-----------+----------------------+-------------------------------
+ EDGE-A1   | 2026-11-06T20:00:00Z | 2026-11-07 04:00:00+08
+ ORPHAN    |                      | 2026-11-07 15:47:30.367922+08
+ SIM-A1    | 2026-11-07T01:00:00Z | 2026-11-07 09:00:05+08
+(3 rows)
+
+--- Q11 alarm observed_at at UTC date boundary (H0-D2) ---
+ message_id |         utc         |         cst         
+------------+---------------------+---------------------
+ m1         | 2026-11-06 16:30:00 | 2026-11-07 00:30:00
+ m2         | 2026-11-06 16:31:00 | 2026-11-07 00:31:00
+(2 rows)
+
