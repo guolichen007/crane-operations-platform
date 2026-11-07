@@ -5,14 +5,18 @@ BAOBEI_MAIN_MERGE=FORBIDDEN
 BAOBEI_R2_MERGE=FORBIDDEN
 BASE_SHA=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18
 BRANCH=product/baobei-v1
-CURRENT_BATCH=FULL_ROLE_G3_2B
-STOP_AFTER_FULL_ROLE_G3_2B=YES
+CURRENT_BATCH=FULL_ROLE_G3_2C
+STOP_AFTER_FULL_ROLE_G3_2C=YES
 
 目标：快速报项目、识别重复、明确归属并跟进。独立产品，永不合并 main/R2。
 
-## 当前实施：G3-2B 审核队列与工作台一致性
+## 当前实施：G3-2C 审核对比与审核事务批量化
 
-基线 `07215c9`（Run 42183762931 八门通过）。`GET /api/v1/reviews?kind=pending&eligibility=reviewable|blocked|all` 在数据库内用与首页相同的 `reviewableSQL`/`projectScope` 过滤、按冻结提交时间与 ID 稳定排序分页，单一只读快照返回 `items`、`total`、`counts`、`asOf`；未传 eligibility 时保持原行为。首页“你可独立审核”跳转“我可审核”视图；审核队列分“我可审核 / 需要其他人处理 / 全部待审”。审核 POST 事务不变。验收见 [28-G3-2B审核队列与工作台一致性验收](28-G3-2B审核队列与工作台一致性验收.md)。G3-2C/G3-3 未开始；生产仍 BLOCKED。
+基线 `8601f1b`（Run 42195351996 八门通过）。`duplicate-comparison` 的候选读取、可读性与冻结证据等级合为一条集合查询（完整 HTTP 4 次往返，与候选数无关，原 4+2N）；`duplicate-decisions` 事务保留身份锁→727102→UUID 升序行锁的原有加锁语句，锁后一次读取锁定集、一次计算全部候选的参与冲突与证据等级（17 次往返，原 16+5N）。响应与旧实现逐字节等价，原因码、状态码、审计与回滚语义不变；无迁移、无 OpenAPI/前端改动。1k/10k 规模实测发现审核队列与首页汇总在 10k 时因 PostgreSQL JIT 编译变慢，已给出计划与最小方案待裁决。验收见 [29-G3-2C审核对比与事务批量化验收](29-G3-2C审核对比与事务批量化验收.md)。G3-3 未开始；生产仍 BLOCKED。
+
+## 历史：G3-2B 审核队列与工作台一致性
+
+基线 `07215c9`（Run 42183762931 八门通过）。`GET /api/v1/reviews?kind=pending&eligibility=reviewable|blocked|all` 在数据库内用与首页相同的 `reviewableSQL`/`projectScope` 过滤、按冻结提交时间与 ID 稳定排序分页，单一只读快照返回 `items`、`total`、`counts`、`asOf`；未传 eligibility 时保持原行为。首页“你可独立审核”跳转“我可审核”视图；审核队列分“我可审核 / 需要其他人处理 / 全部待审”。审核 POST 事务不变。验收见 [28-G3-2B审核队列与工作台一致性验收](28-G3-2B审核队列与工作台一致性验收.md)。
 
 ## 历史：G3-2A 跨组重复候选隐私收口
 

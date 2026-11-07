@@ -130,21 +130,11 @@ func reviewIndependence(ctx context.Context, q querier, u User, p Project) error
 	return nil
 }
 
-// candidateIndependence checks a related duplicate candidate. It must be fully
-// visible and the actor must never have participated in it.
-func candidateIndependence(ctx context.Context, q querier, u User, c Project) error {
-	if !(ProjectPolicy{u}).Read(c) {
-		return problem(403, "REVIEW_RELATED_PROJECT_RESTRICTED")
-	}
-	var conflict bool
-	if err := q.QueryRow(ctx, `SELECT `+candidateConflictSQL("c", "$1")+` FROM intake_projects c WHERE c.id=$2`, u.Subject, c.ID).Scan(&conflict); err != nil {
-		return err
-	}
-	if conflict {
-		return problem(403, "REVIEW_CONFLICT")
-	}
-	return nil
-}
+// Related candidates are checked in the decision transaction by
+// loadCandidateFacts (governance.go): one statement over all locked
+// candidates with candidateConflictSQL and primaryCompleteSQL. Each candidate
+// must be fully visible (ProjectPolicy.Read) and the actor must never have
+// participated in it.
 
 var reviewActions = []string{"approve", "return", "reject", "duplicate-decisions"}
 

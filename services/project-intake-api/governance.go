@@ -56,19 +56,27 @@ func mustJSON(v any) []byte {
 	return b
 }
 
-// evidenceGrade reads the immutable frozen submission, not only the project
-// row projection: COMPLETE_VERIFIED requires the projection to be COMPLETE and
-// the frozen record for that exact revision to exist and be COMPLETE.
-func evidenceGrade(ctx context.Context, q querier, p Project) (string, error) {
-	var ok bool
-	err := q.QueryRow(ctx, `SELECT `+primaryCompleteSQL("p")+` FROM intake_projects p WHERE p.id=$1`, p.ID).Scan(&ok)
-	if err != nil {
-		return "", err
+// gradeOf maps primaryCompleteSQL to the evidence grade. The SQL reads the
+// immutable frozen submission, not only the project row projection:
+// COMPLETE_VERIFIED requires the projection to be COMPLETE and the frozen
+// record for that exact revision to exist and be COMPLETE.
+func gradeOf(complete bool) string {
+	if complete {
+		return "COMPLETE_VERIFIED"
 	}
-	if ok {
-		return "COMPLETE_VERIFIED", nil
-	}
-	return "LEGACY_PARTIAL_EVIDENCE", nil
+	return "LEGACY_PARTIAL_EVIDENCE"
+}
+
+// scanAround lets scan() read the standard project columns with extra
+// leading and trailing values in the same row.
+type scanAround struct {
+	row        pgx.Row
+	head, tail []any
+}
+
+func (s scanAround) Scan(dest ...any) error {
+	all := append(append(append([]any{}, s.head...), dest...), s.tail...)
+	return s.row.Scan(all...)
 }
 func manager(u User) bool { return u.Role == "baobei_manager" || u.Role == "baobei_director" }
 func validStage(from, to, status string, reason bool) bool {
@@ -118,52 +126,73 @@ func (a *App) governanceHistory(ctx context.Context, p *Project) error {
 	}
 	return rows.Err()
 }
-func (a *App) comparison(ctx context.Context, q querier, p Project, u User) ([]Comparison, error) {
+
+// comparison returns every related case of the current round plus all decided
+// cases, in one statement regardless of the number of candidates (G3-2C). Each
+// row carries the candidate's full project columns (the same `columns`/scan()
+// as get()) and its frozen-evidence flag (primaryCompleteSQL). Readability is
+// decided by ProjectPolicy.Read (canRead), the object form of projectScope.
+// Unreadable candidates are only flagged Restricted; privacy.go removes them
+// from responses.
+func (a *App) comparison(ctx context.Context, q querier, primary Project, u User) ([]Comparison, error) {
 	// Stable order from each candidate's own registration number: cases of one
 	// submission share created_at, and a random-UUID tie-break made the order
-	// of visible cases vary between requests.
-	rows, e := q.Query(ctx, `SELECT d.id::text,d.candidate_id::text,d.score,d.risk,d.matched_signals,d.decision FROM duplicate_cases d JOIN intake_projects c ON c.id=d.candidate_id
- WHERE d.project_id=$1 AND (d.submission_revision=$2 OR d.decision<>'PENDING') ORDER BY d.created_at DESC,c.registration_no,d.id`, p.ID, p.SubmissionRevision)
+	// of visible cases vary between requests. Alias p is the candidate here
+	// because `columns` is written against p.
+	rows, e := q.Query(ctx, `SELECT d.id::text,d.score,d.risk,d.matched_signals,d.decision,`+columns+`,`+primaryCompleteSQL("p")+`
+ FROM duplicate_cases d JOIN intake_projects p ON p.id=d.candidate_id
+ WHERE d.project_id=$1 AND (d.submission_revision=$2 OR d.decision<>'PENDING') ORDER BY d.created_at DESC,p.registration_no,d.id`, primary.ID, primary.SubmissionRevision)
 	if e != nil {
 		return nil, e
 	}
+	defer rows.Close()
 	out := []Comparison{}
-	ids := []string{}
 	for rows.Next() {
 		var c Comparison
-		var id string
-		var b []byte
-		if e = rows.Scan(&c.ID, &id, &c.Score, &c.Risk, &b, &c.Decision); e != nil {
-			rows.Close()
-			return nil, e
-		}
-		if e = json.Unmarshal(b, &c.Signals); e != nil {
-			rows.Close()
-			return nil, e
-		}
-		out = append(out, c)
-		ids = append(ids, id)
-	}
-	e = rows.Err()
-	rows.Close()
-	if e != nil {
-		return nil, e
-	}
-	for i, id := range ids {
-		candidate, e := get(ctx, q, id, false)
+		var signals []byte
+		var complete bool
+		candidate, e := scan(scanAround{rows, []any{&c.ID, &c.Score, &c.Risk, &signals, &c.Decision}, []any{&complete}})
 		if e != nil {
 			return nil, e
 		}
-		if canRead(u, candidate) {
-			out[i].Candidate = &candidate
-			if out[i].EvidenceGrade, e = evidenceGrade(ctx, q, candidate); e != nil {
-				return nil, e
-			}
-		} else {
-			out[i].Restricted = true
+		if e = json.Unmarshal(signals, &c.Signals); e != nil {
+			return nil, e
 		}
+		if canRead(u, candidate) {
+			c.Candidate = &candidate
+			c.EvidenceGrade = gradeOf(complete)
+		} else {
+			c.Restricted = true
+		}
+		out = append(out, c)
 	}
-	return out, nil
+	return out, rows.Err()
+}
+
+// loadCandidateFacts reads the independence conflict and the evidence grade
+// of already locked candidate rows: one statement for any number of
+// candidates, using the same candidateConflictSQL and primaryCompleteSQL.
+type candidateFact struct{ conflict, complete bool }
+
+func loadCandidateFacts(ctx context.Context, q querier, u User, ids []string) (map[string]candidateFact, error) {
+	out := map[string]candidateFact{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := q.Query(ctx, `SELECT c.id::text,`+candidateConflictSQL("c", "$1")+`,`+primaryCompleteSQL("c")+` FROM intake_projects c WHERE c.id=ANY($2::uuid[])`, u.Subject, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var f candidateFact
+		if err = rows.Scan(&id, &f.conflict, &f.complete); err != nil {
+			return nil, err
+		}
+		out[id] = f
+	}
+	return out, rows.Err()
 }
 func (a *App) governance(w http.ResponseWriter, r *http.Request, u User) (bool, error) {
 	path, method, ctx := r.URL.Path, r.Method, r.Context()
@@ -315,17 +344,33 @@ func (a *App) governance(w http.ResponseWriter, r *http.Request, u User) (bool, 
 	if e = enforceProject(u, p, action); e != nil {
 		return true, e
 	}
+	var facts map[string]candidateFact
 	if contains([]string{"approve", "return", "reject", "duplicate-decisions"}, action) {
 		if e = reviewIndependence(ctx, tx, u, p); e != nil {
 			return true, e
 		}
 		if action == "duplicate-decisions" {
+			// One statement for all locked candidates (G3-2C); evaluated in
+			// the same UUID order as before so the first failing candidate
+			// still decides the reason code (readability before conflict).
+			ids := []string{}
+			for _, candidate := range related {
+				if candidate.ID != p.ID {
+					ids = append(ids, candidate.ID)
+				}
+			}
+			if facts, e = loadCandidateFacts(ctx, tx, u, ids); e != nil {
+				return true, e
+			}
 			for _, candidate := range related {
 				if candidate.ID == p.ID {
 					continue
 				}
-				if e = candidateIndependence(ctx, tx, u, candidate); e != nil {
-					return true, e
+				if !(ProjectPolicy{u}).Read(candidate) {
+					return true, problem(403, "REVIEW_RELATED_PROJECT_RESTRICTED")
+				}
+				if f, ok := facts[candidate.ID]; !ok || f.conflict {
+					return true, problem(403, "REVIEW_CONFLICT")
 				}
 			}
 		}
@@ -437,10 +482,7 @@ func (a *App) governance(w http.ResponseWriter, r *http.Request, u User) (bool, 
 				if candidate.ID == p.ID {
 					continue
 				}
-				grade, e := evidenceGrade(ctx, tx, candidate)
-				if e != nil {
-					return true, e
-				}
+				grade := gradeOf(facts[candidate.ID].complete)
 				grades[candidate.ID] = grade
 				if grade == "LEGACY_PARTIAL_EVIDENCE" {
 					legacy = append(legacy, candidate.ID)

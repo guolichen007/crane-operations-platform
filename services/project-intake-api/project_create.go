@@ -132,6 +132,8 @@ func (a *App) createProject(w http.ResponseWriter, r *http.Request, u User) erro
 
 func relatedReviewProjects(ctx context.Context, tx pgx.Tx, id string) ([]Project, error) {
 	// Submission and all duplicate decisions share 727102. Lock all affected projects in UUID order.
+	// The lock statement is unchanged since G1; G3-2C only replaced the
+	// per-project reads that followed it with one read of the locked set.
 	rows, err := tx.Query(ctx, `SELECT id::text FROM intake_projects WHERE id=$1 OR id IN (SELECT candidate_id FROM duplicate_cases WHERE project_id=$1 AND (submission_revision=(SELECT submission_revision FROM intake_projects WHERE id=$1) OR decision<>'PENDING')) ORDER BY id FOR UPDATE`, id)
 	if err != nil {
 		return nil, err
@@ -147,18 +149,23 @@ func relatedReviewProjects(ctx context.Context, tx pgx.Tx, id string) ([]Project
 	}
 	err = rows.Err()
 	rows.Close()
+	if err != nil || len(ids) == 0 {
+		return []Project{}, err
+	}
+	rows, err = tx.Query(ctx, `SELECT `+columns+` FROM intake_projects p WHERE p.id=ANY($1::uuid[]) ORDER BY p.id`, ids)
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 	out := []Project{}
-	for _, id := range ids {
-		p, e := get(ctx, tx, id, false)
+	for rows.Next() {
+		p, e := scan(rows)
 		if e != nil {
 			return nil, e
 		}
 		out = append(out, p)
 	}
-	return out, nil
+	return out, rows.Err()
 }
 
 // createReceipt lets the original actor recover a project created with a

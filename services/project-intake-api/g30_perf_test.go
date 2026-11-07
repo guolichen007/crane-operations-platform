@@ -96,9 +96,10 @@ func TestDatabaseG30ComparisonBaseline(t *testing.T) {
 		fmt.Fprintf(&out, "| %d | %d | %s | %d | %s | %d | %s | %s | %d | %s | %s |\n", n, cq, r(ct), dq, r(dt), hq, r(h50), r(h95), xq, r(x50), r(x95))
 		if n == 50 {
 			for _, q := range []struct{ title, sql string }{
-				{"comparison 主查询", `EXPLAIN (ANALYZE, BUFFERS) SELECT id::text,candidate_id::text,score,risk,matched_signals,decision FROM duplicate_cases WHERE project_id='` + p.ID + `' AND (submission_revision=1 OR decision<>'PENDING') ORDER BY created_at DESC,id`},
-				{"comparison 逐候选 get()", `EXPLAIN (ANALYZE, BUFFERS) SELECT ` + columns + ` FROM intake_projects p WHERE p.id=(SELECT candidate_id FROM duplicate_cases WHERE project_id='` + p.ID + `' LIMIT 1)`},
-				{"comparison 逐候选 evidenceGrade()", `EXPLAIN (ANALYZE, BUFFERS) SELECT ` + primaryCompleteSQL("p") + ` FROM intake_projects p WHERE p.id=(SELECT candidate_id FROM duplicate_cases WHERE project_id='` + p.ID + `' LIMIT 1)`},
+				// G3-2C: comparison is one statement (case rows + candidate columns +
+				// frozen-evidence flag); the former per-candidate get()/evidenceGrade()
+				// statements no longer exist.
+				{"comparison 集合查询（G3-2C）", `EXPLAIN (ANALYZE, BUFFERS) SELECT d.id::text,d.score,d.risk,d.matched_signals,d.decision,` + columns + `,` + primaryCompleteSQL("p") + ` FROM duplicate_cases d JOIN intake_projects p ON p.id=d.candidate_id WHERE d.project_id='` + p.ID + `' AND (d.submission_revision=1 OR d.decision<>'PENDING') ORDER BY d.created_at DESC,p.registration_no,d.id`},
 				{"审核资格事实（单项目）", `EXPLAIN (ANALYZE, BUFFERS) SELECT p.id::text,` + strings.NewReplacer("$1", "'synthetic-director'", "$2", "'baobei_director'", "$3", "''").Replace(primaryConflictSQL("p", "$1")+`,`+primaryCompleteSQL("p")+`,EXISTS(`+relatedCandidatesSQL("p")+` AND NOT `+projectScope("c")+`),EXISTS(`+relatedCandidatesSQL("p")+` AND `+candidateConflictSQL("c", "$1")+`)`) + ` FROM intake_projects p WHERE p.id='` + p.ID + `'`},
 			} {
 				rows, err := f.db.Query(ctx, q.sql)
