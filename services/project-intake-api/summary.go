@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // WorkspaceSummary is the minimal, server-side home page aggregate for G2.
@@ -30,6 +32,13 @@ type RecentItem struct {
 	NextAction     string     `json:"nextAction"`
 }
 
+// jitOffSQL disables JIT for the rest of the current transaction only
+// (G3-3-P0, approved scope: review queue and workspace summary).
+const jitOffSQL = `SET LOCAL jit = off`
+
+// jitDefaultSQL returns to the session value inside the same transaction.
+const jitDefaultSQL = `SET LOCAL jit TO DEFAULT`
+
 // Count keys and their definitions, also documented in the G2 acceptance doc.
 //
 //	total               all projects in scope
@@ -44,8 +53,19 @@ type RecentItem struct {
 func (a *App) workspaceSummary(ctx context.Context, u User) (WorkspaceSummary, error) {
 	asOf := time.Now().UTC().Truncate(time.Microsecond)
 	s := WorkspaceSummary{AsOf: asOf, Scope: map[string]string{salesRole: "OWN", managerRole: "TEAM", directorRole: "ALL_ASSIGNED", adminRole: "ALL"}[u.Role], Counts: map[string]int{}}
+	// One short read-only transaction so SET LOCAL can apply. READ COMMITTED
+	// keeps the previous per-statement snapshots (the three statements were
+	// separate autocommit reads before); asOf is unchanged.
+	tx, err := a.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return s, err
+	}
+	defer tx.Rollback(ctx)
+	if _, err = tx.Exec(ctx, jitOffSQL); err != nil {
+		return s, err
+	}
 	var total, drafts, returned, unassigned, submitted, review, approved, overdue, upcoming, queue, reviewable int
-	err := a.db.QueryRow(ctx, `SELECT count(*),
+	err = tx.QueryRow(ctx, `SELECT count(*),
  count(*) FILTER (WHERE p.intake_status='DRAFT'),
  count(*) FILTER (WHERE p.intake_status='RETURNED'),
  count(*) FILTER (WHERE p.intake_status='DRAFT' AND p.owner_subject IS NULL),
@@ -65,7 +85,7 @@ func (a *App) workspaceSummary(ctx context.Context, u User) (WorkspaceSummary, e
 		s.Counts[k] = v
 	}
 	recent := func(where, order string, limit int, args ...any) ([]RecentItem, error) {
-		rows, err := a.db.Query(ctx, `SELECT p.id::text,p.registration_no,p.project_name,coalesce(p.document->>'customer',''),p.intake_status,p.sales_stage,`+displayName("p.owner_subject")+`,p.updated_at,p.next_followup_at,p.next_action
+		rows, err := tx.Query(ctx, `SELECT p.id::text,p.registration_no,p.project_name,coalesce(p.document->>'customer',''),p.intake_status,p.sales_stage,`+displayName("p.owner_subject")+`,p.updated_at,p.next_followup_at,p.next_action
  FROM intake_projects p WHERE `+projectScope("p")+where+` ORDER BY `+order+`,p.id LIMIT `+map[int]string{5: "5", 6: "6"}[limit], append([]any{u.Subject, u.Role, u.TeamID}, args...)...)
 		if err != nil {
 			return nil, err
@@ -84,8 +104,10 @@ func (a *App) workspaceSummary(ctx context.Context, u User) (WorkspaceSummary, e
 	if s.Recent, err = recent(``, `p.updated_at DESC`, 6); err != nil {
 		return s, err
 	}
-	s.Followup, err = recent(` AND p.next_followup_at<$4`, `p.next_followup_at ASC`, 5, asOf.Add(7*24*time.Hour))
-	return s, err
+	if s.Followup, err = recent(` AND p.next_followup_at<$4`, `p.next_followup_at ASC`, 5, asOf.Add(7*24*time.Hour)); err != nil {
+		return s, err
+	}
+	return s, tx.Commit(ctx)
 }
 
 func (a *App) summaryHandler(w http.ResponseWriter, r *http.Request, u User) error {

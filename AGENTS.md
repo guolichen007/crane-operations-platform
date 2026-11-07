@@ -1,6 +1,6 @@
 # 项目报备中心工程入口
 
-仅适用于 product/baobei-v1 独立 worktree。当前阶段 FULL_ROLE_G3_2C（审核对比与审核事务批量化），START_HEAD=8601f1bfe95325bdd52bd0319a4e04d082d95902。G2 见20，G3-0 见24，G3-1 见25/26，G3-2A 见27，G3-2B 见28，G3-2C 验收见29；重复对比与裁决事务改为常量次集合查询，业务规则、锁顺序与隐私投影不变。只正常提交/push产品分支，等待同SHA原八门CI后STOP；不得自动进入G3-3，不授权生产、release ref或GHCR。
+仅适用于 product/baobei-v1 独立 worktree。当前阶段 FULL_ROLE_G3_3_P0（审核队列与首页 JIT 性能收口），START_HEAD=3e714c71f8b249764b89baf548a5b331ea95c13d。G2 见20，G3-0 见24，G3-1 见25/26，G3-2A 见27，G3-2B 见28，G3-2C 见29，G3-3-P0 验收见30；仅审核队列与首页汇总的只读短事务内 SET LOCAL jit = off，不改全局参数与业务规则。只正常提交/push产品分支，等待同SHA原八门CI后STOP；不得自动进入G3-3销售管道，不授权生产、release ref或GHCR。
 唯一事实源：docs/项目报备中心/00-项目总览与SSOT.md；UI 动作事实源：交互动作矩阵.md。
 固定基线 29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18；永久产品分支 product/baobei-v1。
 禁止合并 main / R2，禁止修改既有 Crane 代码、生产服务器、DNS、TLS、真实账号及现场数据。

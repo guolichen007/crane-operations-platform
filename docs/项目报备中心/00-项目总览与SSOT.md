@@ -5,14 +5,18 @@ BAOBEI_MAIN_MERGE=FORBIDDEN
 BAOBEI_R2_MERGE=FORBIDDEN
 BASE_SHA=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18
 BRANCH=product/baobei-v1
-CURRENT_BATCH=FULL_ROLE_G3_2C
-STOP_AFTER_FULL_ROLE_G3_2C=YES
+CURRENT_BATCH=FULL_ROLE_G3_3_P0
+STOP_AFTER_FULL_ROLE_G3_3_P0=YES
 
 目标：快速报项目、识别重复、明确归属并跟进。独立产品，永不合并 main/R2。
 
-## 当前实施：G3-2C 审核对比与审核事务批量化
+## 当前实施：G3-3-P0 审核队列与首页 JIT 性能收口
 
-基线 `8601f1b`（Run 42195351996 八门通过）。`duplicate-comparison` 的候选读取、可读性与冻结证据等级合为一条集合查询（完整 HTTP 4 次往返，与候选数无关，原 4+2N）；`duplicate-decisions` 事务保留身份锁→727102→UUID 升序行锁的原有加锁语句，锁后一次读取锁定集、一次计算全部候选的参与冲突与证据等级（17 次往返，原 16+5N）。响应与旧实现逐字节等价，原因码、状态码、审计与回滚语义不变；无迁移、无 OpenAPI/前端改动。1k/10k 规模实测发现审核队列与首页汇总在 10k 时因 PostgreSQL JIT 编译变慢，已给出计划与最小方案待裁决。验收见 [29-G3-2C审核对比与事务批量化验收](29-G3-2C审核对比与事务批量化验收.md)。G3-3 未开始；生产仍 BLOCKED。
+基线 `3e714c7`（Run 42351649385 八门通过）。在生产镜像 `postgres:18.4-alpine`（固定 digest）的二进制上复现：10k 项目时审核队列 reviewable/blocked 与总监/管理员首页每请求 250–645ms 用于 LLVM JIT 编译。按负责人批准的方案 A，仅在审核队列的只读快照事务与首页汇总的只读短事务内 `SET LOCAL jit = off`（共享的审核提示语句前恢复默认），PG18 同机同数据改善 8–15 倍，业务输出逐字段一致，事务外与连接池无参数残留。无全局参数、迁移、OpenAPI、前端或业务规则改动。验收见 [30-G3-3P0_JIT性能收口验收](30-G3-3P0_JIT性能收口验收.md)。G3-3 销售管道未开始；生产仍 BLOCKED。
+
+## 历史：G3-2C 审核对比与审核事务批量化
+
+基线 `8601f1b`（Run 42195351996 八门通过）。`duplicate-comparison` 的候选读取、可读性与冻结证据等级合为一条集合查询（完整 HTTP 4 次往返，与候选数无关，原 4+2N）；`duplicate-decisions` 事务保留身份锁→727102→UUID 升序行锁的原有加锁语句，锁后一次读取锁定集、一次计算全部候选的参与冲突与证据等级（17 次往返，原 16+5N）。响应与旧实现逐字节等价，原因码、状态码、审计与回滚语义不变；无迁移、无 OpenAPI/前端改动。1k/10k 规模实测发现审核队列与首页汇总在 10k 时因 PostgreSQL JIT 编译变慢，已给出计划与最小方案（负责人后批准方案 A，见 30 号）。验收见 [29-G3-2C审核对比与事务批量化验收](29-G3-2C审核对比与事务批量化验收.md)。
 
 ## 历史：G3-2B 审核队列与工作台一致性
 

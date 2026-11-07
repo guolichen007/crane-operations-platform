@@ -40,6 +40,14 @@ func (a *App) reviewQueue(ctx context.Context, u User, eligibility string, page,
 		return out, err
 	}
 	defer tx.Rollback(ctx)
+	// G3-3-P0: these interactive reads carry correlated eligibility subqueries
+	// whose estimated cost triggers LLVM JIT on PostgreSQL 14/18 (hundreds of ms
+	// of compilation for ~30-60 ms of execution at 10k projects). The setting is
+	// transaction-local: COMMIT or ROLLBACK restores the session value, so the
+	// pooled connection and other statements keep the server default.
+	if _, err = tx.Exec(ctx, jitOffSQL); err != nil {
+		return out, err
+	}
 	base := ` FROM intake_projects p WHERE p.intake_status IN ('SUBMITTED','UNDER_REVIEW') AND $2 IN ('baobei_manager','baobei_director','baobei_admin') AND ` + projectScope("p")
 	var reviewable, all int
 	if err = tx.QueryRow(ctx, `SELECT now(),count(*),count(*) FILTER (WHERE `+reviewableSQL("p")+`)`+base, u.Subject, u.Role, u.TeamID).Scan(&out.AsOf, &all, &reviewable); err != nil {
@@ -71,6 +79,13 @@ func (a *App) reviewQueue(ctx context.Context, u User, eligibility string, page,
 	ptrs := make([]*Project, len(out.Items))
 	for i := range out.Items {
 		ptrs[i] = &out.Items[i]
+	}
+	// batchHints' statements are shared with project details and lists. A
+	// generic plan cached while jit=off would keep "no JIT" when the same
+	// prepared statement is reused outside this transaction, so they run with
+	// the session default exactly as before (G3-3-P0 scope test).
+	if _, err = tx.Exec(ctx, jitDefaultSQL); err != nil {
+		return out, err
 	}
 	if err = a.batchHints(ctx, tx, u, ptrs); err != nil {
 		return out, err
