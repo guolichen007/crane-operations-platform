@@ -33,15 +33,36 @@ async function api(p: Page, path: string, method = 'GET', body?: unknown) {
   );
 }
 // The queue is ordered oldest submission first; in a shared database new items
-// can be on later pages. Page forward until the card is visible.
+// can be on later pages. G3-3P0-R1: callers first wait for the requested view
+// (showView), then page forward one confirmed page at a time; when the card is
+// not found the failure states view, page, total and target instead of waiting
+// on a disabled button until the test timeout.
+const loadingQueue = (p: Page) => p.getByRole('status').filter({ hasText: '正在加载审核队列' });
+async function showView(p: Page, label: string, eligibility: string) {
+  const views = action(p, 'review.view');
+  const loaded = p.waitForResponse((r) => r.url().includes('/api/v1/reviews?') && r.url().includes(`eligibility=${eligibility}&page=1&`));
+  await views.filter({ hasText: label }).click();
+  await loaded;
+  await expect(p).toHaveURL(new RegExp(`eligibility=${eligibility}`));
+  await expect(views.filter({ hasText: label })).toHaveAttribute('aria-selected', 'true');
+  await expect(loadingQueue(p)).toHaveCount(0);
+}
 async function findCard(p: Page, text: string) {
+  await expect(loadingQueue(p)).toHaveCount(0);
   const card = action(p, 'review.open').filter({ hasText: text });
-  for (let i = 0; i < 20 && !(await card.count()); i++) {
+  const pager = p.locator('.pagination > span');
+  for (let i = 0; i < 60 && !(await card.count()); i++) {
+    const before = (await pager.textContent()) || '';
     const next = action(p, 'project.page-next');
     if (await next.isDisabled()) break;
+    const loaded = p.waitForResponse((r) => r.url().includes('/api/v1/reviews?'));
     await next.click();
-    await expect(p.getByRole('status').filter({ hasText: '正在加载审核队列' })).toHaveCount(0);
+    await loaded;
+    await expect(loadingQueue(p)).toHaveCount(0);
+    await expect(pager).not.toHaveText(before);
   }
+  if (!(await card.count()))
+    throw new Error(`review card not found: target=${text} view=${new URL(p.url()).search} pager=${await pager.textContent()}`);
   return card;
 }
 async function submit(p: Page, name: string) {
@@ -107,21 +128,20 @@ test('G3-2B 首页可审数与审核队列一致，三视图与过期按钮', as
   await manager.screenshot({ path: shot(`${info.project.name}-reviewable`), fullPage: true });
 
   // Blocked view explains why with a fixed reason.
-  await views.filter({ hasText: '需要其他人处理' }).click();
-  await expect(manager).toHaveURL(/eligibility=blocked/);
+  await showView(manager, '需要其他人处理', 'blocked');
   const blocked = await findCard(manager, tag + '经手');
   await expect(blocked).toContainText('需要其他人处理：你参与过此项目，需由其他独立审核人处理');
   const blockedApi = (await api(manager, '/api/v1/reviews?kind=pending&eligibility=blocked&pageSize=100')).body;
   expect(blockedApi.items.some((x: { id: string }) => x.id === mine.id)).toBe(false);
   expect(blockedApi.items.some((x: { id: string }) => x.id === draft.body.id)).toBe(true);
   await manager.screenshot({ path: shot(`${info.project.name}-blocked`), fullPage: true });
-  await views.filter({ hasText: '全部待审' }).click();
+  await showView(manager, '全部待审', 'all');
   const all = (await api(manager, '/api/v1/reviews?kind=pending&eligibility=all&pageSize=100')).body;
   expect(all.items.filter((x: { projectName: string }) => x.projectName.startsWith(tag)).length).toBe(2);
   await expect(views.filter({ hasText: '全部待审' })).toContainText(String(all.counts.all));
 
   // Stale list: another reviewer returns the project after the manager opened it.
-  await views.filter({ hasText: '我可审核' }).click();
+  await showView(manager, '我可审核', 'reviewable');
   await (await findCard(manager, mine.registrationNo)).click();
   await expect(manager.getByRole('dialog')).toContainText(mine.projectName);
   const director = await session(browser, 'synthetic-director', viewport);

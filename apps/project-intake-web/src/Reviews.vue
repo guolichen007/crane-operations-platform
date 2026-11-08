@@ -250,11 +250,13 @@ const fields = [
     </div>
     <p v-if="!items.length" class="empty muted">{{ usesEligibility ? emptyText[eligibility] : '当前没有需要处理的报备。' }}</p>
   </template>
+  <!-- G3-3P0-R1: paging is driven by the loaded view only; while a view or
+       page is loading, the previous view's total must not enable paging. -->
   <div class="pagination">
     <span>{{ total }} 项 · 第 {{ page }} 页</span><ActionButton
       action-id="project.page-prev"
-      :disabled="page === 1"
-      reason="已是第一页"
+      :disabled="page === 1 || loadState === 'loading'"
+      :reason="loadState === 'loading' ? '正在加载审核队列' : '已是第一页'"
       :run="
         async () => {
           page--;
@@ -265,8 +267,8 @@ const fields = [
       上一页
     </ActionButton><ActionButton
       action-id="project.page-next"
-      :disabled="page * pageSize >= total"
-      reason="没有下一页"
+      :disabled="page * pageSize >= total || loadState === 'loading'"
+      :reason="loadState === 'loading' ? '正在加载审核队列' : '没有下一页'"
       :run="
         async () => {
           page++;

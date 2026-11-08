@@ -5,12 +5,16 @@ BAOBEI_MAIN_MERGE=FORBIDDEN
 BAOBEI_R2_MERGE=FORBIDDEN
 BASE_SHA=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18
 BRANCH=product/baobei-v1
-CURRENT_BATCH=FULL_ROLE_G3_3_P0
-STOP_AFTER_FULL_ROLE_G3_3_P0=YES
+CURRENT_BATCH=FULL_ROLE_G3_3_P0_R1
+STOP_AFTER_FULL_ROLE_G3_3_P0_R1=YES
 
 目标：快速报项目、识别重复、明确归属并跟进。独立产品，永不合并 main/R2。
 
-## 当前实施：G3-3-P0 审核队列与首页 JIT 性能收口
+## 当前实施：G3-3-P0 R1 浏览器门禁修复
+
+基线 `7b1c626`。其 CI Run 42365532593 的 `baobei-e2e` 在 `g32b-queue.spec.ts`（mobile-390）失败：视图切换加载期间审核队列分页按钮仍按上一视图的 total 可用，测试辅助函数检查与点击之间状态变化。已用网络延迟确定性复现；审核队列分页在加载中禁用（与交互动作矩阵既有规定一致），E2E 改为等待目标视图响应后逐页确认。无后端、JIT、权限或迁移改动。验收见 [30-R1_G3-3P0浏览器门禁修复验收](30-R1_G3-3P0浏览器门禁修复验收.md)。G3-3A 未开始；生产仍 BLOCKED。
+
+## 历史：G3-3-P0 审核队列与首页 JIT 性能收口
 
 基线 `3e714c7`（Run 42351649385 八门通过）。在生产镜像 `postgres:18.4-alpine`（固定 digest）的二进制上复现：10k 项目时审核队列 reviewable/blocked 与总监/管理员首页每请求 250–645ms 用于 LLVM JIT 编译。按负责人批准的方案 A，仅在审核队列的只读快照事务与首页汇总的只读短事务内 `SET LOCAL jit = off`（共享的审核提示语句前恢复默认），PG18 同机同数据改善 8–15 倍，业务输出逐字段一致，事务外与连接池无参数残留。无全局参数、迁移、OpenAPI、前端或业务规则改动。验收见 [30-G3-3P0_JIT性能收口验收](30-G3-3P0_JIT性能收口验收.md)。G3-3 销售管道未开始；生产仍 BLOCKED。
 
