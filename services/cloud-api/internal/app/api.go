@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"github.com/guolichen007/crane-operations-platform/internal/geo"
+	"github.com/guolichen007/crane-operations-platform/internal/operations"
 	"log/slog"
 	"net/http"
 	"os"
@@ -38,6 +40,9 @@ type apiHandler struct {
 	wsClients *atomic.Int64
 	dbErrors  *atomic.Int64
 	web       *webauth.Manager
+	ops       operations.Config
+	// geo overrides the embedded administrative index (tests inject failures); nil = geo.Default.
+	geo func() (*geo.Index, error)
 }
 
 type principal struct {
@@ -208,6 +213,7 @@ func (h *apiHandler) register(mux *http.ServeMux) error {
 	api := http.NewServeMux()
 	h.registerPortfolio(api)
 	h.registerAssets(api)
+	h.registerOperations(api)
 	// Deployment environment sentinel: an operator-set, server-side value that a
 	// write-capable test suite reads (after login, before any write) to prove it is
 	// talking to the intended isolated environment. Unset → "" (production never

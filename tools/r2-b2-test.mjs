@@ -56,6 +56,19 @@ const h21aPackages = [
   ]],
   ['h21a-cloudapi', './services/cloud-api/internal/app', [
     'TestH21AInventoryScopeAuthorizationAndRetiredHistory',
+    'TestOperationsSummaryHTTP',
+  ]],
+  // H2-1C operations summary: single-statement repository on the isolated PostgreSQL.
+  ['h21c-operations', './internal/operations', [
+    'TestSummaryIdentityRuntimeAndAlarms',
+    'TestSummaryAuthorizationScopes',
+    'TestSummaryGeographyCountryProvincePrefectureCounty',
+    'TestSummaryFutureSkewBoundariesAndConfig',
+    'TestSummaryEmptyDatabaseIsLegalZero',
+    'TestSummaryMoreThan100RecordsAndReviewAssets',
+    'TestSummaryQueryFailureIsUnavailableNotPartial',
+    'TestSummaryConcurrentWritersSeeOneSnapshot',
+    'TestSummaryLeavesNoSessionSettingOnPooledConnection',
   ]],
 ];
 function run(command, args, extra = {}, capture = false) {
@@ -82,7 +95,7 @@ function runTargetGate(name, required) {
   process.stdout.write(output);
   const problems = gateProblems(output, required, { exact: true });
   if (problems.length) throw Error(`R2 H2-1A gate failed: ${name} :: ${problems.join('; ')}`);
-  for (const test of required) console.log(`R2_H21A_REQUIRED_PASS ${name} ${test}`);
+  for (const test of required) console.log(`R2_REQUIRED_PASS ${name} ${test}`);
 }
 function requiredByName(name, batch) {
   return (batch === 'B2' ? b2Packages : b3Packages).find(([n]) => n === name)[2];
@@ -102,6 +115,7 @@ try {
   console.log('R2_B3_DB_TEST=PASS');
   for (const [name, , required] of h21aPackages) runTargetGate(name, required);
   console.log('R2_H21A_DB_TEST=PASS');
+  console.log('R2_H21C_DB_TEST=PASS');
 } finally {
   run(docker, [...compose, 'down', '--volumes', '--remove-orphans'], first);
 }

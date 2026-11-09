@@ -18,6 +18,7 @@ import (
 	"github.com/guolichen007/crane-operations-platform/internal/auditlog"
 	"github.com/guolichen007/crane-operations-platform/internal/identity"
 	"github.com/guolichen007/crane-operations-platform/internal/inventory"
+	"github.com/guolichen007/crane-operations-platform/internal/operations"
 	"github.com/guolichen007/crane-operations-platform/internal/platform"
 	"github.com/guolichen007/crane-operations-platform/internal/testsupport"
 	"github.com/guolichen007/crane-operations-platform/internal/webauth"
@@ -31,6 +32,7 @@ type securityFixture struct {
 	provider *testsupport.OIDCProvider
 	handler  http.Handler
 	server   *httptest.Server
+	api      *apiHandler
 }
 
 func newSecurityFixture(t *testing.T) securityFixture {
@@ -85,12 +87,12 @@ func newSecurityFixture(t *testing.T) securityFixture {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	handlers := &apiHandler{config: platform.Config{Env: "production"}, db: db, store: store, leases: session.New(db, time.Minute, 2*time.Second), active: func(contract.Shadow) bool { return true }, list: store.List, logger: platform.Logger("a1-fixture"), wsClients: &atomic.Int64{}, dbErrors: &atomic.Int64{}, web: manager}
+	handlers := &apiHandler{config: platform.Config{Env: "production"}, db: db, store: store, leases: session.New(db, time.Minute, 2*time.Second), active: func(contract.Shadow) bool { return true }, list: store.List, logger: platform.Logger("a1-fixture"), wsClients: &atomic.Int64{}, dbErrors: &atomic.Int64{}, web: manager, ops: operations.Config{StaleAfter: operations.DefaultStaleAfter, MaxFutureSkew: operations.DefaultMaxFutureSkew}}
 	if err = handlers.register(mux); err != nil {
 		t.Fatal(err)
 	}
 	delegate.Store(http.Handler(mux))
-	return securityFixture{db: db, provider: provider, handler: mux, server: server}
+	return securityFixture{db: db, provider: provider, handler: mux, server: server, api: handlers}
 }
 
 func (f securityFixture) login(t *testing.T, user string) (*http.Cookie, contract.WebSession) {

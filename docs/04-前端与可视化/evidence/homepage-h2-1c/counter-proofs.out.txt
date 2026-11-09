@@ -1,0 +1,57 @@
+# H2-1C counter-proofs: each run reverts ONE rule in internal/operations/summary.sql or operations_api.go (restored afterwards).
+== retired
+--- FAIL: TestSummaryIdentityRuntimeAndAlarms (0.34s)
+    summary_test.go:178: assets {Registered:22 Draft:5 OutOfService:2 NoRuntime:1 Unlocated:1 AtScopeLevel:0} want {Registered:20 Draft:5 OutOfService:2 NoRuntime:1 Unlocated:1 AtScopeLevel:0}
+    summary_test.go:182: bound {REAL:20 SIMULATION:6 TEST:0}
+== simreal
+--- FAIL: TestSummaryIdentityRuntimeAndAlarms (0.33s)
+    summary_test.go:190: real {Connected:4 PendingReview:5 PendingReviewAlarm:3 PendingReviewAssets:[] Stale:2 UnknownTime:6 Offline:1 Live:1} want {Connected:3 PendingReview:5 PendingReviewAlarm:3 PendingReviewAssets:[] Stale:2 UnknownTime:6 Offline:1 Live:1}
+--- FAIL: TestSummaryGeographyCountryProvincePrefectureCounty (0.32s)
+== naive
+--- FAIL: TestSummaryIdentityRuntimeAndAlarms (0.34s)
+    summary_test.go:169: operations summary unavailable: ERROR: invalid input syntax for type timestamp with time zone: "yesterday-ish" (SQLSTATE 22007)
+--- FAIL: TestSummaryAuthorizationScopes (0.32s)
+== authz
+--- FAIL: TestSummaryIdentityRuntimeAndAlarms (0.35s)
+    summary_test.go:173: scope {Region:<nil> RegionName:全部授权范围 AuthorizedProjects:7 GeoIndexVersion:2c3397c7c966433b21adbad6f7465a427145783beced1e7beef7d0b68a06a634} projects 7
+--- FAIL: TestSummaryAuthorizationScopes (0.32s)
+== unmapped
+--- FAIL: TestSummaryAuthorizationScopes (0.33s)
+    summary_test.go:240: region with only unauthorized P2: zero: registered 20 want 0
+    summary_test.go:243: region with only unauthorized P2: zero: leaked numbers {Cells:{REAL:{Attributed:5 Unattributed:1} SIMULATION:{Attributed:2 Unattributed:0} TEST:{Attributed:0 Unattributed:1}} Total:9 Assets:5 FutureSkew:4} regions []
+== limit
+--- FAIL: TestSummaryMoreThan100RecordsAndReviewAssets (0.33s)
+    summary_test.go:365: operations summary unavailable: summary invariant violated
+FAIL
+== draft
+--- FAIL: TestSummaryIdentityRuntimeAndAlarms (0.44s)
+    summary_test.go:190: real {Connected:8 PendingReview:5 PendingReviewAlarm:3 PendingReviewAssets:[] Stale:2 UnknownTime:6 Offline:1 Live:1} want {Connected:3 PendingReview:5 PendingReviewAlarm:3 PendingReviewAssets:[] Stale:2 UnknownTime:6 Offline:1 Live:1}
+--- FAIL: TestSummaryGeographyCountryProvincePrefectureCounty (0.34s)
+== window
+--- FAIL: TestSummaryIdentityRuntimeAndAlarms (0.34s)
+    summary_test.go:212: records {Cells:{REAL:{Attributed:5 Unattributed:1} SIMULATION:{Attributed:3 Unattributed:0} TEST:{Attributed:0 Unattributed:1}} Total:10 Assets:5 FutureSkew:4}
+--- FAIL: TestSummaryGeographyCountryProvincePrefectureCounty (0.32s)
+== enabled
+--- FAIL: TestSummaryAuthorizationScopes (0.33s)
+    summary_test.go:240: disabled user: zero: registered 19 want 0
+    summary_test.go:243: disabled user: zero: leaked numbers {Cells:{REAL:{Attributed:4 Unattributed:1} SIMULATION:{Attributed:2 Unattributed:0} TEST:{Attributed:0 Unattributed:1}} Total:8 Assets:4 FutureSkew:4} regions [{330000 浙江省 19 3 2}]
+== h_unknown
+--- FAIL: TestOperationsSummaryHTTP (0.52s)
+    operations_http_test.go:112: ?project=P002: 200 {"schemaVersion":1,"sampledAt":"2026-11-09T04:04:40.162118Z","generatedAt":"2026-11-09T04:04:40.163197611Z","scope":{"region":null,"regionName":"全部授权范围","authorizedProjects":1,"geoIndexVersion":"2
+    operations_http_test.go:112: ?status=ALARM: 200 {"schemaVersion":1,"sampledAt":"2026-11-09T04:04:40.167165Z","generatedAt":"2026-11-09T04:04:40.1681773Z","scope":{"region":null,"regionName":"全部授权范围","authorizedProjects":1,"geoIndexVersion":"2c3
+== h_404
+--- FAIL: TestOperationsSummaryHTTP (0.53s)
+    operations_http_test.go:117: unknown region: 200 {"schemaVersion":0,"sampledAt":"0001-01-01T00:00:00Z","generatedAt":"0001-01-01T00:00:00Z","scope":{"region":null,"regionName":"","authorizedProjects":0,"geoIndexVersion":""},"freshness":{"staleAfterSeconds"
+    operations_http_test.go:161: authorization unavailable → 503
+== h_geo
+--- FAIL: TestOperationsSummaryHTTP (0.63s)
+    operations_http_test.go:140: geo unavailable: 200 {"schemaVersion":1,"sampledAt":"2026-11-09T04:04:41.913042Z","generatedAt":"2026-11-09T04:04:41.914093865Z","scope":{"region":null,"regionName":"全部授权范围","authorizedProjects":1,"geoIndexVersion":
+    operations_http_test.go:161: authorization unavailable → 503
+== h_503zero
+--- FAIL: TestOperationsSummaryHTTP (0.52s)
+    operations_http_test.go:148: query failure: 200 {"schemaVersion":0,"sampledAt":"0001-01-01T00:00:00Z","generatedAt":"0001-01-01T00:00:00Z","scope":{"region":null,"regionName":"","authorizedProjects":0,"geoIndexVersion":""},"freshness":{"staleAfterSeconds":
+    operations_http_test.go:161: authorization unavailable → 200
+== h_allproj
+--- FAIL: TestOperationsSummaryHTTP (0.35s)
+    operations_http_test.go:74: viewer scope {Region:<nil> RegionName:全部授权范围 AuthorizedProjects:9 GeoIndexVersion:2c3397c7c966433b21adbad6f7465a427145783beced1e7beef7d0b68a06a634} metrics {Registered:10 Draft:0 OutOfService:0 NoRuntime:0 Unlocated:
+FAIL

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
 	"github.com/guolichen007/crane-operations-platform/deploy/postgres/migrations"
+	"github.com/guolichen007/crane-operations-platform/internal/geo"
+	"github.com/guolichen007/crane-operations-platform/internal/operations"
 	"github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/alarm"
 
 	"github.com/guolichen007/crane-operations-platform/internal/fleet"
@@ -29,6 +31,15 @@ import (
 func Run(args []string) error {
 	c, e := platform.Load(args)
 	if e != nil {
+		return e
+	}
+	// Operations summary configuration and the embedded administrative index are checked first
+	// at startup: out-of-range OPS_* values or a corrupt index refuse to start (never defaulted).
+	opsConfig, e := operations.LoadConfig(os.LookupEnv)
+	if e != nil {
+		return e
+	}
+	if _, e = geo.Default(); e != nil {
 		return e
 	}
 	if e = c.ValidateCloud(); e != nil {
@@ -258,7 +269,7 @@ func Run(args []string) error {
 		fmt.Fprintf(w, "event_application_acks_total %d\nmqtt_reconnects_total %d\n", eventAcks.Load(), platform.MQTTReconnects.Load())
 	})
 	handlers := &apiHandler{config: c, db: db, store: store, leases: leases, active: activeRuntime, list: listRuntime,
-		logger: logger, wsClients: &wsClients, dbErrors: &dbErrors}
+		logger: logger, wsClients: &wsClients, dbErrors: &dbErrors, ops: opsConfig}
 	if c.Env == "production" {
 		clientSecret, err := platform.PrivateSecret(c.Production.ClientSecretFile, 32)
 		if err != nil {

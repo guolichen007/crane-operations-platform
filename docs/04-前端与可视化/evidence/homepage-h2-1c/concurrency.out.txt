@@ -1,0 +1,21 @@
+sequential (1 caller, end-to-end Go repository incl. region map + contract validation): p50=42ms min=41ms max=45ms
+# operations summary concurrency — user=u-p1 pool=10 requests/level=90 (synthetic)
+concurrency=10 ok=90 errors=0 p50=325ms p95=587ms p99=721ms max=738ms throughput=25.6/s poolWaitCount=0 poolWait=0s
+concurrency=30 ok=90 errors=0 p50=799ms p95=2.152s p99=2.723s max=3.27s throughput=27.0/s poolWaitCount=80 poolWait=55.439s
+pool exhausted: err=operations summary unavailable: context deadline exceeded unavailable=true after=300ms
+cancel mid-query: err=operations summary unavailable: context canceled unavailable=true lingeringActiveStatements=0
+recovery: err=<nil>
+sequential (1 caller, end-to-end Go repository incl. region map + contract validation): p50=47ms min=45ms max=48ms
+# operations summary concurrency — user=u-p20 pool=10 requests/level=90 (synthetic)
+concurrency=10 ok=90 errors=0 p50=360ms p95=557ms p99=590ms max=598ms throughput=25.2/s poolWaitCount=0 poolWait=0s
+concurrency=30 ok=90 errors=0 p50=862ms p95=2.139s p99=2.577s max=3.312s throughput=25.6/s poolWaitCount=80 poolWait=58.136s
+pool exhausted: err=operations summary unavailable: context deadline exceeded unavailable=true after=301ms
+cancel mid-query: err=operations summary unavailable: context canceled unavailable=true lingeringActiveStatements=0
+recovery: err=<nil>
+sequential (1 caller, end-to-end Go repository incl. region map + contract validation): p50=112ms min=111ms max=116ms
+# operations summary concurrency — user=u-p200 pool=10 requests/level=90 (synthetic)
+concurrency=10 ok=90 errors=0 p50=771ms p95=1.018s p99=1.074s max=1.086s throughput=12.4/s poolWaitCount=0 poolWait=0s
+concurrency=30 ok=88 errors=2 p50=1.848s p95=3.542s p99=4.226s max=4.767s throughput=12.5/s poolWaitCount=80 poolWait=1m54.724s
+pool exhausted: err=operations summary unavailable: context deadline exceeded unavailable=true after=301ms
+cancel mid-query: err=operations summary unavailable: context canceled unavailable=true lingeringActiveStatements=0
+recovery: err=<nil>
