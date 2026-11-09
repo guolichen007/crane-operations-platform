@@ -1,6 +1,6 @@
-# Homepage H2-0-R1：运营数据契约（冻结稿）
+# Homepage H2-0-R2：运营数据契约（冻结稿）
 
-> 分支 `feature/homepage-operations-center-r1`。本文是 H2-0 的修订版（H2-0-R1），**只做契约、权限、SQL/OpenAPI 草案、迁移决策与可复现探针**。没有新增生产 summary 接口，没有新增 00013 迁移，没有修改后端代码、main 或部署，没有启动 G3-D4。
+> 分支 `feature/homepage-operations-center-r1`。本文是 H2-0 的修订版（H2-0-R2，在 R1 上做最小修订）。契约部分**只做设计、SQL/OpenAPI 草案、迁移决策与可复现探针**：没有新增生产 summary 接口，没有新增 00013 迁移，没有修改 main 或部署，没有启动 G3-D4。唯一的后端代码改动是已获准的 H2-1A Inventory 口径修正（§10）。
 > 审查结论（输入）：原则上批准「新增只读运营统计接口」方向；H2-1 实施未获准。
 > **证据性质**：本文所有数字都来自**合成数据**探针，不是生产数据实测。探针在本地便携 PostgreSQL 14 的空库中依次执行 `00001–00012` 全部 goose Up 后运行；脚本与原始输出位于 `evidence/homepage-h2-0/`：
 > - `identity-probe.sql` / `.out.txt`：Q1–Q11（H2-0 初版，保留不改）；
@@ -10,6 +10,19 @@
 > 基础口径沿用 `Homepage-H1-R1-统计范围契约.md`。
 
 ---
+
+## 0-R2. 最小修订（相对 H2-0-R1 `d1b60f5`）
+
+| 审查项 | 修订位置 |
+|---|---|
+| A 时间语义：区分 sampledAt / generatedAt / fetchedAt；单 SQL 只保证读一致，sampledAt 不等于 MVCC 快照时刻 | §3.3、§4.1 |
+| B DRAFT / ACTIVE / OUT_OF_SERVICE / RETIRED 行为与「待复核」 | §2.6 |
+| C 告警记录「运行源 × 资产归属」互斥分组，unattributed 不再作为额外计数 | §2.5、§3.4 |
+| D OpenAPI 核心字段 required、缺失不当作 0；`source` 参数去留 | §3.4 |
+| E 迁移治理：`currentVersion()` 用 `max(version_id)` 的问题与 00013 测试方式 | §6.3 |
+| H2-1A 实施状态 | §10 |
+
+合成探针（`summary-draft.sql`、`summary-probe.*`）已同步：新增 A8（DRAFT + REAL 新鲜连接）、A9（OUT_OF_SERVICE + REAL 新鲜连接 + 告警）；结果中 `realPendingReview = 2`，`realConnected` 与全部告警设备数只计 ACTIVE；六个告警单元格之和 = `recordsTotal`。
 
 ## 0. 修订摘要（相对 H2-0 初版 `4d45620`）
 
@@ -99,7 +112,8 @@ erDiagram
 | `assets.noRuntime` | 尚未投运 | 无任何运行身份 | 不是离线 |
 | `assets.unlocated` | 无空间位置 | 项目 `admin_code IS NULL` | — |
 | `bound.{REAL,SIMULATION,TEST}` | 运行源绑定 | 拥有该运行源绑定的资产数 | 不是在线数 |
-| **`realConnected`** | 现场在线 | 资产存在 REAL 身份，且该身份 `connectivity = MQTT_CONNECTED`，且 `observedAt ∈ (sampledAt − staleAfter, sampledAt + maxSkew]`；按资产去重；SIM/TEST 不参与 | 不是作业运行；不是「LIVE」 |
+| **`realConnected`** | 现场在线 | 资产 `asset_status = ACTIVE`，存在 REAL 身份，且该身份 `connectivity = MQTT_CONNECTED`，且 `observedAt ∈ (sampledAt − staleAfter, sampledAt + maxSkew]`；按资产去重；SIM/TEST 不参与 | 不是作业运行；不是「LIVE」 |
+| `realPendingReview` | 待复核 | DRAFT / OUT_OF_SERVICE 资产存在新鲜 REAL 连接 | 不计在线 |
 | `realStale` | 现场状态过期 | REAL 身份连接标志为已连接，但 `observedAt` 早于 `sampledAt − staleAfter` 或晚于 `sampledAt + maxSkew` | 不计入在线 |
 | `realUnknownTime` | 观测时间缺失 | REAL 身份显示已连接但没有 `lastSeenAt` | 不计入在线 |
 | `realOffline` | 现场离线 | REAL 身份 `connectivity = OFFLINE`（收到 LWT/DEATH 立即生效） | — |
@@ -131,11 +145,12 @@ erDiagram
 |---|---|---|---|
 | `alarm.devices.real` | 现场告警设备 | `realConnected` 且 REAL 身份 `alarmState = ACTIVE` | 主 KPI |
 | `alarm.devices.simulation` / `.test` | 模拟/测试告警设备 | 对应身份新鲜在线且 `ACTIVE` | 「模拟」「测试」角标，不进主 KPI |
-| `alarm.records.window.{REAL,SIMULATION,TEST}` | 时间窗告警记录 | 窗口内 `alarms` 记录数，按产生记录的运行身份的 `source_mode` 分组 | 「全部来源」合计 = 三者之和，并逐项列出；SIM/TEST 记录**进入全部来源合计**，但界面必须展示分项 |
-| `alarm.records.unattributed` | 无资产归属记录 | 运行身份 `asset_device_id IS NULL`，仅按项目授权 | 单独一行 |
+| `alarm.records.cells[source][attribution]` | 时间窗告警记录 | 窗口内 `alarms` 记录按 **运行源（REAL/SIMULATION/TEST）× 资产归属（attributed/unattributed）** 分到 6 个**互斥**单元格；每条记录恰好属于一个单元格 | 合计 `recordsTotal` = 6 格之和；「全部来源」= 合计，界面逐格列出；SIM/TEST 进入合计但带角标 |
+| （派生）`unattributed` | 无资产归属 | = 三个运行源的 `unattributed` 单元格之和，是合计的**子集**，不得再与来源合计相加 | 单独一行，注明「已含在合计中」 |
 | `alarm.records.futureSkew` | 时间异常记录 | `observed_at ≥ sampledAt + maxSkew` | 不进窗口计数，单独提示 |
 | `events.pending` | 待处理告警/事件 | `NOT_AVAILABLE`（无确认/处理状态表） | 「未接入」 |
 
+- 告警设备只计 `ACTIVE` 资产（与 `realConnected` 同规则）；DRAFT / OUT_OF_SERVICE 资产上的告警进入「待复核」。
 - 告警设备是**当前状态**（Shadow），告警记录是**历史消息**（`alarms`），两者不可相减或互推。
 - `/api/v1/alarms` 仍只用于展示最近记录列表，**禁止**用其返回条数推算任何总数（现行固定 `LIMIT 100`）。
 - 退役资产的记录与遗留项目的记录不计入（合成探针 R1：`w-retired`、`w-legacy` 未计入）。
@@ -144,10 +159,13 @@ erDiagram
 
 | 状态 | Inventory 设备 KPI | 资产中心 `/api/v1/assets` | 运营在线类指标 |
 |---|---|---|---|
-| ACTIVE / OUT_OF_SERVICE | 计入 | 显示 | 按运行身份判定 |
-| DRAFT | 计入（并在 `assets.draft` 单列） | 显示 | 无可靠运行身份时不计在线 |
+| ACTIVE | 计入 | 显示 | 按运行身份判定，可计入 `realConnected` 与告警设备 |
+| OUT_OF_SERVICE | 计入（`assets.outOfService` 单列） | 显示 | **不计入** `realConnected` 与告警设备；若存在新鲜 REAL 连接 → `realPendingReview`（业务状态与现场连接矛盾，需复核） |
+| DRAFT | 计入（`assets.draft` 单列） | 显示 | **默认不计入**现场在线与告警设备；若存在新鲜 REAL 连接 → `realPendingReview` |
 | RETIRED | **不计入** | **继续保留历史档案** | 不计入 |
 | 遗留项目（`lifecycle IS NULL`）下资产 | 不计入 | 照常（资产中心按自身授权） | 不计入 |
+
+「待复核」不是在线，也不是离线：它表示资产主数据（草稿/停用）与运行事实（真实现场已连接）不一致，界面单列提示，由资产管理员核对业务状态。合成探针 A8（DRAFT）、A9（OUT_OF_SERVICE + 告警）均计入 `realPendingReview`，不计入 `realConnected` 与 `alarm.devices`。
 
 三处一致：**首页 KPI `assets.registered` = `/assets/devices` 列表条数（同范围）= 各项目 `assetDeviceCount` 之和**。现行 `inventory.Projects.assetDeviceCount` 用 `count(*)` 未排除 RETIRED，H2-1A 与列表同步修正。
 
@@ -172,7 +190,7 @@ grants          (授权：users.enabled ∧ project_memberships ∧ 读能力角
 
 草案覆盖资产、绑定、现场在线/过期/时间未知、采集、告警设备与时间窗记录；`real.offline`、`assets.unlocated` 与 `regions[]` 分区汇总在 H2-1C 按同一 CTE 补齐。
 
-参数：`$1 userId`、`$2 source`、`$3 region`（仅用于回显）、`$4 windowStart`、`$5 sampledAt`、`$6 staleAfterSeconds`、`$7 regionAdminCodes int[]`（服务端用 geo-manifest 把区域展开为后代 admin_code；行政区层级不在数据库中，因此由服务端提供，且只用于收窄）。
+参数：`$1 userId`、`$2 source`（草案遗留，正式实现删除，见 §3.4）、`$3 region`（仅用于回显）、`$4 windowStart`、`$5 sampledAt`、`$6 staleAfterSeconds`、`$7 regionAdminCodes int[]`（服务端用 geo-manifest 把区域展开为后代 admin_code；行政区层级不在数据库中，因此由服务端提供，且只用于收窄）。
 
 ### 3.2 合成数据探针结果（`summary-probe.out.txt`）
 
@@ -200,7 +218,12 @@ grants          (授权：users.enabled ∧ project_memberships ∧ 读能力角
 1. **采用单 SQL + 授权 CTE**（§3.1），整份 summary 在一条语句的快照内计算。
 2. 若实现中必须拆成多条语句（例如分区汇总单独查询），所有语句必须在 `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY` 的同一事务中执行，并设置 `statement_timeout`。
 3. 任一查询失败 → 回滚 → HTTP 503 `{"error":"summary_unavailable"}`，不返回任何计数。
-4. `generatedAt` = 服务端在开启快照**之前**取的 `sampledAt`（作为 SQL 参数传入，新鲜度与窗口都以它为基准），即「统计以 sampledAt 时刻为准」；响应同时给出 `generatedAt`（= sampledAt）。不使用 `now()` 在 SQL 内各处取值，避免同一响应内时间基准不一。
+4. 时间（H2-0-R2 更正）：
+   - `sampledAt`：服务端在执行统计 SQL **之前**取一次的时刻，作为参数传入，**只作为**窗口边界与新鲜度判断的时间基准；
+   - 单条 SQL 保证的是**数据库读一致性**（同一 MVCC 语句快照），快照建立时刻在 `sampledAt` 之后若干毫秒，**不声称** `sampledAt` 等于快照时刻；在 `sampledAt` 与快照之间提交的数据会被读到——它们的 `observed_at` 晚于 `sampledAt`，告警会落入 `futureSkew` 之外的 `≥ sampledAt` 区间而不进当前窗口，Shadow 新鲜度判断以 `maxSkew` 容忍；
+   - `generatedAt`：服务端完成查询、组装响应时的时刻（≥ `sampledAt`），用于前端显示「统计生成于」；
+   - `fetchedAt`：前端收到成功响应的时刻；
+   - 响应同时返回 `sampledAt` 与 `generatedAt`，二者不得互相替代。
 5. Go 层的内存 Shadow 缓存（`device.Store`）**不得**参与 summary；summary 只读 PostgreSQL 的 `device_shadow`，保证与资产、告警同快照。
 
 ### 3.4 OpenAPI 草案
@@ -211,69 +234,124 @@ grants          (授权：users.enabled ∧ project_memberships ∧ 读能力角
     operationId: getOperationsSummary
     security: [{ webSession: [] }]
     parameters:
-      - { name: source, in: query, schema: { type: string, enum: [all, real], default: all } }
       - { name: region, in: query, schema: { type: string, pattern: '^[0-9]{6}$' } }
       - { name: alarmWindow, in: query, schema: { type: string, enum: [PT1H, PT6H, PT24H, P7D], default: PT24H } }
     responses:
       '200': { content: { application/json: { schema: { $ref: '#/components/schemas/OperationsSummary' } } } }
-      '400': { description: 参数格式错误（region 非 6 位、alarmWindow 不在枚举） }
+      '400': { description: 参数格式错误 }
       '401': { description: 未登录 }
       '404': { description: 区域不存在（region_not_found） }
       '503': { description: 任一必需查询失败（summary_unavailable）或授权不可用 }
 components:
   schemas:
+    Count: { type: integer, minimum: 0 }
+    SourceCounts:
+      type: object
+      additionalProperties: false
+      required: [REAL, SIMULATION, TEST]
+      properties: { REAL: { $ref: Count }, SIMULATION: { $ref: Count }, TEST: { $ref: Count } }
+    AttributionCell:
+      type: object
+      additionalProperties: false
+      required: [attributed, unattributed]
+      properties: { attributed: { $ref: Count }, unattributed: { $ref: Count } }
+    NotAvailable:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties: { status: { type: string, enum: [NOT_AVAILABLE] } }
     OperationsSummary:
       type: object
-      required: [schemaVersion, generatedAt, scope, freshness, metrics]
+      additionalProperties: false
+      required: [schemaVersion, sampledAt, generatedAt, scope, freshness, metrics, regions]
       properties:
         schemaVersion: { type: integer, const: 1 }
-        generatedAt:   { type: string, format: date-time, description: 统计取样时刻 sampledAt（UTC） }
+        sampledAt:     { type: string, format: date-time }
+        generatedAt:   { type: string, format: date-time }
         scope:
           type: object
+          additionalProperties: false
+          required: [region, regionName, authorizedProjects]
           properties:
-            source: { type: string }
-            region: { type: integer, nullable: true }
-            regionName: { type: string }
-            authorizedProjects: { type: integer }
+            region:             { type: [integer, 'null'] }
+            regionName:         { type: string }
+            authorizedProjects: { $ref: Count }
         freshness:
           type: object
+          additionalProperties: false
+          required: [staleAfterSeconds, maxFutureSkewSeconds, alarmWindow, windowStart, windowEnd]
           properties:
-            staleAfterSeconds: { type: integer }
-            maxFutureSkewSeconds: { type: integer }
-            alarmWindow: { type: string }
-            windowStart: { type: string, format: date-time }
-            windowEnd:   { type: string, format: date-time, description: 不含（半开区间） }
+            staleAfterSeconds:    { type: integer, minimum: 300, maximum: 7200 }
+            maxFutureSkewSeconds: { type: integer, minimum: 0, maximum: 600 }
+            alarmWindow:          { type: string }
+            windowStart:          { type: string, format: date-time }
+            windowEnd:            { type: string, format: date-time, description: 不含（半开区间）= sampledAt }
         metrics:
           type: object
+          additionalProperties: false
+          required: [projects, assets, bound, real, operation, alarm, pendingEvents]
           properties:
-            projects: { type: integer }
-            assets:   { type: object, properties: { registered: {type: integer}, draft: {type: integer}, noRuntime: {type: integer}, unlocated: {type: integer} } }
-            bound:    { type: object, properties: { REAL: {type: integer}, SIMULATION: {type: integer}, TEST: {type: integer} } }
-            real:     { type: object, properties: { connected: {type: integer}, stale: {type: integer}, unknownTime: {type: integer}, offline: {type: integer}, live: {type: integer} } }
-            operation:{ type: object, properties: { status: { type: string, enum: [NOT_AVAILABLE] } } }
+            projects: { $ref: Count }
+            assets:
+              type: object
+              additionalProperties: false
+              required: [registered, draft, outOfService, noRuntime, unlocated]
+              properties: { registered: { $ref: Count }, draft: { $ref: Count }, outOfService: { $ref: Count }, noRuntime: { $ref: Count }, unlocated: { $ref: Count } }
+            bound: { $ref: SourceCounts }
+            real:
+              type: object
+              additionalProperties: false
+              required: [connected, pendingReview, stale, unknownTime, offline, live]
+              properties: { connected: { $ref: Count }, pendingReview: { $ref: Count }, stale: { $ref: Count }, unknownTime: { $ref: Count }, offline: { $ref: Count }, live: { $ref: Count } }
+            operation: { $ref: NotAvailable }
             alarm:
               type: object
+              additionalProperties: false
+              required: [devices, records]
               properties:
-                devices: { type: object, properties: { REAL: {type: integer}, SIMULATION: {type: integer}, TEST: {type: integer} } }
-                recordsInWindow: { type: object, properties: { REAL: {type: integer}, SIMULATION: {type: integer}, TEST: {type: integer}, unattributed: {type: integer}, futureSkew: {type: integer} } }
-            pendingEvents: { type: object, properties: { status: { type: string, enum: [NOT_AVAILABLE] } } }
+                devices: { $ref: SourceCounts }
+                records:
+                  type: object
+                  additionalProperties: false
+                  required: [cells, total, futureSkew]
+                  properties:
+                    cells:
+                      type: object
+                      additionalProperties: false
+                      required: [REAL, SIMULATION, TEST]
+                      properties: { REAL: { $ref: AttributionCell }, SIMULATION: { $ref: AttributionCell }, TEST: { $ref: AttributionCell } }
+                    total:      { $ref: Count, description: 6 个单元格之和（服务端断言） }
+                    futureSkew: { $ref: Count, description: 不在窗口内，不进 total }
+            pendingEvents: { $ref: NotAvailable }
         regions:
           type: array
-          items: { type: object, properties: { adcode: {type: integer}, name: {type: string}, registered: {type: integer}, realConnected: {type: integer}, realAlarmDevices: {type: integer} } }
+          items:
+            type: object
+            additionalProperties: false
+            required: [adcode, name, registered, realConnected, realAlarmDevices]
+            properties: { adcode: { type: integer }, name: { type: string }, registered: { $ref: Count }, realConnected: { $ref: Count }, realAlarmDevices: { $ref: Count } }
 ```
 
-不接受项目 ID 参数；不接受状态参数；`Cache-Control: no-store`。契约经 `contracts/model.json` → codegen（与现有流程一致），H2-1C 才落地。
+严格性规则（R2）：
+
+- 所有计数字段 `required`，类型为非负整数，**不允许 null、不允许缺省**；服务端无法得到某项时整份返回 503，而不是省略字段或填 0。
+- 前端解析时缺少任一 required 字段即视为契约错误（显示「不可用」），**不得用 `?? 0` 填充**。
+- 尚未接入的能力用显式对象 `{ "status": "NOT_AVAILABLE" }`，不是 0，也不是缺省。
+- `source` 参数（R2 决定）：**正式 API 不保留**。API 模式下只有 Inventory 登记项目（`dataSource` 恒为 real），`source=all` 与 `real` 结果相同，保留只会制造无意义的分支；Demo 的「演示设备」来源只存在于前端演示数据，不进入后端契约。H1-R1 前端在 API 模式的「来源」选择保持显示「全部授权项目」。
+
+不接受项目 ID 参数；不接受状态参数；不接受来源参数；`Cache-Control: no-store`。契约经 `contracts/model.json` → codegen（与现有流程一致），H2-1C 才落地。
 
 ---
 
 ## 4. 时间与新鲜度契约
 
-### 4.1 三个时间
+### 4.1 四个时间（R2：sampledAt 与 generatedAt 分开）
 
 | 时间 | 定义 | 来源 |
 |---|---|---|
 | `observedAt` | 设备状态的观测时间 | Shadow `presence.lastSeenAt`（最近一条非离线消息，`shadow/order.go`）；告警 `alarms.observed_at`（= 消息 `sentAt`，`alarm/repository.go`） |
-| `generatedAt` | 服务端统计取样时刻 `sampledAt` | summary 响应 |
+| `sampledAt` | 统计时间基准：窗口边界与新鲜度判断 | summary 响应（服务端在查询前取） |
+| `generatedAt` | 服务端完成统计并生成响应的时刻（≥ sampledAt） | summary 响应 |
 | `fetchedAt` | 前端最近一次成功拉取 | 浏览器 |
 
 三者互不替代；前端不得用本地时钟推进任何时间或生成「实时」变化的假数字。
@@ -370,6 +448,13 @@ components:
    - 新增：CIC 期间并发写入告警，写入不阻塞、结果计数正确；
    - `r2-db-test` 已把 migrations 包纳入且拒绝 SKIP（`tools/r2-b2-test.mjs`），新测试自动进入 CI。
 
+### 6.3 迁移治理测试的已知问题（R2 记录，00013 不在本轮实施）
+
+- `deploy/postgres/migrations/governance_test.go` 的 `currentVersion()` 使用 `SELECT max(version_id) FROM goose_db_version`。goose v3.29.0 的 PostgreSQL 方言在 Down 成功时执行 `DELETE FROM goose_db_version WHERE version_id=$1`（`internal/dialects/postgres.go`），而 goose 自己判定当前版本是按 `id DESC` 逐行读取、以每个版本最近一行的 `is_applied` 为准（`migrate.go`），因此当前用法在「只 Up、Down 被拒绝」的场景下结果正确；但 `max(version_id)` 忽略 `is_applied` 列与行的时间顺序，若将来出现 out-of-order 迁移（`goose.WithAllowMissing`）或手工修复留下的 `is_applied = false` 行，它会给出错误的当前版本。
+- 00013 引入可成功执行的 Down（删索引）后，测试必须改用 goose 官方 API **`goose.GetDBVersionContext(ctx, db)`** 读取当前版本，并断言：Up 到最新 = 13；Down 一次成功 → 12；再 Down 被 00012 拒绝 → 仍为 12 且 `spec_json` 保留；再次 Up → 13。
+- 00012 前向不可回退的保护（Down 中 `RAISE EXCEPTION`）保持不变。
+- 本轮不修改 `governance_test.go`，不创建 00013。
+
 ---
 
 ## 7. 反证测试计划
@@ -428,7 +513,11 @@ H0-D3/D4 为常规必过用例（本地 10 passed，其中 D2 按预期失败）
 
 ## 10. H2-1A 实施清单与后续分批（需审查批准后才开始）
 
-**H2-1A 数据库口径（不新增接口、不加迁移）**
+**H2-1A 数据库口径（不新增接口、不加迁移）— 已在本地实施，待远端 CI 与审查**
+
+实施记录：`internal/inventory/inventory.go` 增加 `inventoryAssetStatus` 谓词（`a.asset_status <> 'RETIRED'`），`Assets()` 只连接 `lifecycle IS NOT NULL` 的项目并应用该谓词，`Projects().assetDeviceCount` 应用同一谓词；资产中心 `/api/v1/assets` 未改动。测试：`internal/inventory/scope_test.go`（真实 PG，矩阵与三处口径一致）、`services/cloud-api/internal/app/inventory_scope_http_test.go`（真实 HTTP + OIDC + PG：授权收窄、platform_admin 仅 P001、无授权空结果、退役后列表与计数同步减少且资产中心详情与台账仍可读）。反证 5 组见提交说明。
+
+原计划：
 
 1. `internal/inventory.Assets`：增加 `JOIN projects p ON p.id = a.project_id AND p.lifecycle IS NOT NULL` 与 `a.asset_status <> 'RETIRED'`。
 2. `internal/inventory.Projects`：`assetDeviceCount` 同口径（排除 RETIRED）。

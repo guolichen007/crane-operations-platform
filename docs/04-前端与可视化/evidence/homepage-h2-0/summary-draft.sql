@@ -34,14 +34,18 @@ WITH
      bool_or(f.source_mode='REAL')                         AS has_real,
      bool_or(f.source_mode='SIMULATION')                   AS has_sim,
      bool_or(f.source_mode='TEST')                         AS has_test,
-     bool_or(f.source_mode='REAL' AND f.connected_fresh)   AS real_connected,
+     -- H2-0-R2: only ACTIVE assets count as on-site connected; a fresh REAL connection on a
+     -- DRAFT / OUT_OF_SERVICE asset contradicts its business state → pending review.
+     bool_or(f.source_mode='REAL' AND f.connected_fresh AND a.asset_status='ACTIVE') AS real_connected,
+     bool_or(f.source_mode='REAL' AND f.connected_fresh AND a.asset_status IN ('DRAFT','OUT_OF_SERVICE')) AS real_pending_review,
+     bool_or(a.asset_status = 'OUT_OF_SERVICE')            AS out_of_service,
      bool_or(f.source_mode='REAL' AND f.conn='MQTT_CONNECTED' AND f.observed_at IS NOT NULL AND NOT f.connected_fresh) AS real_stale,
      bool_or(f.source_mode='REAL' AND f.connected_no_time) AS real_unknown_time,
-     bool_or(f.source_mode='SIMULATION' AND f.connected_fresh AND f.alarm_state='ACTIVE') AS sim_alarm,
-     bool_or(f.source_mode='TEST' AND f.connected_fresh AND f.alarm_state='ACTIVE') AS test_alarm,
-     bool_or(f.source_mode='REAL' AND f.connected_fresh AND f.alarm_state='ACTIVE') AS real_alarm,
-     bool_or(f.connected_fresh AND f.alarm_state='ACTIVE') AS any_alarm,
-     bool_or(f.source_mode='REAL' AND f.connected_fresh AND f.op_state='LIVE') AS real_live,
+     bool_or(f.source_mode='SIMULATION' AND f.connected_fresh AND f.alarm_state='ACTIVE' AND a.asset_status='ACTIVE') AS sim_alarm,
+     bool_or(f.source_mode='TEST' AND f.connected_fresh AND f.alarm_state='ACTIVE' AND a.asset_status='ACTIVE') AS test_alarm,
+     bool_or(f.source_mode='REAL' AND f.connected_fresh AND f.alarm_state='ACTIVE' AND a.asset_status='ACTIVE') AS real_alarm,
+     bool_or(f.connected_fresh AND f.alarm_state='ACTIVE' AND a.asset_status='ACTIVE') AS any_alarm,
+     bool_or(f.source_mode='REAL' AND f.connected_fresh AND f.op_state='LIVE' AND a.asset_status='ACTIVE') AS real_live,
      count(f.runtime_id) = 0                               AS no_runtime,
      bool_or(a.asset_status = 'DRAFT')                     AS draft
    FROM assets a LEFT JOIN fresh f ON f.asset_id = a.id GROUP BY a.id),
@@ -58,7 +62,9 @@ SELECT json_build_object(
   'boundREAL',           (SELECT count(*) FILTER (WHERE has_real) FROM per_asset),
   'boundSIMULATION',     (SELECT count(*) FILTER (WHERE has_sim) FROM per_asset),
   'boundTEST',           (SELECT count(*) FILTER (WHERE has_test) FROM per_asset),
+  'assetsOutOfService',  (SELECT count(*) FILTER (WHERE out_of_service) FROM per_asset),
   'realConnected',       (SELECT count(*) FILTER (WHERE real_connected) FROM per_asset),
+  'realPendingReview',   (SELECT count(*) FILTER (WHERE real_pending_review) FROM per_asset),
   'realStale',           (SELECT count(*) FILTER (WHERE real_stale) FROM per_asset),
   'realLive',            (SELECT count(*) FILTER (WHERE real_live) FROM per_asset),
   'realUnknownTime',     (SELECT count(*) FILTER (WHERE real_unknown_time) FROM per_asset),
@@ -66,9 +72,14 @@ SELECT json_build_object(
   'alarmDevicesSim',     (SELECT count(*) FILTER (WHERE sim_alarm) FROM per_asset),
   'alarmDevicesTest',    (SELECT count(*) FILTER (WHERE test_alarm) FROM per_asset),
   'alarmDevicesAll',     (SELECT count(*) FILTER (WHERE any_alarm) FROM per_asset),
-  'recordsBySource',     (SELECT coalesce(json_object_agg(source_mode, n), '{}') FROM (SELECT source_mode, count(*) n FROM alarm_window GROUP BY 1) t),
-  'recordsUnattributed', (SELECT count(*) FILTER (WHERE unattributed) FROM alarm_window),
+  -- H2-0-R2: mutually exclusive cells (source_mode × attribution); the 6 cells sum to recordsTotal.
+  'recordsCells',        (SELECT json_build_object(
+                            'REAL',       json_build_object('attributed', count(*) FILTER (WHERE source_mode='REAL' AND NOT unattributed),       'unattributed', count(*) FILTER (WHERE source_mode='REAL' AND unattributed)),
+                            'SIMULATION', json_build_object('attributed', count(*) FILTER (WHERE source_mode='SIMULATION' AND NOT unattributed), 'unattributed', count(*) FILTER (WHERE source_mode='SIMULATION' AND unattributed)),
+                            'TEST',       json_build_object('attributed', count(*) FILTER (WHERE source_mode='TEST' AND NOT unattributed),       'unattributed', count(*) FILTER (WHERE source_mode='TEST' AND unattributed)))
+                          FROM alarm_window),
+  'recordsTotal',        (SELECT count(*) FROM alarm_window),
   'recordsFutureSkew',   (SELECT count(*) FROM alarms al JOIN devices d ON d.id = al.device_id JOIN scoped_projects sp ON sp.id = d.project_id
                           WHERE al.observed_at >= $5::timestamptz + interval '120 seconds'),
-  'generatedAt',         $5::timestamptz
+  'sampledAt',           $5::timestamptz
 ) AS summary;

@@ -19,12 +19,14 @@ INSERT INTO asset_devices(id,project_id,display_name,lifecycle,asset_status) VAL
  ('A5','P1','5号行车','PLANNED','RETIRED'),  -- retired with REAL connected (must not count)
  ('A6','P1','6号行车','PLANNED','ACTIVE'),   -- REAL connected, future timestamp beyond skew
  ('A7','P1','7号行车','PLANNED','ACTIVE'),   -- REAL connected but no lastSeenAt
+ ('A8','P1','8号行车','PLANNED','DRAFT'),    -- DRAFT with a fresh REAL connection → pending review
+ ('A9','P1','9号行车','PLANNED','OUT_OF_SERVICE'), -- OUT_OF_SERVICE with fresh REAL connection + alarm → pending review
  ('B1','P2','1号行车','PLANNED','ACTIVE'),   -- other project, same name, REAL connected alarm
  ('N1','P3','无位置','PLANNED','ACTIVE'),
  ('L1','PL','遗留','PLANNED','ACTIVE');
 INSERT INTO devices(id,project_id,asset_device_id,source_mode) VALUES
  ('EDGE-A1','P1','A1','REAL'),('SIM-A1','P1','A1','SIMULATION'),('EDGE-A2','P1','A2','REAL'),('EDGE-A3','P1','A3','REAL'),
- ('EDGE-A5','P1','A5','REAL'),('EDGE-A6','P1','A6','REAL'),('EDGE-A7','P1','A7','REAL'),('EDGE-B1','P2','B1','REAL'),('EDGE-L1','PL','L1','REAL'),
+ ('EDGE-A5','P1','A5','REAL'),('EDGE-A6','P1','A6','REAL'),('EDGE-A7','P1','A7','REAL'),('EDGE-A8','P1','A8','REAL'),('EDGE-A9','P1','A9','REAL'),('EDGE-B1','P2','B1','REAL'),('EDGE-L1','PL','L1','REAL'),
  ('ORPH-P1','P1',NULL,'TEST');
 -- sampled_at for the probe = 2026-11-07T08:00:00Z; stale = 2100 s (35 min)
 INSERT INTO device_shadow VALUES
@@ -35,6 +37,8 @@ INSERT INTO device_shadow VALUES
  ('EDGE-A5','{"presence":{"connectivity":"MQTT_CONNECTED","lastSeenAt":"2026-11-07T07:59:00Z"},"reported":{"alarmState":"ACTIVE","operatingState":"SILENT"}}','2026-11-07T07:59:00Z',2),
  ('EDGE-A6','{"presence":{"connectivity":"MQTT_CONNECTED","lastSeenAt":"2026-11-07T09:00:00Z"},"reported":{"alarmState":"NONE","operatingState":"SILENT"}}','2026-11-07T09:00:00Z',2),
  ('EDGE-A7','{"presence":{"connectivity":"MQTT_CONNECTED"},"reported":{"alarmState":"ACTIVE","operatingState":"SILENT"}}','2026-11-07T07:59:00Z',2),
+ ('EDGE-A8','{"presence":{"connectivity":"MQTT_CONNECTED","lastSeenAt":"2026-11-07T07:59:00Z"},"reported":{"alarmState":"NONE","operatingState":"SILENT"}}','2026-11-07T07:59:00Z',2),
+ ('EDGE-A9','{"presence":{"connectivity":"MQTT_CONNECTED","lastSeenAt":"2026-11-07T07:59:00Z"},"reported":{"alarmState":"ACTIVE","operatingState":"SILENT"}}','2026-11-07T07:59:00Z',2),
  ('EDGE-B1','{"presence":{"connectivity":"MQTT_CONNECTED","lastSeenAt":"2026-11-07T07:59:00Z"},"reported":{"alarmState":"ACTIVE","operatingState":"SILENT"}}','2026-11-07T07:59:00Z',2),
  ('EDGE-L1','{"presence":{"connectivity":"MQTT_CONNECTED","lastSeenAt":"2026-11-07T07:59:00Z"},"reported":{"alarmState":"ACTIVE","operatingState":"SILENT"}}','2026-11-07T07:59:00Z',2);
 -- window [2026-11-06T08:00Z, 2026-11-07T08:00Z): boundary records at both ends
