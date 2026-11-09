@@ -1,0 +1,30 @@
+# H2-1C-R2 integration job timeout — local reproduction (PostgreSQL 17.11, test-only certificates, no Docker)
+# CI: run 42566812090 (637be0b) and 42562820069 (097d230): job "integration" — "The job has exceeded the maximum
+# execution time of 25m0s"; step "node tools/task.mjs integration-test" never finished (650a0aa: 2m54s, green).
+# tests/integration/run.mjs runs the ./services/cloud-api/internal/app test binary INSIDE the cloud-api container
+# (APP_ENV=development, migrated DATABASE_URL, DEV_API_TOKEN, CERT_DIR, MQTT_URL), with no -test.run filter and
+# no -test.timeout (a directly executed Go test binary has no default timeout).
+# TestOperationsConfigRefusesOutOfRangeAtStartup (added in 097d230) ends with an in-range Run(nil); in that
+# environment Run passes every startup check and serves forever.
+
+## before the fix: same ambient environment as the container (migrated DB, dev token, certs, MQTT URL)
+$ timeout 30 h21a-cloudapi.test -test.run '^TestOperationsConfigRefusesOutOfRangeAtStartup$' -test.v
+{"level":"INFO","message":"cloud API ready",...}
+--- FAIL: TestOperationsConfigRefusesOutOfRangeAtStartup (30.00s)     <- killed by timeout(1); in CI: 25 min job limit
+exit=124 elapsed 30s
+## before the fix, clean environment (backend job, local runs): Run stops at "development requires a random
+## development token" -> PASS in 0.01s. This is why backend/r2-db-test were green and only integration hung.
+
+## after the fix (runStartup pins APP_ENV to an invalid value + 10 s watchdog), same ambient environment
+--- PASS: TestOperationsConfigRefusesOutOfRangeAtStartup (0.00s)      ambient-integration elapsed 0s
+--- PASS: TestOperationsConfigRefusesOutOfRangeAtStartup (0.00s)      clean elapsed 0s
+whole package -race: clean env PASS (30 s); integration-like env PASS (29 s)
+
+## counter-proofs (each mutation alone, restored afterwards)
+remove the APP_ENV pin only:
+  operations_http_test.go:254: in-range map[]: want the next startup check (invalid Cloud environment),
+  got development requires a random development token
+  --- FAIL (0.01s)
+remove the whole environment reset (ambient integration env reaches a serving cloud-api):
+  operations_http_test.go:248: Run did not return within 10 s: the startup test reached a serving cloud-api
+  --- FAIL (10.00s)    <- fast FAIL instead of a 25 min CI timeout

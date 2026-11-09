@@ -114,16 +114,16 @@ try {
   // Execute the same Goose migration code and repository against isolated databases.
   const binary = resolve('tools/.cache/session.test');
   run(go, ['test', '-c', '-o', binary, './services/cloud-api/internal/session'], { GOOS: 'linux', GOARCH: 'amd64', CGO_ENABLED: '0' });
-  compose(['run', '--rm', '--no-deps', '--entrypoint', 'sh', '-v', `${binary}:/tmp/session.test:ro`, 'cloud-api', '-c', 'T05_TEST_DATABASE_URL="$DATABASE_URL" /tmp/session.test -test.v']);
+  compose(['run', '--rm', '--no-deps', '--entrypoint', 'sh', '-v', `${binary}:/tmp/session.test:ro`, 'cloud-api', '-c', 'T05_TEST_DATABASE_URL="$DATABASE_URL" /tmp/session.test -test.v -test.timeout=5m']);
   record('empty DB and Phase0 DB upgrade; original migration immutable');
   record('five viewer reference, authorization, expiry and durable generation repository');
   const inventoryBinary = resolve('tools/.cache/inventory.test');
   run(go, ['test', '-c', '-o', inventoryBinary, './internal/inventory'], { GOOS: 'linux', GOARCH: 'amd64', CGO_ENABLED: '0' });
-  compose(['run', '--rm', '--no-deps', '--entrypoint', 'sh', '-v', `${inventoryBinary}:/tmp/inventory.test:ro`, '-v', `${resolve('deploy/inventory/inventory.example.yaml')}:/fixtures/example.yaml:ro`, 'cloud-api', '-c', 'A0_TEST_DATABASE_URL="$DATABASE_URL" A0_INVENTORY_EXAMPLE=/fixtures/example.yaml /tmp/inventory.test -test.v']);
+  compose(['run', '--rm', '--no-deps', '--entrypoint', 'sh', '-v', `${inventoryBinary}:/tmp/inventory.test:ro`, '-v', `${resolve('deploy/inventory/inventory.example.yaml')}:/fixtures/example.yaml:ro`, 'cloud-api', '-c', 'A0_TEST_DATABASE_URL="$DATABASE_URL" A0_INVENTORY_EXAMPLE=/fixtures/example.yaml /tmp/inventory.test -test.v -test.timeout=5m']);
   record('A0 empty/v2 migration, idempotent atomic import, provenance and guarded legacy reset');
   const provenanceBinary = resolve('tools/.cache/provenance.test');
   run(go, ['test', '-c', '-o', provenanceBinary, './services/cloud-api/internal/app'], { GOOS: 'linux', GOARCH: 'amd64', CGO_ENABLED: '0' });
-  compose(['run', '--rm', '--no-deps', '--entrypoint', 'sh', '-v', `${provenanceBinary}:/tmp/provenance.test:ro`, '-v', `${resolve('deploy/inventory/inventory.example.yaml')}:/fixtures/example.yaml:ro`, 'cloud-api', '-c', 'A0_TEST_DATABASE_URL="$DATABASE_URL" A0_INVENTORY_EXAMPLE=/fixtures/example.yaml /tmp/provenance.test -test.v']);
+  compose(['run', '--rm', '--no-deps', '--entrypoint', 'sh', '-v', `${provenanceBinary}:/tmp/provenance.test:ro`, '-v', `${resolve('deploy/inventory/inventory.example.yaml')}:/fixtures/example.yaml:ro`, 'cloud-api', '-c', 'A0_TEST_DATABASE_URL="$DATABASE_URL" A0_INVENTORY_EXAMPLE=/fixtures/example.yaml /tmp/provenance.test -test.v -test.timeout=5m']);
   record('Hardening real Cloud startup rejects missing first/last runtime and project/source/asset/tenant mismatch before MQTT or HTTP');
   record('Hardening correct Inventory -> Fleet passes; Store rejects unregistered SIM/EDGE first packet and retains SIM-001..020 plus TEST-001');
   compose(['up', '-d', '--force-recreate', '--no-deps', 'cloud-api']);

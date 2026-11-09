@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
 	"github.com/guolichen007/crane-operations-platform/internal/auditlog"
@@ -198,6 +199,34 @@ func TestOperationsSummaryHTTP(t *testing.T) {
 	}
 }
 
+// runStartup calls the real Cloud entry point in a controlled environment and never lets it start serving:
+// APP_ENV is set to a value ValidateCloud rejects, so a Run that passes the OPS_* and administrative-index
+// checks stops at the very next startup check. The ambient environment (the integration job runs this
+// binary inside the cloud-api container with a migrated DATABASE_URL, certificates and a dev token) must
+// not decide the outcome: before H2-1C-R2 the in-range case started the real server there and hung the job.
+// A 10 s watchdog turns any regression of that kind into a fast FAIL instead of a CI timeout.
+func runStartup(t *testing.T, env map[string]string) error {
+	t.Helper()
+	for k, v := range map[string]string{"APP_CONFIG": "", "APP_ENV": "h21c-startup-test-invalid", "DATABASE_URL": "", "DEV_API_TOKEN": "",
+		"FLEET_FILE": "", "INVENTORY_FILE": "", "HTTP_ADDR": "127.0.0.1:0", "OPS_STALE_AFTER_SECONDS": "", "OPS_MAX_FUTURE_SKEW_SECONDS": ""} {
+		t.Setenv(k, v)
+	}
+	os.Unsetenv("OPS_STALE_AFTER_SECONDS")
+	os.Unsetenv("OPS_MAX_FUTURE_SKEW_SECONDS")
+	for k, v := range env {
+		t.Setenv(k, v)
+	}
+	done := make(chan error, 1)
+	go func() { done <- Run(nil) }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(10 * time.Second):
+		t.Fatal("Run did not return within 10 s: the startup test reached a serving cloud-api")
+		return nil
+	}
+}
+
 func TestOperationsConfigRefusesOutOfRangeAtStartup(t *testing.T) {
 	for _, env := range []map[string]string{
 		{"OPS_STALE_AFTER_SECONDS": "299"}, {"OPS_STALE_AFTER_SECONDS": "7201"}, {"OPS_STALE_AFTER_SECONDS": "abc"},
@@ -210,19 +239,19 @@ func TestOperationsConfigRefusesOutOfRangeAtStartup(t *testing.T) {
 			}
 			return out
 		}(), ","), func(t *testing.T) {
-			for k, v := range env {
-				t.Setenv(k, v)
-			}
-			err := Run(nil)
+			err := runStartup(t, env)
 			if err == nil || !strings.Contains(err.Error(), "OPS_") {
 				t.Fatalf("Run accepted %v: %v", env, err)
 			}
 		})
 	}
-	// In range (and absent) values are accepted by the loader; Run then proceeds to the next startup check.
-	t.Setenv("OPS_STALE_AFTER_SECONDS", "300")
-	t.Setenv("OPS_MAX_FUTURE_SKEW_SECONDS", "600")
-	if err := Run(nil); err == nil || strings.Contains(err.Error(), "OPS_") {
-		t.Fatalf("in-range config rejected by OPS check: %v", err)
+	// In-range (and absent) values pass the OPS_* and administrative-index checks; Run then stops at the
+	// next startup check (the deliberately invalid APP_ENV), proving it got past OPS without serving.
+	for _, env := range []map[string]string{{}, {"OPS_STALE_AFTER_SECONDS": "300", "OPS_MAX_FUTURE_SKEW_SECONDS": "600"},
+		{"OPS_STALE_AFTER_SECONDS": "7200", "OPS_MAX_FUTURE_SKEW_SECONDS": "0"}} {
+		err := runStartup(t, env)
+		if err == nil || strings.Contains(err.Error(), "OPS_") || !strings.Contains(err.Error(), "invalid Cloud environment") {
+			t.Fatalf("in-range %v: want the next startup check (invalid Cloud environment), got %v", env, err)
+		}
 	}
 }

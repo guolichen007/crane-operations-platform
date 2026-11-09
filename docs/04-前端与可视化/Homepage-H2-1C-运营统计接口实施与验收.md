@@ -150,3 +150,15 @@ B4（CI `b4-business-acceptance`，生产候选镜像 + 真实 Keycloak + Postgr
 **回归。** operations、cloud-api app 包 `-race` PASS；`go vet` 全部 internal 与 cloud-api；gofmt 无输出；`tests/contract` 49/49；`geoindex --check` 通过。单 SQL、权限、生成契约未改（`git diff` 不含 `summary.sql`、`contracts/`）。前端无改动，未重跑浏览器套件。
 
 **同 SHA CI 与 B4。** 待 OWNER 推送后读取；本地无 Docker，B4 为 NOT_RUN。
+
+## 11. H2-1C-R2：integration 作业超时修复（基线 `637be0b`，CI `42566812090`）
+
+**同 SHA CI 读数。** 9 个作业中 8 个 SUCCESS：repository-contract、backend、edge、r2-db-test（`node tools/r2-b2-test.mjs` 1 分 06 秒成功；该脚本精确门禁，16 项任一缺失/SKIP/FAIL 即非零退出，原始日志仍 403 无法逐行展示）、frontend、security、a1-security、b4-business-acceptance（生产候选镜像构建 + 「真实 Keycloak + PostgreSQL 浏览器业务验收」成功；Playwright 注解 `31 passed (3.9m)` 与 `playwright.b4.config.ts --list` 的 31 项一致，其中含 `operations-summary.spec.ts` 2 项；另 `3 passed` 为认证套件）。**integration 失败**：注解 `The job has exceeded the maximum execution time of 25m0s`，`integration-test` 步骤未结束。上一轮 `097d230` 同样被取消，`650a0aa` 时该步骤 2 分 54 秒通过——问题由 H2-1C-3 引入，与 R1 无关。`main` 仍为 `29c6ec9`，未部署。
+
+**根因。** `tests/integration/run.mjs` 在 cloud-api 容器内直接执行 `services/cloud-api/internal/app` 测试二进制（无 `-test.run`、无 `-test.timeout`；直接运行的 Go 测试二进制没有默认超时）。容器环境带有 `APP_ENV=development`、已迁移的 `DATABASE_URL`、开发令牌、证书与 MQTT 地址。`TestOperationsConfigRefusesOutOfRangeAtStartup` 末尾用合法配置调用真实入口 `Run(nil)`，期望它「在后续某个启动检查失败」；在干净环境（backend 作业、本地）里它确实停在「开发令牌缺失」，但在 integration 容器里所有检查都通过，`Run` 启动 HTTP 服务并永久运行。本地以同样环境复现：日志出现 `cloud API ready`，30 s 被 `timeout` 杀死（`evidence/homepage-h2-1c-r2/integration-timeout-repro.out.txt`）。
+
+**修复（只改测试与测试运行器，生产代码不变）。** 新增 `runStartup`：先把 `APP_ENV` 固定为 `ValidateCloud` 必然拒绝的值并清空数据库/令牌/清单等环境变量，再设置被测 `OPS_*`；合法配置必须恰好停在下一项启动检查（`invalid Cloud environment`），证明它已通过 OPS 与行政区索引检查且从未开始服务；`Run` 在 goroutine 中执行，10 s 看门狗超时即 FAIL。合法用例扩展为缺省、300/600、7200/0 三组。`tests/integration/run.mjs` 三个容器内测试二进制加 `-test.timeout=5m`，任何挂起变为带栈的失败而不是 25 分钟作业超时。
+
+**反证。** 只去掉 `APP_ENV` 固定 → 在 integration 等价环境下断言失败（得到「development requires a random development token」以外的路径即失败，0.01 s）；去掉整段环境重置 → 真实服务启动，看门狗 10 s 后 FAIL。修复后同环境 0.00 s 通过；`services/cloud-api/internal/app` 全包 `-race` 在干净环境与 integration 等价环境均通过（约 30 s）。
+
+H2-1C 封板需要本修复推送后同 SHA 9/9 绿；在此之前不提交 H2-1D。
