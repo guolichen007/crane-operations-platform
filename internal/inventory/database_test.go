@@ -104,6 +104,11 @@ func TestImportIdempotentRollbackAndRealIdentitySeparation(t *testing.T) {
 	if count(t, db, `SELECT count(*) FROM projects`) != 9 || count(t, db, `SELECT count(*) FROM asset_devices`) != 10 || count(t, db, `SELECT count(*) FROM devices WHERE source_mode='SIMULATION'`) != 10 || count(t, db, `SELECT count(*) FROM devices WHERE source_mode='REAL'`) != 0 {
 		t.Fatal("non-idempotent inventory")
 	}
+	// The read API runs on the full schema (cloud-api applies every migration at
+	// startup); its Inventory scope uses asset_status, added in 00005. Upgrade the
+	// imported 00003 database before reading, which also proves the import survives
+	// the upgrade unchanged.
+	migrateDB(t, db, latestMigration)
 	p, e := Projects(ctx, db)
 	if e != nil || len(p) != 9 {
 		t.Fatal("project API", e)

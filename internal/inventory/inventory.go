@@ -154,9 +154,18 @@ func Import(ctx context.Context, db *sql.DB, d contract.InventoryDocument) error
 	return tx.Commit()
 }
 
+// Inventory operating scope (H2-1A, docs/04-前端与可视化/Homepage-H2-0-运营数据契约.md §2.6):
+// an Inventory asset is an asset_devices row that belongs to a registered
+// Inventory project (projects.lifecycle IS NOT NULL) and is not RETIRED. DRAFT,
+// ACTIVE and OUT_OF_SERVICE stay registered. RETIRED rows are excluded here only;
+// the formal asset center (/api/v1/assets) keeps serving them as history.
+// Projects().assetDeviceCount and Assets() must use the same predicate so the
+// per-project counts always sum to the asset list.
+const inventoryAssetStatus = `a.asset_status <> 'RETIRED'`
+
 func Projects(ctx context.Context, db *sql.DB) ([]contract.InventoryProject, error) {
 	rows, err := db.QueryContext(ctx, `SELECT p.id,p.name,p.lifecycle,p.province,p.city,p.county,p.location_label,p.admin_code,p.schedule_text,p.notes,
- (SELECT count(*) FROM asset_devices a WHERE a.project_id=p.id),
+ (SELECT count(*) FROM asset_devices a WHERE a.project_id=p.id AND `+inventoryAssetStatus+`),
  (SELECT count(*) FROM devices d WHERE d.project_id=p.id),
  (SELECT count(*) FROM devices d JOIN device_shadow s ON s.device_id=d.id WHERE d.project_id=p.id AND d.source_mode='REAL' AND s.payload_json#>>'{presence,connectivity}'='MQTT_CONNECTED'),
  (SELECT count(*) FROM devices d WHERE d.project_id=p.id AND d.source_mode='SIMULATION')
@@ -177,7 +186,7 @@ func Projects(ctx context.Context, db *sql.DB) ([]contract.InventoryProject, err
 	return result, rows.Err()
 }
 func Assets(ctx context.Context, db *sql.DB) ([]contract.AssetDevice, error) {
-	rows, err := db.QueryContext(ctx, `SELECT a.id,a.project_id,a.display_name,a.crane_model,a.rated_capacity_t,a.span_m,a.work_class,a.grab_type,a.lifecycle,d.source_mode,d.id,s.payload_json#>>'{presence,connectivity}' FROM asset_devices a LEFT JOIN LATERAL(SELECT id,source_mode FROM devices WHERE asset_device_id=a.id ORDER BY CASE source_mode WHEN 'REAL' THEN 0 WHEN 'SIMULATION' THEN 1 ELSE 2 END,id LIMIT 1) d ON true LEFT JOIN device_shadow s ON s.device_id=d.id ORDER BY a.id`)
+	rows, err := db.QueryContext(ctx, `SELECT a.id,a.project_id,a.display_name,a.crane_model,a.rated_capacity_t,a.span_m,a.work_class,a.grab_type,a.lifecycle,d.source_mode,d.id,s.payload_json#>>'{presence,connectivity}' FROM asset_devices a JOIN projects p ON p.id=a.project_id AND p.lifecycle IS NOT NULL LEFT JOIN LATERAL(SELECT id,source_mode FROM devices WHERE asset_device_id=a.id ORDER BY CASE source_mode WHEN 'REAL' THEN 0 WHEN 'SIMULATION' THEN 1 ELSE 2 END,id LIMIT 1) d ON true LEFT JOIN device_shadow s ON s.device_id=d.id WHERE `+inventoryAssetStatus+` ORDER BY a.id`)
 	if err != nil {
 		return nil, err
 	}
