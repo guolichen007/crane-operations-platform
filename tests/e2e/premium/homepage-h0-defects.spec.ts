@@ -1,15 +1,16 @@
 // Homepage defect counter-proofs. Real browser, mocked API (no server writes).
 //
-// H0-D1 (empty province counted as a province) and H0-D2 (UTC event time) are
-// H2 data-correctness items and remain expected failures: D2 here (test.fail),
-// D1 at its source in apps/web-console/tests/data.test.ts (it.fails) because the
-// H1 homepage no longer renders the province count. Each turns red when fixed.
+// H0-D2 (UTC event time) was fixed in H2-1D (provider.ts formats sentAt in Asia/Shanghai) and is
+// now a required test. H0-D1 (empty province counted as a province) remains an expected failure at
+// its source in apps/web-console/tests/data.test.ts (it.fails): aggregate() is unchanged and the
+// homepage does not render that number.
 //
 // H0-D3 (region deep link) and H0-D4 (left navigation occluded) were fixed in
 // H1 and are now required tests driven by real mouse/keyboard input.
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { cloudDevice, cloudAlarm, cloudTime } from '../../../apps/web-console/tests/cloud-fixtures';
+import { inventorySummary, routeSummary } from '../summary-mock';
 
 const example = JSON.parse(readFileSync('deploy/inventory/inventory.example.yaml', 'utf8'));
 const session = {
@@ -37,6 +38,7 @@ async function inventoryFixture(page: Page, opts: { located?: boolean; empty?: b
         : path === '/api/v1/devices' ? (opts.empty ? [] : [cloudDevice('SIM-P001-01')]) : path === '/api/v1/alarms' ? (opts.empty ? [] : [cloudAlarm()]) : {},
     });
   });
+  await routeSummary(page, (c) => inventorySummary(projects, assets, c.region));
 }
 async function open(page: Page, hash = '/#/overview') {
   await page.goto(hash);
@@ -61,8 +63,7 @@ async function realClick(page: Page, selector: string) {
   await page.mouse.click(x, y);
 }
 
-test('H0-D2 事件时间：Cloud 告警时间按上海时区显示，而不是截取 UTC 字符串', async ({ page }) => {
-  test.fail(true, 'H0-D2 (H2): provider.ts renders sentAt.slice(11, 19), i.e. UTC, next to a Shanghai clock');
+test('H0-D2 事件时间：Cloud 告警时间按上海时区显示，而不是截取 UTC 字符串（H2-1D 已修复，必过）', async ({ page }) => {
   await inventoryFixture(page);
   await open(page);
   expect(cloudTime.startsWith('2026-10-22T08:49:15')).toBe(true); // → 16:49:15 Asia/Shanghai
@@ -180,7 +181,7 @@ test('D4 125% 缩放（1280×720 屏幕 ≈ 1024×576 CSS px）：无横向溢�
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
 });
 
-test('空数据：无项目时显示明确空态，定位按钮禁用，统计无 NaN', async ({ page }) => {
+test('空数据：无授权项目时显示明确空态（服务端合法 0），定位按钮禁用，统计无 NaN', async ({ page }) => {
   await inventoryFixture(page, { empty: true });
   await page.goto('/#/overview');
   await expect(page.locator('.scene-loading')).toBeHidden();
@@ -188,5 +189,5 @@ test('空数据：无项目时显示明确空态，定位按钮禁用，统计�
   await expect(page.getByRole('button', { name: '聚焦首个登记项目' })).toBeDisabled();
   const text = await page.getByTestId('home-kpis').innerText();
   expect(text).not.toMatch(/NaN|Infinity/);
-  await expect(page.locator('[data-kpi=devices] .home-kpi-value')).toContainText('0');
+  await expect(page.locator('[data-kpi=registered] .home-kpi-value')).toHaveText('0台');
 });

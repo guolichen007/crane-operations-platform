@@ -63,6 +63,14 @@ const assets = computed(
     ) ?? []
 );
 const names = computed(() => new Map(data.value?.projects.map((p) => [p.id, p.name])));
+// H2-1D-4: arriving from a homepage KPI whose server predicate this list cannot reproduce (REAL 在线 /
+// 当前 REAL 告警 / 无运行身份). The list is the same authorization + region, NOT the KPI's exact set.
+const kpiNotes: Record<string, string> = {
+  'real-connected': 'REAL 在线',
+  'alarm-real': '当前 REAL 告警',
+  'no-runtime': '无运行身份',
+};
+const kpiNote = computed(() => (typeof route.query.kpi === 'string' ? kpiNotes[route.query.kpi] ?? '' : ''));
 </script>
 <template>
   <main class="premium-workspace">
@@ -86,6 +94,10 @@ const names = computed(() => new Map(data.value?.projects.map((p) => [p.id, p.na
         规划模拟不代表现场在线</span
       >
     </div>
+    <p v-if="kpiNote" class="kpi-not-exact" role="note" data-testid="inventory-kpi-note">
+      来自首页「{{ kpiNote }}」：此处是同授权、同行政区的全部 Inventory 资产，<b>不是</b>该指标的精确筛选结果——
+      指标由服务端按运行身份、连接新鲜度与资产状态统计，目前尚无相同口径的明细接口。
+    </p>
     <p v-if="error" role="status">{{ error }}</p>
     <p v-else-if="loading">正在读取资产…</p>
     <p v-else-if="regionState === 'unavailable'" role="alert" data-testid="inventory-region-error">

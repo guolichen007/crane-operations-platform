@@ -60,3 +60,35 @@ test('运营统计接口：P002 用户与零授权用户只看到自己的范围
   expect((await summary(anonPage)).status).toBe(401);
   await anon.close();
 });
+
+// H2-1D: the Premium homepage on the production candidate image shows the authoritative summary of
+// the logged-in account — and only that account. Same browser context, logout → login as another
+// user: the homepage never shows the previous user's numbers. Read-only.
+async function homepageNumbers(page: import('@playwright/test').Page) {
+  await page.goto('/#/overview?view=2d');
+  await expect(page.getByTestId('home-kpis')).toHaveAttribute('data-state', 'ready', { timeout: 30000 });
+  const value = (id: string) => page.locator(`[data-kpi=${id}] .home-kpi-value`).getAttribute('data-value');
+  return { registered: await value('registered'), realConnected: await value('real-connected'), noRuntime: await value('no-runtime') };
+}
+test('首页权威统计：KPI 等于本账号 summary；同一浏览器退出并换账号后不残留上一账号数字', async ({ page }) => {
+  await login(page, 'b4-admin');
+  const api = await summary(page);
+  expect(api.status).toBe(200);
+  const shown = await homepageNumbers(page);
+  expect(shown).toEqual({
+    registered: String(api.body.metrics.assets.registered),
+    realConnected: String(api.body.metrics.real.connected),
+    noRuntime: String(api.body.metrics.assets.noRuntime),
+  });
+  await expect(page.locator('[data-kpi=real-connected] .home-kpi-label')).toHaveText('REAL 在线');
+  // Logout (real Keycloak end-session), then the zero-grant account in the SAME browser context.
+  await page.getByRole('button', { name: '退出', exact: true }).click();
+  await page.locator('#kc-logout').click();
+  await page.waitForURL((url) => url.pathname === '/');
+  await login(page, 'b4-noauth');
+  const none = await summary(page);
+  expect(none.body.scope.authorizedProjects).toBe(0);
+  const after = await homepageNumbers(page);
+  expect(after).toEqual({ registered: '0', realConnected: '0', noRuntime: '0' });
+  await expect(page.getByTestId('home-empty')).toBeVisible();
+});

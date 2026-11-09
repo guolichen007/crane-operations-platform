@@ -3,6 +3,7 @@ import type { Project, Device, Lifecycle } from '../data/types';
 import { projects as demoAllProjects, devices as demoAllDevices, events as demoEvents, realProjects as demoRealProjects } from '../data';
 import { listProjects, listAssets, listDevices, listAlarms } from '../cloud/api';
 import { mapApiDevice } from './device-status';
+import { formatCloudTime } from '../cloud/format';
 import { loadGeoManifest } from './geo-manifest';
 import type { InventoryProject } from '../../../../contracts/typescript/types.gen';
 
@@ -28,7 +29,10 @@ export interface SceneDataProvider {
    * fails; `error` is then non-empty and the homepage marks the numbers stale.
    */
   readonly fetchedAt: Ref<string>;
-  /** Number of alarm records the API returned (the API serves the latest ≤100) — not an open-alarm count. null in demo. */
+  /**
+   * Length of the /alarms detail page (the API serves the latest ≤100 records). A list length, NOT a
+   * count: the homepage shows the windowed total from the operations summary instead (H2-1D). null in demo.
+   */
   readonly alarmRecordCount: Ref<number | null>;
   /** Idempotent load: concurrent calls dedup; a failed load can be retried. */
   ensureLoaded(): Promise<void>;
@@ -147,7 +151,8 @@ function apiProvider(): SceneDataProvider {
       projects.value = mappedProjects;
       devices.value = mappedDevices;
       events.value = rawAlarms.slice(0, 20).map((a) => ({
-        time: a.sentAt.slice(11, 19),
+        // H0-D2 fix: show the Shanghai clock time of the instant, not the UTC substring of sentAt.
+        time: formatCloudTime(a.sentAt).slice(11),
         kind: '告警',
         text: `${a.payload.text || a.payload.code} · ${a.deviceId}`,
         color: '#ff665f',
