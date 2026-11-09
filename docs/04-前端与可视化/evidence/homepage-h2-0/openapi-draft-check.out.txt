@@ -1,0 +1,1 @@
+OPENAPI_DRAFT_VALID 3.1.0 nullable: #/components/schemas/OperationsSummary/properties/scope/properties/region

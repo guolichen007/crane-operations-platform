@@ -1,4 +1,4 @@
-# Homepage H2-0-R2：运营数据契约（冻结稿）
+# Homepage H2-0-R3：运营数据契约（冻结稿）
 
 > 分支 `feature/homepage-operations-center-r1`。本文是 H2-0 的修订版（H2-0-R2，在 R1 上做最小修订）。契约部分**只做设计、SQL/OpenAPI 草案、迁移决策与可复现探针**：没有新增生产 summary 接口，没有新增 00013 迁移，没有修改 main 或部署，没有启动 G3-D4。唯一的后端代码改动是已获准的 H2-1A Inventory 口径修正（§10）。
 > 审查结论（输入）：原则上批准「新增只读运营统计接口」方向；H2-1 实施未获准。
@@ -10,6 +10,20 @@
 > 基础口径沿用 `Homepage-H1-R1-统计范围契约.md`。
 
 ---
+
+## 0-R3. H2-1A-R1 审查修订（相对 H2-0-R2 `4d86dd7`）
+
+只修改研究 SQL、探针与本文档，不新增生产接口。
+
+| 审查项 | 修订 |
+|---|---|
+| R1-3.1 `recordsFutureSkew` 范围 | 与时间窗记录共用同一个 `scoped_alarms` CTE：项目授权 ∩ Inventory 项目 ∩ 区域；绑定身份只在资产仍在 `assets`（非 RETIRED）时计入；孤立身份保留。反证：恢复 R2 写法 → `R1 recordsFutureSkew: got 3, want 2`（退役资产的未来记录被计入） |
+| R1-3.2 未来偏差可配置 | `maxFutureSkewSeconds` 为 SQL 参数 `$5`，新鲜度上界与 futureSkew 边界都用它；不再写死 120 s（探针 R7：设为 7200 s 后 A6 变为在线、futureSkew 为 0） |
+| R1-3.3 交叉测试 | 新增 A10（ACTIVE，REAL+SIM 同时告警）、A11（RETIRED，REAL+SIM 告警）、A12（OUT_OF_SERVICE，仅 SIM 告警）、A13（DRAFT，REAL+SIM 新鲜）、两个孤立 REAL 身份（P1、未授权 P2）及其窗口内/未来记录；探针 7 组场景全部用 SQL 断言自检 |
+| R1-3.4 去重说明 | `alarmDevicesAll` 按资产去重；来源分项可能重叠（A10 同时计入 REAL 与 SIMULATION），**不能相加**；探针断言 `All ≤ REAL + SIM + TEST` |
+| R1-3.5 OpenAPI | `$ref` 改为完整 JSON Pointer；明确 OpenAPI 3.1 的 null 写法与「哪些字段可为 null」；所有对象 `required` 齐全 |
+| R1-3.6 证据性质 | 所有探针数字均来自合成夹具，见各文件头部声明 |
+| R1-2 项目运行计数 | 新增 §2.7：`runtimeDeviceCount / realConnectedCount / simulatedCount` 的现状表征与影响；字段本轮不改 |
 
 ## 0-R2. 最小修订（相对 H2-0-R1 `d1b60f5`）
 
@@ -143,6 +157,7 @@ erDiagram
 
 | id | 中文名 | 定义 | 界面标注 |
 |---|---|---|---|
+| `alarm.devicesAll` | 告警设备（任一来源） | 任一运行源新鲜告警的 ACTIVE 资产数，**按资产去重**；≤ 各来源之和 | 不能用来源分项相加得到 |
 | `alarm.devices.real` | 现场告警设备 | `realConnected` 且 REAL 身份 `alarmState = ACTIVE` | 主 KPI |
 | `alarm.devices.simulation` / `.test` | 模拟/测试告警设备 | 对应身份新鲜在线且 `ACTIVE` | 「模拟」「测试」角标，不进主 KPI |
 | `alarm.records.cells[source][attribution]` | 时间窗告警记录 | 窗口内 `alarms` 记录按 **运行源（REAL/SIMULATION/TEST）× 资产归属（attributed/unattributed）** 分到 6 个**互斥**单元格；每条记录恰好属于一个单元格 | 合计 `recordsTotal` = 6 格之和；「全部来源」= 合计，界面逐格列出；SIM/TEST 进入合计但带角标 |
@@ -167,7 +182,25 @@ erDiagram
 
 「待复核」不是在线，也不是离线：它表示资产主数据（草稿/停用）与运行事实（真实现场已连接）不一致，界面单列提示，由资产管理员核对业务状态。合成探针 A8（DRAFT）、A9（OUT_OF_SERVICE + 告警）均计入 `realPendingReview`，不计入 `realConnected` 与 `alarm.devices`。
 
-三处一致：**首页 KPI `assets.registered` = `/assets/devices` 列表条数（同范围）= 各项目 `assetDeviceCount` 之和**。现行 `inventory.Projects.assetDeviceCount` 用 `count(*)` 未排除 RETIRED，H2-1A 与列表同步修正。
+三处一致（H2-1A 已实施，由 r2-db-test 强制门禁执行）：**首页 KPI `assets.registered` = `/assets/devices` 列表条数（同范围）= 各项目 `assetDeviceCount` 之和**。现行 `inventory.Projects.assetDeviceCount` 用 `count(*)` 未排除 RETIRED，H2-1A 与列表同步修正。
+
+### 2.7 项目运行计数的现状（H2-1A-R1 R1-2，未修改）
+
+`inventory.Projects()` 另外返回三个运行计数，H2-1A **没有**改变它们（只改了 `assetDeviceCount`）。表征测试 `internal/inventory/runtime_counters_test.go`（真实 PostgreSQL）固定了当前行为：
+
+| 字段 | 当前定义（SQL） | 与资产口径的差异 | 夹具 H2A 的值 |
+|---|---|---|---|
+| `runtimeDeviceCount` | 项目内全部 `devices` 行 | 计的是运行身份不是资产；含 RETIRED 资产的身份；含无资产绑定的孤立身份 | 4（DUAL-SIM、DUAL-REAL、RETIRED-REAL、ORPHAN-REAL） |
+| `realConnectedCount` | 项目内 `source_mode='REAL'` 且 Shadow `MQTT_CONNECTED` 的身份 | 含 RETIRED 资产身份与孤立身份；**不检查观测新鲜度**（一天前的观测仍计） | 3（同一夹具按 §2.2 `realConnected` 只有 1） |
+| `simulatedCount` | 项目内 `source_mode='SIMULATION'` 的身份 | 计身份不计资产，不看连接状态 | 1 |
+
+失败复现：把 `realConnectedCount` 的断言改成契约 `realConnected` 的期望值 1，测试失败（`realConnectedCount = 3`）。
+
+影响与规则：
+
+- 前端当前**没有**使用这三个字段做首页 KPI（H1-R1 首页由资产与 Shadow 自行计算），因此本轮对首页数字无影响；它们只出现在项目接口的响应中。
+- 这三个字段**不得**作为首页或其他页面的权威「现场在线 / 运行」统计。权威定义在 H2-1C 的 summary 中统一实现（§2.2）。
+- H2-1C 冻结定义时，要么让这三个字段改用 summary 同一口径，要么在契约中把它们标为「运行身份计数（非资产、非新鲜度）」并改名；届时同步更新表征测试。
 
 ---
 
@@ -184,26 +217,54 @@ grants          (授权：users.enabled ∧ project_memberships ∧ 读能力角
  → bindings        (全部运行身份 + Shadow 字段)
  → fresh           (以同一个 sampledAt 判定新鲜)
  → per_asset       (每资产一行：has_real / real_connected / real_stale / *_alarm …)
- → alarm_window    (半开窗口 [start, sampledAt)，经 scoped_projects 授权)
+ → scoped_alarms   (授权 ∩ Inventory 项目 ∩ 区域；绑定身份要求资产在 assets 内；孤立身份保留)
+     ├→ alarm_window      (半开窗口 [start, sampledAt))
+     └→ recordsFutureSkew (≥ sampledAt + maxSkew；与窗口同一范围)
  → 单个 json_build_object
 ```
 
-草案覆盖资产、绑定、现场在线/过期/时间未知、采集、告警设备与时间窗记录；`real.offline`、`assets.unlocated` 与 `regions[]` 分区汇总在 H2-1C 按同一 CTE 补齐。
+草案覆盖资产、绑定、现场在线/待复核/过期/时间未知/离线、采集、告警设备与时间窗记录；`assets.unlocated` 与 `regions[]` 分区汇总在 H2-1C 按同一 CTE 补齐。
 
-参数：`$1 userId`、`$2 source`（草案遗留，正式实现删除，见 §3.4）、`$3 region`（仅用于回显）、`$4 windowStart`、`$5 sampledAt`、`$6 staleAfterSeconds`、`$7 regionAdminCodes int[]`（服务端用 geo-manifest 把区域展开为后代 admin_code；行政区层级不在数据库中，因此由服务端提供，且只用于收窄）。
+记录时间的三段（R3 明确）：`[windowStart, sampledAt)` 计入当前窗口；`[sampledAt, sampledAt + maxSkew)` 是取样之后才到达的记录，**本次取样不计入任何字段**（下次取样会进入窗口）；`≥ sampledAt + maxSkew` 计入 `futureSkew`。
 
-### 3.2 合成数据探针结果（`summary-probe.out.txt`）
+参数（R3 重新编号，删除了 `source` 与仅回显用的 `region`）：`$1 userId`、`$2 windowStart`、`$3 sampledAt`、`$4 staleAfterSeconds`、`$5 maxFutureSkewSeconds`、`$6 regionAdminCodes int[]`（服务端用 geo-manifest 把区域展开为后代 admin_code；行政区层级不在数据库中，因此由服务端提供，且只用于收窄）。
 
-夹具：P1（授权，浙江）有 A1（REAL 显式离线 + SIM 在线告警）、A2（REAL 新鲜在线、LIVE、告警）、A3（REAL 标志在线但观测 1 h 前）、A4（DRAFT 无运行身份）、A5（RETIRED 且 REAL 在线告警）、A6（REAL 时间戳超前 1 h）、A7（REAL 在线无观测时间）、孤立 TEST 运行身份告警；P2（未授权，广东）B1 同名「1号行车」在线告警；P3 无位置；PL 遗留项目。`sampledAt = 2026-11-07T08:00:00Z`，窗口 `[2026-11-06T08:00Z, 08:00Z)`，`staleAfter = 2100 s`。
+### 3.2 合成数据探针结果（`summary-probe.out.txt`，R3）
 
-| 用例 | 结果（摘录） | 说明 |
+**全部为合成夹具，不是生产数据，也不是生产负载。** 探针在 SQL 内用 `pg_temp.expect` 断言每个期望值、6 个告警单元格之和等于 `recordsTotal`、`alarmDevicesAll ≤ REAL + SIM + TEST`；任一不符即报错终止。
+
+夹具（P1 授权，浙江）：
+
+| 资产 | 状态 | 运行身份与 Shadow | 期望 |
+|---|---|---|---|
+| A1 | ACTIVE | REAL 显式离线；SIM 新鲜在线告警 | realOffline；SIM 告警设备；不计 realConnected |
+| A2 | ACTIVE | REAL 新鲜、LIVE、告警 | realConnected、realLive、REAL 告警设备 |
+| A3 | ACTIVE | REAL 已连接但观测 1 h 前 | realStale |
+| A4 | DRAFT | 无 | 登记、noRuntime |
+| A5 | RETIRED | REAL 新鲜告警 | 全部排除（含其窗口与未来记录） |
+| A6 | ACTIVE | REAL 时间戳超前 1 h | realStale（skew 120 s）；skew 7200 s 时在线 |
+| A7 | ACTIVE | REAL 已连接无观测时间 | realUnknownTime |
+| A8 | DRAFT | REAL 新鲜 | realPendingReview |
+| A9 | OUT_OF_SERVICE | REAL 新鲜告警 | realPendingReview；不计告警设备；其窗口记录仍计 REAL attributed |
+| A10 | ACTIVE | REAL + SIM 同时新鲜告警 | realConnected；REAL 与 SIM 告警设备各 1，All 只 +1 |
+| A11 | RETIRED | REAL + SIM 告警 | 全部排除 |
+| A12 | OUT_OF_SERVICE | 仅 SIM 新鲜告警 | 不计告警设备，不计待复核（无 REAL） |
+| A13 | DRAFT | REAL + SIM 新鲜 | realPendingReview 只 +1 |
+| 孤立 | — | P1 的 TEST、REAL 孤立身份；未授权 P2 的孤立 REAL | P1 孤立记录计 unattributed；P2 的不计 |
+
+另有 P2（未授权）同名「1号行车」、P3（无位置）、PL（遗留）。`sampledAt = 2026-11-07T08:00:00Z`，窗口 `[2026-11-06T08:00Z, 08:00Z)`。
+
+| 用例 | 断言（摘录） | 结果 |
 |---|---|---|
-| R1 platform_admin（P1+P3+PL），全国 | `projects 2`、`registered 7`、`draft 1`、`noRuntime 2`、`boundREAL 5`、`realConnected 1`、`realStale 2`、`realUnknownTime 1`、`alarmDevicesReal 1`、`alarmDevicesSim 1`、`records {REAL 1, SIMULATION 1, TEST 1}`、`unattributed 1`、`futureSkew 1` | 只有 A2 现场在线；A1 SIM 在线不覆盖 REAL 离线；A3、A6 过期；A7 时间未知；A5 退役不计；PL 遗留不计；P2 不可见；窗口起点含、终点不含 |
-| R2 同上，`region=330000` | `projects 1`、`registered 6` | 无位置 P3 退出省级范围 |
-| R3 同上，`region=440000`（只有未授权 P2） | 全 0 | 区域不泄露未授权项目 |
-| R4 无 membership | 全 0 | 合法 0 |
-| R5 禁用用户（有 P1 membership） | 全 0 | `users.enabled` 生效 |
-| R6 viewer，`staleAfter = 600 s` | `realConnected 0`、`realStale 3` | 阈值可配置，A2（10 min 前）随之过期 |
+| R1 platform_admin（P1+P3+PL），全国，stale 2100 s，skew 120 s | `registered 12`、`draft 3`、`outOfService 2`、`noRuntime 2`、`boundREAL 9`、`boundSIM 4`、`realConnected 2`、`realPendingReview 3`、`realStale 2`、`realUnknownTime 1`、`realOffline 1`、`realLive 1`、告警设备 `REAL 2 / SIM 2 / TEST 0 / All 3`、记录单元格 `REAL{2,1} SIM{1,0} TEST{0,1}`、`total 5`、`futureSkew 2` | OK |
+| R2 同上，`region=330000` | `projects 1`、`registered 11`、`noRuntime 1`、`total 5`、`futureSkew 2` | OK |
+| R3 同上，`region=440000`（只有未授权 P2） | 全 0（含 futureSkew） | OK |
+| R4 无 membership | 全 0 | OK |
+| R5 禁用用户 | 全 0 | OK |
+| R6 viewer P1，stale 600 s | `realConnected 1`、`realStale 3`、REAL 告警设备 1 | OK |
+| R7 viewer P1，skew 7200 s | `realConnected 3`、`realStale 1`、`futureSkew 0` | OK |
+
+反证：把 `recordsFutureSkew` 恢复为 R2 写法（不经资产范围、固定 120 s）→ 探针报错 `R1 recordsFutureSkew: got 3, want 2`。
 
 ### 3.3 一致快照（`snapshot-probe.out.txt`）
 
@@ -233,7 +294,7 @@ grants          (授权：users.enabled ∧ project_memberships ∧ 读能力角
   get:
     operationId: getOperationsSummary
     security: [{ webSession: [] }]
-    parameters:
+    parameters:   # 不接受 projectId / status / source
       - { name: region, in: query, schema: { type: string, pattern: '^[0-9]{6}$' } }
       - { name: alarmWindow, in: query, schema: { type: string, enum: [PT1H, PT6H, PT24H, P7D], default: PT24H } }
     responses:
@@ -249,12 +310,12 @@ components:
       type: object
       additionalProperties: false
       required: [REAL, SIMULATION, TEST]
-      properties: { REAL: { $ref: Count }, SIMULATION: { $ref: Count }, TEST: { $ref: Count } }
+      properties: { REAL: { $ref: '#/components/schemas/Count' }, SIMULATION: { $ref: '#/components/schemas/Count' }, TEST: { $ref: '#/components/schemas/Count' } }
     AttributionCell:
       type: object
       additionalProperties: false
       required: [attributed, unattributed]
-      properties: { attributed: { $ref: Count }, unattributed: { $ref: Count } }
+      properties: { attributed: { $ref: '#/components/schemas/Count' }, unattributed: { $ref: '#/components/schemas/Count' } }
     NotAvailable:
       type: object
       additionalProperties: false
@@ -273,9 +334,9 @@ components:
           additionalProperties: false
           required: [region, regionName, authorizedProjects]
           properties:
-            region:             { type: [integer, 'null'] }
+            region:             { type: [integer, 'null'], description: 'null = 全部授权范围（未指定区域）；这是本契约中唯一允许为 null 的字段' }
             regionName:         { type: string }
-            authorizedProjects: { $ref: Count }
+            authorizedProjects: { $ref: '#/components/schemas/Count' }
         freshness:
           type: object
           additionalProperties: false
@@ -291,25 +352,28 @@ components:
           additionalProperties: false
           required: [projects, assets, bound, real, operation, alarm, pendingEvents]
           properties:
-            projects: { $ref: Count }
+            projects: { $ref: '#/components/schemas/Count' }
             assets:
               type: object
               additionalProperties: false
               required: [registered, draft, outOfService, noRuntime, unlocated]
-              properties: { registered: { $ref: Count }, draft: { $ref: Count }, outOfService: { $ref: Count }, noRuntime: { $ref: Count }, unlocated: { $ref: Count } }
-            bound: { $ref: SourceCounts }
+              properties: { registered: { $ref: '#/components/schemas/Count' }, draft: { $ref: '#/components/schemas/Count' }, outOfService: { $ref: '#/components/schemas/Count' }, noRuntime: { $ref: '#/components/schemas/Count' }, unlocated: { $ref: '#/components/schemas/Count' } }
+            bound: { $ref: '#/components/schemas/SourceCounts' }
             real:
               type: object
               additionalProperties: false
               required: [connected, pendingReview, stale, unknownTime, offline, live]
-              properties: { connected: { $ref: Count }, pendingReview: { $ref: Count }, stale: { $ref: Count }, unknownTime: { $ref: Count }, offline: { $ref: Count }, live: { $ref: Count } }
-            operation: { $ref: NotAvailable }
+              properties: { connected: { $ref: '#/components/schemas/Count' }, pendingReview: { $ref: '#/components/schemas/Count' }, stale: { $ref: '#/components/schemas/Count' }, unknownTime: { $ref: '#/components/schemas/Count' }, offline: { $ref: '#/components/schemas/Count' }, live: { $ref: '#/components/schemas/Count' } }
+            operation: { $ref: '#/components/schemas/NotAvailable' }
             alarm:
               type: object
               additionalProperties: false
-              required: [devices, records]
+              required: [devices, devicesAll, records]
               properties:
-                devices: { $ref: SourceCounts }
+                devices:
+                  allOf: [{ $ref: '#/components/schemas/SourceCounts' }]
+                  description: 按运行源的告警设备数（按资产去重于各来源内；不同来源可能是同一资产，不能相加）
+                devicesAll: { $ref: '#/components/schemas/Count', description: 任一来源告警的资产数（按资产去重），≤ 各来源之和 }
                 records:
                   type: object
                   additionalProperties: false
@@ -319,20 +383,26 @@ components:
                       type: object
                       additionalProperties: false
                       required: [REAL, SIMULATION, TEST]
-                      properties: { REAL: { $ref: AttributionCell }, SIMULATION: { $ref: AttributionCell }, TEST: { $ref: AttributionCell } }
-                    total:      { $ref: Count, description: 6 个单元格之和（服务端断言） }
-                    futureSkew: { $ref: Count, description: 不在窗口内，不进 total }
-            pendingEvents: { $ref: NotAvailable }
+                      properties: { REAL: { $ref: '#/components/schemas/AttributionCell' }, SIMULATION: { $ref: '#/components/schemas/AttributionCell' }, TEST: { $ref: '#/components/schemas/AttributionCell' } }
+                    total:      { $ref: '#/components/schemas/Count', description: 6 个单元格之和（服务端断言） }
+                    futureSkew: { $ref: '#/components/schemas/Count', description: '≥ sampledAt + maxFutureSkewSeconds，与窗口同一范围，不进 total' }
+            pendingEvents: { $ref: '#/components/schemas/NotAvailable' }
         regions:
           type: array
           items:
             type: object
             additionalProperties: false
             required: [adcode, name, registered, realConnected, realAlarmDevices]
-            properties: { adcode: { type: integer }, name: { type: string }, registered: { $ref: Count }, realConnected: { $ref: Count }, realAlarmDevices: { $ref: Count } }
+            properties: { adcode: { type: integer }, name: { type: string }, registered: { $ref: '#/components/schemas/Count' }, realConnected: { $ref: '#/components/schemas/Count' }, realAlarmDevices: { $ref: '#/components/schemas/Count' } }
 ```
 
-严格性规则（R2）：
+严格性规则（R2，R3 补充）：
+
+- OpenAPI 3.1（与仓库 `contracts/openapi/cloud-api.yaml` 一致）：可空写成 `type: [X, 'null']`，**不使用** 3.0 的 `nullable`；`$ref` 一律使用完整 JSON Pointer `#/components/schemas/...`；带描述的引用用 `allOf: [{ $ref }]` 包一层。
+- 可为 null 的字段只有 `scope.region`（表示未指定区域）。其余字段全部 non-null。
+- 校验：`evidence/homepage-h2-0/openapi-draft-check.mjs` 用 swagger-parser 校验该草案为有效 OpenAPI 3.1，并检查每个对象属性都在 `required` 中、可空字段只有 `scope.region`（输出 `openapi-draft-check.out.txt`）。
+- 每个 object 都写 `additionalProperties: false` 与完整 `required`。
+
 
 - 所有计数字段 `required`，类型为非负整数，**不允许 null、不允许缺省**；服务端无法得到某项时整份返回 503，而不是省略字段或填 0。
 - 前端解析时缺少任一 required 字段即视为契约错误（显示「不可用」），**不得用 `?? 0` 填充**。
