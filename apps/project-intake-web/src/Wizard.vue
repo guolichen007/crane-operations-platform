@@ -361,9 +361,23 @@ async function assign() {
   app.toast('已指派给 ' + (p.ownerName || '销售负责人') + '，可以正式提交');
   void loadCandidates();
 }
-function next() {
-  step.value = Math.min(4, step.value + 1);
+// G3-4-A0: one rule for every step change (next, back, header jump, "去填写"):
+// while a number box holds text that cannot be saved, the user stays on that
+// step to correct it or explicitly discard it. Leaving the step would unmount
+// the field and silently fall back to the previously saved value.
+const stepNotice = ref('');
+function goStep(n: number) {
+  if (invalidBlock.value) {
+    stepNotice.value = invalidBlock.value + '，或点击该字段下的“放弃修改”后再切换步骤。';
+    return;
+  }
+  stepNotice.value = '';
+  step.value = Math.min(4, Math.max(1, n));
   window.scrollTo(0, 0);
+}
+watch(invalidNumbers, (v) => !v.size && (stepNotice.value = ''));
+function next() {
+  goStep(step.value + 1);
 }
 async function submit() {
   submitting.value = true;
@@ -384,13 +398,14 @@ onBeforeRouteLeave(async () => {
   if (leaving.value) return true;
   clearTimeout(timer);
   if (pending) await pending.catch(() => undefined);
-  if (!dirty.value) return true;
+  // Invalid text in a number box is an unsaved change too.
+  if (!dirty.value && !invalidNumbers.value.size) return true;
   const result = await app.confirmDiscard();
   if (!result && dirty.value && !conflict.value) timer = setTimeout(() => void save(true).catch((e) => (app.error = e.message)), 1200);
   return result;
 });
 function beforeUnload(e: BeforeUnloadEvent) {
-  if (dirty.value || saving.value) {
+  if (dirty.value || saving.value || invalidNumbers.value.size) {
     e.preventDefault();
     e.returnValue = '';
   }
@@ -420,7 +435,7 @@ onBeforeUnmount(() => {
     </div>
     <ol class="steps" aria-label="报备步骤">
       <li v-for="(label, i) in stepNames" :key="label" :class="{ current: step === i + 1, complete: step > i + 1 }" :aria-current="step === i + 1 ? 'step' : undefined">
-        <ActionButton action-id="project.step-jump" :run="() => { step = i + 1; }"><span class="step-dot"><Check v-if="step > i + 1" :size="14" /><template v-else>{{ i + 1 }}</template></span>{{ label }}</ActionButton>
+        <ActionButton action-id="project.step-jump" :run="() => goStep(i + 1)"><span class="step-dot"><Check v-if="step > i + 1" :size="14" /><template v-else>{{ i + 1 }}</template></span>{{ label }}</ActionButton>
       </li>
     </ol>
     <div v-if="conflict && mergeResult" class="conflict-panel" role="alert">
@@ -545,7 +560,7 @@ onBeforeUnmount(() => {
           <h3>待补信息</h3>
           <p v-if="!missing.length" class="ok-line">必填信息已齐全。</p>
           <ul v-else class="missing-list">
-            <li v-for="m in missing" :key="m.label">{{ m.label }}<ActionButton action-id="project.step-jump" :run="() => { step = m.step; }">去填写</ActionButton></li>
+            <li v-for="m in missing" :key="m.label">{{ m.label }}<ActionButton action-id="project.step-jump" :run="() => goStep(m.step)">去填写</ActionButton></li>
           </ul>
         </section>
         <section class="review-block">
@@ -600,8 +615,9 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </fieldset>
+    <p v-if="stepNotice" class="form-alert wizard-step-notice" role="alert">{{ stepNotice }}</p>
     <div class="wizard-actions">
-      <ActionButton action-id="project.step-back" :disabled="step === 1 || submitting" reason="当前是第一步或正在提交" :run="() => { step--; }">上一步</ActionButton><span class="spacer"></span><ActionButton
+      <ActionButton action-id="project.step-back" :disabled="step === 1 || submitting" reason="当前是第一步或正在提交" :run="() => goStep(step - 1)">上一步</ActionButton><span class="spacer"></span><ActionButton
         action-id="project.save-draft"
         :disabled="!ready || submitting || saving || !!conflict || !!invalidBlock"
         :reason="conflict ? '请先处理版本冲突' : invalidBlock || '正在加载、保存或提交'"

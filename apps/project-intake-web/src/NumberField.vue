@@ -23,13 +23,15 @@ const legacy = computed(() => props.state === 'LEGACY_UNCONFIRMED' && props.mode
 const display = () => (legacy.value || props.modelValue == null ? '' : String(props.modelValue));
 const text = ref(display());
 const invalid = ref(false);
-const message = ref('');
-function parse(t: string): number | null | undefined {
-  if (!props.money) return parseNumber(t, props.integer);
+// Pure check (no side effects): also used for the saved value.
+function check(t: string): { value: number | null | undefined; error: string } {
+  if (!props.money) return { value: parseNumber(t, props.integer), error: '' };
   const r = parseMoney(t);
-  message.value = 'error' in r ? r.error : '';
-  return 'error' in r ? undefined : r.value;
+  return 'error' in r ? { value: undefined, error: r.error } : { value: r.value, error: '' };
 }
+const parse = (t: string) => check(t).value;
+// The message always describes the text currently in the box.
+const message = computed(() => check(text.value).error);
 function setInvalid(v: boolean) {
   if (invalid.value !== v) {
     invalid.value = v;
@@ -59,6 +61,14 @@ watch(
   }
 );
 onMounted(revalidate);
+// Explicit discard of the invalid text: back to the saved value. A stored value
+// that is itself not writable (pre-R1 history) can only be corrected or marked
+// unknown.
+const savedIsValid = computed(() => props.modelValue == null || legacy.value || parse(display()) !== undefined);
+function revert() {
+  text.value = display();
+  setInvalid(false);
+}
 // Leaving the step (or removing an equipment row) drops the typed text; the
 // model still holds the last valid value, so the field is no longer blocking.
 onBeforeUnmount(() => invalid.value && emit('validity', false));
@@ -90,7 +100,11 @@ function onInput(e: Event) {
       <ActionButton action-id="number.confirm-zero" :run="() => emit('update', 0, 'KNOWN')">确认为 0</ActionButton>
       <ActionButton action-id="number.set-unknown" :run="() => emit('update', null, 'UNKNOWN')">改为未知</ActionButton>
     </div>
-    <small v-else-if="invalid" class="field-error" role="alert">{{ money && message ? message : '请输入不小于 0 的' + (integer ? '整数' : '数字') }}</small>
+    <div v-else-if="invalid" class="field-error-row">
+      <small class="field-error" role="alert">{{ money && message ? message : '请输入不小于 0 的' + (integer ? '整数' : '数字') }}</small>
+      <ActionButton v-if="savedIsValid" action-id="number.revert-input" :run="revert">放弃修改，恢复为{{ modelValue == null ? '未知' : String(modelValue) }}</ActionButton>
+      <ActionButton v-else action-id="number.set-unknown" :run="() => { setInvalid(false); emit('update', null, 'UNKNOWN'); }">改为未知</ActionButton>
+    </div>
     <small v-else-if="modelValue == null" class="field-hint">未知</small>
   </div>
 </template>

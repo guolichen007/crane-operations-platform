@@ -2342,3 +2342,283 @@ td.unassigned,
   .stats-cards > button.stats-card { display: flex; flex-direction: column; align-items: stretch; text-align: left; gap: 4px; padding: 12px 14px; min-height: 44px; }
   .stats-card-head { display: flex; justify-content: space-between; gap: 8px; color: var(--ink); }
 }
+.field-error-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.field-error-row > button { min-height: 32px; padding: 4px 10px; font-size: 13px; }
+.wizard-step-notice { margin: 8px 0 0; }
+
+/* G3-4-A0 four-role home: tasks first, then stage distribution and the
+   known estimated amount, each panel with its scope and definition. */
+.home-eyebrow {
+  margin: 0 0 2px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.home-question {
+  margin: 2px 0 0;
+  color: var(--ink-2);
+}
+.home-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 20px;
+  margin-top: 24px;
+}
+.home-panel {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 16px 18px 18px;
+  background: var(--surface);
+  min-width: 0;
+}
+.home-panel .section-title {
+  margin-bottom: 4px;
+}
+.home-panel .section-title h2 {
+  font-size: 17px;
+}
+.panel-def {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.home-governance {
+  grid-column: 1 / -1;
+}
+.gov-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.stage-bars,
+.amount-bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.stage-bar {
+  display: grid;
+  grid-template-columns: 6.5em minmax(0, 1fr) 4.5em;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 32px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  text-align: left;
+  color: var(--ink-2);
+}
+.stage-bar:hover:not(:disabled) {
+  background: var(--blue-wash);
+}
+.stage-bar:disabled {
+  opacity: 1;
+  cursor: default;
+  color: var(--ink-4);
+}
+.stage-bar-label {
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stage-bar-track,
+.amount-bar-track {
+  display: block;
+  height: 10px;
+  background: var(--steel);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.stage-bar-track > span,
+.amount-bar-track > span {
+  display: block;
+  height: 100%;
+  background: var(--blue);
+  min-width: 0;
+}
+.stage-bar.zero .stage-bar-track > span {
+  background: transparent;
+}
+.stage-bar-count {
+  text-align: right;
+  font-weight: 600;
+  color: var(--ink);
+}
+.stage-bar.zero .stage-bar-count {
+  color: var(--ink-4);
+  font-weight: 400;
+}
+.amount-figure {
+  display: block;
+  font-size: 30px;
+  line-height: 1.2;
+  font-weight: 650;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.amount-basis {
+  margin: 4px 0 12px;
+  font-size: 13px;
+}
+.amount-split {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin: 0 0 10px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+.amount-split > div {
+  padding: 8px 10px;
+  border-right: 1px solid var(--rule);
+}
+.amount-split > div:last-child {
+  border-right: 0;
+}
+.amount-split dt {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.amount-split dd {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.amount-split > div.warn {
+  background: var(--risk-wash);
+}
+.amount-split > div.warn dd {
+  color: var(--risk);
+}
+.amount-bars li {
+  display: grid;
+  grid-template-columns: 5.5em minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  padding: 3px 0;
+  color: var(--ink-2);
+}
+.amount-bars .mono {
+  text-align: right;
+  white-space: nowrap;
+}
+.late-tag {
+  display: block;
+  font-size: 12px;
+  color: var(--risk);
+}
+@media (max-width: 1100px) {
+  .home-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 700px) {
+  .home-panel {
+    padding: 14px;
+  }
+  .amount-figure {
+    font-size: 24px;
+  }
+  .amount-bars li {
+    grid-template-columns: 5em minmax(0, 1fr);
+  }
+  .amount-bars .mono {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
+  .stage-bar {
+    grid-template-columns: 6em minmax(0, 1fr) 3.5em;
+  }
+}
+.scope-asof {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.scope-asof .link-button {
+  min-height: 28px;
+  padding: 2px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--blue);
+  font-size: 13px;
+}
+.scope-asof .link-button:hover:not(:disabled) {
+  background: var(--blue-wash);
+}
+/* Four tiles per role: 4 columns on wide screens, 2×2 below 1100 px so no
+   tile is orphaned on its own row. */
+.task-board {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+@media (max-width: 1100px) {
+  .task-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .task-tile {
+    border-bottom: 1px solid var(--rule);
+  }
+  .task-tile:nth-child(2n) {
+    border-right: 0;
+  }
+  .task-tile:nth-last-child(-n + 2):nth-child(odd),
+  .task-tile:nth-last-child(-n + 2):nth-child(odd) ~ .task-tile {
+    border-bottom: 0;
+  }
+}
+@media (max-width: 700px) {
+  .amount-figure.long {
+    font-size: 19px;
+  }
+}
+/* G3-4-A0 visual review fixes: no mid-group wrap of the headline amount,
+   comparable amount bars, AA contrast for zero rows and meta lines. */
+.amount-figure {
+  overflow-wrap: normal;
+  white-space: nowrap;
+}
+.amount-figure.long {
+  font-size: 24px;
+}
+.amount-figure.huge {
+  font-size: 19px;
+}
+.amount-bars li {
+  grid-template-columns: 5.5em minmax(0, 1fr) 13.5em;
+}
+.amount-bar-value {
+  text-align: right;
+  white-space: nowrap;
+}
+.stage-bar:disabled,
+.stage-bar.zero .stage-bar-count {
+  color: var(--ink-3);
+}
+.home-columns .recent-list .record-title small,
+.followup-list small {
+  color: var(--ink-3);
+}
+.clamp-2 {
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+@media (max-width: 700px) {
+  .amount-figure.long {
+    font-size: 19px;
+  }
+  .amount-figure.huge {
+    font-size: 16px;
+  }
+  .amount-bars li {
+    grid-template-columns: 5em minmax(0, 1fr);
+  }
+  .amount-bar-value {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
+}

@@ -1,6 +1,6 @@
 # 项目报备中心工程入口
 
-仅适用于 product/baobei-v1 独立 worktree。当前阶段 FULL_ROLE_G3_3B_R1（金额完整性收口），START_HEAD=92b9b590688668b5e7217fbd512f604e11678453。G2 见20，G3-0 见24，G3-1 见25/26，G3-2A 见27，G3-2B 见28，G3-2C 见29，G3-3-P0 见30/30-R1，G3-3A 见31，G3-3B 见32，R1 验收见32-R1；金额合计不限精度 numeric，新写入金额按原始十进制逐位校验（≤两位小数、可无损存储），不改写历史数据。只正常提交/push产品分支，等待同SHA原八门CI后STOP；不得自动进入G3-4，不授权生产、release ref或GHCR。
+仅适用于 product/baobei-v1 独立 worktree。当前阶段 FULL_ROLE_G3_4_A0（四角色工作台首批与跨步骤无效数字），START_HEAD=b8b160667b0c4a846f00bb1496913eedbb2b1d03。G2 见20，G3-0 见24，G3-1 见25/26，G3-2A 见27，G3-2B 见28，G3-2C 见29，G3-3-P0 见30/30-R1，G3-3A 见31，G3-3B 见32，R1 见32-R1，G3-4-A0 见33；工作台只用 workspace-summary 与 stage-summary，每个数字须能点击进入同口径列表且 total 相等，不显示收入/回款/同比/赢率；向导内未纠正的无效数字不得随步骤切换被丢弃。只正常提交/push产品分支，等待同SHA原八门CI后STOP；不得自动进入G3-4其余功能，不授权生产、release ref或GHCR。
 唯一事实源：docs/项目报备中心/00-项目总览与SSOT.md；UI 动作事实源：交互动作矩阵.md。
 固定基线 29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18；永久产品分支 product/baobei-v1。
 禁止合并 main / R2，禁止修改既有 Crane 代码、生产服务器、DNS、TLS、真实账号及现场数据。

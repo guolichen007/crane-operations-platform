@@ -229,6 +229,19 @@ func TestDatabaseG33P0JIT(t *testing.T) {
 			}
 		}
 	}
+	// G3-4-A0 home: BAOBEI_SCALE_PART=home-<role> measures what the four-role
+	// home page loads — workspace-summary and stage-summary — separately and
+	// as one page load (the browser issues both concurrently; measured here
+	// sequentially, i.e. an upper bound).
+	if strings.HasPrefix(part, "home-") {
+		who := strings.TrimPrefix(part, "home-")
+		ws, ss := e.get(t, who, "/api/v1/workspace-summary"), e.get(t, who, "/api/v1/stage-summary")
+		row("首页 workspace-summary", who, ws, true)
+		row("首页 stage-summary", who, ss, true)
+		row("首页整页（两请求合计）", who, func() int { return ws() + ss() }, false)
+		appendReport(t, report, out.String()+plans.String())
+		return
+	}
 	// G3-3A pipeline: BAOBEI_SCALE_PART=pipeline-<role> measures the stage
 	// summary (unfiltered and with a base filter) and one stage column's first
 	// and last page with the same harness.
