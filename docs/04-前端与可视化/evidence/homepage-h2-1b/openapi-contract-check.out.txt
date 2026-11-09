@@ -1,0 +1,23 @@
+# H2-1B-4 operations-summary OpenAPI raw-contract validation (node --test tests/contract/operations-summary-contract.test.mjs)
+# Subtest: valid OpenAPI 3.1 document as written
+ok 1 - valid OpenAPI 3.1 document as written
+# Subtest: 200 response is fully specified and webSession is the real generated scheme
+ok 2 - 200 response is fully specified and webSession is the real generated scheme
+# Subtest: every object property is required, closed, and only scope.region is nullable
+ok 3 - every object property is required, closed, and only scope.region is nullable
+# Subtest: legitimate zeros (authorized-but-empty scope) and a populated payload are valid
+ok 4 - legitimate zeros (authorized-but-empty scope) and a populated payload are valid
+# Subtest: null / missing / string / negative counts and fake capability numbers are rejected (never defaulted to 0)
+ok 5 - null / missing / string / negative counts and fake capability numbers are rejected (never defaulted to 0)
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2178.519976
+# Counter-proofs on a copy of the contract (restored afterwards):
+#   remove 200 description      → fails 'valid OpenAPI 3.1 document as written' and '200 response is fully specified'
+#   Count type [integer,null]   → fails 'only scope.region is nullable' and 'null/missing ... rejected'
+#   pendingEvents not required → fails 'every object property is required'

@@ -11,6 +11,17 @@
 
 ---
 
+## 0-R4. H2-1B 更新（相对 H2-0-R3 `6badf6a`）
+
+性能与契约边界的结论与证据见 **`Homepage-H2-1B-性能验证与告警查询决策.md`**。对本契约的修改：
+
+- `summary-draft.sql` 改为形态 E（时间条件下推到告警扫描，`per_asset`/`scoped_alarms` 各聚合一次），目标 PostgreSQL 17；参数范围在 SQL 内二次校验（skew 0–600、stale 300–7200）。
+- 观测时间按 RFC 3339 + 显式时区 + 不早于 2000-01-01 防御性解析；不合法 → 设备级 UNKNOWN（`real.unknownTime`），不中止 summary，不计在线。
+- 新增 `real.pendingReviewAlarm`、`real.pendingReviewAssets`（≤100 条明细）、`alarm.records.assets`（窗口内去重资产数）。
+- 正式 OpenAPI 草案改为完整文件 `evidence/homepage-h2-1b/operations-summary.openapi.json`，由 `tests/contract/operations-summary-contract.test.mjs` 按原样校验；§3.4 的 YAML 片段仅作阅读参考，以 JSON 文件为准。
+- §3.2 的 R7（skew 7200 s）作废：7200 超出契约上限，现由探针 KX 证明会被拒绝；合法范围由 K0/K120/K600/KB600/KB599 覆盖。
+- 00013：**暂不创建**（§6 设计保留），理由见 H2-1B 报告 §2。
+
 ## 0-R3. H2-1A-R1 审查修订（相对 H2-0-R2 `4d86dd7`）
 
 只修改研究 SQL、探针与本文档，不新增生产接口。
@@ -262,7 +273,7 @@ grants          (授权：users.enabled ∧ project_memberships ∧ 读能力角
 | R4 无 membership | 全 0 | OK |
 | R5 禁用用户 | 全 0 | OK |
 | R6 viewer P1，stale 600 s | `realConnected 1`、`realStale 3`、REAL 告警设备 1 | OK |
-| R7 viewer P1，skew 7200 s | `realConnected 3`、`realStale 1`、`futureSkew 0` | OK |
+| ~~R7 viewer P1，skew 7200 s~~ | 已作废（超出契约 0–600 s 上限）；H2-1B 改为 KX 拒绝用例 | — |
 
 反证：把 `recordsFutureSkew` 恢复为 R2 写法（不经资产范围、固定 120 s）→ 探针报错 `R1 recordsFutureSkew: got 3, want 2`。
 

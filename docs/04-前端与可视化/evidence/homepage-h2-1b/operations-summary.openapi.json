@@ -1,0 +1,175 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Crane Operations Platform — Operations Summary (H2 draft)",
+    "version": "0.1.0-h2-1b-draft",
+    "description": "DRAFT contract for GET /api/v1/operations/summary (Homepage H2). Not served by cloud-api yet; to be merged into contracts/model.json → codegen in H2-1C. All counts are non-negative integers and REQUIRED; a missing or null count is a contract violation, never 0. Capabilities that are not wired return {\"status\":\"NOT_AVAILABLE\"}."
+  },
+  "security": [{ "webSession": [] }],
+  "paths": {
+    "/api/v1/operations/summary": {
+      "get": {
+        "operationId": "getOperationsSummary",
+        "description": "Statistics for the caller's authorized Inventory projects (project_memberships; platform_admin is not a global bypass), narrowed by an optional region. One PostgreSQL statement snapshot. No project / status / source parameters.",
+        "security": [{ "webSession": [] }],
+        "parameters": [
+          { "name": "region", "in": "query", "required": false, "description": "6-digit administrative code; omitted = whole authorized scope. Unknown code → 404.", "schema": { "type": "string", "pattern": "^[0-9]{6}$" } },
+          { "name": "alarmWindow", "in": "query", "required": false, "schema": { "type": "string", "enum": ["PT1H", "PT6H", "PT24H", "P7D"], "default": "PT24H" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Complete summary from one successful snapshot.",
+            "headers": { "Cache-Control": { "schema": { "type": "string", "const": "no-store" } } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OperationsSummary" } } }
+          },
+          "400": { "description": "Malformed region or alarmWindow (bad_request).", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorBody" } } } },
+          "401": { "description": "No valid web session.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorBody" } } } },
+          "404": { "description": "Region code not in the administrative manifest (region_not_found). Authorization never produces 404 here: an authorized-but-empty scope is 200 with zeros.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorBody" } } } },
+          "503": { "description": "Any required query, the authorization lookup or the region manifest failed (summary_unavailable). No partial statistics are returned.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorBody" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "webSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-crane_session",
+        "description": "Production: Secure, HttpOnly, SameSite=Lax, Path=/; hash-only PostgreSQL session. Development credentials are rejected in production."
+      }
+    },
+    "schemas": {
+      "Count": { "type": "integer", "minimum": 0 },
+      "ErrorBody": {
+        "type": "object", "additionalProperties": false, "required": ["error"],
+        "properties": { "error": { "type": "string" } }
+      },
+      "NotAvailable": {
+        "type": "object", "additionalProperties": false, "required": ["status"],
+        "properties": { "status": { "type": "string", "const": "NOT_AVAILABLE" } }
+      },
+      "SourceCounts": {
+        "type": "object", "additionalProperties": false, "required": ["REAL", "SIMULATION", "TEST"],
+        "properties": {
+          "REAL": { "$ref": "#/components/schemas/Count" },
+          "SIMULATION": { "$ref": "#/components/schemas/Count" },
+          "TEST": { "$ref": "#/components/schemas/Count" }
+        }
+      },
+      "AttributionCell": {
+        "type": "object", "additionalProperties": false, "required": ["attributed", "unattributed"],
+        "properties": {
+          "attributed": { "$ref": "#/components/schemas/Count" },
+          "unattributed": { "$ref": "#/components/schemas/Count" }
+        }
+      },
+      "ReviewAsset": {
+        "type": "object", "additionalProperties": false, "required": ["id", "assetStatus", "alarm"],
+        "description": "Detail entry for an asset whose business status (DRAFT / OUT_OF_SERVICE) contradicts a fresh REAL connection. id → GET /api/v1/assets/{id}.",
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,80}$" },
+          "assetStatus": { "type": "string", "enum": ["DRAFT", "OUT_OF_SERVICE"] },
+          "alarm": { "type": "boolean" }
+        }
+      },
+      "RegionSummary": {
+        "type": "object", "additionalProperties": false, "required": ["adcode", "name", "registered", "realConnected", "realAlarmDevices"],
+        "properties": {
+          "adcode": { "type": "integer", "minimum": 100000, "maximum": 999999 },
+          "name": { "type": "string" },
+          "registered": { "$ref": "#/components/schemas/Count" },
+          "realConnected": { "$ref": "#/components/schemas/Count" },
+          "realAlarmDevices": { "$ref": "#/components/schemas/Count" }
+        }
+      },
+      "OperationsSummary": {
+        "type": "object", "additionalProperties": false,
+        "required": ["schemaVersion", "sampledAt", "generatedAt", "scope", "freshness", "metrics", "regions"],
+        "properties": {
+          "schemaVersion": { "type": "integer", "const": 1 },
+          "sampledAt": { "type": "string", "format": "date-time", "description": "Time base for the window end and freshness; taken before the query. Not the MVCC snapshot instant." },
+          "generatedAt": { "type": "string", "format": "date-time", "description": "When the server finished the query and built this response (>= sampledAt)." },
+          "scope": {
+            "type": "object", "additionalProperties": false, "required": ["region", "regionName", "authorizedProjects"],
+            "properties": {
+              "region": { "type": ["integer", "null"], "minimum": 100000, "maximum": 999999, "description": "null = no region requested (whole authorized scope). The only nullable field in this contract." },
+              "regionName": { "type": "string" },
+              "authorizedProjects": { "$ref": "#/components/schemas/Count" }
+            }
+          },
+          "freshness": {
+            "type": "object", "additionalProperties": false,
+            "required": ["staleAfterSeconds", "maxFutureSkewSeconds", "alarmWindow", "windowStart", "windowEnd"],
+            "properties": {
+              "staleAfterSeconds": { "type": "integer", "minimum": 300, "maximum": 7200 },
+              "maxFutureSkewSeconds": { "type": "integer", "minimum": 0, "maximum": 600 },
+              "alarmWindow": { "type": "string", "enum": ["PT1H", "PT6H", "PT24H", "P7D"] },
+              "windowStart": { "type": "string", "format": "date-time" },
+              "windowEnd": { "type": "string", "format": "date-time", "description": "Exclusive; equals sampledAt." }
+            }
+          },
+          "metrics": {
+            "type": "object", "additionalProperties": false,
+            "required": ["projects", "assets", "bound", "real", "operation", "alarm", "pendingEvents"],
+            "properties": {
+              "projects": { "$ref": "#/components/schemas/Count" },
+              "assets": {
+                "type": "object", "additionalProperties": false,
+                "required": ["registered", "draft", "outOfService", "noRuntime", "unlocated"],
+                "properties": {
+                  "registered": { "$ref": "#/components/schemas/Count" },
+                  "draft": { "$ref": "#/components/schemas/Count" },
+                  "outOfService": { "$ref": "#/components/schemas/Count" },
+                  "noRuntime": { "$ref": "#/components/schemas/Count" },
+                  "unlocated": { "$ref": "#/components/schemas/Count" }
+                }
+              },
+              "bound": { "$ref": "#/components/schemas/SourceCounts" },
+              "real": {
+                "type": "object", "additionalProperties": false,
+                "required": ["connected", "pendingReview", "pendingReviewAlarm", "pendingReviewAssets", "stale", "unknownTime", "offline", "live"],
+                "properties": {
+                  "connected": { "$ref": "#/components/schemas/Count" },
+                  "pendingReview": { "$ref": "#/components/schemas/Count" },
+                  "pendingReviewAlarm": { "$ref": "#/components/schemas/Count" },
+                  "pendingReviewAssets": { "type": "array", "maxItems": 100, "items": { "$ref": "#/components/schemas/ReviewAsset" }, "description": "First 100 by id; the total is pendingReview." },
+                  "stale": { "$ref": "#/components/schemas/Count" },
+                  "unknownTime": { "$ref": "#/components/schemas/Count", "description": "REAL identity marked connected but with a missing / unparsable / zoneless / zero lastSeenAt; never counted as connected." },
+                  "offline": { "$ref": "#/components/schemas/Count" },
+                  "live": { "$ref": "#/components/schemas/Count", "description": "Live data acquisition (viewer lease), NOT crane operation." }
+                }
+              },
+              "operation": { "$ref": "#/components/schemas/NotAvailable" },
+              "alarm": {
+                "type": "object", "additionalProperties": false, "required": ["devices", "devicesAll", "records"],
+                "properties": {
+                  "devices": { "$ref": "#/components/schemas/SourceCounts", "description": "ACTIVE assets alarming per runtime source; one asset may appear under several sources — do not add them." },
+                  "devicesAll": { "$ref": "#/components/schemas/Count", "description": "ACTIVE assets alarming on any source, de-duplicated by asset (<= sum of devices)." },
+                  "records": {
+                    "type": "object", "additionalProperties": false, "required": ["cells", "total", "assets", "futureSkew"],
+                    "properties": {
+                      "cells": {
+                        "type": "object", "additionalProperties": false, "required": ["REAL", "SIMULATION", "TEST"],
+                        "properties": {
+                          "REAL": { "$ref": "#/components/schemas/AttributionCell" },
+                          "SIMULATION": { "$ref": "#/components/schemas/AttributionCell" },
+                          "TEST": { "$ref": "#/components/schemas/AttributionCell" }
+                        }
+                      },
+                      "total": { "$ref": "#/components/schemas/Count", "description": "Sum of the 6 mutually exclusive cells." },
+                      "assets": { "$ref": "#/components/schemas/Count", "description": "Distinct assets with at least one attributed record in the window." },
+                      "futureSkew": { "$ref": "#/components/schemas/Count", "description": "Records at/after sampledAt + maxFutureSkewSeconds, same scope; not in total." }
+                    }
+                  }
+                }
+              },
+              "pendingEvents": { "$ref": "#/components/schemas/NotAvailable" }
+            }
+          },
+          "regions": { "type": "array", "items": { "$ref": "#/components/schemas/RegionSummary" } }
+        }
+      }
+    }
+  }
+}

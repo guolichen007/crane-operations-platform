@@ -1,4 +1,4 @@
--- H2-0-R3 summary-draft.sql probe. SYNTHETIC fixture only — not production data, not a production load test.
+-- H2-1B summary-draft.sql probe (PostgreSQL 17). SYNTHETIC fixture only — not production data, not a production load test.
 -- Run on an empty database migrated to 00012 (all goose Up sections), from this directory so that
 -- `cat summary-draft.sql` resolves. Every expectation is asserted in SQL: any mismatch aborts with an error.
 \set ON_ERROR_STOP 1
@@ -28,6 +28,16 @@ INSERT INTO asset_devices(id,project_id,display_name,lifecycle,asset_status) VAL
  ('A11','P1','11号行车','PLANNED','RETIRED'),       -- RETIRED + REAL + SIM, both alarming → excluded
  ('A12','P1','12号行车','PLANNED','OUT_OF_SERVICE'),-- OUT_OF_SERVICE + SIM fresh alarm only → no alarm device, not pending (no REAL)
  ('A13','P1','13号行车','PLANNED','DRAFT'),         -- DRAFT + REAL + SIM both fresh → pending review once
+ -- H2-1B-3: abnormal observation times (all ACTIVE, REAL MQTT_CONNECTED, alarm ACTIVE) → per-device UNKNOWN, never online.
+ ('T1','P1','坏时间-空串','PLANNED','ACTIVE'),
+ ('T2','P1','坏时间-非法','PLANNED','ACTIVE'),
+ ('T3','P1','坏时间-无时区','PLANNED','ACTIVE'),
+ ('T4','P1','坏时间-零值','PLANNED','ACTIVE'),
+ ('T5','P1','坏时间-非字符串','PLANNED','ACTIVE'),
+ ('T6','P1','正常-带偏移时区','PLANNED','ACTIVE'),
+ -- H2-1B-3: DRAFT / OUT_OF_SERVICE field anomalies
+ ('D1','P1','草稿-REAL告警','PLANNED','DRAFT'),
+ ('D2','P1','草稿-双身份告警','PLANNED','DRAFT'),
  ('B1','P2','1号行车','PLANNED','ACTIVE'),          -- unauthorized project, same display name
  ('N1','P3','无位置','PLANNED','ACTIVE'),
  ('L1','PL','遗留','PLANNED','ACTIVE');              -- legacy (lifecycle NULL) project
@@ -38,7 +48,9 @@ INSERT INTO devices(id,project_id,asset_device_id,source_mode) VALUES
  ('EDGE-A11','P1','A11','REAL'),('SIM-A11','P1','A11','SIMULATION'),
  ('SIM-A12','P1','A12','SIMULATION'),
  ('EDGE-A13','P1','A13','REAL'),('SIM-A13','P1','A13','SIMULATION'),
- ('EDGE-B1','P2','B1','REAL'),('EDGE-L1','PL','L1','REAL'),
+ ('EDGE-B1','P2','B1','REAL'),('EDGE-L1','PL','L1','REAL'),('EDGE-N1','P3','N1','REAL'),
+ ('EDGE-T1','P1','T1','REAL'),('EDGE-T2','P1','T2','REAL'),('EDGE-T3','P1','T3','REAL'),('EDGE-T4','P1','T4','REAL'),('EDGE-T5','P1','T5','REAL'),('EDGE-T6','P1','T6','REAL'),
+ ('EDGE-D1','P1','D1','REAL'),('EDGE-D2','P1','D2','REAL'),('SIM-D2','P1','D2','SIMULATION'),
  ('ORPH-P1-TEST','P1',NULL,'TEST'),('ORPH-P1-REAL','P1',NULL,'REAL'),('ORPH-P2-REAL','P2',NULL,'REAL');
 -- sampledAt = 2026-11-07T08:00:00Z
 INSERT INTO device_shadow VALUES
@@ -59,6 +71,15 @@ INSERT INTO device_shadow VALUES
  ('EDGE-A13','{"presence":{"connectivity":"MQTT_CONNECTED","lastSeenAt":"2026-11-07T07:58:00Z"},"reported":{"alarmState":"NONE","operatingState":"SILENT"}}','2026-11-07T07:58:00Z',2),
  ('SIM-A13','{"presence":{"connectivity":"MQTT_CONNECTED","lastSeenAt":"2026-11-07T07:58:00Z"},"reported":{"alarmState":"NONE","operatingState":"SILENT"}}','2026-11-07T07:58:00Z',2),
  ('EDGE-B1','{"presence":{"connectivity":"MQTT_CONNECTED","lastSeenAt":"2026-11-07T07:59:00Z"},"reported":{"alarmState":"ACTIVE","operatingState":"SILENT"}}','2026-11-07T07:59:00Z',2),
+ ('EDGE-T1','{"presence":{"connectivity":"MQTT_CONNECTED","lastSeenAt":""},"reported":{"alarmState":"ACTIVE","operatingState":"SILENT"}}','2026-11-07T07:59:00Z',2),
+ ('EDGE-T2','{"presence":{"connectivity":"MQTT_CONNECTED","lastSeenAt":"yesterday-ish"},"reported":{"alarmState":"ACTIVE","operatingState":"SILENT"}}','2026-11-07T07:59:00Z',2),
+ ('EDGE-T3','{"presence":{"connectivity":"MQTT_CONNECTED","lastSeenAt":"2026-11-07T07:59:00"},"reported":{"alarmState":"ACTIVE","operatingState":"SILENT"}}','2026-11-07T07:59:00Z',2),
+ ('EDGE-T4','{"presence":{"connectivity":"MQTT_CONNECTED","lastSeenAt":"0001-01-01T00:00:00Z"},"reported":{"alarmState":"ACTIVE","operatingState":"SILENT"}}','2026-11-07T07:59:00Z',2),
+ ('EDGE-T5','{"presence":{"connectivity":"MQTT_CONNECTED","lastSeenAt":1730966340},"reported":{"alarmState":"ACTIVE","operatingState":"SILENT"}}','2026-11-07T07:59:00Z',2),
+ ('EDGE-T6','{"presence":{"connectivity":"MQTT_CONNECTED","lastSeenAt":"2026-11-07T15:59:00+08:00"},"reported":{"alarmState":"NONE","operatingState":"SILENT"}}','2026-11-07T07:59:00Z',2),
+ ('EDGE-D1','{"presence":{"connectivity":"MQTT_CONNECTED","lastSeenAt":"2026-11-07T07:59:00Z"},"reported":{"alarmState":"ACTIVE","operatingState":"SILENT"}}','2026-11-07T07:59:00Z',2),
+ ('EDGE-D2','{"presence":{"connectivity":"MQTT_CONNECTED","lastSeenAt":"2026-11-07T07:59:00Z"},"reported":{"alarmState":"ACTIVE","operatingState":"SILENT"}}','2026-11-07T07:59:00Z',2),
+ ('SIM-D2','{"presence":{"connectivity":"MQTT_CONNECTED","lastSeenAt":"2026-11-07T07:59:00Z"},"reported":{"alarmState":"ACTIVE","operatingState":"SILENT"}}','2026-11-07T07:59:00Z',2),
  ('EDGE-L1','{"presence":{"connectivity":"MQTT_CONNECTED","lastSeenAt":"2026-11-07T07:59:00Z"},"reported":{"alarmState":"ACTIVE","operatingState":"SILENT"}}','2026-11-07T07:59:00Z',2);
 -- Window [2026-11-06T08:00Z, 2026-11-07T08:00Z); maxSkew default 120 s → futureSkew starts at 08:02:00Z.
 INSERT INTO alarms VALUES
@@ -78,7 +99,15 @@ INSERT INTO alarms VALUES
  ('f-orphan','ORPH-P1-REAL','2026-11-07T09:00:00Z','{}'),   -- future skew, in-scope orphan (kept)
  ('f-retired','EDGE-A5','2026-11-07T09:00:00Z','{}'),       -- future skew on RETIRED asset: excluded (same scope as window)
  ('f-p2','EDGE-B1','2026-11-07T09:00:00Z','{}'),            -- future skew in unauthorized project: excluded
- ('f-legacy','EDGE-L1','2026-11-07T09:00:00Z','{}');        -- future skew in legacy project: excluded
+ ('f-legacy','EDGE-L1','2026-11-07T09:00:00Z','{}'),        -- future skew in legacy project: excluded
+ -- one asset, several records: A10 has REAL ×2 and SIM ×1 in window → 3 records, 1 distinct asset
+ ('m-a10-r1','EDGE-A10','2026-11-07T06:00:00Z','{}'),('m-a10-r2','EDGE-A10','2026-11-07T06:30:00Z','{}'),('m-a10-s1','SIM-A10','2026-11-07T06:45:00Z','{}'),
+ -- unlocated project P3 asset record (country scope only)
+ ('m-n1','EDGE-N1','2026-11-07T06:50:00Z','{}'),
+ -- skew boundaries relative to sampledAt 08:00:00Z
+ ('b-0','EDGE-A2','2026-11-07T08:00:00Z','{}'),             -- = sampledAt (also w-end above): never in window
+ ('b-120','EDGE-A2','2026-11-07T08:02:00Z','{}'),           -- = sampledAt + 120 s
+ ('b-600','EDGE-A2','2026-11-07T08:10:00Z','{}');           -- = sampledAt + 600 s
 
 \set summary `cat summary-draft.sql`
 PREPARE s(text,timestamptz,timestamptz,int,int,int[]) AS :summary;
@@ -98,21 +127,41 @@ BEGIN
   RETURN label || ' OK';
 END $$;
 
+CREATE FUNCTION pg_temp.fail(msg text) RETURNS text LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION '%', msg; END $$;
+-- must_fail(statement, expected message fragment): the statement must raise an error containing the fragment.
+CREATE FUNCTION pg_temp.must_fail(stmt text, fragment text) RETURNS text LANGUAGE plpgsql AS $$
+BEGIN
+  BEGIN EXECUTE stmt; EXCEPTION WHEN OTHERS THEN
+    IF position(fragment IN SQLERRM) > 0 THEN RETURN 'REFUSED OK: ' || fragment; END IF;
+    RAISE EXCEPTION 'unexpected error for %: %', stmt, SQLERRM;
+  END;
+  RAISE EXCEPTION 'statement unexpectedly succeeded: %', stmt;
+END $$;
+
 \echo '--- R1 platform_admin (P1+P3+PL), country, stale 2100 s, skew 120 s ---'
 EXECUTE s('u-admin-p1','2026-11-06T08:00:00Z','2026-11-07T08:00:00Z',2100,120,NULL) \gset r1_
 \echo :r1_summary
+-- registered: A1–A4,A6–A10,A12,A13 (11) + T1–T6 (6) + D1,D2 (2) + N1 (1) = 20; RETIRED A5/A11 and legacy L1 excluded.
+-- boundREAL: A1,A2,A3,A6,A7,A8,A9,A10,A13 + T1–T6 + D1,D2 + N1 (REAL identity without shadow → unknown, not offline) = 18.
+-- realConnected: A2, A10, T6 (offset-zone time parses correctly) = 3. T1–T5 bad time → realUnknownTime (A7 + 5 = 6).
+-- realPendingReview: A8, A9, A13, D1, D2 = 5; pendingReviewAlarm: A9, D1, D2 = 3.
+-- alarm devices (ACTIVE only): REAL A2, A10 = 2; SIM A1, A10 = 2; All = A1, A2, A10 = 3 (A10 counted once).
+-- records in window: REAL attributed w-real, w-oos, m-a10-r1, m-a10-r2, m-n1 = 5; REAL unattributed w-orph-real = 1;
+--   SIM attributed w-start, m-a10-s1 = 2; TEST unattributed w-orph-test = 1 → total 9; distinct assets A1, A2, A9, A10, N1 = 5.
+-- futureSkew (≥ 08:02:00): f-scoped, f-orphan, b-120, b-600 = 4.
 SELECT pg_temp.expect('R1', :'r1_summary', '{
-  "projects":2, "assetsRegistered":12, "assetsDraft":3, "assetsOutOfService":2, "assetsNoRuntime":2,
-  "boundREAL":9, "boundSIMULATION":4, "boundTEST":0,
-  "realConnected":2, "realPendingReview":3, "realStale":2, "realUnknownTime":1, "realOffline":1, "realLive":1,
+  "projects":2, "assetsRegistered":20, "assetsDraft":5, "assetsOutOfService":2, "assetsNoRuntime":1,
+  "boundREAL":18, "boundSIMULATION":5, "boundTEST":0,
+  "realConnected":3, "realPendingReview":5, "pendingReviewAlarm":3, "realStale":2, "realUnknownTime":6, "realOffline":1, "realLive":1,
   "alarmDevicesReal":2, "alarmDevicesSim":2, "alarmDevicesTest":0, "alarmDevicesAll":3,
-  "recordsCells":{"REAL":{"attributed":2,"unattributed":1},"SIMULATION":{"attributed":1,"unattributed":0},"TEST":{"attributed":0,"unattributed":1}},
-  "recordsTotal":5, "recordsFutureSkew":2}');
+  "recordsCells":{"REAL":{"attributed":5,"unattributed":1},"SIMULATION":{"attributed":2,"unattributed":0},"TEST":{"attributed":0,"unattributed":1}},
+  "recordsTotal":9, "recordsAssets":5, "recordsFutureSkew":4}');
+SELECT 'R1 pendingReviewAssets ' || CASE WHEN (:'r1_summary'::jsonb->'pendingReviewAssets') = '[{"id":"A13","alarm":false,"assetStatus":"DRAFT"},{"id":"A8","alarm":false,"assetStatus":"DRAFT"},{"id":"A9","alarm":true,"assetStatus":"OUT_OF_SERVICE"},{"id":"D1","alarm":true,"assetStatus":"DRAFT"},{"id":"D2","alarm":true,"assetStatus":"DRAFT"}]'::jsonb THEN 'OK' ELSE pg_temp.fail('R1 pendingReviewAssets ' || (:'r1_summary'::jsonb->>'pendingReviewAssets')) END;
 
-\echo '--- R2 same user, region 330000 (descendant admin codes supplied by the service: 330481) ---'
+\echo '--- R2 same user, region 330000 (descendant admin codes supplied by the service: 330481): P3 (unlocated) leaves ---'
 EXECUTE s('u-admin-p1','2026-11-06T08:00:00Z','2026-11-07T08:00:00Z',2100,120,ARRAY[330481]) \gset r2_
 \echo :r2_summary
-SELECT pg_temp.expect('R2', :'r2_summary', '{"projects":1, "assetsRegistered":11, "assetsNoRuntime":1, "realConnected":2, "recordsTotal":5, "recordsFutureSkew":2}');
+SELECT pg_temp.expect('R2', :'r2_summary', '{"projects":1, "assetsRegistered":19, "assetsNoRuntime":1, "realConnected":3, "recordsTotal":8, "recordsAssets":4, "recordsFutureSkew":4}');
 
 \echo '--- R3 same user, region 440000 (only unauthorized P2 there) ---'
 EXECUTE s('u-admin-p1','2026-11-06T08:00:00Z','2026-11-07T08:00:00Z',2100,120,ARRAY[440300]) \gset r3_
@@ -127,12 +176,35 @@ SELECT pg_temp.expect('R4', :'r4_summary', '{"projects":0, "assetsRegistered":0,
 EXECUTE s('u-disabled','2026-11-06T08:00:00Z','2026-11-07T08:00:00Z',2100,120,NULL) \gset r5_
 SELECT pg_temp.expect('R5', :'r5_summary', '{"projects":0, "assetsRegistered":0, "recordsTotal":0, "recordsFutureSkew":0}');
 
-\echo '--- R6 viewer P1, stale 600 s (configurable): A2 (observed 10 min ago) becomes stale, A10 (2 min) stays fresh ---'
+\echo '--- R6 viewer P1, stale 600 s: A2 (observed 10 min ago) becomes stale, A10/T6 (1–2 min) stay fresh ---'
 EXECUTE s('u-viewer-p1','2026-11-06T08:00:00Z','2026-11-07T08:00:00Z',600,120,NULL) \gset r6_
 \echo :r6_summary
-SELECT pg_temp.expect('R6', :'r6_summary', '{"realConnected":1, "realStale":3, "alarmDevicesReal":1}');
+SELECT pg_temp.expect('R6', :'r6_summary', '{"realConnected":2, "realStale":3, "alarmDevicesReal":1}');
 
-\echo '--- R7 viewer P1, maxSkew 7200 s (configurable): A6 (+1 h) becomes fresh, future records drop to 0 ---'
-EXECUTE s('u-viewer-p1','2026-11-06T08:00:00Z','2026-11-07T08:00:00Z',2100,7200,NULL) \gset r7_
-\echo :r7_summary
-SELECT pg_temp.expect('R7', :'r7_summary', '{"realConnected":3, "realStale":1, "recordsFutureSkew":0}');
+\echo '--- K0 skew 0 s (contract minimum): A6 (+1 h) stale; futureSkew counts ≥ 08:00:00 → w-end/b-0 (08:00) + b-120 + b-600 + f-scoped + f-orphan ---'
+EXECUTE s('u-viewer-p1','2026-11-06T08:00:00Z','2026-11-07T08:00:00Z',2100,0,NULL) \gset k0_
+\echo :k0_summary
+SELECT pg_temp.expect('K0', :'k0_summary', '{"maxFutureSkewSeconds":0, "realConnected":3, "recordsFutureSkew":6}');
+
+\echo '--- K120 skew 120 s (default): b-120 is exactly on the boundary and IS future (>=), w-end/b-0 are in neither ---'
+EXECUTE s('u-viewer-p1','2026-11-06T08:00:00Z','2026-11-07T08:00:00Z',2100,120,NULL) \gset k120_
+SELECT pg_temp.expect('K120', :'k120_summary', '{"maxFutureSkewSeconds":120, "recordsFutureSkew":4}');
+
+\echo '--- K600 skew 600 s (contract maximum): b-120 no longer future; b-600 exactly on the boundary IS future; A6 (+3600 s) still stale ---'
+EXECUTE s('u-viewer-p1','2026-11-06T08:00:00Z','2026-11-07T08:00:00Z',2100,600,NULL) \gset k600_
+\echo :k600_summary
+SELECT pg_temp.expect('K600', :'k600_summary', '{"maxFutureSkewSeconds":600, "realConnected":3, "realStale":2, "recordsFutureSkew":3}');
+
+\echo '--- KB shadow boundary: a REAL observation exactly at sampledAt + 600 s is fresh with skew 600, stale with skew 599 ---'
+UPDATE device_shadow SET payload_json = jsonb_set(payload_json::jsonb, '{presence,lastSeenAt}', '"2026-11-07T08:10:00Z"')::json WHERE device_id = 'EDGE-A6';
+EXECUTE s('u-viewer-p1','2026-11-06T08:00:00Z','2026-11-07T08:00:00Z',2100,600,NULL) \gset kb1_
+SELECT pg_temp.expect('KB600', :'kb1_summary', '{"realConnected":4, "realStale":1}');
+EXECUTE s('u-viewer-p1','2026-11-06T08:00:00Z','2026-11-07T08:00:00Z',2100,599,NULL) \gset kb2_
+SELECT pg_temp.expect('KB599', :'kb2_summary', '{"realConnected":3, "realStale":2}');
+UPDATE device_shadow SET payload_json = jsonb_set(payload_json::jsonb, '{presence,lastSeenAt}', '"2026-11-07T09:00:00Z"')::json WHERE device_id = 'EDGE-A6';
+
+\echo '--- KX out-of-contract parameters are refused by the statement itself (defence in depth; the handler returns 400 first) ---'
+SELECT pg_temp.must_fail($q$EXECUTE s('u-viewer-p1','2026-11-06T08:00:00Z','2026-11-07T08:00:00Z',2100,-1,NULL)$q$, 'maxFutureSkewSeconds out of range');
+SELECT pg_temp.must_fail($q$EXECUTE s('u-viewer-p1','2026-11-06T08:00:00Z','2026-11-07T08:00:00Z',2100,601,NULL)$q$, 'maxFutureSkewSeconds out of range');
+SELECT pg_temp.must_fail($q$EXECUTE s('u-viewer-p1','2026-11-06T08:00:00Z','2026-11-07T08:00:00Z',2100,7200,NULL)$q$, 'maxFutureSkewSeconds out of range');
+SELECT pg_temp.must_fail($q$EXECUTE s('u-viewer-p1','2026-11-06T08:00:00Z','2026-11-07T08:00:00Z',299,120,NULL)$q$, 'staleAfterSeconds out of range');

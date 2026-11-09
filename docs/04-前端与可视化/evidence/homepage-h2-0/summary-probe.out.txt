@@ -1,23 +1,52 @@
-# H2-0-R3 summary-draft.sql probe output (SYNTHETIC fixture; not production data or load).
-# Each 'Rn OK' line is an in-SQL assertion (pg_temp.expect); a mismatch aborts the run.
-# Counter-proof: reverting recordsFutureSkew to the H2-0-R2 form (unscoped by asset status, fixed 120 s) → 'ERROR: R1 recordsFutureSkew: got 3, want 2'.
+# H2-1B summary-draft.sql probe output — PostgreSQL 17.11 (production/CI image: 17.8). SYNTHETIC fixture; not production data or load.
+# Every 'OK' line is an in-SQL assertion; any mismatch aborts the run (psql exit != 0).
+# Counter-proofs (each reverts one rule in a copy of summary-draft.sql, run against the same probe):
+#   == naive ==
+#   psql:summary-probe.sql:142: ERROR:  invalid input syntax for type timestamp with time zone: "yesterday-ish"
+#   psql exit=3
+#   == nozone ==
+#   psql:summary-probe.sql:158: ERROR:  R1 realStale: got 3, want 2
+#   psql exit=3
+#   == nozero ==
+#   psql:summary-probe.sql:158: ERROR:  R1 realStale: got 3, want 2
+#   psql exit=3
+#   == review ==
+#   psql:summary-probe.sql:158: ERROR:  R1 realPendingReview: got 0, want 5
+#   psql exit=3
+#   == skewfix ==
+#   psql:summary-probe.sql:207: ERROR:  statement unexpectedly succeeded: EXECUTE s('u-viewer-p1','2026-11-06T08:00:00Z','2026-11-07T08:00:00Z',2100,-1,NULL)
+#   psql exit=3
 --- R1 platform_admin (P1+P3+PL), country, stale 2100 s, skew 120 s ---
-{"projects" : 2, "assetsRegistered" : 12, "assetsDraft" : 3, "assetsOutOfService" : 2, "assetsNoRuntime" : 2, "boundREAL" : 9, "boundSIMULATION" : 4, "boundTEST" : 0, "realConnected" : 2, "realPendingReview" : 3, "realStale" : 2, "realUnknownTime" : 1, "realOffline" : 1, "realLive" : 1, "alarmDevicesReal" : 2, "alarmDevicesSim" : 2, "alarmDevicesTest" : 0, "alarmDevicesAll" : 3, "recordsCells" : {"REAL" : {"attributed" : 2, "unattributed" : 1}, "SIMULATION" : {"attributed" : 1, "unattributed" : 0}, "TEST" : {"attributed" : 0, "unattributed" : 1}}, "recordsTotal" : 5, "recordsFutureSkew" : 2, "sampledAt" : "2026-11-07T16:00:00+08:00"}
+{"staleAfterSeconds" : 2100, "maxFutureSkewSeconds" : 120, "projects" : 2, "assetsRegistered" : 20, "assetsDraft" : 5, "assetsOutOfService" : 2, "assetsNoRuntime" : 1, "boundREAL" : 18, "boundSIMULATION" : 5, "boundTEST" : 0, "realConnected" : 3, "realPendingReview" : 5, "pendingReviewAlarm" : 3, "pendingReviewAssets" : [{"id" : "A13", "assetStatus" : "DRAFT", "alarm" : false}, {"id" : "A8", "assetStatus" : "DRAFT", "alarm" : false}, {"id" : "A9", "assetStatus" : "OUT_OF_SERVICE", "alarm" : true}, {"id" : "D1", "assetStatus" : "DRAFT", "alarm" : true}, {"id" : "D2", "assetStatus" : "DRAFT", "alarm" : true}], "realStale" : 2, "realUnknownTime" : 6, "realOffline" : 1, "realLive" : 1, "alarmDevicesReal" : 2, "alarmDevicesSim" : 2, "alarmDevicesTest" : 0, "alarmDevicesAll" : 3, "recordsCells" : {"REAL" : {"attributed" : 5, "unattributed" : 1}, "SIMULATION" : {"attributed" : 2, "unattributed" : 0}, "TEST" : {"attributed" : 0, "unattributed" : 1}}, "recordsTotal" : 9, "recordsAssets" : 5, "recordsFutureSkew" : 4, "sampledAt" : "2026-11-07T16:00:00+08:00"}
 R1 OK
---- R2 same user, region 330000 (descendant admin codes supplied by the service: 330481) ---
-{"projects" : 1, "assetsRegistered" : 11, "assetsDraft" : 3, "assetsOutOfService" : 2, "assetsNoRuntime" : 1, "boundREAL" : 9, "boundSIMULATION" : 4, "boundTEST" : 0, "realConnected" : 2, "realPendingReview" : 3, "realStale" : 2, "realUnknownTime" : 1, "realOffline" : 1, "realLive" : 1, "alarmDevicesReal" : 2, "alarmDevicesSim" : 2, "alarmDevicesTest" : 0, "alarmDevicesAll" : 3, "recordsCells" : {"REAL" : {"attributed" : 2, "unattributed" : 1}, "SIMULATION" : {"attributed" : 1, "unattributed" : 0}, "TEST" : {"attributed" : 0, "unattributed" : 1}}, "recordsTotal" : 5, "recordsFutureSkew" : 2, "sampledAt" : "2026-11-07T16:00:00+08:00"}
+R1 pendingReviewAssets OK
+--- R2 same user, region 330000 (descendant admin codes supplied by the service: 330481): P3 (unlocated) leaves ---
+{"staleAfterSeconds" : 2100, "maxFutureSkewSeconds" : 120, "projects" : 1, "assetsRegistered" : 19, "assetsDraft" : 5, "assetsOutOfService" : 2, "assetsNoRuntime" : 1, "boundREAL" : 17, "boundSIMULATION" : 5, "boundTEST" : 0, "realConnected" : 3, "realPendingReview" : 5, "pendingReviewAlarm" : 3, "pendingReviewAssets" : [{"id" : "A13", "assetStatus" : "DRAFT", "alarm" : false}, {"id" : "A8", "assetStatus" : "DRAFT", "alarm" : false}, {"id" : "A9", "assetStatus" : "OUT_OF_SERVICE", "alarm" : true}, {"id" : "D1", "assetStatus" : "DRAFT", "alarm" : true}, {"id" : "D2", "assetStatus" : "DRAFT", "alarm" : true}], "realStale" : 2, "realUnknownTime" : 6, "realOffline" : 1, "realLive" : 1, "alarmDevicesReal" : 2, "alarmDevicesSim" : 2, "alarmDevicesTest" : 0, "alarmDevicesAll" : 3, "recordsCells" : {"REAL" : {"attributed" : 4, "unattributed" : 1}, "SIMULATION" : {"attributed" : 2, "unattributed" : 0}, "TEST" : {"attributed" : 0, "unattributed" : 1}}, "recordsTotal" : 8, "recordsAssets" : 4, "recordsFutureSkew" : 4, "sampledAt" : "2026-11-07T16:00:00+08:00"}
 R2 OK
 --- R3 same user, region 440000 (only unauthorized P2 there) ---
-{"projects" : 0, "assetsRegistered" : 0, "assetsDraft" : 0, "assetsOutOfService" : 0, "assetsNoRuntime" : 0, "boundREAL" : 0, "boundSIMULATION" : 0, "boundTEST" : 0, "realConnected" : 0, "realPendingReview" : 0, "realStale" : 0, "realUnknownTime" : 0, "realOffline" : 0, "realLive" : 0, "alarmDevicesReal" : 0, "alarmDevicesSim" : 0, "alarmDevicesTest" : 0, "alarmDevicesAll" : 0, "recordsCells" : {"REAL" : {"attributed" : 0, "unattributed" : 0}, "SIMULATION" : {"attributed" : 0, "unattributed" : 0}, "TEST" : {"attributed" : 0, "unattributed" : 0}}, "recordsTotal" : 0, "recordsFutureSkew" : 0, "sampledAt" : "2026-11-07T16:00:00+08:00"}
+{"staleAfterSeconds" : 2100, "maxFutureSkewSeconds" : 120, "projects" : 0, "assetsRegistered" : 0, "assetsDraft" : 0, "assetsOutOfService" : 0, "assetsNoRuntime" : 0, "boundREAL" : 0, "boundSIMULATION" : 0, "boundTEST" : 0, "realConnected" : 0, "realPendingReview" : 0, "pendingReviewAlarm" : 0, "pendingReviewAssets" : [], "realStale" : 0, "realUnknownTime" : 0, "realOffline" : 0, "realLive" : 0, "alarmDevicesReal" : 0, "alarmDevicesSim" : 0, "alarmDevicesTest" : 0, "alarmDevicesAll" : 0, "recordsCells" : {"REAL" : {"attributed" : 0, "unattributed" : 0}, "SIMULATION" : {"attributed" : 0, "unattributed" : 0}, "TEST" : {"attributed" : 0, "unattributed" : 0}}, "recordsTotal" : 0, "recordsAssets" : 0, "recordsFutureSkew" : 0, "sampledAt" : "2026-11-07T16:00:00+08:00"}
 R3 OK
 --- R4 no membership ---
 R4 OK
 --- R5 disabled user with P1 membership ---
 R5 OK
---- R6 viewer P1, stale 600 s (configurable): A2 (observed 10 min ago) becomes stale, A10 (2 min) stays fresh ---
-{"projects" : 1, "assetsRegistered" : 11, "assetsDraft" : 3, "assetsOutOfService" : 2, "assetsNoRuntime" : 1, "boundREAL" : 9, "boundSIMULATION" : 4, "boundTEST" : 0, "realConnected" : 1, "realPendingReview" : 3, "realStale" : 3, "realUnknownTime" : 1, "realOffline" : 1, "realLive" : 0, "alarmDevicesReal" : 1, "alarmDevicesSim" : 2, "alarmDevicesTest" : 0, "alarmDevicesAll" : 2, "recordsCells" : {"REAL" : {"attributed" : 2, "unattributed" : 1}, "SIMULATION" : {"attributed" : 1, "unattributed" : 0}, "TEST" : {"attributed" : 0, "unattributed" : 1}}, "recordsTotal" : 5, "recordsFutureSkew" : 2, "sampledAt" : "2026-11-07T16:00:00+08:00"}
+--- R6 viewer P1, stale 600 s: A2 (observed 10 min ago) becomes stale, A10/T6 (1–2 min) stay fresh ---
+{"staleAfterSeconds" : 600, "maxFutureSkewSeconds" : 120, "projects" : 1, "assetsRegistered" : 19, "assetsDraft" : 5, "assetsOutOfService" : 2, "assetsNoRuntime" : 1, "boundREAL" : 17, "boundSIMULATION" : 5, "boundTEST" : 0, "realConnected" : 2, "realPendingReview" : 5, "pendingReviewAlarm" : 3, "pendingReviewAssets" : [{"id" : "A13", "assetStatus" : "DRAFT", "alarm" : false}, {"id" : "A8", "assetStatus" : "DRAFT", "alarm" : false}, {"id" : "A9", "assetStatus" : "OUT_OF_SERVICE", "alarm" : true}, {"id" : "D1", "assetStatus" : "DRAFT", "alarm" : true}, {"id" : "D2", "assetStatus" : "DRAFT", "alarm" : true}], "realStale" : 3, "realUnknownTime" : 6, "realOffline" : 1, "realLive" : 0, "alarmDevicesReal" : 1, "alarmDevicesSim" : 2, "alarmDevicesTest" : 0, "alarmDevicesAll" : 2, "recordsCells" : {"REAL" : {"attributed" : 4, "unattributed" : 1}, "SIMULATION" : {"attributed" : 2, "unattributed" : 0}, "TEST" : {"attributed" : 0, "unattributed" : 1}}, "recordsTotal" : 8, "recordsAssets" : 4, "recordsFutureSkew" : 4, "sampledAt" : "2026-11-07T16:00:00+08:00"}
 R6 OK
---- R7 viewer P1, maxSkew 7200 s (configurable): A6 (+1 h) becomes fresh, future records drop to 0 ---
-{"projects" : 1, "assetsRegistered" : 11, "assetsDraft" : 3, "assetsOutOfService" : 2, "assetsNoRuntime" : 1, "boundREAL" : 9, "boundSIMULATION" : 4, "boundTEST" : 0, "realConnected" : 3, "realPendingReview" : 3, "realStale" : 1, "realUnknownTime" : 1, "realOffline" : 1, "realLive" : 1, "alarmDevicesReal" : 2, "alarmDevicesSim" : 2, "alarmDevicesTest" : 0, "alarmDevicesAll" : 3, "recordsCells" : {"REAL" : {"attributed" : 2, "unattributed" : 1}, "SIMULATION" : {"attributed" : 1, "unattributed" : 0}, "TEST" : {"attributed" : 0, "unattributed" : 1}}, "recordsTotal" : 5, "recordsFutureSkew" : 0, "sampledAt" : "2026-11-07T16:00:00+08:00"}
-R7 OK
+--- K0 skew 0 s (contract minimum): A6 (+1 h) stale; futureSkew counts ≥ 08:00:00 → w-end/b-0 (08:00) + b-120 + b-600 + f-scoped + f-orphan ---
+{"staleAfterSeconds" : 2100, "maxFutureSkewSeconds" : 0, "projects" : 1, "assetsRegistered" : 19, "assetsDraft" : 5, "assetsOutOfService" : 2, "assetsNoRuntime" : 1, "boundREAL" : 17, "boundSIMULATION" : 5, "boundTEST" : 0, "realConnected" : 3, "realPendingReview" : 5, "pendingReviewAlarm" : 3, "pendingReviewAssets" : [{"id" : "A13", "assetStatus" : "DRAFT", "alarm" : false}, {"id" : "A8", "assetStatus" : "DRAFT", "alarm" : false}, {"id" : "A9", "assetStatus" : "OUT_OF_SERVICE", "alarm" : true}, {"id" : "D1", "assetStatus" : "DRAFT", "alarm" : true}, {"id" : "D2", "assetStatus" : "DRAFT", "alarm" : true}], "realStale" : 2, "realUnknownTime" : 6, "realOffline" : 1, "realLive" : 1, "alarmDevicesReal" : 2, "alarmDevicesSim" : 2, "alarmDevicesTest" : 0, "alarmDevicesAll" : 3, "recordsCells" : {"REAL" : {"attributed" : 4, "unattributed" : 1}, "SIMULATION" : {"attributed" : 2, "unattributed" : 0}, "TEST" : {"attributed" : 0, "unattributed" : 1}}, "recordsTotal" : 8, "recordsAssets" : 4, "recordsFutureSkew" : 6, "sampledAt" : "2026-11-07T16:00:00+08:00"}
+K0 OK
+--- K120 skew 120 s (default): b-120 is exactly on the boundary and IS future (>=), w-end/b-0 are in neither ---
+K120 OK
+--- K600 skew 600 s (contract maximum): b-120 no longer future; b-600 exactly on the boundary IS future; A6 (+3600 s) still stale ---
+{"staleAfterSeconds" : 2100, "maxFutureSkewSeconds" : 600, "projects" : 1, "assetsRegistered" : 19, "assetsDraft" : 5, "assetsOutOfService" : 2, "assetsNoRuntime" : 1, "boundREAL" : 17, "boundSIMULATION" : 5, "boundTEST" : 0, "realConnected" : 3, "realPendingReview" : 5, "pendingReviewAlarm" : 3, "pendingReviewAssets" : [{"id" : "A13", "assetStatus" : "DRAFT", "alarm" : false}, {"id" : "A8", "assetStatus" : "DRAFT", "alarm" : false}, {"id" : "A9", "assetStatus" : "OUT_OF_SERVICE", "alarm" : true}, {"id" : "D1", "assetStatus" : "DRAFT", "alarm" : true}, {"id" : "D2", "assetStatus" : "DRAFT", "alarm" : true}], "realStale" : 2, "realUnknownTime" : 6, "realOffline" : 1, "realLive" : 1, "alarmDevicesReal" : 2, "alarmDevicesSim" : 2, "alarmDevicesTest" : 0, "alarmDevicesAll" : 3, "recordsCells" : {"REAL" : {"attributed" : 4, "unattributed" : 1}, "SIMULATION" : {"attributed" : 2, "unattributed" : 0}, "TEST" : {"attributed" : 0, "unattributed" : 1}}, "recordsTotal" : 8, "recordsAssets" : 4, "recordsFutureSkew" : 3, "sampledAt" : "2026-11-07T16:00:00+08:00"}
+K600 OK
+--- KB shadow boundary: a REAL observation exactly at sampledAt + 600 s is fresh with skew 600, stale with skew 599 ---
+KB600 OK
+KB599 OK
+--- KX out-of-contract parameters are refused by the statement itself (defence in depth; the handler returns 400 first) ---
+REFUSED OK: maxFutureSkewSeconds out of range
+REFUSED OK: maxFutureSkewSeconds out of range
+REFUSED OK: maxFutureSkewSeconds out of range
+REFUSED OK: staleAfterSeconds out of range
 psql exit=0

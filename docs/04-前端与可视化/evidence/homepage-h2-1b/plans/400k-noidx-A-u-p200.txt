@@ -1,0 +1,327 @@
+-- EXPLAIN (ANALYZE, BUFFERS, VERBOSE, SETTINGS) A.sql user=u-p200 db=pbase PostgreSQL 17.11 (Ubuntu 17.11-1.pgdg22.04+2) SYNTHETIC DATA
+Result  (cost=156320.50..156320.51 rows=1 width=32) (actual time=250.285..250.329 rows=1 loops=1)
+  Output: json_build_object('staleAfterSeconds', (InitPlan 9).col1, 'maxFutureSkewSeconds', (InitPlan 10).col1, 'projects', (InitPlan 11).col1, 'assetsRegistered', (InitPlan 12).col1, 'assetsDraft', (InitPlan 13).col1, 'assetsOutOfService', (InitPlan 14).col1, 'assetsNoRuntime', (InitPlan 15).col1, 'boundREAL', (InitPlan 16).col1, 'boundSIMULATION', (InitPlan 17).col1, 'boundTEST', (InitPlan 18).col1, 'realConnected', (InitPlan 19).col1, 'realPendingReview', (InitPlan 20).col1, 'pendingReviewAlarm', (InitPlan 21).col1, 'pendingReviewAssets', (InitPlan 22).col1, 'realStale', (InitPlan 23).col1, 'realUnknownTime', (InitPlan 24).col1, 'realOffline', (InitPlan 25).col1, 'realLive', (InitPlan 26).col1, 'alarmDevicesReal', (InitPlan 27).col1, 'alarmDevicesSim', (InitPlan 28).col1, 'alarmDevicesTest', (InitPlan 29).col1, 'alarmDevicesAll', (InitPlan 30).col1, 'recordsCells', (InitPlan 31).col1, 'recordsTotal', (InitPlan 32).col1, 'recordsAssets', (InitPlan 33).col1, 'recordsFutureSkew', (InitPlan 34).col1, 'sampledAt', '2026-11-07 16:00:00+08'::timestamp with time zone)
+  Buffers: shared hit=38 read=3088, temp read=1495 written=1495
+  I/O Timings: shared read=10.284, temp read=1.913 write=4.216
+  CTE params
+    ->  Result  (cost=0.00..0.01 rows=1 width=8) (actual time=0.011..0.012 rows=1 loops=1)
+          Output: 2100, 120
+  CTE scoped_projects
+    ->  Nested Loop  (cost=9.15..17.58 rows=178 width=8) (actual time=0.096..0.149 rows=200 loops=1)
+          Output: p.id, p.admin_code
+          Buffers: shared hit=3 read=4
+          I/O Timings: shared read=0.021
+          ->  Seq Scan on public.users u  (cost=0.00..1.05 rows=1 width=7) (actual time=0.032..0.033 rows=1 loops=1)
+                Output: u.id
+                Filter: (u.enabled AND (u.id = 'u-p200'::text))
+                Rows Removed by Filter: 3
+                Buffers: shared read=1
+                I/O Timings: shared read=0.012
+          ->  Hash Join  (cost=9.15..14.75 rows=178 width=14) (actual time=0.062..0.104 rows=200 loops=1)
+                Output: p.id, p.admin_code, m.user_id
+                Inner Unique: true
+                Hash Cond: (p.id = m.project_id)
+                Buffers: shared hit=3 read=3
+                I/O Timings: shared read=0.009
+                ->  Seq Scan on public.projects p  (cost=0.00..5.06 rows=200 width=8) (actual time=0.005..0.028 rows=200 loops=1)
+                      Output: p.id, p.admin_code
+                      Filter: (p.lifecycle IS NOT NULL)
+                      Rows Removed by Filter: 6
+                      Buffers: shared hit=1 read=2
+                      I/O Timings: shared read=0.006
+                ->  Hash  (cost=6.87..6.87 rows=183 width=10) (actual time=0.047..0.048 rows=200 loops=1)
+                      Output: m.user_id, m.project_id
+                      Buckets: 1024  Batches: 1  Memory Usage: 17kB
+                      Buffers: shared hit=2 read=1
+                      I/O Timings: shared read=0.003
+                      ->  Seq Scan on public.project_memberships m  (cost=0.00..6.87 rows=183 width=10) (actual time=0.009..0.030 rows=200 loops=1)
+                            Output: m.user_id, m.project_id
+                            Filter: ((m.user_id = 'u-p200'::text) AND (m.role = ANY ('{viewer,operator,maintainer,platform_admin}'::text[])))
+                            Rows Removed by Filter: 21
+                            Buffers: shared hit=2 read=1
+                            I/O Timings: shared read=0.003
+  CTE assets
+    ->  Hash Join  (cost=5.79..80.83 rows=1762 width=16) (actual time=0.032..0.436 rows=1980 loops=1)
+          Output: a.id, a.project_id, a.asset_status
+          Hash Cond: (a.project_id = sp.id)
+          Buffers: shared hit=2 read=23
+          I/O Timings: shared read=0.064
+          ->  Seq Scan on public.asset_devices a  (cost=0.00..50.00 rows=1980 width=16) (actual time=0.008..0.227 rows=1980 loops=1)
+                Output: a.id, a.project_id, a.asset_status
+                Filter: (a.asset_status <> 'RETIRED'::text)
+                Rows Removed by Filter: 20
+                Buffers: shared hit=2 read=23
+                I/O Timings: shared read=0.064
+          ->  Hash  (cost=3.56..3.56 rows=178 width=32) (actual time=0.019..0.019 rows=200 loops=1)
+                Output: sp.id
+                Buckets: 1024  Batches: 1  Memory Usage: 16kB
+                ->  CTE Scan on scoped_projects sp  (cost=0.00..3.56 rows=178 width=32) (actual time=0.001..0.008 rows=200 loops=1)
+                      Output: sp.id
+  CTE per_asset
+    ->  HashAggregate  (cost=979.48..1001.50 rows=1762 width=81) (actual time=29.141..29.543 rows=1980 loops=1)
+          Output: a_1.id, a_1.asset_status, bool_or((d.source_mode = 'REAL'::text)), bool_or((d.source_mode = 'SIMULATION'::text)), bool_or((d.source_mode = 'TEST'::text)), bool_or(((d.source_mode = 'REAL'::text) AND (COALESCE((((s.payload_json #>> '{presence,connectivity}'::text[]) = 'MQTT_CONNECTED'::text) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END IS NOT NULL) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END > ('2026-11-07 16:00:00+08'::timestamp with time zone - make_interval(0, 0, 0, 0, 0, 0, (p_1.stale_s)::double precision))) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END <= ('2026-11-07 16:00:00+08'::timestamp with time zone + make_interval(0, 0, 0, 0, 0, 0, (p_1.skew_s)::double precision)))), false)) AND (a_1.asset_status = 'ACTIVE'::text))), bool_or(((d.source_mode = 'REAL'::text) AND (COALESCE((((s.payload_json #>> '{presence,connectivity}'::text[]) = 'MQTT_CONNECTED'::text) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END IS NOT NULL) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END > ('2026-11-07 16:00:00+08'::timestamp with time zone - make_interval(0, 0, 0, 0, 0, 0, (p_1.stale_s)::double precision))) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END <= ('2026-11-07 16:00:00+08'::timestamp with time zone + make_interval(0, 0, 0, 0, 0, 0, (p_1.skew_s)::double precision)))), false)) AND (a_1.asset_status = ANY ('{DRAFT,OUT_OF_SERVICE}'::text[])))), bool_or(((d.source_mode = 'REAL'::text) AND (COALESCE((((s.payload_json #>> '{presence,connectivity}'::text[]) = 'MQTT_CONNECTED'::text) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END IS NOT NULL) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END > ('2026-11-07 16:00:00+08'::timestamp with time zone - make_interval(0, 0, 0, 0, 0, 0, (p_1.stale_s)::double precision))) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END <= ('2026-11-07 16:00:00+08'::timestamp with time zone + make_interval(0, 0, 0, 0, 0, 0, (p_1.skew_s)::double precision)))), false)) AND ((s.payload_json #>> '{reported,alarmState}'::text[]) = 'ACTIVE'::text) AND (a_1.asset_status = ANY ('{DRAFT,OUT_OF_SERVICE}'::text[])))), bool_or((a_1.asset_status = 'OUT_OF_SERVICE'::text)), bool_or(((d.source_mode = 'REAL'::text) AND ((s.payload_json #>> '{presence,connectivity}'::text[]) = 'MQTT_CONNECTED'::text) AND ((CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END) IS NOT NULL) AND (NOT (COALESCE((((s.payload_json #>> '{presence,connectivity}'::text[]) = 'MQTT_CONNECTED'::text) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END IS NOT NULL) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END > ('2026-11-07 16:00:00+08'::timestamp with time zone - make_interval(0, 0, 0, 0, 0, 0, (p_1.stale_s)::double precision))) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END <= ('2026-11-07 16:00:00+08'::timestamp with time zone + make_interval(0, 0, 0, 0, 0, 0, (p_1.skew_s)::double precision)))), false))))), bool_or(((d.source_mode = 'REAL'::text) AND (COALESCE((((s.payload_json #>> '{presence,connectivity}'::text[]) = 'MQTT_CONNECTED'::text) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END IS NULL)), false)))), bool_or(((d.source_mode = 'REAL'::text) AND ((s.payload_json #>> '{presence,connectivity}'::text[]) = 'OFFLINE'::text))), bool_or(((d.source_mode = 'REAL'::text) AND (COALESCE((((s.payload_json #>> '{presence,connectivity}'::text[]) = 'MQTT_CONNECTED'::text) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END IS NOT NULL) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END > ('2026-11-07 16:00:00+08'::timestamp with time zone - make_interval(0, 0, 0, 0, 0, 0, (p_1.stale_s)::double precision))) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END <= ('2026-11-07 16:00:00+08'::timestamp with time zone + make_interval(0, 0, 0, 0, 0, 0, (p_1.skew_s)::double precision)))), false)) AND ((s.payload_json #>> '{reported,alarmState}'::text[]) = 'ACTIVE'::text) AND (a_1.asset_status = 'ACTIVE'::text))), bool_or(((d.source_mode = 'SIMULATION'::text) AND (COALESCE((((s.payload_json #>> '{presence,connectivity}'::text[]) = 'MQTT_CONNECTED'::text) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END IS NOT NULL) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END > ('2026-11-07 16:00:00+08'::timestamp with time zone - make_interval(0, 0, 0, 0, 0, 0, (p_1.stale_s)::double precision))) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END <= ('2026-11-07 16:00:00+08'::timestamp with time zone + make_interval(0, 0, 0, 0, 0, 0, (p_1.skew_s)::double precision)))), false)) AND ((s.payload_json #>> '{reported,alarmState}'::text[]) = 'ACTIVE'::text) AND (a_1.asset_status = 'ACTIVE'::text))), bool_or(((d.source_mode = 'TEST'::text) AND (COALESCE((((s.payload_json #>> '{presence,connectivity}'::text[]) = 'MQTT_CONNECTED'::text) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END IS NOT NULL) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END > ('2026-11-07 16:00:00+08'::timestamp with time zone - make_interval(0, 0, 0, 0, 0, 0, (p_1.stale_s)::double precision))) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END <= ('2026-11-07 16:00:00+08'::timestamp with time zone + make_interval(0, 0, 0, 0, 0, 0, (p_1.skew_s)::double precision)))), false)) AND ((s.payload_json #>> '{reported,alarmState}'::text[]) = 'ACTIVE'::text) AND (a_1.asset_status = 'ACTIVE'::text))), bool_or(((COALESCE((((s.payload_json #>> '{presence,connectivity}'::text[]) = 'MQTT_CONNECTED'::text) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END IS NOT NULL) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END > ('2026-11-07 16:00:00+08'::timestamp with time zone - make_interval(0, 0, 0, 0, 0, 0, (p_1.stale_s)::double precision))) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END <= ('2026-11-07 16:00:00+08'::timestamp with time zone + make_interval(0, 0, 0, 0, 0, 0, (p_1.skew_s)::double precision)))), false)) AND ((s.payload_json #>> '{reported,alarmState}'::text[]) = 'ACTIVE'::text) AND (a_1.asset_status = 'ACTIVE'::text))), bool_or(((d.source_mode = 'REAL'::text) AND (COALESCE((((s.payload_json #>> '{presence,connectivity}'::text[]) = 'MQTT_CONNECTED'::text) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END IS NOT NULL) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END > ('2026-11-07 16:00:00+08'::timestamp with time zone - make_interval(0, 0, 0, 0, 0, 0, (p_1.stale_s)::double precision))) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END <= ('2026-11-07 16:00:00+08'::timestamp with time zone + make_interval(0, 0, 0, 0, 0, 0, (p_1.skew_s)::double precision)))), false)) AND ((s.payload_json #>> '{reported,operatingState}'::text[]) = 'LIVE'::text) AND (a_1.asset_status = 'ACTIVE'::text))), (count(d.id) = 0), bool_or((a_1.asset_status = 'DRAFT'::text))
+          Group Key: a_1.id, a_1.asset_status
+          Batches: 1  Memory Usage: 1393kB
+          Buffers: shared hit=4 read=142
+          I/O Timings: shared read=0.495
+          ->  Hash Right Join  (cost=299.42..651.78 rows=2260 width=254) (actual time=1.920..27.091 rows=3069 loops=1)
+                Output: a_1.id, a_1.asset_status, d.source_mode, (COALESCE((((s.payload_json #>> '{presence,connectivity}'::text[]) = 'MQTT_CONNECTED'::text) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END IS NOT NULL) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END > ('2026-11-07 16:00:00+08'::timestamp with time zone - make_interval(0, 0, 0, 0, 0, 0, (p_1.stale_s)::double precision))) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END <= ('2026-11-07 16:00:00+08'::timestamp with time zone + make_interval(0, 0, 0, 0, 0, 0, (p_1.skew_s)::double precision)))), false)), s.payload_json, (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END), (COALESCE((((s.payload_json #>> '{presence,connectivity}'::text[]) = 'MQTT_CONNECTED'::text) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END IS NULL)), false)), d.id
+                Hash Cond: (d.asset_device_id = a_1.id)
+                Buffers: shared hit=4 read=142
+                I/O Timings: shared read=0.495
+                ->  Hash Left Join  (cost=242.16..561.67 rows=2731 width=195) (actual time=1.117..25.768 rows=3069 loops=1)
+                      Output: d.source_mode, d.id, d.asset_device_id, s.payload_json, CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END, COALESCE((((s.payload_json #>> '{presence,connectivity}'::text[]) = 'MQTT_CONNECTED'::text) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END IS NULL)), false), COALESCE((((s.payload_json #>> '{presence,connectivity}'::text[]) = 'MQTT_CONNECTED'::text) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END IS NOT NULL) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END > ('2026-11-07 16:00:00+08'::timestamp with time zone - make_interval(0, 0, 0, 0, 0, 0, (p_1.stale_s)::double precision))) AND (CASE WHEN (((s.payload_json #>> '{presence,lastSeenAt}'::text[]) ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'::text) AND pg_input_is_valid((s.payload_json #>> '{presence,lastSeenAt}'::text[]), 'timestamptz'::text) AND (((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone >= '2000-01-01 08:00:00+08'::timestamp with time zone)) THEN ((s.payload_json #>> '{presence,lastSeenAt}'::text[]))::timestamp with time zone ELSE NULL::timestamp with time zone END <= ('2026-11-07 16:00:00+08'::timestamp with time zone + make_interval(0, 0, 0, 0, 0, 0, (p_1.skew_s)::double precision)))), false)
+                      Inner Unique: true
+                      Hash Cond: (d.id = s.device_id)
+                      Buffers: shared hit=2 read=119
+                      I/O Timings: shared read=0.431
+                      ->  Hash Join  (cost=74.91..175.59 rows=2731 width=24) (actual time=0.285..1.154 rows=3069 loops=1)
+                            Output: d.source_mode, d.id, d.asset_device_id, p_1.stale_s, p_1.skew_s
+                            Hash Cond: (d.asset_device_id = a_2.id)
+                            Buffers: shared hit=1 read=27
+                            I/O Timings: shared read=0.125
+                            ->  Seq Scan on public.devices d  (cost=0.00..61.00 rows=3300 width=16) (actual time=0.011..0.402 rows=3300 loops=1)
+                                  Output: d.source_mode, d.id, d.asset_device_id
+                                  Buffers: shared hit=1 read=27
+                                  I/O Timings: shared read=0.125
+                            ->  Hash  (cost=52.88..52.88 rows=1762 width=40) (actual time=0.260..0.263 rows=1980 loops=1)
+                                  Output: a_2.id, p_1.stale_s, p_1.skew_s
+                                  Buckets: 2048  Batches: 1  Memory Usage: 109kB
+                                  ->  Nested Loop  (cost=0.00..52.88 rows=1762 width=40) (actual time=0.003..0.155 rows=1980 loops=1)
+                                        Output: a_2.id, p_1.stale_s, p_1.skew_s
+                                        ->  CTE Scan on params p_1  (cost=0.00..0.02 rows=1 width=8) (actual time=0.000..0.001 rows=1 loops=1)
+                                              Output: p_1.stale_s, p_1.skew_s
+                                        ->  CTE Scan on assets a_2  (cost=0.00..35.24 rows=1762 width=32) (actual time=0.000..0.065 rows=1980 loops=1)
+                                              Output: a_2.id, a_2.project_id, a_2.asset_status
+                      ->  Hash  (cost=126.00..126.00 rows=3300 width=174) (actual time=0.734..0.734 rows=3300 loops=1)
+                            Output: s.payload_json, s.device_id
+                            Buckets: 4096  Batches: 1  Memory Usage: 699kB
+                            Buffers: shared hit=1 read=92
+                            I/O Timings: shared read=0.306
+                            ->  Seq Scan on public.device_shadow s  (cost=0.00..126.00 rows=3300 width=174) (actual time=0.007..0.483 rows=3300 loops=1)
+                                  Output: s.payload_json, s.device_id
+                                  Buffers: shared hit=1 read=92
+                                  I/O Timings: shared read=0.306
+                ->  Hash  (cost=35.24..35.24 rows=1762 width=64) (actual time=0.798..0.798 rows=1980 loops=1)
+                      Output: a_1.id, a_1.asset_status
+                      Buckets: 2048  Batches: 1  Memory Usage: 103kB
+                      Buffers: shared hit=2 read=23
+                      I/O Timings: shared read=0.064
+                      ->  CTE Scan on assets a_1  (cost=0.00..35.24 rows=1762 width=64) (actual time=0.034..0.684 rows=1980 loops=1)
+                            Output: a_1.id, a_1.asset_status
+                            Buffers: shared hit=2 read=23
+                            I/O Timings: shared read=0.064
+  CTE scoped_alarms
+    ->  Hash Join  (cost=130936.90..141266.81 rows=188788 width=20) (actual time=1.468..71.153 rows=396162 loops=1)
+          Output: al.observed_at, d_1.source_mode, d_1.asset_device_id, (d_1.asset_device_id IS NULL)
+          Hash Cond: (al.device_id = d_1.id)
+          Buffers: shared hit=28 read=2942
+          I/O Timings: shared read=9.768
+          ->  Seq Scan on public.alarms al  (cost=0.00..6942.00 rows=400000 width=13) (actual time=0.024..23.495 rows=400000 loops=1)
+                Output: al.message_id, al.device_id, al.observed_at, al.payload_json
+                Buffers: shared read=2942
+                I/O Timings: shared read=9.768
+          ->  Hash  (cost=130917.43..130917.43 rows=1558 width=16) (actual time=1.434..1.437 rows=3269 loops=1)
+                Output: d_1.source_mode, d_1.asset_device_id, d_1.id
+                Buckets: 4096 (originally 2048)  Batches: 1 (originally 1)  Memory Usage: 189kB
+                Buffers: shared hit=28
+                ->  Hash Join  (cost=5.79..130917.43 rows=1558 width=16) (actual time=0.541..1.166 rows=3269 loops=1)
+                      Output: d_1.source_mode, d_1.asset_device_id, d_1.id
+                      Hash Cond: (d_1.project_id = sp_1.id)
+                      Buffers: shared hit=28
+                      ->  Seq Scan on public.devices d_1  (cost=0.00..130889.50 rows=1750 width=20) (actual time=0.511..0.847 rows=3269 loops=1)
+                            Output: d_1.source_mode, d_1.asset_device_id, d_1.id, d_1.project_id
+                            Filter: ((d_1.asset_device_id IS NULL) OR (ANY (d_1.asset_device_id = (hashed SubPlan 6).col1)))
+                            Rows Removed by Filter: 31
+                            Buffers: shared hit=28
+                            SubPlan 6
+                              ->  CTE Scan on assets x  (cost=0.00..35.24 rows=1762 width=32) (actual time=0.105..0.184 rows=1980 loops=1)
+                                    Output: x.id
+                      ->  Hash  (cost=3.56..3.56 rows=178 width=32) (actual time=0.021..0.022 rows=200 loops=1)
+                            Output: sp_1.id
+                            Buckets: 1024  Batches: 1  Memory Usage: 16kB
+                            ->  CTE Scan on scoped_projects sp_1  (cost=0.00..3.56 rows=178 width=32) (actual time=0.002..0.010 rows=200 loops=1)
+                                  Output: sp_1.id
+  CTE alarm_window
+    ->  CTE Scan on scoped_alarms  (cost=0.00..4719.70 rows=5948 width=73) (actual time=1.483..123.102 rows=13145 loops=1)
+          Output: scoped_alarms.observed_at, scoped_alarms.source_mode, scoped_alarms.asset_id, scoped_alarms.unattributed
+          Filter: ((scoped_alarms.observed_at >= '2026-11-06 16:00:00+08'::timestamp with time zone) AND (scoped_alarms.observed_at < '2026-11-07 16:00:00+08'::timestamp with time zone))
+          Rows Removed by Filter: 383017
+          Buffers: shared hit=28 read=2942, temp written=1494
+          I/O Timings: shared read=9.768, temp write=4.204
+  InitPlan 9
+    ->  CTE Scan on params  (cost=0.00..0.02 rows=1 width=4) (actual time=0.021..0.022 rows=1 loops=1)
+          Output: params.stale_s
+  InitPlan 10
+    ->  CTE Scan on params params_1  (cost=0.00..0.02 rows=1 width=4) (actual time=0.001..0.001 rows=1 loops=1)
+          Output: params_1.skew_s
+  InitPlan 11
+    ->  Aggregate  (cost=4.00..4.01 rows=1 width=8) (actual time=0.174..0.175 rows=1 loops=1)
+          Output: count(*)
+          Buffers: shared hit=3 read=4
+          I/O Timings: shared read=0.021
+          ->  CTE Scan on scoped_projects  (cost=0.00..3.56 rows=178 width=0) (actual time=0.097..0.164 rows=200 loops=1)
+                Output: scoped_projects.id, scoped_projects.admin_code
+                Buffers: shared hit=3 read=4
+                I/O Timings: shared read=0.021
+  InitPlan 12
+    ->  Aggregate  (cost=39.65..39.66 rows=1 width=8) (actual time=30.047..30.047 rows=1 loops=1)
+          Output: count(*)
+          Buffers: shared hit=4 read=142
+          I/O Timings: shared read=0.495
+          ->  CTE Scan on per_asset  (cost=0.00..35.24 rows=1762 width=0) (actual time=29.144..29.988 rows=1980 loops=1)
+                Output: per_asset.id, per_asset.asset_status, per_asset.has_real, per_asset.has_sim, per_asset.has_test, per_asset.real_connected, per_asset.real_pending_review, per_asset.pending_review_alarm, per_asset.out_of_service, per_asset.real_stale, per_asset.real_unknown_time, per_asset.real_offline, per_asset.real_alarm, per_asset.sim_alarm, per_asset.test_alarm, per_asset.any_alarm, per_asset.real_live, per_asset.no_runtime, per_asset.draft
+                Buffers: shared hit=4 read=142
+                I/O Timings: shared read=0.495
+  InitPlan 13
+    ->  Aggregate  (cost=39.65..39.66 rows=1 width=8) (actual time=0.157..0.158 rows=1 loops=1)
+          Output: count(*) FILTER (WHERE per_asset_1.draft)
+          ->  CTE Scan on per_asset per_asset_1  (cost=0.00..35.24 rows=1762 width=1) (actual time=0.000..0.067 rows=1980 loops=1)
+                Output: per_asset_1.id, per_asset_1.asset_status, per_asset_1.has_real, per_asset_1.has_sim, per_asset_1.has_test, per_asset_1.real_connected, per_asset_1.real_pending_review, per_asset_1.pending_review_alarm, per_asset_1.out_of_service, per_asset_1.real_stale, per_asset_1.real_unknown_time, per_asset_1.real_offline, per_asset_1.real_alarm, per_asset_1.sim_alarm, per_asset_1.test_alarm, per_asset_1.any_alarm, per_asset_1.real_live, per_asset_1.no_runtime, per_asset_1.draft
+  InitPlan 14
+    ->  Aggregate  (cost=39.65..39.66 rows=1 width=8) (actual time=0.134..0.134 rows=1 loops=1)
+          Output: count(*) FILTER (WHERE per_asset_2.out_of_service)
+          ->  CTE Scan on per_asset per_asset_2  (cost=0.00..35.24 rows=1762 width=1) (actual time=0.000..0.064 rows=1980 loops=1)
+                Output: per_asset_2.id, per_asset_2.asset_status, per_asset_2.has_real, per_asset_2.has_sim, per_asset_2.has_test, per_asset_2.real_connected, per_asset_2.real_pending_review, per_asset_2.pending_review_alarm, per_asset_2.out_of_service, per_asset_2.real_stale, per_asset_2.real_unknown_time, per_asset_2.real_offline, per_asset_2.real_alarm, per_asset_2.sim_alarm, per_asset_2.test_alarm, per_asset_2.any_alarm, per_asset_2.real_live, per_asset_2.no_runtime, per_asset_2.draft
+  InitPlan 15
+    ->  Aggregate  (cost=39.65..39.66 rows=1 width=8) (actual time=0.157..0.158 rows=1 loops=1)
+          Output: count(*) FILTER (WHERE per_asset_3.no_runtime)
+          ->  CTE Scan on per_asset per_asset_3  (cost=0.00..35.24 rows=1762 width=1) (actual time=0.000..0.066 rows=1980 loops=1)
+                Output: per_asset_3.id, per_asset_3.asset_status, per_asset_3.has_real, per_asset_3.has_sim, per_asset_3.has_test, per_asset_3.real_connected, per_asset_3.real_pending_review, per_asset_3.pending_review_alarm, per_asset_3.out_of_service, per_asset_3.real_stale, per_asset_3.real_unknown_time, per_asset_3.real_offline, per_asset_3.real_alarm, per_asset_3.sim_alarm, per_asset_3.test_alarm, per_asset_3.any_alarm, per_asset_3.real_live, per_asset_3.no_runtime, per_asset_3.draft
+  InitPlan 16
+    ->  Aggregate  (cost=39.65..39.66 rows=1 width=8) (actual time=0.125..0.125 rows=1 loops=1)
+          Output: count(*) FILTER (WHERE per_asset_4.has_real)
+          ->  CTE Scan on per_asset per_asset_4  (cost=0.00..35.24 rows=1762 width=1) (actual time=0.000..0.063 rows=1980 loops=1)
+                Output: per_asset_4.id, per_asset_4.asset_status, per_asset_4.has_real, per_asset_4.has_sim, per_asset_4.has_test, per_asset_4.real_connected, per_asset_4.real_pending_review, per_asset_4.pending_review_alarm, per_asset_4.out_of_service, per_asset_4.real_stale, per_asset_4.real_unknown_time, per_asset_4.real_offline, per_asset_4.real_alarm, per_asset_4.sim_alarm, per_asset_4.test_alarm, per_asset_4.any_alarm, per_asset_4.real_live, per_asset_4.no_runtime, per_asset_4.draft
+  InitPlan 17
+    ->  Aggregate  (cost=39.65..39.66 rows=1 width=8) (actual time=0.133..0.133 rows=1 loops=1)
+          Output: count(*) FILTER (WHERE per_asset_5.has_sim)
+          ->  CTE Scan on per_asset per_asset_5  (cost=0.00..35.24 rows=1762 width=1) (actual time=0.000..0.064 rows=1980 loops=1)
+                Output: per_asset_5.id, per_asset_5.asset_status, per_asset_5.has_real, per_asset_5.has_sim, per_asset_5.has_test, per_asset_5.real_connected, per_asset_5.real_pending_review, per_asset_5.pending_review_alarm, per_asset_5.out_of_service, per_asset_5.real_stale, per_asset_5.real_unknown_time, per_asset_5.real_offline, per_asset_5.real_alarm, per_asset_5.sim_alarm, per_asset_5.test_alarm, per_asset_5.any_alarm, per_asset_5.real_live, per_asset_5.no_runtime, per_asset_5.draft
+  InitPlan 18
+    ->  Aggregate  (cost=39.65..39.66 rows=1 width=8) (actual time=0.134..0.135 rows=1 loops=1)
+          Output: count(*) FILTER (WHERE per_asset_6.has_test)
+          ->  CTE Scan on per_asset per_asset_6  (cost=0.00..35.24 rows=1762 width=1) (actual time=0.000..0.069 rows=1980 loops=1)
+                Output: per_asset_6.id, per_asset_6.asset_status, per_asset_6.has_real, per_asset_6.has_sim, per_asset_6.has_test, per_asset_6.real_connected, per_asset_6.real_pending_review, per_asset_6.pending_review_alarm, per_asset_6.out_of_service, per_asset_6.real_stale, per_asset_6.real_unknown_time, per_asset_6.real_offline, per_asset_6.real_alarm, per_asset_6.sim_alarm, per_asset_6.test_alarm, per_asset_6.any_alarm, per_asset_6.real_live, per_asset_6.no_runtime, per_asset_6.draft
+  InitPlan 19
+    ->  Aggregate  (cost=39.65..39.66 rows=1 width=8) (actual time=0.153..0.154 rows=1 loops=1)
+          Output: count(*) FILTER (WHERE per_asset_7.real_connected)
+          ->  CTE Scan on per_asset per_asset_7  (cost=0.00..35.24 rows=1762 width=1) (actual time=0.000..0.072 rows=1980 loops=1)
+                Output: per_asset_7.id, per_asset_7.asset_status, per_asset_7.has_real, per_asset_7.has_sim, per_asset_7.has_test, per_asset_7.real_connected, per_asset_7.real_pending_review, per_asset_7.pending_review_alarm, per_asset_7.out_of_service, per_asset_7.real_stale, per_asset_7.real_unknown_time, per_asset_7.real_offline, per_asset_7.real_alarm, per_asset_7.sim_alarm, per_asset_7.test_alarm, per_asset_7.any_alarm, per_asset_7.real_live, per_asset_7.no_runtime, per_asset_7.draft
+  InitPlan 20
+    ->  Aggregate  (cost=39.65..39.66 rows=1 width=8) (actual time=0.130..0.130 rows=1 loops=1)
+          Output: count(*) FILTER (WHERE per_asset_8.real_pending_review)
+          ->  CTE Scan on per_asset per_asset_8  (cost=0.00..35.24 rows=1762 width=1) (actual time=0.000..0.064 rows=1980 loops=1)
+                Output: per_asset_8.id, per_asset_8.asset_status, per_asset_8.has_real, per_asset_8.has_sim, per_asset_8.has_test, per_asset_8.real_connected, per_asset_8.real_pending_review, per_asset_8.pending_review_alarm, per_asset_8.out_of_service, per_asset_8.real_stale, per_asset_8.real_unknown_time, per_asset_8.real_offline, per_asset_8.real_alarm, per_asset_8.sim_alarm, per_asset_8.test_alarm, per_asset_8.any_alarm, per_asset_8.real_live, per_asset_8.no_runtime, per_asset_8.draft
+  InitPlan 21
+    ->  Aggregate  (cost=39.65..39.66 rows=1 width=8) (actual time=0.132..0.133 rows=1 loops=1)
+          Output: count(*) FILTER (WHERE per_asset_9.pending_review_alarm)
+          ->  CTE Scan on per_asset per_asset_9  (cost=0.00..35.24 rows=1762 width=1) (actual time=0.000..0.064 rows=1980 loops=1)
+                Output: per_asset_9.id, per_asset_9.asset_status, per_asset_9.has_real, per_asset_9.has_sim, per_asset_9.has_test, per_asset_9.real_connected, per_asset_9.real_pending_review, per_asset_9.pending_review_alarm, per_asset_9.out_of_service, per_asset_9.real_stale, per_asset_9.real_unknown_time, per_asset_9.real_offline, per_asset_9.real_alarm, per_asset_9.sim_alarm, per_asset_9.test_alarm, per_asset_9.any_alarm, per_asset_9.real_live, per_asset_9.no_runtime, per_asset_9.draft
+  InitPlan 22
+    ->  Aggregate  (cost=70.66..70.67 rows=1 width=32) (actual time=0.140..0.141 rows=1 loops=1)
+          Output: COALESCE(json_agg(json_build_object('id', per_asset_10.id, 'assetStatus', per_asset_10.asset_status, 'alarm', per_asset_10.pending_review_alarm) ORDER BY per_asset_10.id), '[]'::json)
+          Buffers: shared hit=3
+          ->  Limit  (cost=68.91..69.16 rows=100 width=81) (actual time=0.098..0.102 rows=42 loops=1)
+                Output: per_asset_10.id, per_asset_10.asset_status, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean, per_asset_10.pending_review_alarm, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean
+                Buffers: shared hit=3
+                ->  Sort  (cost=68.91..71.11 rows=881 width=81) (actual time=0.096..0.098 rows=42 loops=1)
+                      Output: per_asset_10.id, per_asset_10.asset_status, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean, per_asset_10.pending_review_alarm, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean
+                      Sort Key: per_asset_10.id
+                      Sort Method: quicksort  Memory: 27kB
+                      Buffers: shared hit=3
+                      ->  CTE Scan on per_asset per_asset_10  (cost=0.00..35.24 rows=881 width=81) (actual time=0.003..0.053 rows=42 loops=1)
+                            Output: per_asset_10.id, per_asset_10.asset_status, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean, per_asset_10.pending_review_alarm, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean, NULL::boolean
+                            Filter: per_asset_10.real_pending_review
+                            Rows Removed by Filter: 1938
+  InitPlan 23
+    ->  Aggregate  (cost=39.65..39.66 rows=1 width=8) (actual time=0.213..0.214 rows=1 loops=1)
+          Output: count(*) FILTER (WHERE per_asset_11.real_stale)
+          ->  CTE Scan on per_asset per_asset_11  (cost=0.00..35.24 rows=1762 width=1) (actual time=0.000..0.078 rows=1980 loops=1)
+                Output: per_asset_11.id, per_asset_11.asset_status, per_asset_11.has_real, per_asset_11.has_sim, per_asset_11.has_test, per_asset_11.real_connected, per_asset_11.real_pending_review, per_asset_11.pending_review_alarm, per_asset_11.out_of_service, per_asset_11.real_stale, per_asset_11.real_unknown_time, per_asset_11.real_offline, per_asset_11.real_alarm, per_asset_11.sim_alarm, per_asset_11.test_alarm, per_asset_11.any_alarm, per_asset_11.real_live, per_asset_11.no_runtime, per_asset_11.draft
+  InitPlan 24
+    ->  Aggregate  (cost=39.65..39.66 rows=1 width=8) (actual time=0.147..0.148 rows=1 loops=1)
+          Output: count(*) FILTER (WHERE per_asset_12.real_unknown_time)
+          ->  CTE Scan on per_asset per_asset_12  (cost=0.00..35.24 rows=1762 width=1) (actual time=0.000..0.066 rows=1980 loops=1)
+                Output: per_asset_12.id, per_asset_12.asset_status, per_asset_12.has_real, per_asset_12.has_sim, per_asset_12.has_test, per_asset_12.real_connected, per_asset_12.real_pending_review, per_asset_12.pending_review_alarm, per_asset_12.out_of_service, per_asset_12.real_stale, per_asset_12.real_unknown_time, per_asset_12.real_offline, per_asset_12.real_alarm, per_asset_12.sim_alarm, per_asset_12.test_alarm, per_asset_12.any_alarm, per_asset_12.real_live, per_asset_12.no_runtime, per_asset_12.draft
+  InitPlan 25
+    ->  Aggregate  (cost=39.65..39.66 rows=1 width=8) (actual time=0.154..0.154 rows=1 loops=1)
+          Output: count(*) FILTER (WHERE per_asset_13.real_offline)
+          ->  CTE Scan on per_asset per_asset_13  (cost=0.00..35.24 rows=1762 width=1) (actual time=0.000..0.065 rows=1980 loops=1)
+                Output: per_asset_13.id, per_asset_13.asset_status, per_asset_13.has_real, per_asset_13.has_sim, per_asset_13.has_test, per_asset_13.real_connected, per_asset_13.real_pending_review, per_asset_13.pending_review_alarm, per_asset_13.out_of_service, per_asset_13.real_stale, per_asset_13.real_unknown_time, per_asset_13.real_offline, per_asset_13.real_alarm, per_asset_13.sim_alarm, per_asset_13.test_alarm, per_asset_13.any_alarm, per_asset_13.real_live, per_asset_13.no_runtime, per_asset_13.draft
+  InitPlan 26
+    ->  Aggregate  (cost=39.65..39.66 rows=1 width=8) (actual time=0.152..0.152 rows=1 loops=1)
+          Output: count(*) FILTER (WHERE per_asset_14.real_live)
+          ->  CTE Scan on per_asset per_asset_14  (cost=0.00..35.24 rows=1762 width=1) (actual time=0.000..0.065 rows=1980 loops=1)
+                Output: per_asset_14.id, per_asset_14.asset_status, per_asset_14.has_real, per_asset_14.has_sim, per_asset_14.has_test, per_asset_14.real_connected, per_asset_14.real_pending_review, per_asset_14.pending_review_alarm, per_asset_14.out_of_service, per_asset_14.real_stale, per_asset_14.real_unknown_time, per_asset_14.real_offline, per_asset_14.real_alarm, per_asset_14.sim_alarm, per_asset_14.test_alarm, per_asset_14.any_alarm, per_asset_14.real_live, per_asset_14.no_runtime, per_asset_14.draft
+  InitPlan 27
+    ->  Aggregate  (cost=39.65..39.66 rows=1 width=8) (actual time=0.143..0.144 rows=1 loops=1)
+          Output: count(*) FILTER (WHERE per_asset_15.real_alarm)
+          ->  CTE Scan on per_asset per_asset_15  (cost=0.00..35.24 rows=1762 width=1) (actual time=0.000..0.064 rows=1980 loops=1)
+                Output: per_asset_15.id, per_asset_15.asset_status, per_asset_15.has_real, per_asset_15.has_sim, per_asset_15.has_test, per_asset_15.real_connected, per_asset_15.real_pending_review, per_asset_15.pending_review_alarm, per_asset_15.out_of_service, per_asset_15.real_stale, per_asset_15.real_unknown_time, per_asset_15.real_offline, per_asset_15.real_alarm, per_asset_15.sim_alarm, per_asset_15.test_alarm, per_asset_15.any_alarm, per_asset_15.real_live, per_asset_15.no_runtime, per_asset_15.draft
+  InitPlan 28
+    ->  Aggregate  (cost=39.65..39.66 rows=1 width=8) (actual time=0.144..0.145 rows=1 loops=1)
+          Output: count(*) FILTER (WHERE per_asset_16.sim_alarm)
+          ->  CTE Scan on per_asset per_asset_16  (cost=0.00..35.24 rows=1762 width=1) (actual time=0.000..0.065 rows=1980 loops=1)
+                Output: per_asset_16.id, per_asset_16.asset_status, per_asset_16.has_real, per_asset_16.has_sim, per_asset_16.has_test, per_asset_16.real_connected, per_asset_16.real_pending_review, per_asset_16.pending_review_alarm, per_asset_16.out_of_service, per_asset_16.real_stale, per_asset_16.real_unknown_time, per_asset_16.real_offline, per_asset_16.real_alarm, per_asset_16.sim_alarm, per_asset_16.test_alarm, per_asset_16.any_alarm, per_asset_16.real_live, per_asset_16.no_runtime, per_asset_16.draft
+  InitPlan 29
+    ->  Aggregate  (cost=39.65..39.66 rows=1 width=8) (actual time=0.151..0.152 rows=1 loops=1)
+          Output: count(*) FILTER (WHERE per_asset_17.test_alarm)
+          ->  CTE Scan on per_asset per_asset_17  (cost=0.00..35.24 rows=1762 width=1) (actual time=0.000..0.065 rows=1980 loops=1)
+                Output: per_asset_17.id, per_asset_17.asset_status, per_asset_17.has_real, per_asset_17.has_sim, per_asset_17.has_test, per_asset_17.real_connected, per_asset_17.real_pending_review, per_asset_17.pending_review_alarm, per_asset_17.out_of_service, per_asset_17.real_stale, per_asset_17.real_unknown_time, per_asset_17.real_offline, per_asset_17.real_alarm, per_asset_17.sim_alarm, per_asset_17.test_alarm, per_asset_17.any_alarm, per_asset_17.real_live, per_asset_17.no_runtime, per_asset_17.draft
+  InitPlan 30
+    ->  Aggregate  (cost=39.65..39.66 rows=1 width=8) (actual time=0.153..0.154 rows=1 loops=1)
+          Output: count(*) FILTER (WHERE per_asset_18.any_alarm)
+          ->  CTE Scan on per_asset per_asset_18  (cost=0.00..35.24 rows=1762 width=1) (actual time=0.000..0.065 rows=1980 loops=1)
+                Output: per_asset_18.id, per_asset_18.asset_status, per_asset_18.has_real, per_asset_18.has_sim, per_asset_18.has_test, per_asset_18.real_connected, per_asset_18.real_pending_review, per_asset_18.pending_review_alarm, per_asset_18.out_of_service, per_asset_18.real_stale, per_asset_18.real_unknown_time, per_asset_18.real_offline, per_asset_18.real_alarm, per_asset_18.sim_alarm, per_asset_18.test_alarm, per_asset_18.any_alarm, per_asset_18.real_live, per_asset_18.no_runtime, per_asset_18.draft
+  InitPlan 31
+    ->  Aggregate  (cost=297.40..297.42 rows=1 width=32) (actual time=125.819..125.820 rows=1 loops=1)
+          Output: json_build_object('REAL', json_build_object('attributed', count(*) FILTER (WHERE ((alarm_window.source_mode = 'REAL'::text) AND (NOT alarm_window.unattributed))), 'unattributed', count(*) FILTER (WHERE ((alarm_window.source_mode = 'REAL'::text) AND alarm_window.unattributed))), 'SIMULATION', json_build_object('attributed', count(*) FILTER (WHERE ((alarm_window.source_mode = 'SIMULATION'::text) AND (NOT alarm_window.unattributed))), 'unattributed', count(*) FILTER (WHERE ((alarm_window.source_mode = 'SIMULATION'::text) AND alarm_window.unattributed))), 'TEST', json_build_object('attributed', count(*) FILTER (WHERE ((alarm_window.source_mode = 'TEST'::text) AND (NOT alarm_window.unattributed))), 'unattributed', count(*) FILTER (WHERE ((alarm_window.source_mode = 'TEST'::text) AND alarm_window.unattributed))))
+          Buffers: shared hit=28 read=2942, temp written=1494
+          I/O Timings: shared read=9.768, temp write=4.204
+          ->  CTE Scan on alarm_window  (cost=0.00..118.96 rows=5948 width=33) (actual time=1.484..124.181 rows=13145 loops=1)
+                Output: alarm_window.observed_at, alarm_window.source_mode, alarm_window.asset_id, alarm_window.unattributed
+                Buffers: shared hit=28 read=2942, temp written=1494
+                I/O Timings: shared read=9.768, temp write=4.204
+  InitPlan 32
+    ->  Aggregate  (cost=133.83..133.84 rows=1 width=8) (actual time=0.951..0.952 rows=1 loops=1)
+          Output: count(*)
+          ->  CTE Scan on alarm_window alarm_window_1  (cost=0.00..118.96 rows=5948 width=0) (actual time=0.000..0.595 rows=13145 loops=1)
+                Output: alarm_window_1.observed_at, alarm_window_1.source_mode, alarm_window_1.asset_id, alarm_window_1.unattributed
+  InitPlan 33
+    ->  Aggregate  (cost=305.40..305.41 rows=1 width=8) (actual time=3.306..3.308 rows=1 loops=1)
+          Output: count(DISTINCT alarm_window_2.asset_id)
+          ->  Sort  (cost=290.53..297.97 rows=2974 width=32) (actual time=2.567..2.849 rows=12340 loops=1)
+                Output: alarm_window_2.asset_id
+                Sort Key: alarm_window_2.asset_id
+                Sort Method: quicksort  Memory: 385kB
+                ->  CTE Scan on alarm_window alarm_window_2  (cost=0.00..118.96 rows=2974 width=32) (actual time=0.005..0.815 rows=12340 loops=1)
+                      Output: alarm_window_2.asset_id
+                      Filter: (NOT alarm_window_2.unattributed)
+                      Rows Removed by Filter: 805
+  InitPlan 34
+    ->  Aggregate  (cost=7708.86..7708.87 rows=1 width=8) (actual time=33.585..33.585 rows=1 loops=1)
+          Output: count(*)
+          Buffers: temp read=1495 written=1
+          I/O Timings: temp read=1.913 write=0.012
+          ->  Nested Loop  (cost=0.00..7551.54 rows=62929 width=0) (actual time=33.556..33.556 rows=0 loops=1)
+                Join Filter: (scoped_alarms_1.observed_at >= ('2026-11-07 16:00:00+08'::timestamp with time zone + make_interval(0, 0, 0, 0, 0, 0, (params_2.skew_s)::double precision)))
+                Rows Removed by Join Filter: 396162
+                Buffers: temp read=1495 written=1
+                I/O Timings: temp read=1.913 write=0.012
+                ->  CTE Scan on params params_2  (cost=0.00..0.02 rows=1 width=4) (actual time=0.001..0.002 rows=1 loops=1)
+                      Output: params_2.stale_s, params_2.skew_s
+                ->  CTE Scan on scoped_alarms scoped_alarms_1  (cost=0.00..3775.76 rows=188788 width=8) (actual time=0.015..16.255 rows=396162 loops=1)
+                      Output: scoped_alarms_1.observed_at, scoped_alarms_1.source_mode, scoped_alarms_1.asset_id, scoped_alarms_1.unattributed
+                      Buffers: temp read=1495 written=1
+                      I/O Timings: temp read=1.913 write=0.012
+Settings: plan_cache_mode = 'force_custom_plan'
+Planning:
+  Buffers: shared hit=497 read=65
+  I/O Timings: shared read=0.285
+Planning Time: 2.576 ms
+JIT:
+  Functions: 181
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 5.367 ms (Deform 2.211 ms), Inlining 0.000 ms, Optimization 2.677 ms, Emission 51.301 ms, Total 59.345 ms
+Execution Time: 267.401 ms
