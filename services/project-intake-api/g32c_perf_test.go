@@ -382,6 +382,9 @@ func scaleData(t *testing.T, f g1Fixture, total int) map[string]int {
 		`INSERT INTO duplicate_cases(project_id,candidate_id,score,risk,matched_signals,submission_revision,created_at)
   SELECT p.id,a.id,80,'WARN','["相同客户或别名"]',1,p.updated_at FROM (SELECT id,updated_at,row_number() OVER (ORDER BY id) rn FROM intake_projects WHERE project_name LIKE '合成规模项目%' AND intake_status='UNDER_REVIEW') p
   JOIN appr a ON a.rn IN (1+p.rn%(SELECT count(*) FROM appr),1+(p.rn*7)%(SELECT count(*) FROM appr),1+(p.rn*13)%(SELECT count(*) FROM appr))`,
+		// G3-3A: spread the synthetic projects over the 12 sales stages
+		// (front-loaded like a real funnel; not read by the queue/summary SQL).
+		`UPDATE intake_projects SET sales_stage=(ARRAY['L0_LEAD','L1_REQUIREMENT','L1_REQUIREMENT','L2_TECHNICAL','L2_TECHNICAL','L3_SITE_SURVEY','L4_SOLUTION','L5_QUOTATION','L6_TENDER','L7_COMMERCIAL','L8_PENDING_CONTRACT','WON','LOST','HOLD'])[1+substring(project_name from 7)::int % 14] WHERE project_name LIKE '合成规模项目%'`,
 		`DROP TABLE syn`, `DROP TABLE appr`, `ANALYZE`,
 	}
 	conn, err := f.db.Acquire(ctx)

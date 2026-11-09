@@ -5,14 +5,18 @@ BAOBEI_MAIN_MERGE=FORBIDDEN
 BAOBEI_R2_MERGE=FORBIDDEN
 BASE_SHA=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18
 BRANCH=product/baobei-v1
-CURRENT_BATCH=FULL_ROLE_G3_3_P0_R1
-STOP_AFTER_FULL_ROLE_G3_3_P0_R1=YES
+CURRENT_BATCH=FULL_ROLE_G3_3A
+STOP_AFTER_FULL_ROLE_G3_3A=YES
 
 目标：快速报项目、识别重复、明确归属并跟进。独立产品，永不合并 main/R2。
 
-## 当前实施：G3-3-P0 R1 浏览器门禁修复
+## 当前实施：G3-3A 真实销售管道
 
-基线 `7b1c626`。其 CI Run 42365532593 的 `baobei-e2e` 在 `g32b-queue.spec.ts`（mobile-390）失败：视图切换加载期间审核队列分页按钮仍按上一视图的 total 可用，测试辅助函数检查与点击之间状态变化。已用网络延迟确定性复现；审核队列分页在加载中禁用（与交互动作矩阵既有规定一致），E2E 改为等待目标视图响应后逐页确认。无后端、JIT、权限或迁移改动。验收见 [30-R1_G3-3P0浏览器门禁修复验收](30-R1_G3-3P0浏览器门禁修复验收.md)。G3-3A 未开始；生产仍 BLOCKED。
+基线 `b33ce98`（Run 42542304507 八门通过）。新增 `GET /api/v1/stage-summary`：与 `/projects` 共用 `projectScope` 和基础筛选（q/status/province/updatedAfter），一条聚合返回 12 个销售阶段（含 0）、total、`unclassified` 数据质量计数；未知或非法参数 400。`/projects` 的 page/pageSize 非法值改为 400。`/pipeline` 改为真实管道：列头为服务端全量数量，各栏独立分页与按需加载，手机为阶段选择器 + 单栏；卡片区分销售阶段与报备状态，跟进标记只看 nextFollowupAt；阶段推进经确认原因后调用原 stage-change。PG18 10k 下统计约 3 ms、单栏首页约 7 ms，未触发 JIT。无迁移、无金额统计。验收见 [31-G3-3A真实销售管道验收](31-G3-3A真实销售管道验收.md)。G3-3B/G3-4 未开始；生产仍 BLOCKED。
+
+## 历史：G3-3-P0 R1 浏览器门禁修复
+
+基线 `7b1c626`。其 CI Run 42365532593 的 `baobei-e2e` 在 `g32b-queue.spec.ts`（mobile-390）失败：视图切换加载期间审核队列分页按钮仍按上一视图的 total 可用，测试辅助函数检查与点击之间状态变化。已用网络延迟确定性复现；审核队列分页在加载中禁用（与交互动作矩阵既有规定一致），E2E 改为等待目标视图响应后逐页确认。无后端、JIT、权限或迁移改动。验收见 [30-R1_G3-3P0浏览器门禁修复验收](30-R1_G3-3P0浏览器门禁修复验收.md)。
 
 ## 历史：G3-3-P0 审核队列与首页 JIT 性能收口
 

@@ -6,6 +6,7 @@ import App from './App.vue';
 import Login from './Login.vue';
 import Dashboard from './Dashboard.vue';
 import Projects from './Projects.vue';
+import Pipeline from './Pipeline.vue';
 import Wizard from './Wizard.vue';
 import Detail from './Detail.vue';
 import StaffMembers from './StaffMembers.vue';
@@ -30,7 +31,7 @@ const router = createRouter({
     { path: '/projects', component: Projects },
     { path: '/unassigned', component: Projects },
     { path: '/followups', component: Projects },
-    { path: '/pipeline', component: Projects },
+    { path: '/pipeline', component: Pipeline },
     { path: '/statistics', component: Dashboard },
     { path: '/new', component: Wizard },
     { path: '/projects/:id/edit', component: Wizard },

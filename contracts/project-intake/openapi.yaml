@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Project Intake API",
-    "version": "1.3.0-g32b",
+    "version": "1.4.0-g33a",
     "description": "全角色项目资源授权、不可覆盖提交证据、管理员未分配草稿及幂等创建；G2 增加审核资格提示、创建意图回执、显示名称与首页最小聚合。完整经营分析不在G2。"
   },
   "servers": [
@@ -174,8 +174,23 @@
             "name": "stage",
             "in": "query",
             "schema": {
-              "type": "string"
-            }
+              "type": "string",
+              "enum": [
+                "L0_LEAD",
+                "L1_REQUIREMENT",
+                "L2_TECHNICAL",
+                "L3_SITE_SURVEY",
+                "L4_SOLUTION",
+                "L5_QUOTATION",
+                "L6_TENDER",
+                "L7_COMMERCIAL",
+                "L8_PENDING_CONTRACT",
+                "WON",
+                "LOST",
+                "HOLD"
+              ]
+            },
+            "description": "销售阶段（sales_stage），与报备状态 status 是不同维度；管道每栏用 stage+page+pageSize 独立分页"
           },
           {
             "name": "province",
@@ -208,16 +223,21 @@
             "name": "page",
             "in": "query",
             "schema": {
-              "type": "string"
-            }
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000000
+            },
+            "description": "正整数，默认1；非法值400 INVALID_FILTER"
           },
           {
             "name": "pageSize",
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
             },
-            "description": "1–100，默认20"
+            "description": "1–100，默认20；越界或非整数400 INVALID_FILTER"
           },
           {
             "name": "due",
@@ -266,7 +286,7 @@
             }
           }
         ],
-        "description": "统一ProjectPolicy范围内的列表。仅接受白名单筛选，未知参数或非法取值返回400 INVALID_FILTER。时间窗口共用响应中的asOf。"
+        "description": "统一ProjectPolicy范围内的列表。仅接受白名单筛选，未知参数或非法取值返回400 INVALID_FILTER。时间窗口共用响应中的asOf。 默认排序 updated_at DESC 后以 id 打破并列，分页稳定。"
       },
       "post": {
         "operationId": "projects.create",
@@ -3467,6 +3487,90 @@
           }
         }
       }
+    },
+    "/api/v1/stage-summary": {
+      "get": {
+        "operationId": "stage.summary",
+        "summary": "当前角色授权范围内 12 个销售阶段的真实数量",
+        "description": "一条 PostgreSQL 聚合，范围与 GET /projects 相同（ProjectPolicy/projectScope），默认包含范围内全部报备状态。基础筛选 q/status/province/updatedAfter 与 /projects 同义并作用于全部阶段；stage、分页、排序、跟进窗口等其他参数一律 400 INVALID_FILTER。同一数据状态下，每个阶段 count 等于 GET /projects?stage=<code>&<相同筛选> 的 total。不含金额（G3-3B）。",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "客户、项目名称或报备编号"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "DRAFT",
+                "SUBMITTED",
+                "UNDER_REVIEW",
+                "APPROVED",
+                "RETURNED",
+                "REJECTED",
+                "EXPIRED",
+                "CANCELLED",
+                "CONVERTED"
+              ]
+            },
+            "description": "报备状态（intake_status）"
+          },
+          {
+            "name": "province",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "updatedAfter",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StageSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "未知参数、重复参数或非法取值（INVALID_FILTER）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "503": {
+            "description": "服务暂不可用"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -5152,6 +5256,86 @@
               "REVIEWER"
             ],
             "description": "处理路径：SALES_DIRECTOR=由销售总监处理；REVIEWER=提交后由审核人员核验（销售视角）"
+          }
+        }
+      },
+      "StageSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "asOf",
+          "scope",
+          "filters",
+          "total",
+          "stages",
+          "unclassified"
+        ],
+        "description": "G3-3A 销售阶段分布。stages 固定 12 项、固定顺序，数量为 0 的阶段也返回；sum(stages.count)+unclassified=total。",
+        "properties": {
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "OWN",
+              "TEAM",
+              "ALL_ASSIGNED",
+              "ALL"
+            ]
+          },
+          "filters": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "本次生效的非空基础筛选"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "stages": {
+            "type": "array",
+            "minItems": 12,
+            "maxItems": 12,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "code",
+                "count"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "enum": [
+                    "L0_LEAD",
+                    "L1_REQUIREMENT",
+                    "L2_TECHNICAL",
+                    "L3_SITE_SURVEY",
+                    "L4_SOLUTION",
+                    "L5_QUOTATION",
+                    "L6_TENDER",
+                    "L7_COMMERCIAL",
+                    "L8_PENDING_CONTRACT",
+                    "WON",
+                    "LOST",
+                    "HOLD"
+                  ]
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "unclassified": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "库中 sales_stage 不属于 12 个标准编码的项目数（数据质量提示，不改写历史数据）；正常为 0"
           }
         }
       }

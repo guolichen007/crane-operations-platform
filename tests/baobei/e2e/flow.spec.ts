@@ -195,7 +195,7 @@ test('pagination and read-only navigation actions', async ({ page }, info) => {
   await page.getByRole('button', { name: '待跟进', exact: true }).click();
   await expect(page.getByRole('heading', { name: /待跟进/ })).toBeVisible();
   await page.getByRole('button', { name: '项目管道', exact: true }).click();
-  await expect(page.locator('.pipeline')).toBeVisible();
+  await expect(page.locator('.pipeline-board')).toBeVisible();
   await page.getByRole('button', { name: '列表视图', exact: true }).click();
   await expect(page.getByRole('heading', { name: /我的报备/ })).toBeVisible();
   await page.getByRole('button', { name: '统计', exact: true }).click();

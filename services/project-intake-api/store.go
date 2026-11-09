@@ -6,7 +6,6 @@ import (
 	"errors"
 	"github.com/jackc/pgx/v5"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -156,60 +155,9 @@ func (a *App) listAt(ctx context.Context, u User, params map[string]string) ([]P
 			return nil, 0, asOf, listError("不支持的筛选条件：" + k)
 		}
 	}
-	args := []any{u.Subject, u.Role, u.TeamID}
-	where := ` WHERE ` + projectScope("p")
-	add := func(sql string, v any) {
-		args = append(args, v)
-		where += strings.ReplaceAll(sql, "?", "$"+strconv.Itoa(len(args)))
-	}
-	if v := params["q"]; v != "" {
-		add(` AND (p.project_name ILIKE '%'||?||'%' OR p.registration_no ILIKE '%'||?||'%' OR p.document->>'customer' ILIKE '%'||?||'%')`, v)
-	}
-	if v := params["status"]; v != "" && !contains(strings.Fields("DRAFT SUBMITTED UNDER_REVIEW APPROVED RETURNED REJECTED EXPIRED CANCELLED CONVERTED"), v) {
-		return nil, 0, asOf, listError("报备状态不正确")
-	}
-	if v := params["stage"]; v != "" && !contains(stages, v) {
-		return nil, 0, asOf, listError("销售阶段不正确")
-	}
-	for k, col := range map[string]string{"status": "p.intake_status", "stage": "p.sales_stage", "province": "p.document->'location'->>'province'"} {
-		if v := params[k]; v != "" {
-			add(` AND `+col+`=?`, v)
-		}
-	}
-	if v := params["updatedAfter"]; v != "" {
-		if _, e := time.Parse(time.RFC3339, v); e != nil {
-			return nil, 0, asOf, listError("更新时间格式不正确")
-		}
-		add(` AND p.updated_at>=?::timestamptz`, v)
-	}
-	// Follow-up windows share one asOf: overdue=[-inf,asOf), upcoming=[asOf,asOf+7d).
-	switch params["followup"] {
-	case "":
-	case "overdue":
-		add(` AND p.next_followup_at<?::timestamptz`, asOf)
-	case "upcoming":
-		add(` AND p.next_followup_at>=?::timestamptz`, asOf)
-		add(` AND p.next_followup_at<?::timestamptz`, asOf.Add(7*24*time.Hour))
-	default:
-		return nil, 0, asOf, listError("跟进时间筛选不正确")
-	}
-	switch params["assignment"] {
-	case "":
-	case "unassigned":
-		where += ` AND p.owner_subject IS NULL`
-	case "assigned":
-		where += ` AND p.owner_subject IS NOT NULL`
-	default:
-		return nil, 0, asOf, listError("归属筛选不正确")
-	}
-	if params["due"] == "true" {
-		add(` AND p.next_followup_at<?::timestamptz`, asOf.Add(7*24*time.Hour))
-	}
-	if params["review"] == "pending" {
-		where += ` AND p.intake_status IN ('SUBMITTED','UNDER_REVIEW')`
-	}
-	if params["review"] == "protection" {
-		where += ` AND p.protection_status IN ('WARNING','EXPIRING','EXPIRED') AND p.intake_status IN ('SUBMITTED','UNDER_REVIEW','APPROVED')`
+	where, args, err := projectFilters(u, params, asOf)
+	if err != nil {
+		return nil, 0, asOf, err
 	}
 	var total int
 	if e := a.db.QueryRow(ctx, `SELECT count(*) FROM intake_projects p`+where, args...).Scan(&total); e != nil {
@@ -247,7 +195,7 @@ func (a *App) listAt(ctx context.Context, u User, params map[string]string) ([]P
 		}
 		out = append(out, p)
 	}
-	err := rows.Err()
+	err = rows.Err()
 	rows.Close()
 	if err != nil {
 		return nil, 0, asOf, err

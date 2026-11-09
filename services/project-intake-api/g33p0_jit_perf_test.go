@@ -229,6 +229,32 @@ func TestDatabaseG33P0JIT(t *testing.T) {
 			}
 		}
 	}
+	// G3-3A pipeline: BAOBEI_SCALE_PART=pipeline-<role> measures the stage
+	// summary (unfiltered and with a base filter) and one stage column's first
+	// and last page with the same harness.
+	if strings.HasPrefix(part, "pipeline-") {
+		who := strings.TrimPrefix(part, "pipeline-")
+		row("阶段统计 stage-summary", who, e.get(t, who, "/api/v1/stage-summary"), true)
+		row("阶段统计（province+status 筛选）", who, e.get(t, who, "/api/v1/stage-summary?province=%E5%90%88%E6%88%90%E7%9C%81&status=APPROVED"), false)
+		var sum StageSummary
+		_, b := e.cl[who].call("GET", "/api/v1/stage-summary", nil)
+		_ = json.Unmarshal(b, &sum)
+		code, n := "", -1
+		for _, sc := range sum.Stages {
+			if sc.Count > n {
+				code, n = sc.Code, sc.Count
+			}
+		}
+		last := (n + 9) / 10
+		if last < 1 {
+			last = 1
+		}
+		row(fmt.Sprintf("阶段栏 %s 第1页（共 %d）", code, n), who, e.get(t, who, "/api/v1/projects?stage="+code+"&page=1&pageSize=10"), true)
+		row(fmt.Sprintf("阶段栏 %s 末页(%d)", code, last), who, e.get(t, who, fmt.Sprintf("/api/v1/projects?stage=%s&page=%d&pageSize=10", code, last)), false)
+		fmt.Fprintf(&out, "| 阶段分布 | %s | total=%d unclassified=%d %v | | | | | | | | | | | |\n", who, sum.Total, sum.Unclassified, sum.Stages)
+		appendReport(t, report, out.String()+plans.String())
+		return
+	}
 	for _, who := range []string{"manager", "director", "admin"} {
 		if part != "" && part != who {
 			continue

@@ -116,6 +116,9 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 	if path == "/api/v1/workspace-summary" && method == "GET" {
 		return a.summaryHandler(w, r, u)
 	}
+	if path == "/api/v1/stage-summary" && method == "GET" {
+		return a.stageSummaryHandler(w, r, u)
+	}
 	if strings.HasPrefix(path, "/api/v1/project-create-receipts/") && method == "GET" {
 		return a.createReceipt(w, r, u, strings.TrimPrefix(path, "/api/v1/project-create-receipts/"))
 	}
@@ -124,6 +127,10 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 			params := map[string]string{}
 			for k, v := range r.URL.Query() {
 				params[k] = v[0]
+			}
+			if e := strictPaging(params); e != nil {
+				fail(w, 400, "INVALID_FILTER", e.Error())
+				return nil
 			}
 			items, total, asOf, e := a.listAt(ctx, u, params)
 			var le listError

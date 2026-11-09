@@ -30,7 +30,7 @@ const app = useApp(),
   followup = ref<'overdue' | 'upcoming'>(route.query.window === 'upcoming' ? 'upcoming' : 'overdue');
 let generation = 0;
 const view = computed(() =>
-  route.path === '/pipeline' ? 'pipeline' : route.path === '/followups' ? 'followups' : route.path === '/unassigned' ? 'unassigned' : 'projects'
+  route.path === '/followups' ? 'followups' : route.path === '/unassigned' ? 'unassigned' : 'projects'
 );
 const scopeName = computed(() => projectScopeLabel(app.user));
 const scopeNote = computed(
@@ -44,7 +44,7 @@ const scopeNote = computed(
 );
 const title = computed(
   () =>
-    ({ pipeline: '项目管道', followups: '待跟进', unassigned: '待分配草稿', projects: scopeName.value })[view.value]
+    ({ followups: '待跟进', unassigned: '待分配草稿', projects: scopeName.value })[view.value]
 );
 async function load() {
   const n = ++generation;
@@ -105,7 +105,6 @@ const asOfText = computed(() => (asOf.value ? new Date(asOf.value).toLocaleStrin
       </p>
     </div>
     <div class="actions">
-      <ActionButton v-if="view === 'pipeline'" action-id="nav.open" :run="() => router.push('/projects')">列表视图</ActionButton>
       <ActionButton v-if="view === 'unassigned' && can(app.user, 'project.create')" action-id="project.create" primary :run="() => router.push('/new')">新建项目</ActionButton>
     </div>
   </div>
@@ -159,86 +158,66 @@ const asOfText = computed(() => (asOf.value ? new Date(asOf.value).toLocaleStrin
     {{ failure }} <ActionButton action-id="project.reload" :run="load">重新加载</ActionButton>
   </div>
   <template v-else>
-    <div v-if="view === 'pipeline'">
-      <p class="note">G2 管道仅展示当前页 {{ items.length }} / 共 {{ total }} 项，按阶段分组；各阶段全量计数与逐栏分页在后续批次提供。</p>
-      <div class="pipeline">
-        <section v-for="(label, key) in stages" :key="key">
-          <h3>
-            {{ label }} <small>本页 {{ items.filter((p) => p.salesStage === key).length }}</small>
-          </h3>
-          <ActionButton
-            v-for="p in items.filter((p) => p.salesStage === key)"
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>报备编号 / 客户</th>
+            <th>项目名称</th>
+            <th v-if="showLocation">地区</th>
+            <th>销售阶段</th>
+            <th>报备状态</th>
+            <th v-if="showOwner">负责人</th>
+            <th>下次跟进 / 下一步</th>
+            <th>更新时间</th>
+            <th><span class="sr-only">操作</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="p in items"
             :key="p.id"
-            action-id="project.preview"
-            :run="() => open(p)"
+            tabindex="0"
+            data-action-id="project.preview"
+            :aria-label="'预览 ' + (p.projectName || '未命名草稿')"
+            @click="open(p)"
+            @keydown.enter="open(p)"
+            @keydown.space.prevent="open(p)"
           >
-            <strong>{{ p.projectName || '未命名草稿' }}</strong><small>{{ p.customer }}</small><span class="badge">{{ statuses[p.intakeStatus] }}</span>
-          </ActionButton>
-        </section>
-      </div>
+            <td>
+              <span class="mono">{{ p.registrationNo }}</span><small>{{ p.customer || '待填写客户' }}</small>
+            </td>
+            <td class="project-cell">{{ p.projectName || '未命名草稿' }}</td>
+            <td v-if="showLocation">{{ p.location.province }} {{ p.location.city }}</td>
+            <td>{{ stages[p.salesStage] }}</td>
+            <td>
+              <span :class="['badge', p.intakeStatus.toLowerCase()]">{{ statuses[p.intakeStatus] }}</span>
+            </td>
+            <td v-if="showOwner" :class="{ unassigned: !p.ownerSubject }">{{ owner(p) }}</td>
+            <td>
+              {{ when(p.nextFollowupAt) }}<small>{{ p.nextAction || '尚未记录下一步' }}</small>
+            </td>
+            <td class="muted">{{ when(p.updatedAt) }}</td>
+            <td @click.stop>
+              <ActionButton action-id="project.preview" :run="() => open(p)" aria-label="预览项目">
+                <ArrowUpRight :size="15" aria-hidden="true" />
+              </ActionButton>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
-    <template v-else>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>报备编号 / 客户</th>
-              <th>项目名称</th>
-              <th v-if="showLocation">地区</th>
-              <th>销售阶段</th>
-              <th>报备状态</th>
-              <th v-if="showOwner">负责人</th>
-              <th>下次跟进 / 下一步</th>
-              <th>更新时间</th>
-              <th><span class="sr-only">操作</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="p in items"
-              :key="p.id"
-              tabindex="0"
-              data-action-id="project.preview"
-              :aria-label="'预览 ' + (p.projectName || '未命名草稿')"
-              @click="open(p)"
-              @keydown.enter="open(p)"
-              @keydown.space.prevent="open(p)"
-            >
-              <td>
-                <span class="mono">{{ p.registrationNo }}</span><small>{{ p.customer || '待填写客户' }}</small>
-              </td>
-              <td class="project-cell">{{ p.projectName || '未命名草稿' }}</td>
-              <td v-if="showLocation">{{ p.location.province }} {{ p.location.city }}</td>
-              <td>{{ stages[p.salesStage] }}</td>
-              <td>
-                <span :class="['badge', p.intakeStatus.toLowerCase()]">{{ statuses[p.intakeStatus] }}</span>
-              </td>
-              <td v-if="showOwner" :class="{ unassigned: !p.ownerSubject }">{{ owner(p) }}</td>
-              <td>
-                {{ when(p.nextFollowupAt) }}<small>{{ p.nextAction || '尚未记录下一步' }}</small>
-              </td>
-              <td class="muted">{{ when(p.updatedAt) }}</td>
-              <td @click.stop>
-                <ActionButton action-id="project.preview" :run="() => open(p)" aria-label="预览项目">
-                  <ArrowUpRight :size="15" aria-hidden="true" />
-                </ActionButton>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="mobile-projects">
-        <ActionButton
-          v-for="p in items"
-          :key="p.id"
-          action-id="project.preview"
-          class="project-card"
-          :run="() => open(p)"
-        >
-          <span class="mono">{{ p.registrationNo }}</span><strong>{{ p.projectName || '未命名草稿' }}</strong><span>{{ p.customer }}</span><span class="card-meta"><span class="badge">{{ statuses[p.intakeStatus] }}</span>{{ stages[p.salesStage] }} · {{ owner(p) }}</span><small>下一步：{{ p.nextAction || '尚未记录' }}</small>
-        </ActionButton>
-      </div>
-    </template>
+    <div class="mobile-projects">
+      <ActionButton
+        v-for="p in items"
+        :key="p.id"
+        action-id="project.preview"
+        class="project-card"
+        :run="() => open(p)"
+      >
+        <span class="mono">{{ p.registrationNo }}</span><strong>{{ p.projectName || '未命名草稿' }}</strong><span>{{ p.customer }}</span><span class="card-meta"><span class="badge">{{ statuses[p.intakeStatus] }}</span>{{ stages[p.salesStage] }} · {{ owner(p) }}</span><small>下一步：{{ p.nextAction || '尚未记录' }}</small>
+      </ActionButton>
+    </div>
     <div v-if="!items.length && !loading" class="empty">
       <h2>{{ q || status || stage || province || after ? '没有符合筛选条件的项目' : view === 'unassigned' ? '没有待分配草稿' : view === 'followups' ? (followup === 'overdue' ? '没有逾期的跟进' : '未来 7 天没有安排跟进') : '还没有项目' }}</h2>
       <p class="muted">{{ q || status || stage || province || after ? '调整或清空筛选条件后再试。' : '新建报备后会出现在这里。' }}</p>
