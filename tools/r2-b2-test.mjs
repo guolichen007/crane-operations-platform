@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync, chmodSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { gateProblems, runPattern } from './r2-db-gate.mjs';
 
 const root = resolve('deploy/compose/runtime/r2-b2-test');
 mkdirSync(root, { recursive: true, mode: 0o700 }); chmodSync(root, 0o700);
@@ -44,6 +45,19 @@ const b3Packages = [
     'TestMigrationUpFromOldDatabase',
   ]],
 ];
+// H2-1A Inventory operating scope (docs/04-前端与可视化/Homepage-H2-0-运营数据契约.md §2.6, §10).
+// Only the target tests run (-test.run, exact set) to keep this job's duration;
+// each must PASS on the isolated PostgreSQL, a SKIP / missing / extra test fails the job.
+const h21aPackages = [
+  ['h21a-inventory', './internal/inventory', [
+    'TestInventoryScopeStatusLifecycleAndDedup',
+    'TestInventoryProjectCountsMatchAssetList',
+    'TestInventoryScopeKeepsRetiredAssetHistory',
+  ]],
+  ['h21a-cloudapi', './services/cloud-api/internal/app', [
+    'TestH21AInventoryScopeAuthorizationAndRetiredHistory',
+  ]],
+];
 function run(command, args, extra = {}, capture = false) {
   const result = spawnSync(command, args, { encoding: 'utf8', stdio: capture ? 'pipe' : 'inherit', env: { ...environment, ...extra } });
   if (result.error || result.status !== 0) {
@@ -63,10 +77,17 @@ function runGate(batch, name) {
     if (!output.includes('--- PASS: ' + required)) throw Error(`R2 ${batch} required counterexample was skipped or failed: ${name} :: ${required}`);
   }
 }
+function runTargetGate(name, required) {
+  const output = run(docker, [...compose, 'run', '--rm', '--no-deps', 'test-runner', '-test.v', '-test.count=1', '-test.timeout=120s', '-test.run=' + runPattern(required)], { A1_TEST_BINARY: resolve(root, name + '.test') }, true);
+  process.stdout.write(output);
+  const problems = gateProblems(output, required, { exact: true });
+  if (problems.length) throw Error(`R2 H2-1A gate failed: ${name} :: ${problems.join('; ')}`);
+  for (const test of required) console.log(`R2_H21A_REQUIRED_PASS ${name} ${test}`);
+}
 function requiredByName(name, batch) {
   return (batch === 'B2' ? b2Packages : b3Packages).find(([n]) => n === name)[2];
 }
-for (const [name, path] of [...b2Packages, ...b3Packages]) run(go, ['test', '-c', '-o', resolve(root, name + '.test'), path]);
+for (const [name, path] of [...b2Packages, ...b3Packages, ...h21aPackages]) run(go, ['test', '-c', '-o', resolve(root, name + '.test'), path]);
 const credentialFile = resolve(root, '.env');
 writeFileSync(credentialFile, `A1_DB_PASSWORD=${randomBytes(32).toString('hex')}\n`, { mode: 0o600 }); chmodSync(credentialFile, 0o600);
 const project = `crane-r2-b2-test-${process.pid}`;
@@ -79,6 +100,8 @@ try {
   console.log('R2_B2_DB_TEST=PASS');
   for (const [name] of b3Packages) runGate('B3', name);
   console.log('R2_B3_DB_TEST=PASS');
+  for (const [name, , required] of h21aPackages) runTargetGate(name, required);
+  console.log('R2_H21A_DB_TEST=PASS');
 } finally {
   run(docker, [...compose, 'down', '--volumes', '--remove-orphans'], first);
 }

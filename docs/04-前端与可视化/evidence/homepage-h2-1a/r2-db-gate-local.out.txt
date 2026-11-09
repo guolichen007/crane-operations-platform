@@ -1,0 +1,29 @@
+# H2-1A-R1 r2-db-test gate, local equivalent (tools/r2-db-gate.mjs on real Go test binaries + portable PostgreSQL 14).
+# Modes: normal; skip = no DATABASE_URL (Go binary exits 0!); drop-one = -test.run omits a required test (exit 0!); fail-mutation = RETIRED filter removed.
+[normal] h21a-inventory: exit=0 GATE_PASS
+    --- PASS: TestInventoryScopeStatusLifecycleAndDedup (0.11s)
+    --- PASS: TestInventoryProjectCountsMatchAssetList (0.10s)
+    --- PASS: TestInventoryScopeKeepsRetiredAssetHistory (0.10s)
+    PASS
+[normal] h21a-cloudapi: exit=0 GATE_PASS
+    --- PASS: TestH21AInventoryScopeAuthorizationAndRetiredHistory (0.20s)
+    PASS
+[skip] h21a-inventory: exit=0 GATE_FAIL skipped test present; required test not PASSed: TestInventoryScopeStatusLifecycleAndDedup; required test not PASSed: TestInventoryProjectCountsMatchAssetList; required test not PASSed: TestInventoryScopeKeepsRetiredAssetHistory
+    --- SKIP: TestInventoryScopeStatusLifecycleAndDedup (0.00s)
+    --- SKIP: TestInventoryProjectCountsMatchAssetList (0.00s)
+    --- SKIP: TestInventoryScopeKeepsRetiredAssetHistory (0.00s)
+    PASS
+[skip] h21a-cloudapi: exit=0 GATE_FAIL skipped test present; required test not PASSed: TestH21AInventoryScopeAuthorizationAndRetiredHistory
+    --- SKIP: TestH21AInventoryScopeAuthorizationAndRetiredHistory (0.00s)
+    PASS
+[drop-one] h21a-inventory: exit=0 GATE_FAIL required test not PASSed: TestInventoryScopeStatusLifecycleAndDedup
+    --- PASS: TestInventoryProjectCountsMatchAssetList (0.10s)
+    --- PASS: TestInventoryScopeKeepsRetiredAssetHistory (0.13s)
+    PASS
+[drop-one] h21a-cloudapi: exit=0 GATE_FAIL required test not PASSed: TestH21AInventoryScopeAuthorizationAndRetiredHistory
+    PASS
+[fail-mutation] h21a-inventory: exit=1 GATE_FAIL test binary did not PASS; required test not PASSed: TestInventoryScopeStatusLifecycleAndDedup; required test not PASSed: TestInventoryScopeKeepsRetiredAssetHistory
+    --- FAIL: TestInventoryScopeStatusLifecycleAndDedup (0.11s)
+    --- FAIL: TestInventoryScopeKeepsRetiredAssetHistory (0.10s)
+[fail-mutation] h21a-cloudapi: exit=1 GATE_FAIL test binary did not PASS; required test not PASSed: TestH21AInventoryScopeAuthorizationAndRetiredHistory
+    --- FAIL: TestH21AInventoryScopeAuthorizationAndRetiredHistory (0.16s)

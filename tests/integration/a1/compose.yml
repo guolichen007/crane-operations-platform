@@ -20,6 +20,9 @@ services:
     environment:
       A1_TEST_DATABASE_URL: postgres://a1test:${A1_DB_PASSWORD:?generated anonymous test credential required}@postgres:5432/a1test?sslmode=disable
       A1_INVENTORY_EXAMPLE: /fixtures/inventory.example.yaml
+      # internal/inventory DB tests read the A0 names; same isolated database, each test creates its own DB.
+      A0_TEST_DATABASE_URL: postgres://a1test:${A1_DB_PASSWORD:?generated anonymous test credential required}@postgres:5432/a1test?sslmode=disable
+      A0_INVENTORY_EXAMPLE: /fixtures/inventory.example.yaml
     volumes:
       - ${A1_TEST_BINARY:?compiled test binary required}:/tmp/a1.test:ro
       - ../../../deploy/inventory/inventory.example.yaml:/fixtures/inventory.example.yaml:ro
