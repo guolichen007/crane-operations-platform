@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/operationsrealcounts.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "connected",
+    "pendingReview",
+    "pendingReviewAlarm",
+    "pendingReviewAssets",
+    "stale",
+    "unknownTime",
+    "offline",
+    "live"
+  ],
+  "properties": {
+    "connected": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "pendingReview": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "pendingReviewAlarm": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "pendingReviewAssets": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "$ref": "#/$defs/OperationsReviewAsset"
+      }
+    },
+    "stale": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "unknownTime": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "offline": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "live": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "$defs": {
+    "OperationsReviewAsset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "assetStatus",
+        "alarm"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        },
+        "assetStatus": {
+          "type": "string",
+          "enum": [
+            "DRAFT",
+            "OUT_OF_SERVICE"
+          ]
+        },
+        "alarm": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

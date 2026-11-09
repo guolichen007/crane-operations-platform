@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/alarmattributioncell.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "attributed",
+    "unattributed"
+  ],
+  "properties": {
+    "attributed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "unattributed": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "$defs": {}
+}

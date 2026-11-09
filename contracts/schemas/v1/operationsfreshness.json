@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/operationsfreshness.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "staleAfterSeconds",
+    "maxFutureSkewSeconds",
+    "alarmWindow",
+    "windowStart",
+    "windowEnd"
+  ],
+  "properties": {
+    "staleAfterSeconds": {
+      "type": "integer",
+      "minimum": 300,
+      "maximum": 7200
+    },
+    "maxFutureSkewSeconds": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 600
+    },
+    "alarmWindow": {
+      "type": "string",
+      "enum": [
+        "PT1H",
+        "PT6H",
+        "PT24H",
+        "P7D"
+      ]
+    },
+    "windowStart": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "windowEnd": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "$defs": {}
+}

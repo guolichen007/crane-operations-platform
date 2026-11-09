@@ -115,6 +115,23 @@ add('/api/v1/equipment/{id}/remove', 'post', 'removeEquipment', null);
 add('/api/v1/assets/{assetId}/equipment-relations', 'get', 'listEquipmentRelations', { type: 'array', items: equipmentRelation });
 add('/api/v1/assets/{assetId}/equipment-relations', 'post', 'createEquipmentRelation', equipmentRelation, '201');
 add('/api/v1/equipment-relations/{id}/remove', 'post', 'removeEquipmentRelation', null);
+// Operations summary (Homepage H2-1C): read-only, authorized-scope statistics. Only region / alarmWindow
+// are accepted; 400 malformed parameter, 404 unknown region, 503 any required step failed (never partial).
+add('/api/v1/operations/summary', 'get', 'getOperationsSummary', { $ref: '#/components/schemas/OperationsSummary' });
+Object.assign(paths['/api/v1/operations/summary'].get, {
+  security: [{ webSession: [] }],
+  parameters: [
+    { name: 'region', in: 'query', required: false, description: '6-digit administrative code; omitted = whole authorized scope', schema: { type: 'string', pattern: '^[0-9]{6}$' } },
+    { name: 'alarmWindow', in: 'query', required: false, schema: { type: 'string', enum: ['PT1H', 'PT6H', 'PT24H', 'P7D'], default: 'PT24H' } },
+  ],
+});
+Object.assign(paths['/api/v1/operations/summary'].get.responses, {
+  200: { ...paths['/api/v1/operations/summary'].get.responses['200'], description: 'Complete summary from one database snapshot', headers: { 'Cache-Control': { schema: { type: 'string', const: 'no-store' } } } },
+  400: { description: 'Malformed region or alarmWindow' },
+  404: { description: 'Region code not in the administrative index' },
+  503: { description: 'Authorization, statistics query or administrative index unavailable; no partial statistics' },
+});
+delete paths['/api/v1/operations/summary'].get.responses['403'];
 paths['/auth/logout'].post.responses['204'].headers = { Location: { description: 'Optional OIDC RP-initiated logout URL with client_id and exact post_logout_redirect_uri; contains no token', schema: { type: 'string', format: 'uri' } } };
 for (const path of ['/auth/login', '/auth/callback']) {
   paths[path].get.security = [];

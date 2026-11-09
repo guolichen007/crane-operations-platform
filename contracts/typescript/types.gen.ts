@@ -395,6 +395,95 @@ export interface EquipmentRelation {
   notes: string;
   version: number;
 }
+export interface NotAvailable {
+  status: "NOT_AVAILABLE";
+}
+export interface RuntimeSourceCounts {
+  REAL: number;
+  SIMULATION: number;
+  TEST: number;
+}
+export interface AlarmAttributionCell {
+  attributed: number;
+  unattributed: number;
+}
+export interface OperationsAlarmCells {
+  REAL: AlarmAttributionCell;
+  SIMULATION: AlarmAttributionCell;
+  TEST: AlarmAttributionCell;
+}
+export interface OperationsAlarmRecords {
+  cells: OperationsAlarmCells;
+  total: number;
+  assets: number;
+  futureSkew: number;
+}
+export interface OperationsAlarmCounts {
+  devices: RuntimeSourceCounts;
+  devicesAll: number;
+  records: OperationsAlarmRecords;
+}
+export interface OperationsReviewAsset {
+  id: string;
+  assetStatus: "DRAFT" | "OUT_OF_SERVICE";
+  alarm: boolean;
+}
+export interface OperationsRealCounts {
+  connected: number;
+  pendingReview: number;
+  pendingReviewAlarm: number;
+  pendingReviewAssets: (OperationsReviewAsset)[];
+  stale: number;
+  unknownTime: number;
+  offline: number;
+  live: number;
+}
+export interface OperationsAssetCounts {
+  registered: number;
+  draft: number;
+  outOfService: number;
+  noRuntime: number;
+  unlocated: number;
+  atScopeLevel: number;
+}
+export interface OperationsMetrics {
+  projects: number;
+  assets: OperationsAssetCounts;
+  bound: RuntimeSourceCounts;
+  real: OperationsRealCounts;
+  operation: NotAvailable;
+  alarm: OperationsAlarmCounts;
+  pendingEvents: NotAvailable;
+}
+export interface OperationsRegion {
+  adcode: number;
+  name: string;
+  registered: number;
+  realConnected: number;
+  realAlarmDevices: number;
+}
+export interface OperationsFreshness {
+  staleAfterSeconds: number;
+  maxFutureSkewSeconds: number;
+  alarmWindow: "PT1H" | "PT6H" | "PT24H" | "P7D";
+  windowStart: string;
+  windowEnd: string;
+}
+export interface OperationsScope {
+  region: number | null;
+  regionName: string;
+  authorizedProjects: number;
+  geoIndexVersion: string;
+}
+export interface OperationsSummary {
+  schemaVersion: 1;
+  sampledAt: string;
+  generatedAt: string;
+  scope: OperationsScope;
+  freshness: OperationsFreshness;
+  metrics: OperationsMetrics;
+  regions: (OperationsRegion)[];
+}
 export type Envelope = {
   schemaVersion: 1;
   messageId: string;

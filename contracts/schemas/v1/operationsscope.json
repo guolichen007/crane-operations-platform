@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/operationsscope.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "region",
+    "regionName",
+    "authorizedProjects",
+    "geoIndexVersion"
+  ],
+  "properties": {
+    "region": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 100000,
+          "maximum": 999999
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "regionName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "authorizedProjects": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "geoIndexVersion": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "$defs": {}
+}

@@ -53,6 +53,7 @@ type fieldSchema struct {
 	Maximum   *float64      `json:"maximum"`
 	MinLength int           `json:"minLength"`
 	MaxLength *int          `json:"maxLength"`
+	MaxItems  *int          `json:"maxItems"`
 }
 type objectSchema struct {
 	Properties map[string]fieldSchema `json:"properties"`
@@ -93,8 +94,11 @@ func validateObject(name string, raw []byte) error {
 		}
 		if rule.Type == "array" {
 			var values []json.RawMessage
-			if json.Unmarshal(b, &values) != nil || rule.Items == nil || rule.Items.Ref == "" {
+			if json.Unmarshal(b, &values) != nil || values == nil || rule.Items == nil || rule.Items.Ref == "" {
 				return fmt.Errorf("array required: %s", key)
+			}
+			if rule.MaxItems != nil && len(values) > *rule.MaxItems {
+				return fmt.Errorf("too many items: %s", key)
 			}
 			for _, value := range values {
 				if err := validateObject(strings.TrimPrefix(rule.Items.Ref, "#/$defs/"), value); err != nil {
@@ -106,6 +110,13 @@ func validateObject(name string, raw []byte) error {
 		if rule.Ref != "" {
 			if err := validateObject(strings.TrimPrefix(rule.Ref, "#/$defs/"), b); err != nil {
 				return err
+			}
+			continue
+		}
+		if rule.Type == "boolean" {
+			var v bool
+			if json.Unmarshal(b, &v) != nil {
+				return fmt.Errorf("boolean required: %s", key)
 			}
 			continue
 		}

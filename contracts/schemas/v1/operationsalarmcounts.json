@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/operationsalarmcounts.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "devices",
+    "devicesAll",
+    "records"
+  ],
+  "properties": {
+    "devices": {
+      "$ref": "#/$defs/RuntimeSourceCounts"
+    },
+    "devicesAll": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "records": {
+      "$ref": "#/$defs/OperationsAlarmRecords"
+    }
+  },
+  "$defs": {
+    "RuntimeSourceCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "REAL",
+        "SIMULATION",
+        "TEST"
+      ],
+      "properties": {
+        "REAL": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "SIMULATION": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "TEST": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "OperationsAlarmRecords": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cells",
+        "total",
+        "assets",
+        "futureSkew"
+      ],
+      "properties": {
+        "cells": {
+          "$ref": "#/$defs/OperationsAlarmCells"
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "assets": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "futureSkew": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "OperationsAlarmCells": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "REAL",
+        "SIMULATION",
+        "TEST"
+      ],
+      "properties": {
+        "REAL": {
+          "$ref": "#/$defs/AlarmAttributionCell"
+        },
+        "SIMULATION": {
+          "$ref": "#/$defs/AlarmAttributionCell"
+        },
+        "TEST": {
+          "$ref": "#/$defs/AlarmAttributionCell"
+        }
+      }
+    },
+    "AlarmAttributionCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attributed",
+        "unattributed"
+      ],
+      "properties": {
+        "attributed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unattributed": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

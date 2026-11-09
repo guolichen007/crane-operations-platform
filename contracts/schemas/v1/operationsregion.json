@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/operationsregion.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "adcode",
+    "name",
+    "registered",
+    "realConnected",
+    "realAlarmDevices"
+  ],
+  "properties": {
+    "adcode": {
+      "type": "integer",
+      "minimum": 100000,
+      "maximum": 999999
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "registered": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "realConnected": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "realAlarmDevices": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "$defs": {}
+}

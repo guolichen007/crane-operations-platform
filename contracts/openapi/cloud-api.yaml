@@ -2825,6 +2825,75 @@
         "x-audit": true,
         "x-project-scope-first": true
       }
+    },
+    "/api/v1/operations/summary": {
+      "get": {
+        "operationId": "getOperationsSummary",
+        "parameters": [
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "description": "6-digit administrative code; omitted = whole authorized scope",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{6}$"
+            }
+          },
+          {
+            "name": "alarmWindow",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "PT1H",
+                "PT6H",
+                "PT24H",
+                "P7D"
+              ],
+              "default": "PT24H"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Complete summary from one database snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationsSummary"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed region or alarmWindow"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Region code not in the administrative index"
+          },
+          "503": {
+            "description": "Authorization, statistics query or administrative index unavailable; no partial statistics"
+          }
+        },
+        "security": [
+          {
+            "webSession": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -5544,6 +5613,435 @@
           "version": {
             "type": "integer",
             "minimum": 1
+          }
+        }
+      },
+      "NotAvailable": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "NOT_AVAILABLE"
+            ]
+          }
+        }
+      },
+      "RuntimeSourceCounts": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "REAL",
+          "SIMULATION",
+          "TEST"
+        ],
+        "properties": {
+          "REAL": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "SIMULATION": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "TEST": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "AlarmAttributionCell": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "attributed",
+          "unattributed"
+        ],
+        "properties": {
+          "attributed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unattributed": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "OperationsAlarmCells": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "REAL",
+          "SIMULATION",
+          "TEST"
+        ],
+        "properties": {
+          "REAL": {
+            "$ref": "#/components/schemas/AlarmAttributionCell"
+          },
+          "SIMULATION": {
+            "$ref": "#/components/schemas/AlarmAttributionCell"
+          },
+          "TEST": {
+            "$ref": "#/components/schemas/AlarmAttributionCell"
+          }
+        }
+      },
+      "OperationsAlarmRecords": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "cells",
+          "total",
+          "assets",
+          "futureSkew"
+        ],
+        "properties": {
+          "cells": {
+            "$ref": "#/components/schemas/OperationsAlarmCells"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "assets": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "futureSkew": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "OperationsAlarmCounts": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "devices",
+          "devicesAll",
+          "records"
+        ],
+        "properties": {
+          "devices": {
+            "$ref": "#/components/schemas/RuntimeSourceCounts"
+          },
+          "devicesAll": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "records": {
+            "$ref": "#/components/schemas/OperationsAlarmRecords"
+          }
+        }
+      },
+      "OperationsReviewAsset": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "assetStatus",
+          "alarm"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,80}$"
+          },
+          "assetStatus": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "OUT_OF_SERVICE"
+            ]
+          },
+          "alarm": {
+            "type": "boolean"
+          }
+        }
+      },
+      "OperationsRealCounts": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "connected",
+          "pendingReview",
+          "pendingReviewAlarm",
+          "pendingReviewAssets",
+          "stale",
+          "unknownTime",
+          "offline",
+          "live"
+        ],
+        "properties": {
+          "connected": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "pendingReview": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "pendingReviewAlarm": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "pendingReviewAssets": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/OperationsReviewAsset"
+            }
+          },
+          "stale": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unknownTime": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "offline": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "live": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "OperationsAssetCounts": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "registered",
+          "draft",
+          "outOfService",
+          "noRuntime",
+          "unlocated",
+          "atScopeLevel"
+        ],
+        "properties": {
+          "registered": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "draft": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "outOfService": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "noRuntime": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unlocated": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "atScopeLevel": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "OperationsMetrics": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "projects",
+          "assets",
+          "bound",
+          "real",
+          "operation",
+          "alarm",
+          "pendingEvents"
+        ],
+        "properties": {
+          "projects": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "assets": {
+            "$ref": "#/components/schemas/OperationsAssetCounts"
+          },
+          "bound": {
+            "$ref": "#/components/schemas/RuntimeSourceCounts"
+          },
+          "real": {
+            "$ref": "#/components/schemas/OperationsRealCounts"
+          },
+          "operation": {
+            "$ref": "#/components/schemas/NotAvailable"
+          },
+          "alarm": {
+            "$ref": "#/components/schemas/OperationsAlarmCounts"
+          },
+          "pendingEvents": {
+            "$ref": "#/components/schemas/NotAvailable"
+          }
+        }
+      },
+      "OperationsRegion": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "adcode",
+          "name",
+          "registered",
+          "realConnected",
+          "realAlarmDevices"
+        ],
+        "properties": {
+          "adcode": {
+            "type": "integer",
+            "minimum": 100000,
+            "maximum": 999999
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "registered": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "realConnected": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "realAlarmDevices": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "OperationsFreshness": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "staleAfterSeconds",
+          "maxFutureSkewSeconds",
+          "alarmWindow",
+          "windowStart",
+          "windowEnd"
+        ],
+        "properties": {
+          "staleAfterSeconds": {
+            "type": "integer",
+            "minimum": 300,
+            "maximum": 7200
+          },
+          "maxFutureSkewSeconds": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 600
+          },
+          "alarmWindow": {
+            "type": "string",
+            "enum": [
+              "PT1H",
+              "PT6H",
+              "PT24H",
+              "P7D"
+            ]
+          },
+          "windowStart": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "windowEnd": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "OperationsScope": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "region",
+          "regionName",
+          "authorizedProjects",
+          "geoIndexVersion"
+        ],
+        "properties": {
+          "region": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 100000,
+                "maximum": 999999
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "regionName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "authorizedProjects": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "geoIndexVersion": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      },
+      "OperationsSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schemaVersion",
+          "sampledAt",
+          "generatedAt",
+          "scope",
+          "freshness",
+          "metrics",
+          "regions"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "type": "integer",
+            "const": 1
+          },
+          "sampledAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/OperationsScope"
+          },
+          "freshness": {
+            "$ref": "#/components/schemas/OperationsFreshness"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/OperationsMetrics"
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OperationsRegion"
+            }
           }
         }
       },

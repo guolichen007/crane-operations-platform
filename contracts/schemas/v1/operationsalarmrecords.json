@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/operationsalarmrecords.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "cells",
+    "total",
+    "assets",
+    "futureSkew"
+  ],
+  "properties": {
+    "cells": {
+      "$ref": "#/$defs/OperationsAlarmCells"
+    },
+    "total": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "assets": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "futureSkew": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "$defs": {
+    "OperationsAlarmCells": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "REAL",
+        "SIMULATION",
+        "TEST"
+      ],
+      "properties": {
+        "REAL": {
+          "$ref": "#/$defs/AlarmAttributionCell"
+        },
+        "SIMULATION": {
+          "$ref": "#/$defs/AlarmAttributionCell"
+        },
+        "TEST": {
+          "$ref": "#/$defs/AlarmAttributionCell"
+        }
+      }
+    },
+    "AlarmAttributionCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attributed",
+        "unattributed"
+      ],
+      "properties": {
+        "attributed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unattributed": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

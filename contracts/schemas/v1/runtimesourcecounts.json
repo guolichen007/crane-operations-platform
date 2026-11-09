@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/runtimesourcecounts.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "REAL",
+    "SIMULATION",
+    "TEST"
+  ],
+  "properties": {
+    "REAL": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "SIMULATION": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "TEST": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "$defs": {}
+}
