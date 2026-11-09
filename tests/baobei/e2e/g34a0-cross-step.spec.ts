@@ -1,9 +1,5 @@
-import {
-  test,
-  expect,
-  type Page,
-  type Request,
-} from '../../../apps/project-intake-web/node_modules/@playwright/test/index.mjs';
+import { type Page, type Request } from '../../../apps/project-intake-web/node_modules/@playwright/test/index.mjs';
+import { test, expect, uniq } from './support/isolation';
 // G3-4-A0 gate 1: an invalid number that was not corrected must never be
 // dropped silently when the user changes step, jumps, goes back, leaves or
 // submits — and the previously saved value must not be (re)written as if the
@@ -56,7 +52,7 @@ const stepTo = (p: Page, label: string) => action(p, 'project.step-jump').filter
 
 test('A0-1 下一步：非法金额不能被静默丢弃后保存/提交旧值', async ({ page }, info) => {
   await login(page, 'synthetic-a');
-  const id = await prepared(page, `A0下一步-${info.project.name}-${Date.now()}`);
+  const id = await prepared(page, `A0下一步-${uniq(info.project.name)}`);
   await stepTo(page, '商务');
   await page.locator('[name=estimatedAmount]').fill('123.456');
   await expect(fieldAlert(page, 'estimatedAmount')).toContainText('最多保留两位小数');
@@ -79,7 +75,7 @@ test('A0-1 下一步：非法金额不能被静默丢弃后保存/提交旧值',
 
 test('A0-2 顶部步骤跳转与上一步：同一规则', async ({ page }, info) => {
   await login(page, 'synthetic-a');
-  await prepared(page, `A0跳转-${info.project.name}-${Date.now()}`);
+  await prepared(page, `A0跳转-${uniq(info.project.name)}`);
   await stepTo(page, '商务');
   await page.locator('[name=estimatedAmount]').fill('100.005');
   const sent = writes(page);
@@ -99,7 +95,7 @@ test('A0-2 顶部步骤跳转与上一步：同一规则', async ({ page }, info
 
 test('A0-3 离开整个报备：非法输入属于未保存修改，需要确认', async ({ page }, info) => {
   await login(page, 'synthetic-a');
-  await prepared(page, `A0离开-${info.project.name}-${Date.now()}`);
+  await prepared(page, `A0离开-${uniq(info.project.name)}`);
   await stepTo(page, '商务');
   await page.locator('[name=estimatedAmount]').fill('12345678.9999');
   const sent = writes(page);
@@ -112,7 +108,7 @@ test('A0-3 离开整个报备：非法输入属于未保存修改，需要确认
 
 test('A0-4 设备字段与移除设备行', async ({ page }, info) => {
   await login(page, 'synthetic-a');
-  await prepared(page, `A0设备-${info.project.name}-${Date.now()}`);
+  await prepared(page, `A0设备-${uniq(info.project.name)}`);
   await stepTo(page, '设备');
   await page.locator('[name=quantity0]').fill('2.5');
   await expect(fieldAlert(page, 'quantity0')).toBeVisible();
@@ -137,7 +133,7 @@ test('A0-4 设备字段与移除设备行', async ({ page }, info) => {
 
 test('A0-5 自动保存进行中输入非法值：不产生新的错误写入', async ({ page }, info) => {
   await login(page, 'synthetic-a');
-  const id = await prepared(page, `A0自动保存-${info.project.name}-${Date.now()}`);
+  const id = await prepared(page, `A0自动保存-${uniq(info.project.name)}`);
   await stepTo(page, '商务');
   // Slow the save so it is in flight while the user types the invalid value.
   await page.route('**/api/v1/projects/' + id, async (route) => {
@@ -161,7 +157,7 @@ test('A0-5 自动保存进行中输入非法值：不产生新的错误写入', 
 
 test('A0-6 历史异常金额：跨步骤后仍需处理', async ({ page }, info) => {
   await login(page, 'synthetic-a');
-  const tag = `A0历史-${info.project.name}-${Date.now()}`;
+  const tag = `A0历史-${uniq(info.project.name)}`;
   const id = await prepared(page, tag);
   await page.route(`**/api/v1/projects/${id}`, async (route) => {
     if (route.request().method() !== 'GET') return route.continue();
@@ -179,9 +175,11 @@ test('A0-6 历史异常金额：跨步骤后仍需处理', async ({ page }, info
   expect(sent).toEqual([]);
 });
 
-test('A0-7 明确放弃：恢复已保存值后可切换步骤并正常提交', async ({ page, browser, baseURL }, info) => {
+test('A0-7 明确放弃：恢复已保存值后可切换步骤并正常提交', async ({ page, cleanup }, info) => {
   await login(page, 'synthetic-a');
-  const id = await prepared(page, `A0放弃-${info.project.name}-${Date.now()}`);
+  // Registered before the submit: the fixture returns the filing after the
+  // test, also when an assertion after the submit fails (G3-4-A1).
+  const id = cleanup.track(await prepared(page, `A0放弃-${uniq(info.project.name)}`));
   await stepTo(page, '商务');
   await page.locator('[name=estimatedAmount]').fill('123.456');
   await action(page, 'project.step-next').click();
@@ -195,11 +193,4 @@ test('A0-7 明确放弃：恢复已保存值后可切换步骤并正常提交', 
   await action(page, 'project.submit').click();
   expect((await sub).status()).toBe(200);
   expect((await api(page, '/api/v1/projects/' + id)).body.estimatedAmount).toBe(125000.25);
-  // Leave the shared review queue as other specs expect (they page through it).
-  const ctx = await browser.newContext({ baseURL });
-  const director = await ctx.newPage();
-  await login(director, 'synthetic-director');
-  const cur = (await api(director, '/api/v1/projects/' + id)).body;
-  expect((await api(director, `/api/v1/projects/${id}/return`, 'POST', { version: cur.version, reason: '合成测试数据清理' })).status).toBe(200);
-  await ctx.close();
 });

@@ -2381,6 +2381,11 @@ td.unassigned,
   font-size: 13px;
   line-height: 1.5;
 }
+.panel-asof {
+  margin: -8px 0 10px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
 .home-governance {
   grid-column: 1 / -1;
 }

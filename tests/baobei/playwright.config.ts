@@ -1,6 +1,8 @@
 import { defineConfig } from '../../apps/project-intake-web/node_modules/@playwright/test/index.mjs';
 export default defineConfig({
   testDir: './e2e',
+  // G3-4-A1: return pending filings left by an interrupted earlier run.
+  globalSetup: './e2e/support/global-setup.ts',
   fullyParallel: false,
   workers: 1,
   retries: 0,

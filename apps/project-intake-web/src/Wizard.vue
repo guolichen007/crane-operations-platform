@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { reactive, ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
 import { Check, ShieldCheck, Plus, Trash2, UserRound } from '@lucide/vue';
 import { useApp } from './store';
@@ -246,6 +246,10 @@ watch(invalidNumbers, (v) => {
   if (v.size) {
     clearTimeout(timer);
     saved.value = '数值有误，未保存';
+  } else if (saved.value === '数值有误，未保存') {
+    // G3-4-A1 UAT-F1: after "放弃修改" the form can be back at the saved
+    // state (no snapshot change fires), so the status must not stay stale.
+    saved.value = dirty.value ? '有未保存改动' : '草稿已保存';
   }
 });
 watch(
@@ -369,6 +373,13 @@ const stepNotice = ref('');
 function goStep(n: number) {
   if (invalidBlock.value) {
     stepNotice.value = invalidBlock.value + '，或点击该字段下的“放弃修改”后再切换步骤。';
+    // G3-4-A1 visual review V1: on narrow screens the field can sit under the
+    // fixed action bar; bring the first invalid field (and its hint) into view.
+    void nextTick(() => {
+      const el = document.querySelector<HTMLInputElement>('.wizard [aria-invalid="true"]');
+      el?.scrollIntoView({ block: 'center' });
+      el?.focus({ preventScroll: true });
+    });
     return;
   }
   stepNotice.value = '';

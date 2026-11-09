@@ -1,11 +1,6 @@
 import { fileURLToPath } from 'node:url';
-import {
-  test,
-  expect,
-  type Browser,
-  type Page,
-  type Route,
-} from '../../../apps/project-intake-web/node_modules/@playwright/test/index.mjs';
+import { type Browser, type Page, type Route } from '../../../apps/project-intake-web/node_modules/@playwright/test/index.mjs';
+import { test, expect, RUN, uniq, pendingByTag, returnPending, assertCleaned } from './support/isolation';
 // G3-4-A0 gate 2: four-role home against the real API. Every number on the
 // home page must equal the server aggregate in the same data state, and the
 // list it opens must report the same total. The shared e2e database
@@ -80,9 +75,11 @@ const expectedTiles: Record<string, string[]> = {
 // Realistic synthetic data so every role's home has content: sales A
 // (team of synthetic-manager) gets projects across stages, overdue and
 // upcoming follow-ups, two submitted filings and one returned; admin gets an
-// unassigned draft. Submitted filings are returned by the director in the
-// last test so the shared review queue is left as other specs expect.
-const SEED = 'A0示例';
+// unassigned draft. Submitted filings are returned in afterAll so the shared
+// review queue is left as other specs expect. G3-4-A1: the seed is tagged
+// with the run id — a previous run's (possibly partial, date-stale) seed is
+// never mistaken for this run's.
+const SEED = `A0示例${RUN}`;
 const full = (name: string, stage: string, extra: Record<string, unknown> = {}) => ({
   projectName: name,
   customer: name.replace(/项目.*$/, '') + '有限公司',
@@ -218,7 +215,7 @@ test('G3-4-A0 范围与隐私：跨组金额与待分配草稿不外泄', async 
   test.skip(info.project.name !== 'desktop', 'once');
   test.setTimeout(120000);
   const vp = { width: 1440, height: 900 };
-  const tag = `A0隐私-${Date.now()}`;
+  const tag = uniq('A0隐私');
   const subjects = ['synthetic-a', 'synthetic-manager', 'synthetic-manager-other', 'synthetic-director', 'synthetic-admin'];
   const pages: Record<string, Page> = {};
   for (const s of subjects) pages[s] = await session(browser, s, vp);
@@ -404,14 +401,13 @@ test('G3-4-A0 长名称、超大数字与历史隐式已知说明（390 与 1440
   }
 });
 
-test('G3-4-A0 清理：示例中仍待审的报备由总监退回', async ({ browser }, info) => {
-  test.skip(info.project.name !== 'desktop', 'once');
+// Cleanup of the seed's pending filings. afterAll (not a last test) runs also
+// when an earlier test failed or the file was filtered with --grep; a filing
+// that cannot be returned fails the hook with id, status and reason.
+test.afterAll(async ({ browser }, info) => {
+  if (info.project.name !== 'desktop') return;
   const d = await session(browser, 'synthetic-director', viewports[0]);
-  const list = (await api(d, '/api/v1/projects?pageSize=100&review=pending&q=' + encodeURIComponent(SEED))).body.items as { id: string }[];
-  for (const it of list) {
-    const cur = (await api(d, `/api/v1/projects/${it.id}`)).body;
-    if (['SUBMITTED', 'UNDER_REVIEW'].includes(cur.intakeStatus))
-      expect((await api(d, `/api/v1/projects/${it.id}/return`, 'POST', { version: cur.version, reason: '合成测试数据清理' })).status).toBe(200);
-  }
+  const ids = await pendingByTag(d, SEED);
   await d.context().close();
+  assertCleaned(await returnPending(browser, ids, 'g34a0-dashboard seed'), 'g34a0-dashboard seed');
 });

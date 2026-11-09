@@ -1,11 +1,6 @@
 import { fileURLToPath } from 'node:url';
-import {
-  test,
-  expect,
-  type Browser,
-  type Page,
-  type Route,
-} from '../../../apps/project-intake-web/node_modules/@playwright/test/index.mjs';
+import { type Browser, type Page, type Route } from '../../../apps/project-intake-web/node_modules/@playwright/test/index.mjs';
+import { test, expect, uniq } from './support/isolation';
 // G3-3B: statistics page with real API amounts, plus the G3-3A pipeline
 // leftovers (no endless "load more" after data moved; target stage
 // re-validated after 409). The shared e2e database accumulates projects from
@@ -63,7 +58,7 @@ for (const vp of [
 ]) {
   test(`G3-3B 统计页真实金额与阶段对照 @${vp.name}`, async ({ browser }, info) => {
     test.skip(info.project.name !== 'desktop', 'viewports are set explicitly; run once');
-    const tag = `G33B${vp.name}-${Date.now()}`;
+    const tag = uniq(`G33B${vp.name}`);
     const sales = await session(browser, 'synthetic-a', vp);
     await create(sales, `${tag}报价甲`, 'L5_QUOTATION', 125000.25);
     await create(sales, `${tag}报价乙`, 'L5_QUOTATION', 0.1);
@@ -122,7 +117,7 @@ for (const vp of [
 test('G3-3B 统计四角色范围与跨组金额不外泄', async ({ browser }, info) => {
   test.skip(info.project.name !== 'desktop', 'once');
   const vp = { width: 1440, height: 900 };
-  const tag = `G33B角色-${Date.now()}`;
+  const tag = uniq('G33B角色');
   const a = await session(browser, 'synthetic-a', vp);
   const c = await session(browser, 'synthetic-c', vp);
   await create(a, `${tag}甲`, 'L5_QUOTATION', 1000.1);
@@ -175,11 +170,12 @@ test('G3-3A 遗留：加载更多没有新项目时停止并提示刷新', async
   await p.context().close();
 });
 
-test('G3-3A 遗留：409 后最新阶段已变，目标阶段需重新确认', async ({ browser }, info) => {
+test('G3-3A 遗留：409 后最新阶段已变，目标阶段需重新确认', async ({ browser, cleanup }, info) => {
   test.skip(info.project.name !== 'desktop', 'once');
   const p = await session(browser, 'synthetic-a', { width: 1440, height: 900 });
-  const tag = `G33B重选-${Date.now()}`;
+  const tag = uniq('G33B重选');
   const proj = await create(p, tag, 'L2_TECHNICAL', null);
+  cleanup.track(proj.id); // G3-4-A1: returned after the test, pass or fail
   await p.goto('/pipeline');
   await p.getByRole('textbox', { name: '搜索报备' }).fill(tag);
   const l2 = p.locator('section.stage-column[data-stage="L2_TECHNICAL"]');
@@ -224,11 +220,6 @@ test('G3-3A 遗留：409 后最新阶段已变，目标阶段需重新确认', a
     await expect(dialog.locator('[name=stageReason]')).toHaveValue('合成：推进到招投标');
     expect((await api(p, `/api/v1/projects/${proj.id}`)).body.salesStage).toBe('HOLD');
   } finally {
-    const director = await session(browser, 'synthetic-director', { width: 1440, height: 900 });
-    const latest = (await api(director, `/api/v1/projects/${proj.id}`)).body;
-    if (['SUBMITTED', 'UNDER_REVIEW'].includes(latest.intakeStatus))
-      expect((await api(director, `/api/v1/projects/${proj.id}/return`, 'POST', { version: latest.version, reason: '合成测试数据清理' })).status).toBe(200);
-    await director.context().close();
     await p.context().close();
   }
 });

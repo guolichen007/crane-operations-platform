@@ -1,11 +1,6 @@
 import { fileURLToPath } from 'node:url';
-import {
-  test,
-  expect,
-  type Browser,
-  type Page,
-  type Route,
-} from '../../../apps/project-intake-web/node_modules/@playwright/test/index.mjs';
+import { type Browser, type Page, type Route } from '../../../apps/project-intake-web/node_modules/@playwright/test/index.mjs';
+import { test, expect, uniq } from './support/isolation';
 // G3-3A: real sales-stage pipeline against the real API. Counts come from
 // /stage-summary, each column pages through /projects?stage. The shared e2e
 // database accumulates projects from other specs, so assertions compare the
@@ -68,9 +63,9 @@ for (const vp of [
   { name: '768', width: 768, height: 1024 },
   { name: '390', width: 390, height: 844 },
 ]) {
-  test(`G3-3A 管道真实统计、逐栏分页与阶段推进 @${vp.name}`, async ({ browser }, info) => {
+  test(`G3-3A 管道真实统计、逐栏分页与阶段推进 @${vp.name}`, async ({ browser, cleanup }, info) => {
     test.skip(info.project.name !== 'desktop', 'viewports are set explicitly; run once');
-    const tag = `G33A${vp.name}-${Date.now()}`;
+    const tag = uniq(`G33A${vp.name}`);
     const sales = await session(browser, 'synthetic-a', vp);
     // 23 projects in L6 (more than two pages of 10), a long name, follow-up
     // states, and one project to advance.
@@ -78,9 +73,10 @@ for (const vp of [
     for (let i = 0; i < 23; i++) await create(sales, `${tag}招投标${String(i).padStart(2, '0')}`, 'L6_TENDER');
     const long = await create(sales, `${tag}超长名称${'行车自动化改造与智能调度系统一期工程'.repeat(4)}`, 'L2_TECHNICAL', { customer: '超长客户名称'.repeat(12) + tag });
     const moving = await create(sales, `${tag}推进`, 'L2_TECHNICAL');
+    // G3-4-A1: registered before the submit; the cleanup fixture returns it
+    // after the test (pass or fail) and reports a cleanup it cannot complete.
+    cleanup.track(moving.id);
     const submitted = (await api(sales, `/api/v1/projects/${moving.id}/submit`, 'POST', { version: moving.version })).body;
-    // G3-3B: the submitted fixture is returned in finally, also when an
-    // assertion below fails, so it never stays in team one's review queue.
     try {
     expect(submitted.intakeStatus).toMatch(/SUBMITTED|UNDER_REVIEW/);
     const day = 86_400_000;
@@ -185,12 +181,6 @@ for (const vp of [
     const audit = (await api(sales, `/api/v1/projects/${moving.id}`)).body.audit.filter((a: { action: string }) => a.action === 'project.stage-change');
     expect(audit).toHaveLength(1);
     } finally {
-      // Leave the shared e2e database as found (other specs open queue page 1).
-      const director = await session(browser, 'synthetic-director', { width: 1440, height: 900 });
-      const latest = (await api(director, `/api/v1/projects/${moving.id}`)).body;
-      if (['SUBMITTED', 'UNDER_REVIEW'].includes(latest.intakeStatus))
-        expect((await api(director, `/api/v1/projects/${moving.id}/return`, 'POST', { version: latest.version, reason: '合成测试数据清理' })).status).toBe(200);
-      await director.context().close();
       await sales.context().close();
     }
   });
@@ -199,7 +189,7 @@ for (const vp of [
 test('G3-3A 四角色范围：主管本组、另一组主管、总监与管理员', async ({ browser }, info) => {
   test.skip(info.project.name !== 'desktop', 'role scope once');
   const vp = { width: 1440, height: 900 };
-  const tag = `G33A角色-${Date.now()}`;
+  const tag = uniq('G33A角色');
   const a = await session(browser, 'synthetic-a', vp);
   const c = await session(browser, 'synthetic-c', vp);
   await create(a, `${tag}甲`, 'L5_QUOTATION');
@@ -232,7 +222,7 @@ test('G3-3A 四角色范围：主管本组、另一组主管、总监与管理�
 test('G3-3A 快速切换筛选时旧响应不覆盖新结果，栏错误可重试', async ({ browser }, info) => {
   test.skip(info.project.name !== 'desktop', 'once');
   const vp = { width: 1440, height: 900 };
-  const tag = `G33A竞态-${Date.now()}`;
+  const tag = uniq('G33A竞态');
   const p = await session(browser, 'synthetic-a', vp);
   await create(p, `${tag}一`, 'L0_LEAD');
   await p.goto('/pipeline');

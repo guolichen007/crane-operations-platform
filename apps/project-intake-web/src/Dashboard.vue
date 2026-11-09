@@ -201,6 +201,8 @@ const amount = computed(() => stagesData.value?.amount ?? null);
           <ActionButton action-id="nav.open" :run="() => router.push('/pipeline')">项目管道 <ArrowUpRight :size="14" aria-hidden="true" /></ActionButton>
         </div>
         <p class="panel-def muted">按销售阶段统计{{ scopeText }}的全部项目（含草稿与退回），与报备状态无关。</p>
+        <!-- G3-4-A1: a separate snapshot from the task summary; its own time is shown. -->
+        <p v-if="stagesData && stageState !== 'error'" class="muted panel-asof" data-testid="home-stage-asof">阶段与金额统计时间 {{ when(stagesData.asOf) }}</p>
         <p v-if="stageState === 'loading'" class="muted" role="status">正在加载阶段分布…</p>
         <div v-else-if="stageState === 'error'" class="form-alert" role="alert">
           无法加载阶段分布：{{ stageFailure }} <ActionButton action-id="dashboard.stage-reload" :run="loadStages">重新加载</ActionButton>

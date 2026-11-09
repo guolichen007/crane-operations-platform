@@ -20,6 +20,7 @@ import {
   when,
 } from './model';
 import { projectScopeLabel } from './navigation';
+import { nextStages } from './pipeline';
 import { hintReason, recovery } from './reasons';
 import ActionButton from './ActionButton.vue';
 import Modal from './Modal.vue';
@@ -385,7 +386,8 @@ const reviewSummary = computed(() => {
       <p v-if="governanceOpen === 'ownership-transfer' && !candidates.length" class="muted">当前没有可指派的有效销售。</p>
       <label v-if="governanceOpen === 'stage-change'">目标阶段<select v-model="targetStage" name="targetStage">
         <option value="">请选择</option>
-        <option v-for="(label, key) in stages" :key="key" :value="key">{{ label }}</option>
+        <!-- G3-4-A1 UAT-F2: only the stages the server accepts (same rule as the pipeline). -->
+        <option v-for="key in nextStages(p.salesStage, p.intakeStatus)" :key="key" :value="key">{{ stages[key] }}</option>
       </select></label>
       <label>操作原因<textarea v-model="governanceReason" name="governanceReason" maxlength="1000"></textarea></label>
       <div class="actions modal-actions">

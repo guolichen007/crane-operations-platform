@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '../../../apps/project-intake-web/node_modules/@playwright/test/index.mjs';
+import { type Page } from '../../../apps/project-intake-web/node_modules/@playwright/test/index.mjs';
+import { test, expect, findCard, uniq } from './support/isolation';
 
 const action = (page: Page, id: string) => page.locator('[data-action-id="' + id + '"]:visible');
 test.use({ actionTimeout: 10000 });
@@ -28,17 +29,19 @@ async function findMember(page: Page, query: string) {
   await action(page, 'staff.detail').click();
 }
 
-test('B3 主管邀请、调整权限、审核、停用与交接', async ({ page, browser, baseURL }, info) => {
+test('B3 主管邀请、调整权限、审核、停用与交接', async ({ page, browser, baseURL, cleanup }, info) => {
   const mobile = info.project.name === 'mobile-390';
   const sales = mobile ? 'synthetic-staff-mobile' : 'synthetic-staff-desktop';
   const context = await browser.newContext({ baseURL });
   const salesPage = await context.newPage();
-  const unique = info.project.name + '-' + Date.now();
+  const unique = uniq(info.project.name);
   const email = 'invite-' + unique + '@example.test';
   const projectName = 'SyntheticB3-' + unique;
   try {
     await login(salesPage, sales);
-    const project = await salesPage.evaluate(async (projectName) => {
+    // Draft first, registered for cleanup, then submit: a failure anywhere
+    // after the submit cannot leave this filing in the shared review queue.
+    const draft = await salesPage.evaluate(async (projectName) => {
       const me = await (await fetch('/api/v1/me')).json();
       const post = async (path: string, body: unknown) => {
         const response = await fetch(path, {
@@ -49,19 +52,30 @@ test('B3 主管邀请、调整权限、审核、停用与交接', async ({ page,
         if (!response.ok) throw new Error('Synthetic project setup failed ' + response.status);
         return response.json();
       };
-      const draft = await post('/api/v1/projects', {
+      return post('/api/v1/projects', {
         projectName, customer: projectName,
         location: { province: '合成省', city: '合成市', factoryName: '合成一厂', workshop: '合成车间' },
         projectType: 'RETROFIT', salesStage: 'L1_REQUIREMENT', informationSource: 'END_CUSTOMER',
         confidenceLevel: 'CUSTOMER_CONFIRMED', requirements: ['ANTI_SWAY'],
         requirementNotes: 'Synthetic 需求', plannedEquipment: [{ equipmentType: 'BRIDGE', quantity: 2 }],
       });
-      return post('/api/v1/projects/' + draft.id + '/submit', { version: draft.version });
     }, projectName);
+    cleanup.track(draft.id);
+    const project = await salesPage.evaluate(async (draft) => {
+      const me = await (await fetch('/api/v1/me')).json();
+      const response = await fetch('/api/v1/projects/' + draft.id + '/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': me.csrfToken, 'Idempotency-Key': crypto.randomUUID() },
+        body: JSON.stringify({ version: draft.version }),
+      });
+      if (!response.ok) throw new Error('Synthetic project setup failed ' + response.status);
+      return response.json();
+    }, draft);
 
     await login(page, 'synthetic-manager');
     await page.getByRole('button', { name: '报备审核', exact: true }).click();
-    await action(page, 'review.open').filter({ hasText: projectName }).click();
+    // The queue is oldest-first and shared; the target may be on any page.
+    await (await findCard(page, projectName)).click();
     await action(page, 'review.approve').click();
     await page.locator('[name=reviewReason]').fill('Synthetic B3 审核');
     await action(page, 'review.confirm').click();
@@ -126,7 +140,7 @@ test('B3 主管邀请、调整权限、审核、停用与交接', async ({ page,
 });
 
 test('B3 管理员维护团队与邀请高级角色', async ({ page }, info) => {
-  const unique = info.project.name + '-' + Date.now();
+  const unique = uniq(info.project.name);
   const team = '合成团队-' + unique;
   const email = 'lead-' + unique + '@example.test';
   await login(page, 'synthetic-admin');
