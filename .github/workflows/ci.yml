@@ -23,7 +23,7 @@ jobs:
       - run: npm ci
       - run: node tools/diagnostics/repository.mjs
       - run: node tools/codegen/contracts.mjs --check && node tools/codegen/openapi.mjs --check && node tools/codegen/geoindex.mjs --check
-      - run: node --test tests/contract/contracts.test.mjs tests/contract/asset-runtime.test.mjs tests/contract/production-preflight.test.mjs tests/contract/cert-ops.test.mjs tests/contract/b4-preview-contract.test.mjs tests/contract/b4-codes.test.mjs tests/contract/r2-db-gate.test.mjs tests/contract/operations-summary-contract.test.mjs
+      - run: node --test tests/contract/contracts.test.mjs tests/contract/asset-runtime.test.mjs tests/contract/production-preflight.test.mjs tests/contract/cert-ops.test.mjs tests/contract/b4-preview-contract.test.mjs tests/contract/b4-codes.test.mjs tests/contract/r2-db-gate.test.mjs tests/contract/operations-summary-contract.test.mjs tests/contract/preview-candidate.test.mjs
       - name: 源码级调用约束（AST，仓库根执行）
         run: go test ./tools/astguard/ && go run ./tools/astguard
       - run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
@@ -39,7 +39,7 @@ jobs:
         run: |
           unformatted="$(gofmt -l contracts internal services edge simulators \
             tools/certs tools/fleet tools/inventory tools/identity \
-            tools/provision-keycloak tools/diagnostics/mqtt-probe \
+            tools/provision-keycloak tools/uatdata tools/diagnostics/mqtt-probe \
             tests/integration deploy/postgres)"
           if [ -n "$unformatted" ]; then
             echo "GOFMT_UNFORMATTED_FILES:"
