@@ -168,8 +168,13 @@ func TestDatabaseG33BAmountStatistics(t *testing.T) {
 		}
 		s, _, b := createAmount(t, f.sales, "合成精度旧零", 0, nil, "L5_QUOTATION")
 		expect(t, s, 200, b)
-		s, _, b = createAmount(t, f.sales, "合成精度多位", 1.005, k, "L5_QUOTATION") // accepted by the API, stored inconsistently
+		// Since G3-3B-R1 the API refuses 1.005 (400); the inconsistent record the
+		// pre-R1 API produced is reproduced byte-for-byte (synthetic).
+		s, _, b = createAmount(t, f.sales, "合成精度多位", 1.005, k, "L5_QUOTATION")
+		expect(t, s, 400, b)
+		s, pm, b := createAmount(t, f.sales, "合成精度多位", 1, k, "L5_QUOTATION")
 		expect(t, s, 200, b)
+		g1Exec(t, f.db, `UPDATE intake_projects SET estimated_amount=1.01, document=jsonb_set(document,'{estimatedAmount}','1.005') WHERE id=$1`, pm.ID)
 		// Legacy migrated rows (SQL) and one illegal-stage row.
 		g1Exec(t, f.db, `INSERT INTO intake_projects(project_name,normalized_project_name,owner_subject,created_by_subject,draft_custodian_subject,team_id,intake_status,sales_stage,document,estimated_amount,evidence_state,protection_basis)
  SELECT '合成精度历史'||g,'synthetic legacy '||g,'synthetic-a','synthetic-a','synthetic-a',$1,'APPROVED',CASE WHEN g=3 THEN 'LEGACY_STAGE_X' ELSE 'L5_QUOTATION' END,

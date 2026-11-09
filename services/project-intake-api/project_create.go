@@ -22,7 +22,7 @@ func (a *App) createProject(w http.ResponseWriter, r *http.Request, u User) erro
 		return problem(403, "BUSINESS_PERMISSION_DENIED")
 	}
 	var in createProjectInput
-	if !decode(w, r, &in) {
+	if !decodeProjectWrite(w, r, &in) {
 		return nil
 	}
 	if err := validateInput(&in.Input, false); err != nil {

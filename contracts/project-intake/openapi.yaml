@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Project Intake API",
-    "version": "1.5.0-g33b",
+    "version": "1.5.1-g33b-r1",
     "description": "全角色项目资源授权、不可覆盖提交证据、管理员未分配草稿及幂等创建；G2 增加审核资格提示、创建意图回执、显示名称与首页最小聚合。完整经营分析不在G2。"
   },
   "servers": [
@@ -3667,7 +3667,10 @@
           "estimatedAmount": {
             "type": "number",
             "minimum": 0,
-            "nullable": true
+            "maximum": 100000000000000,
+            "multipleOf": 0.01,
+            "nullable": true,
+            "description": "项目预估金额（元）。G3-3B-R1 起，创建与编辑请求按原始 JSON 数值逐位校验：必须是普通十进制写法（不接受指数形式或字符串）、0 至 1e14、最多两位小数（多余位只能是 0），且其 float64 最短表示必须与原值十进制相等；否则 400 INVALID_INPUT，不会舍入后接受。所有不超过 9,999,999,999,999.99 的分值及所有不超过 1e14 的整元值均可无损接受。null 为未知，0 的已知性仍按 knowledge（G1）。"
           },
           "expectedPurchaseDate": {
             "type": "string"
@@ -5368,7 +5371,7 @@
           "knownTotal": {
             "type": "string",
             "pattern": "^[0-9]+\\.[0-9]{2}$",
-            "description": "已知金额合计；无已知金额时为 \"0.00\"，须结合 knownCount 理解"
+            "description": "已知金额合计；无已知金额时为 \"0.00\"，须结合 knownCount 理解。由不限精度的 numeric 求和（R1 起不再受 numeric(20,2) 上限约束），可超过 18 位整数。"
           },
           "knownCount": {
             "type": "integer",

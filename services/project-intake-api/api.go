@@ -289,7 +289,8 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 		}
 		version = activity.Version
 	default:
-		if !decode(w, r, &in) {
+		// PATCH: exact amount validation before the float64 decode (G3-3B-R1).
+		if !decodeProjectWrite(w, r, &in) {
 			return nil
 		}
 		version = in.Version

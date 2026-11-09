@@ -100,9 +100,19 @@ func TestDatabaseG33BAmountForensics(t *testing.T) {
 	}
 	// 9: extra precision. The API currently accepts it: column rounds to 2
 	// places, the document keeps the original value.
-	s, p9, b := createAmount(t, f.sales, "合成金额精度", 12345678.9999, map[string]string{"estimatedAmount": "KNOWN"}, "L3_SITE_SURVEY")
-	expect(t, s, 200, b)
-	add("9", "API 写入 12345678.9999（列 12345679.00）", amountInvalid, "当前写入路径的已知缺陷：列四舍五入、文档保留原值；不纳入", p9.ID)
+	// Since G3-3B-R1 the API refuses this input (400); the record is
+	// reproduced with the exact bytes the pre-R1 API wrote (synthetic).
+	s, b := f.sales.call("POST", "/api/v1/projects", func() Input {
+		in := sample("合成金额精度")
+		in.Customer = "合成金额精度客户"
+		in.EstimatedAmount = pointer(12345678.9999)
+		in.Knowledge = map[string]string{"estimatedAmount": "KNOWN"}
+		return in
+	}())
+	expect(t, s, 400, b)
+	p9 := mk("合成金额精度", 1, map[string]string{"estimatedAmount": "KNOWN"}, "L3_SITE_SURVEY")
+	g1Exec(t, f.db, `UPDATE intake_projects SET estimated_amount=12345679.00, document=jsonb_set(document,'{estimatedAmount}','12345678.9999') WHERE id=$1`, p9.ID)
+	add("9", "R1 前 API 写入 12345678.9999（列 12345679.00，合成复现）", amountInvalid, "R1 前写入路径缺陷：列四舍五入、文档保留原值；不纳入。R1 起 API 拒绝此输入", p9.ID)
 	p9b := mk("合成金额精度二", 1, map[string]string{"estimatedAmount": "KNOWN"}, "L3_SITE_SURVEY")
 	g1Exec(t, f.db, `UPDATE intake_projects SET document=jsonb_set(document,'{estimatedAmount}','100.005'),estimated_amount=100.01 WHERE id=$1`, p9b.ID)
 	add("9b", "文档 100.005、列 100.01（合成）", amountInvalid, "多余精度且两源不等；不纳入", p9b.ID)

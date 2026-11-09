@@ -52,7 +52,9 @@ const app = useApp(),
   candidates = ref<{ subject: string; name: string }[] | null>(null),
   assignTarget = ref(''),
   assignReason = ref('创建时指派销售负责人'),
-  followLocal = ref('');
+  followLocal = ref(''),
+  // G3-3B-R1: numeric fields whose current text cannot be saved exactly.
+  invalidNumbers = ref<Set<string>>(new Set());
 const stepNames = ['客户与项目', '设备与技术', '商务与跟进', '核对与提交'];
 const isAdmin = computed(() => app.user?.role === 'baobei_admin');
 let intent: CreateIntent | null = null;
@@ -145,6 +147,11 @@ async function loadCandidates() {
 async function save(silent = false): Promise<void> {
   clearTimeout(timer);
   if (conflict.value) throw new Error('存在版本冲突，请先选择处理方式');
+  // Never send the previous valid value while the box shows an invalid one.
+  if (invalidBlock.value) {
+    saved.value = '数值有误，未保存';
+    throw new Error(invalidBlock.value);
+  }
   if (pending) {
     await pending.catch(() => undefined);
     if (dirty.value) return save(silent);
@@ -235,11 +242,18 @@ async function applyMerge() {
   await save();
 }
 
+watch(invalidNumbers, (v) => {
+  if (v.size) {
+    clearTimeout(timer);
+    saved.value = '数值有误，未保存';
+  }
+});
 watch(
   () => snapshot(),
   () => {
     if (!ready.value || conflict.value) return;
-    saved.value = '有未保存改动';
+    saved.value = invalidBlock.value ? '数值有误，未保存' : '有未保存改动';
+    if (invalidBlock.value) return;
     clearTimeout(timer);
     timer = setTimeout(() => {
       void save(true).catch((e) => (app.error = e.message));
@@ -288,6 +302,13 @@ const dupMessage = computed(
 function addEquipment() {
   if (form.plannedEquipment.length < 30) form.plannedEquipment.push(blankEquipment());
 }
+function markInvalid(key: string, bad: boolean) {
+  const next = new Set(invalidNumbers.value);
+  if (bad) next.add(key);
+  else next.delete(key);
+  invalidNumbers.value = next;
+}
+const invalidBlock = computed(() => (invalidNumbers.value.size ? '请先修正标红的数值（如预估金额最多两位小数）' : ''));
 function setNumber(target: object, key: string, value: number | null, state: KnowledgeState) {
   const row = target as Record<string, unknown> & { knowledge?: Record<string, KnowledgeState> };
   row[key] = value;
@@ -320,6 +341,7 @@ const ownerLine = computed(() => {
 });
 const submitHint = computed(() => project.value?.actions?.submit);
 const submitBlock = computed(() => {
+  if (invalidBlock.value) return invalidBlock.value;
   if (!project.value) return '请先保存草稿';
   if (missing.value.length) return '还有 ' + missing.value.length + ' 项必填信息未完成';
   if (dirty.value) return '';
@@ -472,10 +494,10 @@ onBeforeUnmount(() => {
             <label>设备类型<select v-model="eq.equipmentType" :name="'equipmentType' + i">
               <option v-for="(v, k) in equipmentTypes" :key="k" :value="k">{{ v }}</option>
             </select></label>
-            <NumberField label="数量" unit="台" integer :name="'quantity' + i" :model-value="eq.quantity" :state="eq.knowledge?.quantity" @update="(v, s) => setNumber(eq, 'quantity', v, s)" />
-            <NumberField label="额定起重量" unit="t" :name="'capacityTons' + i" :model-value="eq.capacityTons" :state="eq.knowledge?.capacityTons" @update="(v, s) => setNumber(eq, 'capacityTons', v, s)" />
-            <NumberField label="跨度" unit="m" :name="'spanM' + i" :model-value="eq.spanM" :state="eq.knowledge?.spanM" @update="(v, s) => setNumber(eq, 'spanM', v, s)" />
-            <NumberField label="起升高度" unit="m" :name="'liftHeightM' + i" :model-value="eq.liftHeightM" :state="eq.knowledge?.liftHeightM" @update="(v, s) => setNumber(eq, 'liftHeightM', v, s)" />
+            <NumberField label="数量" unit="台" integer :name="'quantity' + i" :model-value="eq.quantity" :state="eq.knowledge?.quantity" @update="(v, s) => setNumber(eq, 'quantity', v, s)" @validity="(bad) => markInvalid('quantity' + i, bad)" />
+            <NumberField label="额定起重量" unit="t" :name="'capacityTons' + i" :model-value="eq.capacityTons" :state="eq.knowledge?.capacityTons" @update="(v, s) => setNumber(eq, 'capacityTons', v, s)" @validity="(bad) => markInvalid('capacityTons' + i, bad)" />
+            <NumberField label="跨度" unit="m" :name="'spanM' + i" :model-value="eq.spanM" :state="eq.knowledge?.spanM" @update="(v, s) => setNumber(eq, 'spanM', v, s)" @validity="(bad) => markInvalid('spanM' + i, bad)" />
+            <NumberField label="起升高度" unit="m" :name="'liftHeightM' + i" :model-value="eq.liftHeightM" :state="eq.knowledge?.liftHeightM" @update="(v, s) => setNumber(eq, 'liftHeightM', v, s)" @validity="(bad) => markInvalid('liftHeightM' + i, bad)" />
             <label>控制方式<select v-model="eq.controlMode">
               <option value="">暂不明确</option>
               <option v-for="(v, k) in controlModes" :key="k" :value="k">{{ v }}</option>
@@ -510,7 +532,7 @@ onBeforeUnmount(() => {
           <label>销售阶段<select v-model="form.salesStage" name="salesStage">
             <option v-for="(v, k) in stages" :key="k" :value="k">{{ v }}</option>
           </select></label>
-          <NumberField label="预估金额" unit="元" name="estimatedAmount" :model-value="form.estimatedAmount" :state="form.knowledge?.estimatedAmount" @update="(v, s) => setNumber(form, 'estimatedAmount', v, s)" />
+          <NumberField label="预估金额" unit="元" name="estimatedAmount" money :model-value="form.estimatedAmount" :state="form.knowledge?.estimatedAmount" @update="(v, s) => setNumber(form, 'estimatedAmount', v, s)" @validity="(bad) => markInvalid('estimatedAmount', bad)" />
           <label>预期采购日期<input v-model="form.expectedPurchaseDate" type="date" name="expectedPurchaseDate" /></label>
           <label>下次跟进时间<input v-model="followLocal" type="datetime-local" name="draftFollowupAt" /></label>
           <label class="wide">下一步事项<input v-model="form.nextAction" name="draftNextAction" maxlength="1000" placeholder="例如：约技术交流，确认跨度与控制方式" /></label>
@@ -581,8 +603,8 @@ onBeforeUnmount(() => {
     <div class="wizard-actions">
       <ActionButton action-id="project.step-back" :disabled="step === 1 || submitting" reason="当前是第一步或正在提交" :run="() => { step--; }">上一步</ActionButton><span class="spacer"></span><ActionButton
         action-id="project.save-draft"
-        :disabled="!ready || submitting || saving || !!conflict"
-        :reason="conflict ? '请先处理版本冲突' : '正在加载、保存或提交'"
+        :disabled="!ready || submitting || saving || !!conflict || !!invalidBlock"
+        :reason="conflict ? '请先处理版本冲突' : invalidBlock || '正在加载、保存或提交'"
         :run="() => save()"
       >
         保存草稿

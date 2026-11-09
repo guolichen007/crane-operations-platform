@@ -140,9 +140,11 @@ func (a *App) stageSummary(ctx context.Context, u User, params map[string]string
 		return out, err
 	}
 	// One statement (one snapshot): per stage group plus the grand total via
-	// GROUPING SETS. Amount classification is amountClassSQL; sums are numeric.
+	// GROUPING SETS. Amount classification is amountClassSQL; sums are
+	// unconstrained numeric (G3-3B-R1: no fixed precision cap — 10,000 × 1e14
+	// overflowed numeric(20,2)), rounded only to fix the 2-place text form.
 	rows, err := a.db.Query(ctx, `SELECT GROUPING(g.stage)=1, g.stage, count(*),
- coalesce(sum(g.amount) FILTER (WHERE g.class='KNOWN'),0)::numeric(20,2)::text,
+ round(coalesce(sum(g.amount) FILTER (WHERE g.class='KNOWN'),0),2)::text,
  count(*) FILTER (WHERE g.class='KNOWN'),
  count(*) FILTER (WHERE g.class='KNOWN' AND g.amount=0),
  count(*) FILTER (WHERE g.class='KNOWN' AND g.implicit),
