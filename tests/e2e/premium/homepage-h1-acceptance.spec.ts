@@ -6,6 +6,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { cloudDevice, cloudAlarm } from '../../../apps/web-console/tests/cloud-fixtures';
+import { inventorySummary, routeSummary } from '../summary-mock';
 
 const example = JSON.parse(readFileSync('deploy/inventory/inventory.example.yaml', 'utf8'));
 const session = {
@@ -21,7 +22,7 @@ const session = {
   idleExpiresAt: '2099-01-01T00:00:00Z',
 };
 
-type Opts = { failProjects?: number; delayMs?: number; alarm?: boolean };
+type Opts = { failProjects?: number; delayMs?: number; alarm?: boolean; failSummary?: number };
 /** Inventory fixture: P001 located in Haining with one ALARM device bound to SIM-P001-01. */
 async function fixture(page: Page, opts: Opts = {}) {
   const calls: string[] = [];
@@ -69,6 +70,17 @@ async function fixture(page: Page, opts: Opts = {}) {
                 ? [cloudAlarm()]
                 : {},
     });
+  });
+  let summaryFailures = opts.failSummary ?? 0;
+  await routeSummary(page, async (c) => {
+    calls.push('/api/v1/operations/summary');
+    if (opts.delayMs) await new Promise((res) => setTimeout(res, opts.delayMs));
+    if (summaryFailures > 0) {
+      summaryFailures--;
+      return 'fail';
+    }
+    // The bound SIMULATION device alarms; nothing is REAL — so REAL 在线 / 当前 REAL 告警 are 0.
+    return inventorySummary(projects, assets, c.region, { boundSim: 1, alarmSim: opts.alarm !== false ? 1 : 0, noRuntime: assets.length - 1, recordsTotal: 1 });
   });
   return calls;
 }
@@ -222,8 +234,8 @@ test('WebGL 不可用：自动切换二维视图并提示，三维按钮禁用�
   await expect(page.getByTestId('webgl-fallback')).toBeVisible();
   await expect(page.getByTestId('spatial-2d')).toBeVisible();
   await expect(page.getByRole('button', { name: '三维沙盘' })).toBeDisabled();
-  await page.locator('[data-kpi=alarm]').click();
-  await expect(main(page)).toHaveAttribute('data-status-filter', 'ALARM');
+  await page.locator('[data-kpi=pending-review]').click();
+  await expect(main(page)).toHaveAttribute('data-status-filter', 'PENDING_REVIEW');
   await page.screenshot({ path: test.info().outputPath('home-h1-webgl-fallback.png') });
   await test.info().attach('home-h1-webgl-fallback', {
     path: test.info().outputPath('home-h1-webgl-fallback.png'),
@@ -231,30 +243,26 @@ test('WebGL 不可用：自动切换二维视图并提示，三维按钮禁用�
   });
 });
 
-test('KPI 动作与数据来源：数值来自 API，点击告警 KPI 过滤并写 URL，Inspector 列出该设备', async ({
+test('KPI 动作与数据来源：数值来自运营统计接口，SIM 告警不计 REAL；登记卡打开同范围清单，待复核卡过滤地图', async ({
   page,
 }) => {
   const calls = await fixture(page);
   await page.goto('/#/overview');
-  for (const p of [
-    '/api/v1/projects',
-    '/api/v1/assets/devices',
-    '/api/v1/devices',
-    '/api/v1/alarms',
-  ])
-    expect.poll(() => calls.includes(p)).toBe(true);
-  // 10 inventory devices; one bound SIMULATION device with an ACTIVE alarm.
-  await expect(page.locator('[data-kpi=devices] .home-kpi-value')).toContainText('10');
-  await expect(page.locator('[data-kpi=alarm] .home-kpi-value')).toContainText('1');
-  await expect(page.locator('[data-kpi=alarm]')).toContainText('最近告警记录 1 条（非未处理数）');
-  await expect(page.locator('[data-kpi=real-running] .home-kpi-value')).toContainText('0'); // SIM is never counted as REAL
-  await page.locator('[data-kpi=alarm]').click();
-  await expect(page.locator('[data-kpi=alarm]')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page).toHaveURL(/status=ALARM/);
-  await expect(page.locator('[data-testid=home-inspector] .inspector-device')).toHaveCount(1);
-  // Attention uses the same filter.
-  await expect(page.locator('[data-attention=alarm]')).toHaveAttribute('aria-pressed', 'true');
-  await page.locator('[data-attention=alarm]').click();
+  for (const p of ['/api/v1/operations/summary', '/api/v1/projects', '/api/v1/assets/devices', '/api/v1/devices', '/api/v1/alarms'])
+    await expect.poll(() => calls.includes(p)).toBe(true);
+  // 10 inventory devices; one bound SIMULATION device with an ACTIVE alarm; nothing REAL.
+  await expect(page.locator('[data-kpi=registered] .home-kpi-value')).toHaveText('10台');
+  await expect(page.locator('[data-kpi=real-connected] .home-kpi-value')).toHaveText('0台'); // SIM is never REAL
+  await expect(page.locator('[data-kpi=alarm-real] .home-kpi-value')).toHaveText('0台'); // SIM alarm is not a REAL alarm
+  await expect(page.locator('[data-kpi=alarm-real]')).toContainText('近 24 小时告警记录 1 条');
+  await expect(page.locator('[data-kpi=no-runtime] .home-kpi-value')).toHaveText('9台');
+  await page.locator('[data-kpi=pending-review]').click();
+  await expect(page.locator('[data-kpi=pending-review]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page).toHaveURL(/status=PENDING_REVIEW/);
+  await expect(page.getByTestId('review-list')).toContainText('当前范围没有待复核设备');
+  // Attention "待复核且告警" uses the same filter.
+  await expect(page.locator('[data-attention=pending-review-alarm]')).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('[data-attention=pending-review-alarm]').click();
   await expect(main(page)).toHaveAttribute('data-status-filter', 'all');
   await expect(page).not.toHaveURL(/status=/);
   // Unavailable data is not a number and not clickable.
@@ -339,25 +347,25 @@ test('二维视图的项目/资产选择：?project= 深链与 Inspector 点击�
 });
 
 test('API 失败：显示可恢复错误，重试后加载成功', async ({ page }) => {
-  await fixture(page, { failProjects: 1 });
+  await fixture(page, { failSummary: 1 });
   await page.goto('/#/overview');
   await expect(page.getByTestId('home-load-error')).toBeVisible();
   await expect(page.getByTestId('home-kpis')).not.toContainText('NaN');
   await page.getByTestId('home-load-error').getByRole('button', { name: '重试' }).click();
   await expect(page.getByTestId('home-load-error')).toHaveCount(0);
-  await expect(page.locator('[data-kpi=devices] .home-kpi-value')).toContainText('10');
+  await expect(page.locator('[data-kpi=registered] .home-kpi-value')).toContainText('10');
 });
 
 test('弱网（每个 API 请求延迟 2.5 s）：加载中显示占位而非 0，数据到达后正常', async ({ page }) => {
   await fixture(page, { delayMs: 2500 });
   await page.goto('/#/overview');
-  await expect(page.locator('[data-kpi=devices] .home-kpi-value')).toHaveText(/—/);
+  await expect(page.locator('[data-kpi=registered] .home-kpi-value')).toHaveText(/—/);
   await expect(page.getByTestId('home-asof')).toHaveAttribute('data-state', 'loading');
-  await expect(page.getByTestId('home-asof')).toContainText('正在拉取');
-  await expect(page.locator('[data-kpi=devices] .home-kpi-value')).toContainText('10', {
+  await expect(page.getByTestId('home-asof')).toContainText('正在获取运营统计');
+  await expect(page.locator('[data-kpi=registered] .home-kpi-value')).toContainText('10', {
     timeout: 20000,
   });
-  // R1-3: a client fetch time, labelled as such — never "数据截至" (telemetry as-of).
-  await expect(page.getByTestId('home-asof')).toContainText('最近拉取');
+  // R1-3 / H2-1D-5: the server sampling time, labelled as such — never "数据截至" (telemetry as-of).
+  await expect(page.getByTestId('home-asof')).toContainText('统计取样');
   await expect(page.getByTestId('home-asof')).not.toContainText('数据截至');
 });

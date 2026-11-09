@@ -52,7 +52,7 @@ export function homeMetrics(projects: readonly Project[], devices: readonly Devi
 }
 
 /** Homepage status filters that may appear in `?status=`. */
-export const HOME_STATUS_FILTERS = ['ALARM', 'OFFLINE', 'NOT_COMMISSIONED', 'RUNNING', 'REAL_RUNNING', 'STANDBY', 'MAINTENANCE', 'UNLOCATED', 'planned'] as const;
+export const HOME_STATUS_FILTERS = ['ALARM', 'OFFLINE', 'NOT_COMMISSIONED', 'RUNNING', 'REAL_RUNNING', 'STANDBY', 'MAINTENANCE', 'UNLOCATED', 'planned', 'PENDING_REVIEW'] as const;
 export type HomeStatusFilter = (typeof HOME_STATUS_FILTERS)[number];
 export function parseStatusParam(value: unknown): HomeStatusFilter | null {
   return typeof value === 'string' && (HOME_STATUS_FILTERS as readonly string[]).includes(value)
@@ -99,6 +99,17 @@ export function scopeLabel(mode: 'api' | 'demo', s: HomeScope, regionName: strin
   const source =
     mode === 'api' ? '全部授权项目' : s.source === 'real' ? '匿名登记项目' : s.source === 'demo' ? '演示设备' : '全部展示（含演示）';
   return `${source} · ${s.regionPath.length ? regionName : '全国'}`;
+}
+
+/** Demo-mode "需要关注" rows (local fixtures). API mode uses scene/home-summary.ts summaryAttention(). */
+export function demoAttention(m: HomeMetrics | null) {
+  const v = (n: number | undefined) => (m ? (n as number) : null);
+  return [
+    { id: 'alarm', label: '告警设备', filter: 'ALARM', value: v(m?.alarmDevices), color: 'var(--critical)', hint: '告警设备' },
+    { id: 'offline', label: '离线 / 未知', filter: 'OFFLINE', value: v(m?.offline), color: '#7b8ea3', hint: '离线 / 未知' },
+    { id: 'not-commissioned', label: '尚未投运', filter: 'NOT_COMMISSIONED', value: v(m?.notCommissioned), color: 'var(--warning)', hint: '尚未投运' },
+    { id: 'unlocated', label: '无空间位置', filter: 'UNLOCATED', value: v(m?.unlocated), color: '#5c7791', hint: '无空间位置' },
+  ];
 }
 
 export type HomeView = '2d' | '3d';

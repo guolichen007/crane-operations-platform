@@ -7,11 +7,17 @@ import type { HomeDataState, HomeScope, HomeView } from '../scene/home-metrics';
 import { hasLocation, scopeProjects } from '../scene/home-metrics';
 import { countryLevel, type MapLevel } from '../three/map/DrilldownController';
 
-export type StatusFilter = DeviceStatus | 'all' | 'planned' | 'REAL_RUNNING' | 'UNLOCATED';
+export type StatusFilter = DeviceStatus | 'all' | 'planned' | 'REAL_RUNNING' | 'UNLOCATED' | 'PENDING_REVIEW';
 export type FocusRequest = { kind: 'project' | 'device'; id: string; seq: number };
 
+/**
+ * Asset ids the server reports as "pending review" (H2-1D, summary.metrics.real.pendingReviewAssets, ≤100).
+ * The PENDING_REVIEW filter shows exactly these on the map; it is never recomputed from Shadow.
+ */
+const reviewIds = shallowRef<ReadonlySet<string>>(new Set());
 function matchesStatus(d: Device, status: StatusFilter): boolean {
   if (status === 'all') return true;
+  if (status === 'PENDING_REVIEW') return reviewIds.value.has(d.deviceId);
   if (status === 'planned') return d.dataSource === 'real';
   if (status === 'REAL_RUNNING') return d.runtimeSource === 'REAL' && d.status === 'RUNNING';
   if (status === 'UNLOCATED') return !hasLocation(d);
@@ -128,5 +134,6 @@ export const useOperations = defineStore('operations', () => {
     selectProject,
     requestFocus,
     navigateRegion,
+    reviewIds,
   };
 });

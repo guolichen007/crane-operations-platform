@@ -1,8 +1,8 @@
 <script setup lang="ts">
-// KPI strip (≤5 cards). Each card is a button that applies its status filter
-// (shared with the Attention list via the store); the active filter is shown as
-// pressed. Numbers come from homeKpis()/homeMetrics() over the statistics scope
-// (H1-R1-2); the scope label states exactly what the numbers count.
+// KPI strip (≤5 cards). Each card is a button: it applies its status filter (shared
+// with the Attention list via the store) or opens its business list. API mode numbers
+// are operations-summary fields (scene/home-summary.ts); demo numbers are local fixtures
+// (scene/home-metrics.ts). The scope label states exactly what the numbers count.
 // Data state (H1-R1-1): loading → "—", unavailable → "不可用" (never 0),
 // stale → last good numbers marked 过期.
 import type { HomeDataState, HomeKpi } from '../../scene/home-metrics';
@@ -36,7 +36,7 @@ const emit = defineEmits<{ apply: [filter: string, id: string] }>();
         ><template v-else-if="k.value === null">—</template
         ><template v-else>{{ k.value }}<small>{{ k.unit }}</small></template></b
       >
-      <em class="home-kpi-detail">{{ state === 'unavailable' ? 'Inventory API 拉取失败' : k.detail }}</em>
+      <em class="home-kpi-detail">{{ state === 'unavailable' ? '统计不可用，未显示数字' : k.detail }}</em>
     </button>
   </section>
 </template>

@@ -10,8 +10,17 @@ import DevicePanel from '../../components/DevicePanel.vue';
 import { useOperations } from '../../stores/operations';
 import { statusText, statusColor } from '../../data/types';
 import { hasLocation } from '../../scene/home-metrics';
+import type { OperationsSummary } from '../../../../../contracts/typescript/types.gen';
 
-const props = defineProps<{ demo: boolean; drawer: boolean }>();
+const props = defineProps<{ demo: boolean; drawer: boolean; summary?: OperationsSummary | null }>();
+// H2-1D-2/4: "待复核" detail = the server's authorized review asset ids (≤100 of pendingReview), each
+// opening the asset detail (same authorization as /api/v1/assets/{id}). No "view all" — no list endpoint
+// with the same predicate exists yet.
+const review = computed(() => {
+  const r = props.summary?.metrics.real;
+  return r ? { total: r.pendingReview, items: r.pendingReviewAssets } : null;
+});
+const reviewStatus = { DRAFT: '草稿', OUT_OF_SERVICE: '停用' } as const;
 const store = useOperations();
 const { selected, selectedProject, scopedProjects, scopedVisibleDevices, status, scope, scopeName } = storeToRefs(store);
 const filtering = computed(() => status.value !== 'all');
@@ -57,10 +66,29 @@ function focusDevice(id: string) {
       @select="focusDevice"
       @project="focusProject"
     />
+    <template v-else-if="status === 'PENDING_REVIEW' && !demo">
+      <section class="inspector-list" data-testid="review-list">
+        <div class="panel-title">
+          <h3>待复核设备</h3>
+          <span data-testid="inspector-total" :data-total="review?.total ?? ''">{{ review ? `${review.total} 台` : '—' }} · {{ scopeName }}</span>
+        </div>
+        <p v-if="!review" class="muted small">运营统计不可用，无法列出待复核设备。</p>
+        <p v-else-if="!review.total" class="muted small" data-testid="inspector-empty">当前范围没有待复核设备。</p>
+        <p v-else class="muted small" data-testid="review-cap">
+          服务端返回前 {{ review.items.length }} 条 / 共 {{ review.total }} 台（按资产编号排序）。草稿或停用资产上出现了新鲜的 REAL 连接，请在资产详情中确认状态。
+        </p>
+        <RouterLink v-for="a in review?.items ?? []" :key="a.id" class="plan-item inspector-device review-asset" :data-review-id="a.id" :to="'/assets/' + encodeURIComponent(a.id)">
+          <div class="plan-content">
+            <div><strong>{{ a.id }}</strong><ArrowUpRight :size="12" /></div>
+            <p>{{ reviewStatus[a.assetStatus] }}<template v-if="a.alarm"> · <span class="review-alarm">REAL 告警</span></template></p>
+          </div>
+        </RouterLink>
+      </section>
+    </template>
     <template v-else-if="filtering">
       <section class="inspector-list">
         <div class="panel-title">
-          <h3>{{ statusText[status as keyof typeof statusText] ?? (status === 'UNLOCATED' ? '无空间位置' : status === 'REAL_RUNNING' ? '真实运行' : '登记项目') }}</h3>
+          <h3>{{ statusText[status as keyof typeof statusText] ?? (status === 'UNLOCATED' ? '无空间位置' : status === 'REAL_RUNNING' ? 'REAL 运行（演示口径）' : status === 'PENDING_REVIEW' ? '待复核设备' : '登记项目') }}</h3>
           <span data-testid="inspector-total" :data-total="devicesTotal">{{ devicesTotal }} 台 · {{ scopeName }}</span>
         </div>
         <p v-if="!devicesTotal" class="muted small" data-testid="inspector-empty">当前范围内没有符合该过滤条件的设备。</p>

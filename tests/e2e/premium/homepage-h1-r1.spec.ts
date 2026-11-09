@@ -12,6 +12,8 @@
 import { test, expect, type Page, type Route } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { cloudDevice, cloudAlarm } from '../../../apps/web-console/tests/cloud-fixtures';
+import { inventorySummary, routeSummary, type SummaryCall, type SummaryReply } from '../summary-mock';
+import type { SummaryOverrides } from '../../../apps/web-console/tests/summary-fixtures';
 
 type Proj = { id: string; name: string; adminCode: number | null; devices: number };
 type Asset = { id: string; projectId: string; alarm?: boolean };
@@ -35,9 +37,15 @@ async function api(
   page: Page,
   projects: Proj[],
   assets: Asset[],
-  opts: { projectsResponse?: (n: number) => 'ok' | 'fail' | 'hang'; holdMs?: number } = {}
+  opts: {
+    projectsResponse?: (n: number) => 'ok' | 'fail' | 'hang';
+    holdMs?: number;
+    /** H2-1D: the homepage numbers come from the operations summary; default = derived from this inventory. */
+    summary?: (c: SummaryCall) => SummaryReply | 'ok';
+    metrics?: SummaryOverrides;
+  } = {}
 ) {
-  const state = { projectCalls: 0 };
+  const state = { projectCalls: 0, summaryCalls: [] as SummaryCall[] };
   await page.route('**/auth/session', (r) => r.fulfill({ json: session(projects) }));
   const rawProjects = () =>
     projects.map((p) => ({
@@ -102,6 +110,11 @@ async function api(
               : {},
     });
   });
+  state.summaryCalls = await routeSummary(page, async (c) => {
+    if (opts.holdMs) await new Promise((res) => setTimeout(res, opts.holdMs));
+    const out = opts.summary?.(c) ?? 'ok';
+    return out === 'ok' ? inventorySummary(projects, assets, c.region, opts.metrics) : out;
+  });
   return state;
 }
 
@@ -122,68 +135,79 @@ const locatedAssets: Asset[] = [
 ];
 
 // ---------------------------------------------------------------- R1-1
+// H2-1D: the numbers are the operations summary; its failures (not the map's) decide the KPI state.
+const KPI_IDS = ['registered', 'real-connected', 'alarm-real', 'pending-review', 'no-runtime'];
+const ATTENTION_IDS = ['pending-review-alarm', 'real-offline', 'real-stale', 'real-unknown-time', 'unlocated'];
 test.describe('R1-1 API 故障不显示假 0', () => {
   test('首次加载：LOADING 占位 → 503 不可用（KPI/Attention 均无数字）→ 重试成功切回正常', async ({ page }) => {
-    await api(page, located, locatedAssets, {
-      projectsResponse: (n) => (n === 1 ? 'fail' : 'ok'),
-      holdMs: 1200,
-    });
+    await api(page, located, locatedAssets, { summary: (c) => (c.n === 1 ? 'fail' : 'ok'), holdMs: 1200 });
     await page.goto('/#/overview?view=2d');
     // LOADING: placeholders, never a number.
     await expect(page.getByTestId('home-kpis')).toHaveAttribute('data-state', 'loading');
-    await expect(kpi(page, 'devices')).toHaveText('—');
-    await expect(attention(page, 'alarm')).toHaveText('—');
+    await expect(kpi(page, 'registered')).toHaveText('—');
+    await expect(attention(page, 'real-offline')).toHaveText('—');
     await expect(asof(page)).toHaveAttribute('data-state', 'loading');
     // First failure: "不可用", with no digit anywhere in KPI values or Attention counts.
     await expect(page.getByTestId('home-kpis')).toHaveAttribute('data-state', 'unavailable');
-    for (const id of ['devices', 'real-running', 'alarm', 'offline', 'not-commissioned']) {
+    for (const id of KPI_IDS) {
       await expect(kpi(page, id)).toHaveText('不可用');
       await expect(kpi(page, id)).not.toHaveText(/\d/);
     }
-    for (const id of ['alarm', 'offline', 'not-commissioned', 'unlocated'])
-      await expect(attention(page, id)).toHaveText('不可用');
+    for (const id of ATTENTION_IDS) await expect(attention(page, id)).toHaveText('不可用');
     await expect(page.getByTestId('home-load-error')).toContainText('暂无可用数据');
-    await expect(asof(page)).toContainText('拉取失败');
+    await expect(page.getByTestId('home-load-error')).toHaveAttribute('data-status', '503');
+    await expect(asof(page)).toContainText('不可用');
     // Empty-state copy must not claim "no projects" when we simply could not load.
     await expect(page.getByTestId('home-empty')).toHaveCount(0);
     // Retry → ready, real numbers.
     await page.getByTestId('home-load-error').getByRole('button', { name: '重试' }).click();
     await expect(page.getByTestId('home-kpis')).toHaveAttribute('data-state', 'ready');
-    await expect(kpi(page, 'devices')).toHaveText('3台');
-    await expect(kpi(page, 'alarm')).toHaveText('1台');
-    await expect(attention(page, 'alarm')).toHaveText('1');
-    // A legitimate 0 after a complete successful load (no REAL device is running).
-    await expect(kpi(page, 'real-running')).toHaveText('0台');
+    await expect(kpi(page, 'registered')).toHaveText('3台');
+    await expect(attention(page, 'unlocated')).toHaveText('1');
+    // A legitimate 0 after a complete successful load (no REAL identity is connected).
+    await expect(kpi(page, 'real-connected')).toHaveText('0台');
     await expect(page.getByTestId('home-load-error')).toHaveCount(0);
   });
 
-  test('成功拉取后合法计数可以为 0（含空列表全部为 0），未知/失败才不可用', async ({ page }) => {
+  test('成功拉取后合法计数可以为 0（无授权项目全部为 0），未知/失败才不可用', async ({ page }) => {
     await api(page, [], []);
     await page.goto('/#/overview?view=2d');
     await expect(page.getByTestId('home-kpis')).toHaveAttribute('data-state', 'ready');
-    await expect(kpi(page, 'devices')).toHaveText('0台');
-    await expect(attention(page, 'alarm')).toHaveText('0');
+    await expect(kpi(page, 'registered')).toHaveText('0台');
+    await expect(attention(page, 'real-offline')).toHaveText('0');
     await expect(page.getByTestId('home-empty')).toBeVisible();
   });
 
   test('已有成功结果、更新失败：保留旧值并显式标记过期；恢复后取消过期', async ({ page }) => {
-    await api(page, located, locatedAssets, { projectsResponse: (n) => (n === 2 ? 'fail' : 'ok') });
+    const st = await api(page, located, locatedAssets, { summary: (c) => (c.n === 2 ? 'fail' : 'ok') });
     await page.goto('/#/overview?view=2d');
-    await expect(kpi(page, 'devices')).toHaveText('3台');
+    await expect(kpi(page, 'registered')).toHaveText('3台');
+    await expect.poll(() => st.summaryCalls.length).toBe(1);
     const first = (await asof(page).textContent())!;
-    await page.getByTestId('home-refresh').click(); // 2nd fetch fails
+    await page.getByTestId('home-refresh').click(); // 2nd summary fails
     await expect(page.getByTestId('home-kpis')).toHaveAttribute('data-state', 'stale');
-    await expect(kpi(page, 'devices')).toHaveText('3台'); // old value kept…
-    await expect(page.locator('[data-kpi=devices] .home-stale-tag')).toHaveText('已过期'); // …and marked
+    await expect(kpi(page, 'registered')).toHaveText('3台'); // old value kept…
+    await expect(page.locator('[data-kpi=registered] .home-stale-tag')).toHaveText('已过期'); // …and marked
     await expect(page.getByTestId('kpi-stale')).toBeVisible();
     await expect(page.getByTestId('home-attention')).toHaveAttribute('data-state', 'stale');
     await expect(asof(page)).toContainText('数据已过期');
-    await expect(asof(page)).toContainText(first.match(/\d{4}-\d\d-\d\d \d\d:\d\d:\d\d/)![0]); // last SUCCESS time, not the failed attempt
+    await expect(asof(page)).toContainText(first.match(/\d{4}-\d\d-\d\d \d\d:\d\d:\d\d/)![0]); // sampling time of the last SUCCESS
     await expect(page.getByTestId('home-load-error')).toContainText('已过期');
     await page.getByTestId('home-load-error').getByRole('button', { name: '重试' }).click(); // 3rd ok
     await expect(page.getByTestId('home-kpis')).toHaveAttribute('data-state', 'ready');
     await expect(page.locator('.home-stale-tag')).toHaveCount(0);
     await expect(page.getByTestId('home-load-error')).toHaveCount(0);
+  });
+
+  test('地图数据（Inventory）失败不影响权威指标，单独提示且可重试', async ({ page }) => {
+    await api(page, located, locatedAssets, { projectsResponse: (n) => (n === 1 ? 'fail' : 'ok') });
+    await page.goto('/#/overview?view=2d');
+    await expect(page.getByTestId('home-kpis')).toHaveAttribute('data-state', 'ready');
+    await expect(kpi(page, 'registered')).toHaveText('3台');
+    await expect(page.getByTestId('map-load-error')).toContainText('指标不受影响');
+    await expect(page.getByTestId('home-load-error')).toHaveCount(0);
+    await page.getByTestId('map-load-error').getByRole('button', { name: '重试地图数据' }).click();
+    await expect(page.getByTestId('map-load-error')).toHaveCount(0);
   });
 });
 
@@ -206,33 +230,37 @@ test.describe('R1-2 统计范围契约', () => {
     expect(Number(await kpi(page, 'devices').getAttribute('data-value'))).toBeGreaterThan(scoped);
   });
 
-  test('当前省份只有一台告警、其他省份还有告警：范围标签与数值都切到当前省', async ({ page }) => {
+  test('H2-1D 区域统计来自服务端 ?region=：省内一台 REAL 告警、其他省还有告警时数值切到当前省', async ({ page }) => {
     const projects: Proj[] = [
       { id: 'ZJ', name: '浙江项目', adminCode: 330481, devices: 1 },
       { id: 'GD', name: '广东项目', adminCode: 440300, devices: 2 },
     ];
-    await api(page, projects, [
+    // The server decides per region; the browser holds every asset but must not filter them itself.
+    const st = await api(page, projects, [
       { id: 'ZJ-1', projectId: 'ZJ', alarm: true },
       { id: 'GD-1', projectId: 'GD', alarm: true },
       { id: 'GD-2', projectId: 'GD', alarm: true },
-    ]);
+    ], { summary: () => 'ok', metrics: {} });
+    await page.unroute('**/api/v1/operations/summary*');
+    const byRegion: Record<string, number> = { country: 3, '330000': 1, '440000': 2 };
+    st.summaryCalls = await routeSummary(page, (c) =>
+      inventorySummary(projects, [{ projectId: 'ZJ' }, { projectId: 'GD' }, { projectId: 'GD' }], c.region, { alarmReal: byRegion[c.region ?? 'country'] ?? 0 })
+    );
     await page.goto('/#/overview?view=2d');
-    await expect(kpi(page, 'alarm')).toHaveText('3台');
+    await expect(kpi(page, 'alarm-real')).toHaveText('3台');
     await expect(page.getByTestId('kpi-scope')).toContainText('全国');
     await page.goto('/#/overview?view=2d&region=330000');
     await expect(main(page)).toHaveAttribute('data-adcode', '330000');
     await expect(page.getByTestId('kpi-scope')).toContainText('浙江省');
-    await expect(kpi(page, 'alarm')).toHaveText('1台');
-    await expect(attention(page, 'alarm')).toHaveText('1');
-    await expect(kpi(page, 'devices')).toHaveText('1台');
-    await page.locator('[data-kpi=alarm]').click();
-    await expect(page.getByTestId('inspector-total')).toHaveAttribute('data-total', '1');
-    await expect(page.getByTestId('inspector-total')).toContainText('浙江省');
-    // Back to the country: label and numbers follow.
+    await expect(kpi(page, 'alarm-real')).toHaveText('1台');
+    await expect(kpi(page, 'registered')).toHaveText('1台');
+    expect(st.summaryCalls.some((c) => c.region === 330000)).toBe(true);
+    await expect(page.getByTestId('region-partition')).toHaveAttribute('data-registered', '1');
+    // Back to the country: label and numbers follow (country = no region parameter).
     await page.getByRole('button', { name: '返回全国' }).click();
     await expect(page.getByTestId('kpi-scope')).toContainText('全国');
-    await expect(kpi(page, 'alarm')).toHaveText('3台');
-    await expect(page.getByTestId('inspector-total')).toHaveAttribute('data-total', '3');
+    await expect(kpi(page, 'alarm-real')).toHaveText('3台');
+    expect(st.summaryCalls.filter((c) => c.region === null).length).toBeGreaterThanOrEqual(1);
   });
 
   test('切换地区与来源：KPI 标签与数值同步（demo，三维）', async ({ page }) => {
@@ -267,7 +295,7 @@ test.describe('R1-2 统计范围契约', () => {
     const assets: Asset[] = Array.from({ length: 75 }, (_, i) => ({ id: `BIG-${i + 1}`, projectId: 'P001', alarm: true }));
     await api(page, [{ id: 'P001', name: 'Big', adminCode: 330481, devices: 75 }], assets);
     await page.goto('/#/overview?view=2d&status=ALARM');
-    await expect(kpi(page, 'alarm')).toHaveText('75台');
+    await expect(kpi(page, 'registered')).toHaveText('75台');
     await expect(page.getByTestId('inspector-total')).toHaveAttribute('data-total', '75');
     await expect(page.getByTestId('inspector-total')).toContainText('75 台');
     await expect(page.locator('[data-testid=home-inspector] .inspector-device')).toHaveCount(60);
@@ -285,12 +313,12 @@ test.describe('R1-2 统计范围契约', () => {
       { id: 'GD-1', projectId: 'GD' },
     ]);
     await page.goto('/#/overview?view=2d');
-    await page.locator('[data-kpi=devices]').click();
+    await page.locator('[data-kpi=registered]').click();
     await expect(page).toHaveURL(/#\/devices$/);
     await expect(page.getByTestId('inventory-asset')).toHaveCount(3);
     await page.goto('/#/overview?view=2d&region=330000');
-    await expect(kpi(page, 'devices')).toHaveText('2台');
-    await page.locator('[data-kpi=devices]').click();
+    await expect(kpi(page, 'registered')).toHaveText('2台');
+    await page.locator('[data-kpi=registered]').click();
     await expect(page).toHaveURL(/#\/devices\?region=330000/);
     await expect(page.getByTestId('inventory-asset')).toHaveCount(2);
     await expect(page.getByTestId('inventory-scope')).toContainText('浙江省');
@@ -337,8 +365,8 @@ test('R1-2 /devices?region= 只收窄授权数据：不扩大授权、与 ?proje
   await expect(rows).toHaveCount(4);
   // Browser history: home → KPI → /devices?region → Back returns to the same home scope.
   await page.goto('/#/overview?view=2d&region=330000');
-  await expect(kpi(page, 'devices')).toHaveText('2台');
-  await page.locator('[data-kpi=devices]').click();
+  await expect(kpi(page, 'registered')).toHaveText('2台');
+  await page.locator('[data-kpi=registered]').click();
   await expect(page).toHaveURL(/#\/devices\?region=330000/);
   await page.goBack();
   await expect(page).toHaveURL(/#\/overview\?.*region=330000/);
@@ -357,12 +385,16 @@ test('R1-2 /devices?region= 行政区清单不可用：报错且不显示任何�
 });
 
 // ---------------------------------------------------------------- R1-3
-test('R1-3 页头显示「最近拉取」及来源，不冒充遥测时间；Cloud Runtime 独立轮询被明确区分', async ({ page }) => {
+test('R1-3/H2-1D-5 页头显示服务端取样时间（上海），标注三种时间；Cloud Runtime 独立轮询被明确区分', async ({ page }) => {
   await api(page, located, locatedAssets);
   await page.goto('/#/overview?view=2d');
   await expect(asof(page)).toHaveAttribute('data-state', 'ready');
-  await expect(asof(page)).toContainText(/最近拉取 \d{4}-\d\d-\d\d \d\d:\d\d:\d\d · 来源 Inventory API/);
+  // Fixture sampledAt 2026-11-09T04:05:51Z → 12:05:51 Shanghai; generatedAt …04:05:51.394Z.
+  await expect(asof(page)).toContainText('统计取样 2026-11-09 12:05:51 · 每 60 秒更新');
   await expect(asof(page)).not.toContainText('数据截至');
+  await expect(asof(page)).toHaveAttribute('title', /统计取样 sampledAt 2026-11-09 12:05:51/);
+  await expect(asof(page)).toHaveAttribute('title', /生成完成 generatedAt 2026-11-09 12:05:51/);
+  await expect(asof(page)).toHaveAttribute('title', /浏览器接收 \d{4}-\d\d-\d\d \d\d:\d\d:\d\d/);
   await expect(asof(page)).toHaveAttribute('title', /不是设备遥测的观测时间/);
   await expect(page.getByTestId('cloud-runtime-cycle')).toContainText('不刷新首页指标');
   // Cloud Runtime sits after the homepage sections, not between title and KPIs.
@@ -503,8 +535,10 @@ test('R1-5 WebGL 上下文丢失：可恢复时恢复三维；未恢复则自动
   await expect(main(page)).toHaveAttribute('data-view', '2d');
   await expect(page.locator('.stage2d-map path').first()).toBeVisible();
   await expect(page.getByRole('button', { name: '三维沙盘' })).toBeDisabled();
-  await page.locator('[data-kpi=alarm]').click();
-  await expect(page.getByTestId('inspector-total')).toHaveAttribute('data-total', '1');
+  await expect(kpi(page, 'registered')).toHaveText('3台'); // numbers unaffected by the renderer
+  await page.locator('[data-kpi=pending-review]').click(); // KPI filter still works on the 2D fallback
+  await expect(main(page)).toHaveAttribute('data-status-filter', 'PENDING_REVIEW');
+  await expect(page.getByTestId('review-list')).toBeVisible();
 });
 
 test('R1-5 地图资源加载失败：三维显示可恢复错误，重试成功；也可切到轻量视图（不永久空白）', async ({ page }) => {

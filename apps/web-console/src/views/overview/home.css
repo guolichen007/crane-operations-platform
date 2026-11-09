@@ -721,3 +721,34 @@ button.attention-row:hover {
 .home-grid.drawer-open .stage2d-map {
   padding-right: calc(var(--drawer-inset, 0px) + 8px);
 }
+
+/* ---- H2-1D: authoritative summary additions ---- */
+.home-window select {
+  height: 24px;
+  padding: 0 6px;
+  font-size: var(--fs-xs);
+  color: var(--text-1);
+  background: transparent;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+}
+.home-window select option {
+  color: #111;
+}
+.attention-row.info {
+  cursor: default;
+}
+.region-count {
+  margin-left: 4px;
+  font-weight: 500;
+  font-size: 11px;
+  color: var(--gold, #d6b56c);
+}
+.region-partition {
+  margin: 6px 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+}
+.review-alarm {
+  color: var(--critical);
+}
