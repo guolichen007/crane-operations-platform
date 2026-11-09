@@ -79,6 +79,9 @@ for (const vp of [
     const long = await create(sales, `${tag}超长名称${'行车自动化改造与智能调度系统一期工程'.repeat(4)}`, 'L2_TECHNICAL', { customer: '超长客户名称'.repeat(12) + tag });
     const moving = await create(sales, `${tag}推进`, 'L2_TECHNICAL');
     const submitted = (await api(sales, `/api/v1/projects/${moving.id}/submit`, 'POST', { version: moving.version })).body;
+    // G3-3B: the submitted fixture is returned in finally, also when an
+    // assertion below fails, so it never stays in team one's review queue.
+    try {
     expect(submitted.intakeStatus).toMatch(/SUBMITTED|UNDER_REVIEW/);
     const day = 86_400_000;
     for (const [p, at] of [[long, new Date(Date.now() - day).toISOString()], [submitted, new Date(Date.now() + 3 * day).toISOString()]] as const) {
@@ -181,13 +184,15 @@ for (const vp of [
     await expect(column(sales, 'L3_SITE_SURVEY').locator('.stage-card')).toContainText(`${tag}推进`);
     const audit = (await api(sales, `/api/v1/projects/${moving.id}`)).body.audit.filter((a: { action: string }) => a.action === 'project.stage-change');
     expect(audit).toHaveLength(1);
-    // Leave the shared e2e database as found: the submitted fixture must not
-    // stay in team one's review queue (other specs open queue page 1).
-    const director = await session(browser, 'synthetic-director', { width: 1440, height: 900 });
-    const latest = (await api(director, `/api/v1/projects/${moving.id}`)).body;
-    expect((await api(director, `/api/v1/projects/${moving.id}/return`, 'POST', { version: latest.version, reason: '合成测试数据清理' })).status).toBe(200);
-    await director.context().close();
-    await sales.context().close();
+    } finally {
+      // Leave the shared e2e database as found (other specs open queue page 1).
+      const director = await session(browser, 'synthetic-director', { width: 1440, height: 900 });
+      const latest = (await api(director, `/api/v1/projects/${moving.id}`)).body;
+      if (['SUBMITTED', 'UNDER_REVIEW'].includes(latest.intakeStatus))
+        expect((await api(director, `/api/v1/projects/${moving.id}/return`, 'POST', { version: latest.version, reason: '合成测试数据清理' })).status).toBe(200);
+      await director.context().close();
+      await sales.context().close();
+    }
   });
 }
 

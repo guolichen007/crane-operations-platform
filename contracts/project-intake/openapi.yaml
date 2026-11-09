@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Project Intake API",
-    "version": "1.4.0-g33a",
+    "version": "1.5.0-g33b",
     "description": "全角色项目资源授权、不可覆盖提交证据、管理员未分配草稿及幂等创建；G2 增加审核资格提示、创建意图回执、显示名称与首页最小聚合。完整经营分析不在G2。"
   },
   "servers": [
@@ -3491,8 +3491,8 @@
     "/api/v1/stage-summary": {
       "get": {
         "operationId": "stage.summary",
-        "summary": "当前角色授权范围内 12 个销售阶段的真实数量",
-        "description": "一条 PostgreSQL 聚合，范围与 GET /projects 相同（ProjectPolicy/projectScope），默认包含范围内全部报备状态。基础筛选 q/status/province/updatedAfter 与 /projects 同义并作用于全部阶段；stage、分页、排序、跟进窗口等其他参数一律 400 INVALID_FILTER。同一数据状态下，每个阶段 count 等于 GET /projects?stage=<code>&<相同筛选> 的 total。不含金额（G3-3B）。",
+        "summary": "当前角色授权范围内 12 个销售阶段的真实数量与项目预估金额",
+        "description": "一条 PostgreSQL 聚合，范围与 GET /projects 相同（ProjectPolicy/projectScope），默认包含范围内全部报备状态。基础筛选 q/status/province/updatedAfter 与 /projects 同义并作用于全部阶段；stage、分页、排序、跟进窗口等其他参数一律 400 INVALID_FILTER。同一数据状态下，每个阶段 count 等于 GET /projects?stage=<code>&<相同筛选> 的 total。G3-3B 增加每阶段、非标准阶段与全局的 amount（同一条 SQL、同一快照），只统计预估金额的已知部分。",
         "security": [
           {
             "session": []
@@ -5268,9 +5268,11 @@
           "filters",
           "total",
           "stages",
-          "unclassified"
+          "unclassified",
+          "amount",
+          "unclassifiedAmount"
         ],
-        "description": "G3-3A 销售阶段分布。stages 固定 12 项、固定顺序，数量为 0 的阶段也返回；sum(stages.count)+unclassified=total。",
+        "description": "G3-3A 销售阶段分布 + G3-3B 项目预估金额。stages 固定 12 项、固定顺序；sum(stages.count)+unclassified=total；sum(stages.amount.knownTotal)+unclassifiedAmount.knownTotal=amount.knownTotal（各计数同理）。",
         "properties": {
           "asOf": {
             "type": "string",
@@ -5305,7 +5307,8 @@
               "additionalProperties": false,
               "required": [
                 "code",
-                "count"
+                "count",
+                "amount"
               ],
               "properties": {
                 "code": {
@@ -5328,6 +5331,9 @@
                 "count": {
                   "type": "integer",
                   "minimum": 0
+                },
+                "amount": {
+                  "$ref": "#/components/schemas/AmountSummary"
                 }
               }
             }
@@ -5336,6 +5342,61 @@
             "type": "integer",
             "minimum": 0,
             "description": "库中 sales_stage 不属于 12 个标准编码的项目数（数据质量提示，不改写历史数据）；正常为 0"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/AmountSummary"
+          },
+          "unclassifiedAmount": {
+            "$ref": "#/components/schemas/AmountSummary"
+          }
+        }
+      },
+      "AmountSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "knownTotal",
+          "knownCount",
+          "knownZeroCount",
+          "knownImplicitCount",
+          "unknownCount",
+          "legacyUnconfirmedCount",
+          "invalidCount"
+        ],
+        "description": "G3-3B 项目预估金额（元）的已知部分，不是合同、收入、回款或预测。knownTotal 由 PostgreSQL numeric 求和，固定两位小数的十进制字符串，仅含 KNOWN；knownCount+unknownCount+legacyUnconfirmedCount+invalidCount 等于对应项目数。KNOWN 要求已知性合法且 estimated_amount 列与 document.estimatedAmount 数值精确相等；否则 INVALID（数据异常，不计入、不改写）。",
+        "properties": {
+          "knownTotal": {
+            "type": "string",
+            "pattern": "^[0-9]+\\.[0-9]{2}$",
+            "description": "已知金额合计；无已知金额时为 \"0.00\"，须结合 knownCount 理解"
+          },
+          "knownCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "knownZeroCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "已确认的真实 0，属于 knownCount"
+          },
+          "knownImplicitCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "knownCount 中来自无已知性标记的历史正数（G1 兼容规则视为 KNOWN）"
+          },
+          "unknownCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "legacyUnconfirmedCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "历史 0，未确认是否真实，不计入合计"
+          },
+          "invalidCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "已知性与数值矛盾、结构非法或两处金额不一致"
           }
         }
       }

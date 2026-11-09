@@ -385,7 +385,15 @@ func scaleData(t *testing.T, f g1Fixture, total int) map[string]int {
 		// G3-3A: spread the synthetic projects over the 12 sales stages
 		// (front-loaded like a real funnel; not read by the queue/summary SQL).
 		`UPDATE intake_projects SET sales_stage=(ARRAY['L0_LEAD','L1_REQUIREMENT','L1_REQUIREMENT','L2_TECHNICAL','L2_TECHNICAL','L3_SITE_SURVEY','L4_SOLUTION','L5_QUOTATION','L6_TENDER','L7_COMMERCIAL','L8_PENDING_CONTRACT','WON','LOST','HOLD'])[1+substring(project_name from 7)::int % 14] WHERE project_name LIKE '合成规模项目%'`,
-		`DROP TABLE syn`, `DROP TABLE appr`, `ANALYZE`,
+		// G3-3B: amount mix — 70% KNOWN (incl. 5% true 0), 15% UNKNOWN, 10%
+		// unflagged historical 0 (LEGACY_UNCONFIRMED), 5% inconsistent (INVALID).
+		`UPDATE intake_projects SET estimated_amount=CASE WHEN substring(project_name from 7)::int % 20 < 13 THEN (substring(project_name from 7)::int % 997)*1000.25 WHEN substring(project_name from 7)::int % 20 < 14 THEN 0 WHEN substring(project_name from 7)::int % 20 < 17 THEN NULL WHEN substring(project_name from 7)::int % 20 < 19 THEN 0 ELSE 1.00 END,
+  document=CASE WHEN substring(project_name from 7)::int % 20 < 14 THEN document || jsonb_build_object('estimatedAmount',CASE WHEN substring(project_name from 7)::int % 20 < 13 THEN (substring(project_name from 7)::int % 997)*1000.25 ELSE 0 END,'knowledge',jsonb_build_object('estimatedAmount','KNOWN'))
+   WHEN substring(project_name from 7)::int % 20 < 17 THEN document || jsonb_build_object('estimatedAmount',NULL,'knowledge',jsonb_build_object('estimatedAmount','UNKNOWN'))
+   WHEN substring(project_name from 7)::int % 20 < 19 THEN (document - 'knowledge') || jsonb_build_object('estimatedAmount',0)
+   ELSE document || jsonb_build_object('estimatedAmount',2,'knowledge',jsonb_build_object('estimatedAmount','KNOWN')) END
+  WHERE project_name LIKE '合成规模项目%'`,
+		`DROP TABLE syn`, `DROP TABLE appr`, `VACUUM ANALYZE intake_projects`, `ANALYZE`,
 	}
 	conn, err := f.db.Acquire(ctx)
 	if err != nil {

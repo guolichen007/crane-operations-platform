@@ -236,6 +236,7 @@ func TestDatabaseG33P0JIT(t *testing.T) {
 		who := strings.TrimPrefix(part, "pipeline-")
 		row("阶段统计 stage-summary", who, e.get(t, who, "/api/v1/stage-summary"), true)
 		row("阶段统计（province+status 筛选）", who, e.get(t, who, "/api/v1/stage-summary?province=%E5%90%88%E6%88%90%E7%9C%81&status=APPROVED"), false)
+		row("阶段统计（q+updatedAfter 筛选）", who, e.get(t, who, "/api/v1/stage-summary?q=%E5%90%88%E6%88%90%E8%A7%84%E6%A8%A1%E9%A1%B9%E7%9B%AE1&updatedAfter=2000-01-01T00%3A00%3A00Z"), false)
 		var sum StageSummary
 		_, b := e.cl[who].call("GET", "/api/v1/stage-summary", nil)
 		_ = json.Unmarshal(b, &sum)
@@ -251,7 +252,7 @@ func TestDatabaseG33P0JIT(t *testing.T) {
 		}
 		row(fmt.Sprintf("阶段栏 %s 第1页（共 %d）", code, n), who, e.get(t, who, "/api/v1/projects?stage="+code+"&page=1&pageSize=10"), true)
 		row(fmt.Sprintf("阶段栏 %s 末页(%d)", code, last), who, e.get(t, who, fmt.Sprintf("/api/v1/projects?stage=%s&page=%d&pageSize=10", code, last)), false)
-		fmt.Fprintf(&out, "| 阶段分布 | %s | total=%d unclassified=%d %v | | | | | | | | | | | |\n", who, sum.Total, sum.Unclassified, sum.Stages)
+		fmt.Fprintf(&out, "| 阶段分布 | %s | total=%d unclassified=%d amount=%+v | | | | | | | | | | | |\n", who, sum.Total, sum.Unclassified, sum.Amount)
 		appendReport(t, report, out.String()+plans.String())
 		return
 	}

@@ -44,8 +44,14 @@ interface Column {
   state: 'idle' | 'loading' | 'ready' | 'error';
   failure: string;
   seq: number;
+  exhausted: boolean;
 }
-const blank = (): Column => ({ items: [], page: 0, total: null, state: 'idle', failure: '', seq: 0 });
+const blank = (): Column => ({ items: [], page: 0, total: null, state: 'idle', failure: '', seq: 0, exhausted: false });
+function refreshColumn(code: string) {
+  Object.assign(columns[code], blank(), { seq: columns[code].seq + 1 });
+  void loadSummary();
+  void loadColumn(code);
+}
 const columns = reactive<Record<string, Column>>(Object.fromEntries(stageCodes.map((c) => [c, blank()])));
 const summary = ref<{ asOf: string; total: number; counts: Record<string, number>; unclassified: number } | null>(null);
 const summaryState = ref<'loading' | 'ready' | 'error'>('loading'),
@@ -87,9 +93,14 @@ async function loadColumn(code: string, more = false) {
     if (g !== generation || seq !== col.seq) return;
     // Projects can move between requests; never show one card twice.
     const known = new Set(more ? col.items.map((p) => p.id) : []);
-    col.items = more ? [...col.items, ...b.items.filter((p) => !known.has(p.id))] : b.items;
+    const fresh = more ? b.items.filter((p) => !known.has(p.id)) : b.items;
+    col.items = more ? [...col.items, ...fresh] : b.items;
     col.page = page;
     col.total = b.total;
+    // Projects moved or were removed meanwhile: a page brought nothing new.
+    // Stop offering "load more" (no loop over empty/duplicate pages) and ask
+    // for a column refresh instead.
+    col.exhausted = more && fresh.length === 0;
     col.state = 'ready';
   } catch (e) {
     if (g !== generation || seq !== col.seq) return;
@@ -210,6 +221,12 @@ async function confirmMove() {
     if (r.kind === 'conflict') {
       try {
         moving.value = await app.api<Project>('/api/v1/projects/' + p.id);
+        // The project may now be in another stage/status: a previously chosen
+        // target must be confirmed again against the latest legal choices.
+        if (!nextStages(moving.value.salesStage, moving.value.intakeStatus).includes(target.value)) {
+          target.value = '';
+          moveFailure.value += ' 项目当前阶段已变为“' + stages[moving.value.salesStage] + '”，请重新选择目标阶段。';
+        }
       } catch {
         /* keep the dialog; the error above is shown */
       }
@@ -321,8 +338,11 @@ async function confirmMove() {
         {{ columns[code].failure }} <ActionButton action-id="pipeline.column-retry" :run="() => loadColumn(code, columns[code].page > 0)">重试本栏</ActionButton>
       </div>
       <p v-else-if="columns[code].state === 'ready' && !columns[code].items.length" class="muted stage-empty">本阶段暂无项目</p>
+      <p v-if="columns[code].state === 'ready' && columns[code].exhausted" class="note stage-exhausted" role="status">
+        本栏数据已变化，继续加载没有新项目。<ActionButton action-id="pipeline.column-refresh" :run="() => refreshColumn(code)">刷新本栏</ActionButton>
+      </p>
       <ActionButton
-        v-if="columns[code].state === 'ready' && columns[code].total !== null && columns[code].items.length < columns[code].total"
+        v-if="columns[code].state === 'ready' && !columns[code].exhausted && columns[code].total !== null && columns[code].items.length < columns[code].total"
         action-id="pipeline.load-more"
         class="stage-more"
         :run="() => loadColumn(code, true)"

@@ -199,5 +199,6 @@ test('pagination and read-only navigation actions', async ({ page }, info) => {
   await page.getByRole('button', { name: '列表视图', exact: true }).click();
   await expect(page.getByRole('heading', { name: /我的报备/ })).toBeVisible();
   await page.getByRole('button', { name: '统计', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '基础统计', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '统计', exact: true })).toBeVisible();
+  await expect(page.getByTestId('stat-known-total')).toContainText('¥');
 });

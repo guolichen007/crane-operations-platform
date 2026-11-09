@@ -81,8 +81,26 @@ func projectFilters(u User, params map[string]string, asOf time.Time) (string, [
 var stageSummaryParams = map[string]bool{"q": true, "status": true, "province": true, "updatedAfter": true}
 
 type StageCount struct {
-	Code  string `json:"code"`
-	Count int    `json:"count"`
+	Code   string        `json:"code"`
+	Count  int           `json:"count"`
+	Amount AmountSummary `json:"amount"`
+}
+
+// AmountSummary (G3-3B) covers the estimated project amount only — not a
+// contract, revenue or forecast. KnownTotal is a fixed-point decimal string
+// computed by PostgreSQL numeric SUM; it includes only KNOWN amounts. For
+// every group: knownCount + unknownCount + legacyUnconfirmedCount +
+// invalidCount = project count. knownImplicitCount is the part of knownCount
+// that comes from migrated records without an explicit knowledge flag (G1
+// rule: an unflagged positive amount is KNOWN), disclosed for transparency.
+type AmountSummary struct {
+	KnownTotal             string `json:"knownTotal"`
+	KnownCount             int    `json:"knownCount"`
+	KnownZeroCount         int    `json:"knownZeroCount"`
+	KnownImplicitCount     int    `json:"knownImplicitCount"`
+	UnknownCount           int    `json:"unknownCount"`
+	LegacyUnconfirmedCount int    `json:"legacyUnconfirmedCount"`
+	InvalidCount           int    `json:"invalidCount"`
 }
 type StageSummary struct {
 	AsOf    time.Time         `json:"asOf"`
@@ -94,13 +112,21 @@ type StageSummary struct {
 	// Always reported (normally 0) so a data-quality issue is never hidden:
 	// sum(stages) + unclassified == total.
 	Unclassified int `json:"unclassified"`
+	// Amount over all projects (= sum of stages[].amount + unclassifiedAmount).
+	Amount             AmountSummary `json:"amount"`
+	UnclassifiedAmount AmountSummary `json:"unclassifiedAmount"`
 }
 
 var scopeLabels = map[string]string{salesRole: "OWN", managerRole: "TEAM", directorRole: "ALL_ASSIGNED", adminRole: "ALL"}
 
+// stageCodesSQL lists the 12 codes; any other stored value groups as unclassified.
+var stageCodesSQL = "'" + strings.Join(stages, "','") + "'"
+
+func zeroAmount() AmountSummary { return AmountSummary{KnownTotal: "0.00"} }
+
 func (a *App) stageSummary(ctx context.Context, u User, params map[string]string) (StageSummary, error) {
 	asOf := time.Now().UTC().Truncate(time.Microsecond)
-	out := StageSummary{AsOf: asOf, Scope: scopeLabels[u.Role], Filters: map[string]string{}, Stages: make([]StageCount, len(stages))}
+	out := StageSummary{AsOf: asOf, Scope: scopeLabels[u.Role], Filters: map[string]string{}, Stages: make([]StageCount, len(stages)), Amount: zeroAmount(), UnclassifiedAmount: zeroAmount()}
 	for k, v := range params {
 		if !stageSummaryParams[k] {
 			return out, listError("阶段统计不支持的筛选条件：" + k)
@@ -113,31 +139,54 @@ func (a *App) stageSummary(ctx context.Context, u User, params map[string]string
 	if err != nil {
 		return out, err
 	}
-	// One set aggregation over the scoped, filtered projects.
-	rows, err := a.db.Query(ctx, `SELECT p.sales_stage,count(*) FROM intake_projects p`+where+` GROUP BY p.sales_stage`, args...)
+	// One statement (one snapshot): per stage group plus the grand total via
+	// GROUPING SETS. Amount classification is amountClassSQL; sums are numeric.
+	rows, err := a.db.Query(ctx, `SELECT GROUPING(g.stage)=1, g.stage, count(*),
+ coalesce(sum(g.amount) FILTER (WHERE g.class='KNOWN'),0)::numeric(20,2)::text,
+ count(*) FILTER (WHERE g.class='KNOWN'),
+ count(*) FILTER (WHERE g.class='KNOWN' AND g.amount=0),
+ count(*) FILTER (WHERE g.class='KNOWN' AND g.implicit),
+ count(*) FILTER (WHERE g.class='UNKNOWN'),
+ count(*) FILTER (WHERE g.class='LEGACY_UNCONFIRMED'),
+ count(*) FILTER (WHERE g.class='INVALID')
+ FROM (SELECT CASE WHEN p.sales_stage IN (`+stageCodesSQL+`) THEN p.sales_stage ELSE '' END AS stage,
+   p.estimated_amount AS amount, `+amountClassSQL("p")+` AS class,
+   coalesce(p.document->'knowledge'->>'estimatedAmount','')='' AS implicit
+   FROM intake_projects p`+where+`) g
+ GROUP BY GROUPING SETS ((g.stage),())`, args...)
 	if err != nil {
 		return out, err
 	}
 	defer rows.Close()
-	counts := map[string]int{}
+	groups := map[string]StageCount{}
 	for rows.Next() {
-		var stage string
-		var n int
-		if err = rows.Scan(&stage, &n); err != nil {
+		var total bool
+		var stage *string
+		var c StageCount
+		m := &c.Amount
+		if err = rows.Scan(&total, &stage, &c.Count, &m.KnownTotal, &m.KnownCount, &m.KnownZeroCount, &m.KnownImplicitCount, &m.UnknownCount, &m.LegacyUnconfirmedCount, &m.InvalidCount); err != nil {
 			return out, err
 		}
-		counts[stage] += n
-		out.Total += n
+		if total {
+			out.Total, out.Amount = c.Count, c.Amount
+			continue
+		}
+		groups[*stage] = c
 	}
 	if err = rows.Err(); err != nil {
 		return out, err
 	}
-	known := 0
 	for i, code := range stages {
-		out.Stages[i] = StageCount{Code: code, Count: counts[code]}
-		known += counts[code]
+		c, ok := groups[code]
+		if !ok {
+			c = StageCount{Amount: zeroAmount()}
+		}
+		c.Code = code
+		out.Stages[i] = c
 	}
-	out.Unclassified = out.Total - known
+	if c, ok := groups[""]; ok {
+		out.Unclassified, out.UnclassifiedAmount = c.Count, c.Amount
+	}
 	return out, nil
 }
 

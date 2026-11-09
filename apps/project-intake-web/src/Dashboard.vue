@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
-import { useRouter, useRoute } from 'vue-router';
+import { useRouter } from 'vue-router';
 import { ArrowUpRight, Plus, UserPlus } from '@lucide/vue';
 import { useApp } from './store';
 import { statuses, stages, when } from './model';
@@ -29,7 +29,6 @@ interface Summary {
 }
 const app = useApp(),
   router = useRouter(),
-  route = useRoute(),
   data = ref<Summary | null>(null),
   state = ref<'loading' | 'ready' | 'error'>('loading'),
   failure = ref('');
@@ -45,7 +44,6 @@ async function load() {
 }
 onMounted(load);
 const role = computed(() => app.user?.role || '');
-const isStats = computed(() => route.path === '/statistics');
 const c = (k: string) => data.value?.counts[k] ?? 0;
 interface Tile {
   key: string;
@@ -86,7 +84,7 @@ const go = (to: string) => {
 <template>
   <div class="page-heading home-heading">
     <div>
-      <h1>{{ isStats ? '基础统计' : '工作台' }}</h1>
+      <h1>工作台</h1>
       <p class="muted">{{ app.user?.name }}，{{ greeting }}</p>
     </div>
     <div class="home-actions">
@@ -160,6 +158,5 @@ const go = (to: string) => {
         </ol>
       </section>
     </div>
-    <p v-if="isStats" class="note">此页仅提供与工作台相同口径的范围计数。阶段管道、金额、团队对比与趋势分析在后续批次（G3）提供。</p>
   </template>
 </template>

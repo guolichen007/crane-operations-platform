@@ -2301,3 +2301,44 @@ td.unassigned,
 .stage-strip > button { min-height: 36px; padding: 4px 10px; gap: 8px; font-size: 13px; color: var(--ink-2); }
 .stage-strip > button strong { color: var(--blue); font-weight: 650; }
 .stage-strip > button.empty strong { color: var(--ink-3); font-weight: 500; }
+
+/* G3-3B statistics */
+.stats-scope { margin: 0 0 14px; }
+.stats-kpis { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+.stats-kpi { border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; min-width: 0; background: var(--surface); }
+.stats-kpi.primary { border-color: #b9cbe6; background: var(--blue-wash); }
+.stats-kpi.warn { border-color: #e7b9ae; background: var(--risk-wash); }
+.stats-kpi strong { font-size: 22px; font-weight: 650; color: var(--ink); overflow-wrap: anywhere; }
+.stats-kpi.primary strong { color: var(--blue-2); white-space: nowrap; font-size: clamp(18px, 1.9vw, 24px); }
+.stats-table .mono { color: var(--ink); font-size: 14px; }
+.stats-cards > button.stats-card:disabled { opacity: 1; background: var(--steel); color: var(--ink-3); }
+.stats-cards > button.stats-card .mono { color: var(--ink); font-size: 14px; }
+.stats-kpi small { font-size: 12px; }
+.stats-label { font-size: 13px; color: var(--ink-2); font-weight: 600; }
+.stats-implicit { font-size: 13px; }
+.stats-table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 8px; }
+.stats-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.stats-table th, .stats-table td { padding: 8px 12px; border-bottom: 1px solid var(--rule); text-align: left; white-space: nowrap; }
+.stats-table thead th { background: var(--steel); font-weight: 600; color: var(--ink-2); font-size: 13px; }
+.stats-table tbody th { font-weight: 600; color: var(--ink); min-width: 140px; }
+.stats-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.stats-table tfoot th, .stats-table tfoot td { font-weight: 650; background: var(--steel); border-bottom: 0; }
+.stats-bar { display: block; height: 4px; background: var(--steel-2); border-radius: 2px; margin-top: 4px; max-width: 160px; }
+.stats-bar > span { display: block; height: 100%; background: var(--blue); border-radius: 2px; }
+.stats-cards { display: none; }
+.stats-foot { font-size: 13px; margin-top: 12px; }
+@media (max-width: 1100px) {
+  .stats-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .stats-kpi.primary { grid-column: span 2; }
+  .stats-table th, .stats-table td { padding: 8px 8px; }
+  .stats-table tbody th { min-width: 96px; }
+  .stats-table .stats-open { padding: 4px 8px; min-height: 32px; font-size: 13px; }
+}
+@media (max-width: 700px) {
+  .stats-kpis { grid-template-columns: 1fr 1fr; }
+  .stats-kpi.primary { grid-column: 1 / -1; }
+  .stats-table-wrap { display: none; }
+  .stats-cards { display: grid; gap: 8px; }
+  .stats-cards > button.stats-card { display: flex; flex-direction: column; align-items: stretch; text-align: left; gap: 4px; padding: 12px 14px; min-height: 44px; }
+  .stats-card-head { display: flex; justify-content: space-between; gap: 8px; color: var(--ink); }
+}

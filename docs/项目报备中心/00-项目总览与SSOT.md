@@ -5,14 +5,18 @@ BAOBEI_MAIN_MERGE=FORBIDDEN
 BAOBEI_R2_MERGE=FORBIDDEN
 BASE_SHA=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18
 BRANCH=product/baobei-v1
-CURRENT_BATCH=FULL_ROLE_G3_3A
-STOP_AFTER_FULL_ROLE_G3_3A=YES
+CURRENT_BATCH=FULL_ROLE_G3_3B
+STOP_AFTER_FULL_ROLE_G3_3B=YES
 
 目标：快速报项目、识别重复、明确归属并跟进。独立产品，永不合并 main/R2。
 
-## 当前实施：G3-3A 真实销售管道
+## 当前实施：G3-3B 可信项目金额与经营统计
 
-基线 `b33ce98`（Run 42542304507 八门通过）。新增 `GET /api/v1/stage-summary`：与 `/projects` 共用 `projectScope` 和基础筛选（q/status/province/updatedAfter），一条聚合返回 12 个销售阶段（含 0）、total、`unclassified` 数据质量计数；未知或非法参数 400。`/projects` 的 page/pageSize 非法值改为 400。`/pipeline` 改为真实管道：列头为服务端全量数量，各栏独立分页与按需加载，手机为阶段选择器 + 单栏；卡片区分销售阶段与报备状态，跟进标记只看 nextFollowupAt；阶段推进经确认原因后调用原 stage-change。PG18 10k 下统计约 3 ms、单栏首页约 7 ms，未触发 JIT。无迁移、无金额统计。验收见 [31-G3-3A真实销售管道验收](31-G3-3A真实销售管道验收.md)。G3-3B/G3-4 未开始；生产仍 BLOCKED。
+基线 `660c637`（Run 42551354566 八门通过）。先做金额法证：25 个真实 PG18 样本证明可按已批准的 G1 已知性规则可靠判定，列与文档不一致或标记矛盾的记录归为 INVALID 单独计数，不改写数据。`GET /api/v1/stage-summary` 向后兼容地增加每阶段、非标准阶段与全局的 `amount`（knownTotal 十进制字符串及已知/零/隐含/未知/待确认/异常计数），同一条 SQL、同一快照、numeric 求和，可对账。`/statistics` 改为真实统计页，只展示项目预估金额的已知部分并写明口径，可点击进入相同口径的项目列表。登记写入精度缺陷（超过两位小数）待后续修复。PG18 10k 下约 30–37 ms，无 JIT。验收见 [32-G3-3B可信项目金额与经营统计验收](32-G3-3B可信项目金额与经营统计验收.md)。G3-4 未开始；生产仍 BLOCKED。
+
+## 历史：G3-3A 真实销售管道
+
+基线 `b33ce98`（Run 42542304507 八门通过）。新增 `GET /api/v1/stage-summary`：与 `/projects` 共用 `projectScope` 和基础筛选（q/status/province/updatedAfter），一条聚合返回 12 个销售阶段（含 0）、total、`unclassified` 数据质量计数；未知或非法参数 400。`/projects` 的 page/pageSize 非法值改为 400。`/pipeline` 改为真实管道：列头为服务端全量数量，各栏独立分页与按需加载，手机为阶段选择器 + 单栏；卡片区分销售阶段与报备状态，跟进标记只看 nextFollowupAt；阶段推进经确认原因后调用原 stage-change。PG18 10k 下统计约 3 ms、单栏首页约 7 ms，未触发 JIT。无迁移、无金额统计。验收见 [31-G3-3A真实销售管道验收](31-G3-3A真实销售管道验收.md)。
 
 ## 历史：G3-3-P0 R1 浏览器门禁修复
 
