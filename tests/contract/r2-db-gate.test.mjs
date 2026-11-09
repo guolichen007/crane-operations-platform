@@ -52,11 +52,13 @@ test('r2-b2-test.mjs gates the four H2-1A real-PostgreSQL tests and gives invent
     'TestSummaryIdentityRuntimeAndAlarms', 'TestSummaryAuthorizationScopes', 'TestSummaryGeographyCountryProvincePrefectureCounty',
     'TestSummaryFutureSkewBoundariesAndConfig', 'TestSummaryEmptyDatabaseIsLegalZero', 'TestSummaryMoreThan100RecordsAndReviewAssets',
     'TestSummaryQueryFailureIsUnavailableNotPartial', 'TestSummaryConcurrentWritersSeeOneSnapshot',
-    'TestSummaryLeavesNoSessionSettingOnPooledConnection', 'TestSnapshotInvariantDetectsTornReader', 'TestSummaryRuntimeInvariants'])
+    'TestSummaryLeavesNoSessionSettingOnPooledConnection', 'TestSnapshotInvariantDetectsTornReader', 'TestSummaryRuntimeInvariants',
+    'TestSeedVerifyReseedCleanup', 'TestVerifyDetectsDrift', 'TestVerifyDetectsGrantLeak', 'TestGuardRefusesNonPreview'])
     assert.ok(runner.includes(`'${name}'`), `missing required test ${name}`);
   assert.match(runner, /\['h21a-inventory', '\.\/internal\/inventory'/);
   assert.match(runner, /\['h21a-cloudapi', '\.\/services\/cloud-api\/internal\/app'/);
   assert.match(runner, /\['h21c-operations', '\.\/internal\/operations'/);
+  assert.match(runner, /\['h3-uatdata', '\.\/tools\/uatdata'/);
   assert.match(runner, /runTargetGate\(name, required\)/);
   assert.match(runner, /gateProblems\(output, required, \{ exact: true \}\)/);
   const compose = readFileSync('tests/integration/a1/compose.yml', 'utf8');

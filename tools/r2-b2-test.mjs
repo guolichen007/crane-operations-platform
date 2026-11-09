@@ -72,6 +72,13 @@ const h21aPackages = [
     'TestSnapshotInvariantDetectsTornReader',
     'TestSummaryRuntimeInvariants',
   ]],
+  // H3-P G3 synthetic Preview acceptance dataset: seed/verify/cleanup against the real summary.
+  ['h3-uatdata', './tools/uatdata', [
+    'TestSeedVerifyReseedCleanup',
+    'TestVerifyDetectsDrift',
+    'TestVerifyDetectsGrantLeak',
+    'TestGuardRefusesNonPreview',
+  ]],
 ];
 function run(command, args, extra = {}, capture = false) {
   const result = spawnSync(command, args, { encoding: 'utf8', stdio: capture ? 'pipe' : 'inherit', env: { ...environment, ...extra } });
@@ -118,6 +125,7 @@ try {
   for (const [name, , required] of h21aPackages) runTargetGate(name, required);
   console.log('R2_H21A_DB_TEST=PASS');
   console.log('R2_H21C_DB_TEST=PASS');
+  console.log('R2_H3_UATDATA_DB_TEST=PASS');
 } finally {
   run(docker, [...compose, 'down', '--volumes', '--remove-orphans'], first);
 }
