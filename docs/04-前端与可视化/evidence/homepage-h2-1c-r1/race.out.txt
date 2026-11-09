@@ -1,0 +1,3 @@
+PASS
+{"timestamp":"2026-11-09T13:15:59.709478563+08:00","level":"INFO","message":"operations summary","service":"a1-fixture","version":"0.1.0","traceId":"","deviceId":"","projectId":"","sessionId":"","event":"operations_summary","requestId":"09fbfdc157bf238ff78af1cf","status":200,"durationMs":6,"scope":"country","errorKind":"","userId":"user-a"}
+PASS

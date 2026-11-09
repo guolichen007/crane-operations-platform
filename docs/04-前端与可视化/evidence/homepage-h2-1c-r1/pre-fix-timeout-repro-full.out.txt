@@ -1,0 +1,170 @@
+=== RUN   TestSummaryConcurrentWritersSeeOneSnapshot
+panic: test timed out after 1m0s
+	running tests:
+		TestSummaryConcurrentWritersSeeOneSnapshot (1m0s)
+
+goroutine 417943 [running]:
+testing.(*M).startAlarm.func1()
+	/tmp/go/src/testing/testing.go:2961 +0x34a
+created by time.goFunc
+	/tmp/go/src/time/sleep.go:182 +0x2d
+
+goroutine 1 [chan receive]:
+testing.(*T).Run(0x2905a5676488, {0x91469e?, 0x2905a571faa0?}, 0xebca00)
+	/tmp/go/src/testing/testing.go:2268 +0x4f2
+testing.runTests.func1(0x2905a5676488)
+	/tmp/go/src/testing/testing.go:2744 +0x37
+testing.tRunner(0x2905a5676488, 0x2905a571fbc8)
+	/tmp/go/src/testing/testing.go:2195 +0xea
+testing.runTests({0x917e47, 0x31}, {0x91e2b9, 0x45}, 0x2905a562a360, {0xf5a540, 0x9, 0x9}, {0xc2b472d630334263, 0xdf855e5a9, ...})
+	/tmp/go/src/testing/testing.go:2742 +0x510
+testing.(*M).Run(0x2905a561adc0)
+	/tmp/go/src/testing/testing.go:2602 +0x6af
+main.main()
+	_testmain.go:62 +0x9b
+
+goroutine 21 [IO wait]:
+internal/poll.runtime_pollWait(0x7a94b8c79e00, 0x72)
+	/tmp/go/src/runtime/netpoll.go:351 +0x85
+internal/poll.(*pollDesc).wait(0x2905a5654200?, 0x2905a6680000?, 0x0)
+	/tmp/go/src/internal/poll/fd_poll_runtime.go:84 +0x27
+internal/poll.(*pollDesc).waitRead(...)
+	/tmp/go/src/internal/poll/fd_poll_runtime.go:89
+internal/poll.(*FD).Read(0x2905a5654200, {0x2905a6680000, 0x2000, 0x2000})
+	/tmp/go/src/internal/poll/fd_unix.go:170 +0x2a8
+net.(*netFD).Read(0x2905a5654200, {0x2905a6680000?, 0x2905a598e138?, 0x48b456?})
+	/tmp/go/src/net/fd_posix.go:68 +0x25
+net.(*conn).Read(0x2905a5608120, {0x2905a6680000?, 0xcaf3?, 0xe000?})
+	/tmp/go/src/net/net.go:196 +0x45
+github.com/jackc/pgx/v5/pgconn/internal/bgreader.(*BGReader).Read(0x2905a5734200, {0x2905a6680000, 0x2000, 0x2000})
+	$GOMODCACHE/github.com/jackc/pgx/v5@v5.11.0/pgconn/internal/bgreader/bgreader.go:100 +0xcb
+io.ReadAtLeast({0xeb49c0, 0x2905a5734200}, {0x2905a6680000, 0x2000, 0x2000}, 0x5)
+	/tmp/go/src/io/io.go:335 +0x83
+github.com/jackc/pgx/v5/pgproto3.(*chunkReader).Next(0x2905a57fc150, 0x5)
+	$GOMODCACHE/github.com/jackc/pgx/v5@v5.11.0/pgproto3/chunkreader.go:80 +0x289
+github.com/jackc/pgx/v5/pgproto3.(*Frontend).Receive(0x2905a5532488)
+	$GOMODCACHE/github.com/jackc/pgx/v5@v5.11.0/pgproto3/frontend.go:313 +0x3c
+github.com/jackc/pgx/v5/pgconn.(*PgConn).peekMessage(0x2905a5786008)
+	$GOMODCACHE/github.com/jackc/pgx/v5@v5.11.0/pgconn/pgconn.go:643 +0x155
+github.com/jackc/pgx/v5/pgconn.(*PgConn).receiveMessage(0x2905a5786008)
+	$GOMODCACHE/github.com/jackc/pgx/v5@v5.11.0/pgconn/pgconn.go:667 +0x26
+github.com/jackc/pgx/v5/pgconn.(*ResultReader).receiveMessage(0x2905a57860c0)
+	$GOMODCACHE/github.com/jackc/pgx/v5@v5.11.0/pgconn/pgconn.go:1921 +0x37
+github.com/jackc/pgx/v5/pgconn.(*ResultReader).readUntilRowDescription(0x2905a57860c0, 0x2905a662cfa0, {0x2905a59b66c8, 0x1, 0x1})
+	$GOMODCACHE/github.com/jackc/pgx/v5@v5.11.0/pgconn/pgconn.go:1888 +0x73
+github.com/jackc/pgx/v5/pgconn.(*PgConn).execExtendedSuffix(0x2905a5786008, 0x2905a57860c0, 0x2905a662cfa0, {0x2905a598e6c8, 0x1, 0x1})
+	$GOMODCACHE/github.com/jackc/pgx/v5@v5.11.0/pgconn/pgconn.go:1388 +0x1c5
+github.com/jackc/pgx/v5/pgconn.(*PgConn).ExecStatement(0x2905a5786008, {0xeba058?, 0xf84bc0?}, 0x2905a662cfa0, {0x2905a5644300, 0xa, 0x10}, {0x2905a65cf1c0, 0xa, 0x10}, ...)
+	$GOMODCACHE/github.com/jackc/pgx/v5@v5.11.0/pgconn/pgconn.go:1328 +0x17d
+github.com/jackc/pgx/v5.(*Conn).Query(0x2905a5692140, {0xeba058?, 0xf84bc0?}, {0x936d3d, 0x2cd6}, {0x2905a56a6000, 0xb, 0xb})
+	$GOMODCACHE/github.com/jackc/pgx/v5@v5.11.0/conn.go:857 +0x1425
+github.com/jackc/pgx/v5/stdlib.(*Conn).QueryContext(0x2905a662b860, {0xeba058, 0xf84bc0}, {0x936d3d, 0x2cd6}, {0x2905a5782680, 0xa, 0x2905a598ed28?})
+	$GOMODCACHE/github.com/jackc/pgx/v5@v5.11.0/stdlib/sql.go:528 +0x1e5
+database/sql.ctxDriverQuery({0xeba058?, 0xf84bc0?}, {0x7a94b8c7a520?, 0x2905a662b860?}, {0x0?, 0x0?}, {0x936d3d?, 0x2905a598e940?}, {0x2905a5782680, 0xa, ...})
+	/tmp/go/src/database/sql/ctxutil.go:48 +0xbf
+database/sql.(*DB).queryDC.func1()
+	/tmp/go/src/database/sql/sql.go:1791 +0x15c
+database/sql.withLock({0xeb7510, 0x2905a55e7100}, 0x2905a598ead0)
+	/tmp/go/src/database/sql/sql.go:3621 +0x71
+database/sql.(*DB).queryDC(0x18?, {0xeba058, 0xf84bc0}, {0xeba100, 0x2905a582e0f0}, 0x2905a55e7100, 0x2905a57bc060, {0x936d3d, 0x2cd6}, {0x2905a59b6c98, ...})
+	/tmp/go/src/database/sql/sql.go:1786 +0x1b7
+database/sql.(*Tx).QueryContext(0x2905a5830000, {0xeba058, 0xf84bc0}, {0x936d3d, 0x2cd6}, {0x2905a598ec98, 0xa, 0xa})
+	/tmp/go/src/database/sql/sql.go:2540 +0xc8
+database/sql.(*Tx).QueryRowContext(...)
+	/tmp/go/src/database/sql/sql.go:2558
+github.com/guolichen007/crane-operations-platform/internal/operations.query({0xeba058, 0xf84bc0}, 0x5?, {{0x90082a, 0xb}, 0x0, 0x0, {0x8fdaee, 0x5}}, {0x0, ...}, ...)
+	internal/operations/summary.go:250 +0x3db
+github.com/guolichen007/crane-operations-platform/internal/operations.Summary({_, _}, _, _, {_, _}, {{0x90082a, 0xb}, 0x0, 0x0, ...}, ...)
+	internal/operations/summary.go:169 +0x4e8
+github.com/guolichen007/crane-operations-platform/internal/operations.run(_, _, {_, _}, {{0x90082a, 0xb}, 0x0, 0x0, {0x8fdaee, 0x5}})
+	internal/operations/summary_test.go:157 +0x149
+github.com/guolichen007/crane-operations-platform/internal/operations.TestSummaryConcurrentWritersSeeOneSnapshot(0x2905a56766c8)
+	internal/operations/summary_test.go:431 +0x205
+testing.tRunner(0x2905a56766c8, 0xebca00)
+	/tmp/go/src/testing/testing.go:2195 +0xea
+created by testing.(*T).Run in goroutine 1
+	/tmp/go/src/testing/testing.go:2260 +0x4d4
+
+goroutine 22 [select]:
+database/sql.(*DB).connectionOpener(0x2905a5722820, {0xeba100, 0x2905a567e410})
+	/tmp/go/src/database/sql/sql.go:1266 +0x89
+created by database/sql.OpenDB in goroutine 21
+	/tmp/go/src/database/sql/sql.go:846 +0x135
+
+goroutine 5 [select]:
+database/sql.(*DB).connectionOpener(0x2905a55e81a0, {0xeba100, 0x2905a55e40a0})
+	/tmp/go/src/database/sql/sql.go:1266 +0x89
+created by database/sql.OpenDB in goroutine 21
+	/tmp/go/src/database/sql/sql.go:846 +0x135
+
+goroutine 32 [runnable]:
+internal/poll.runtime_pollWait(0x7a94b8c7a000, 0x72)
+	/tmp/go/src/runtime/netpoll.go:351 +0x85
+internal/poll.(*pollDesc).wait(0x2905a55e6200?, 0x2905a578a000?, 0x0)
+	/tmp/go/src/internal/poll/fd_poll_runtime.go:84 +0x27
+internal/poll.(*pollDesc).waitRead(...)
+	/tmp/go/src/internal/poll/fd_poll_runtime.go:89
+internal/poll.(*FD).Read(0x2905a55e6200, {0x2905a578a000, 0x2000, 0x2000})
+	/tmp/go/src/internal/poll/fd_unix.go:170 +0x2a8
+net.(*netFD).Read(0x2905a55e6200, {0x2905a578a000?, 0x2000?, 0x2000?})
+	/tmp/go/src/net/fd_posix.go:68 +0x25
+net.(*conn).Read(0x2905a55340a0, {0x2905a578a000?, 0x72e51c?, 0x2905a57ed448?})
+	/tmp/go/src/net/net.go:196 +0x45
+github.com/jackc/pgx/v5/pgconn/internal/bgreader.(*BGReader).Read(0x2905a55ba1c0, {0x2905a578a000, 0x2000, 0x2000})
+	$GOMODCACHE/github.com/jackc/pgx/v5@v5.11.0/pgconn/internal/bgreader/bgreader.go:100 +0xcb
+io.ReadAtLeast({0xeb49c0, 0x2905a55ba1c0}, {0x2905a578a000, 0x2000, 0x2000}, 0x5)
+	/tmp/go/src/io/io.go:335 +0x83
+github.com/jackc/pgx/v5/pgproto3.(*chunkReader).Next(0x2905a55cc870, 0x5)
+	$GOMODCACHE/github.com/jackc/pgx/v5@v5.11.0/pgproto3/chunkreader.go:80 +0x289
+github.com/jackc/pgx/v5/pgproto3.(*Frontend).Receive(0x2905a5532908)
+	$GOMODCACHE/github.com/jackc/pgx/v5@v5.11.0/pgproto3/frontend.go:313 +0x3c
+github.com/jackc/pgx/v5/pgconn.(*PgConn).peekMessage(0x2905a5786588)
+	$GOMODCACHE/github.com/jackc/pgx/v5@v5.11.0/pgconn/pgconn.go:643 +0x155
+github.com/jackc/pgx/v5/pgconn.(*PgConn).receiveMessage(0x2905a5786588)
+	$GOMODCACHE/github.com/jackc/pgx/v5@v5.11.0/pgconn/pgconn.go:667 +0x26
+github.com/jackc/pgx/v5/pgconn.(*ResultReader).receiveMessage(0x2905a5786640)
+	$GOMODCACHE/github.com/jackc/pgx/v5@v5.11.0/pgconn/pgconn.go:1921 +0x37
+github.com/jackc/pgx/v5/pgconn.(*ResultReader).readUntilRowDescription(0x2905a5786640, 0x2905a567f1d0, {0x2905a5546420, 0x0, 0x4})
+	$GOMODCACHE/github.com/jackc/pgx/v5@v5.11.0/pgconn/pgconn.go:1888 +0x73
+github.com/jackc/pgx/v5/pgconn.(*PgConn).execExtendedSuffix(0x2905a5786588, 0x2905a5786640, 0x2905a567f1d0, {0x2905a5546420, 0x0, 0x4})
+	$GOMODCACHE/github.com/jackc/pgx/v5@v5.11.0/pgconn/pgconn.go:1388 +0x1c5
+github.com/jackc/pgx/v5/pgconn.(*PgConn).ExecStatement(0x2905a5786588, {0xeba058?, 0xf84bc0?}, 0x2905a567f1d0, {0x2905a56001e0, 0x2, 0x4}, {0x2905a55463f8, 0x2, 0x4}, ...)
+	$GOMODCACHE/github.com/jackc/pgx/v5@v5.11.0/pgconn/pgconn.go:1328 +0x17d
+github.com/jackc/pgx/v5.(*Conn).execPrepared(0x2905a5784000, {0xeba058, 0xf84bc0}, 0x2905a567f1d0, {0x2905a587a6e0?, 0x426c7c?, 0x28?})
+	$GOMODCACHE/github.com/jackc/pgx/v5@v5.11.0/conn.go:622 +0xed
+github.com/jackc/pgx/v5.(*Conn).exec(0x2905a5784000, {0xeba058, 0xf84bc0}, {0x920861, 0x58}, {0x2905a587a6e0?, 0x6400439c45?, 0x2905a57eda88?})
+	$GOMODCACHE/github.com/jackc/pgx/v5@v5.11.0/conn.go:559 +0x4b6
+github.com/jackc/pgx/v5.(*Conn).Exec(0x2905a5784000, {0xeba058?, 0xf84bc0?}, {0x920861, 0x58}, {0x2905a587a6e0, 0x2, 0x2})
+	$GOMODCACHE/github.com/jackc/pgx/v5@v5.11.0/conn.go:490 +0x178
+github.com/jackc/pgx/v5/stdlib.(*Conn).ExecContext(0x2905a56030e0, {0xeba058, 0xf84bc0}, {0x920861, 0x58}, {0x2905a58795e0, 0x2, 0x2905a57edf88?})
+	$GOMODCACHE/github.com/jackc/pgx/v5@v5.11.0/stdlib/sql.go:509 +0x16a
+database/sql.ctxDriverExec({0xeba058?, 0xf84bc0?}, {0x7a94b8c90c00?, 0x2905a56030e0?}, {0x0?, 0x0?}, {0x920861?, 0x2905a57edc08?}, {0x2905a58795e0, 0x2, ...})
+	/tmp/go/src/database/sql/ctxutil.go:31 +0xbf
+database/sql.(*DB).execDC.func2()
+	/tmp/go/src/database/sql/sql.go:1718 +0x15c
+database/sql.withLock({0xeb7510, 0x2905a5655000}, 0x2905a57eddf8)
+	/tmp/go/src/database/sql/sql.go:3621 +0x71
+database/sql.(*DB).execDC(0xffffffffffffffff?, {0xeba058, 0xf84bc0}, 0x2905a5655000, 0x1?, {0x920861, 0x58}, {0x2905a57edf78, 0x2, 0x2})
+	/tmp/go/src/database/sql/sql.go:1713 +0x1f6
+database/sql.(*Tx).ExecContext(0x2905a59a0c60, {0xeba058, 0xf84bc0}, {0x920861, 0x58}, {0x2905a57edf78, 0x2, 0x2})
+	/tmp/go/src/database/sql/sql.go:2521 +0xad
+database/sql.(*Tx).Exec(...)
+	/tmp/go/src/database/sql/sql.go:2530
+github.com/guolichen007/crane-operations-platform/internal/operations.TestSummaryConcurrentWritersSeeOneSnapshot.func1()
+	internal/operations/summary_test.go:421 +0x21c
+created by github.com/guolichen007/crane-operations-platform/internal/operations.TestSummaryConcurrentWritersSeeOneSnapshot in goroutine 21
+	internal/operations/summary_test.go:407 +0x105
+
+goroutine 41691 [chan receive]:
+database/sql.(*Tx).awaitDone(0x2905a5830000)
+	/tmp/go/src/database/sql/sql.go:2217 +0x2b
+created by database/sql.(*DB).beginDC in goroutine 21
+	/tmp/go/src/database/sql/sql.go:1930 +0x1ff
+
+goroutine 417942 [chan receive]:
+database/sql.(*Tx).awaitDone(0x2905a59a0c60)
+	/tmp/go/src/database/sql/sql.go:2217 +0x2b
+created by database/sql.(*DB).beginDC in goroutine 32
+	/tmp/go/src/database/sql/sql.go:1930 +0x1ff
+FAIL	github.com/guolichen007/crane-operations-platform/internal/operations	60.011s
+FAIL

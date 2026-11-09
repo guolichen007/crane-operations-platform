@@ -1,0 +1,4 @@
+h21a-inventory: GATE_FAIL skipped test present; required test not PASSed: TestInventoryScopeStatusLifecycleAndDedup; required test not PASSed: TestInventoryProjectCountsMatchAssetList; required test not PASSed: TestInven
+h21a-cloudapi: GATE_FAIL skipped test present; required test not PASSed: TestH21AInventoryScopeAuthorizationAndRetiredHistory; required test not PASSed: TestOperationsSummaryHTTP (2 required)
+h21c-operations: GATE_FAIL skipped test present; required test not PASSed: TestSummaryIdentityRuntimeAndAlarms; required test not PASSed: TestSummaryAuthorizationScopes; required test not PASSed: TestSummaryGeographyCoun
+exit=1

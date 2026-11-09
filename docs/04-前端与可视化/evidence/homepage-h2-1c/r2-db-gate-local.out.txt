@@ -1,3 +1,4 @@
+# local gate equivalent, working tree on 097d2306007e72002afb3ab271d8f3c8c36c54c8 + uncommitted H2-1C-R1 changes, PostgreSQL postgres (PostgreSQL) 17.11 (Ubuntu 17.11-1.pgdg22.04+2)
 h21a-inventory: GATE_PASS (3 required)
   R2_REQUIRED_PASS h21a-inventory TestInventoryScopeStatusLifecycleAndDedup
   R2_REQUIRED_PASS h21a-inventory TestInventoryProjectCountsMatchAssetList
@@ -5,7 +6,7 @@ h21a-inventory: GATE_PASS (3 required)
 h21a-cloudapi: GATE_PASS (2 required)
   R2_REQUIRED_PASS h21a-cloudapi TestH21AInventoryScopeAuthorizationAndRetiredHistory
   R2_REQUIRED_PASS h21a-cloudapi TestOperationsSummaryHTTP
-h21c-operations: GATE_PASS (8 required)
+h21c-operations: GATE_PASS (11 required)
   R2_REQUIRED_PASS h21c-operations TestSummaryIdentityRuntimeAndAlarms
   R2_REQUIRED_PASS h21c-operations TestSummaryAuthorizationScopes
   R2_REQUIRED_PASS h21c-operations TestSummaryGeographyCountryProvincePrefectureCounty
@@ -14,3 +15,7 @@ h21c-operations: GATE_PASS (8 required)
   R2_REQUIRED_PASS h21c-operations TestSummaryMoreThan100RecordsAndReviewAssets
   R2_REQUIRED_PASS h21c-operations TestSummaryQueryFailureIsUnavailableNotPartial
   R2_REQUIRED_PASS h21c-operations TestSummaryConcurrentWritersSeeOneSnapshot
+  R2_REQUIRED_PASS h21c-operations TestSummaryLeavesNoSessionSettingOnPooledConnection
+  R2_REQUIRED_PASS h21c-operations TestSnapshotInvariantDetectsTornReader
+  R2_REQUIRED_PASS h21c-operations TestSummaryRuntimeInvariants
+exit=0

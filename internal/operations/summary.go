@@ -152,6 +152,11 @@ func Summary(ctx context.Context, db *sql.DB, ix *geo.Index, cfg Config, req Req
 	if ix == nil {
 		return out, fmt.Errorf("%w: administrative index", ErrUnavailable)
 	}
+	// region=100000 is the national root: it means exactly "no region filter" (H2-1C-R1). Normalise it
+	// here so that the repository — not only the HTTP handler — returns the same scope and metrics.
+	if req.Region != nil && *req.Region == geo.Country {
+		req.Region = nil
+	}
 	scope, regionName := geo.Country, "全部授权范围"
 	if req.Region != nil {
 		r, ok := ix.Region(*req.Region)
@@ -219,12 +224,8 @@ func Summary(ctx context.Context, db *sql.DB, ix *geo.Index, cfg Config, req Req
 		}
 		out.Regions = append(out.Regions, contract.OperationsRegion{Adcode: reg.Code, Name: reg.Name, Registered: *g[1], RealConnected: *g[2], RealAlarmDevices: *g[3]})
 	}
-	// Internal invariants of one snapshot; a violation means a defective query, not a user state.
-	cells := out.Metrics.Alarm.Records.Cells
-	if cells.REAL.Attributed+cells.REAL.Unattributed+cells.SIMULATION.Attributed+cells.SIMULATION.Unattributed+cells.TEST.Attributed+cells.TEST.Unattributed != out.Metrics.Alarm.Records.Total ||
-		out.Metrics.Alarm.DevicesAll > out.Metrics.Alarm.Devices.REAL+out.Metrics.Alarm.Devices.SIMULATION+out.Metrics.Alarm.Devices.TEST ||
-		out.Metrics.Bound.REAL > out.Metrics.Assets.Registered || len(out.Metrics.Real.PendingReviewAssets) > MaxReviewAssets {
-		return contract.OperationsSummary{}, fmt.Errorf("%w: summary invariant violated", ErrUnavailable)
+	if err = checkInvariants(out); err != nil {
+		return contract.OperationsSummary{}, fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
 	if err = contract.ValidateDocument("OperationsSummary", out); err != nil {
 		return contract.OperationsSummary{}, fmt.Errorf("%w: contract: %v", ErrUnavailable, err)
@@ -253,6 +254,54 @@ func query(ctx context.Context, db *sql.DB, req Request, windowStart, sampledAt 
 		return nil, err
 	}
 	return raw, tx.Commit()
+}
+
+// ErrInvariant marks a summary that is internally inconsistent — a defective query, not a user state.
+var ErrInvariant = errors.New("summary invariant violated")
+
+// checkInvariants enforces the arithmetic that one snapshot must satisfy (H2-1C-R1). There is no
+// business exception to any of them; a violation turns the whole response into 503.
+//
+//  1. Σ regions[].registered + assets.unlocated + assets.atScopeLevel = assets.registered
+//     (every in-scope asset is in exactly one partition: a sub-region, "no location", or the scope level)
+//  2. Σ six alarm record cells (source × attribution) = alarm.records.total
+//  3. alarm.devicesAll ≤ alarm.devices.REAL + SIMULATION + TEST, and each source ≤ registered
+//  4. bound.REAL, bound.SIMULATION, bound.TEST ≤ registered (REAL+SIM on one asset never counts it twice)
+//  5. real.connected + real.pendingReview ≤ bound.REAL; pendingReviewAssets ≤ min(pendingReview, 100)
+//  6. regions[] has unique codes, each ≤ registered
+func checkInvariants(s contract.OperationsSummary) error {
+	m := s.Metrics
+	a := m.Assets
+	sum := a.Unlocated + a.AtScopeLevel
+	seen := map[int]bool{}
+	for _, r := range s.Regions {
+		if seen[r.Adcode] {
+			return fmt.Errorf("%w: duplicate region %d", ErrInvariant, r.Adcode)
+		}
+		seen[r.Adcode] = true
+		if r.Registered > a.Registered || r.RealConnected > r.Registered || r.RealAlarmDevices > r.Registered {
+			return fmt.Errorf("%w: region %d exceeds its assets", ErrInvariant, r.Adcode)
+		}
+		sum += r.Registered
+	}
+	if sum != a.Registered {
+		return fmt.Errorf("%w: partition %d != registered %d", ErrInvariant, sum, a.Registered)
+	}
+	c := m.Alarm.Records.Cells
+	if c.REAL.Attributed+c.REAL.Unattributed+c.SIMULATION.Attributed+c.SIMULATION.Unattributed+c.TEST.Attributed+c.TEST.Unattributed != m.Alarm.Records.Total {
+		return fmt.Errorf("%w: alarm cells != total", ErrInvariant)
+	}
+	d := m.Alarm.Devices
+	if m.Alarm.DevicesAll > d.REAL+d.SIMULATION+d.TEST || d.REAL > a.Registered || d.SIMULATION > a.Registered || d.TEST > a.Registered || m.Alarm.DevicesAll > a.Registered {
+		return fmt.Errorf("%w: alarm devices", ErrInvariant)
+	}
+	if m.Bound.REAL > a.Registered || m.Bound.SIMULATION > a.Registered || m.Bound.TEST > a.Registered {
+		return fmt.Errorf("%w: bound exceeds registered (double-counted identity)", ErrInvariant)
+	}
+	if m.Real.Connected+m.Real.PendingReview > m.Bound.REAL || len(m.Real.PendingReviewAssets) > min(m.Real.PendingReview, MaxReviewAssets) {
+		return fmt.Errorf("%w: real connected/review", ErrInvariant)
+	}
+	return nil
 }
 
 func (r row) complete() error {

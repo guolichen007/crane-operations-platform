@@ -1,0 +1,25 @@
+      2 --- PASS: TestSnapshotInvariantDetectsTornReader (0.42s)
+      8 --- PASS: TestSnapshotInvariantDetectsTornReader (0.43s)
+      3 --- PASS: TestSnapshotInvariantDetectsTornReader (0.44s)
+      3 --- PASS: TestSnapshotInvariantDetectsTornReader (0.45s)
+      1 --- PASS: TestSnapshotInvariantDetectsTornReader (0.46s)
+      2 --- PASS: TestSnapshotInvariantDetectsTornReader (0.47s)
+      1 --- PASS: TestSnapshotInvariantDetectsTornReader (0.53s)
+      1 --- PASS: TestSummaryConcurrentWritersSeeOneSnapshot (0.50s)
+      6 --- PASS: TestSummaryConcurrentWritersSeeOneSnapshot (0.51s)
+      3 --- PASS: TestSummaryConcurrentWritersSeeOneSnapshot (0.52s)
+      1 --- PASS: TestSummaryConcurrentWritersSeeOneSnapshot (0.53s)
+      1 --- PASS: TestSummaryConcurrentWritersSeeOneSnapshot (0.54s)
+      2 --- PASS: TestSummaryConcurrentWritersSeeOneSnapshot (0.56s)
+      1 --- PASS: TestSummaryConcurrentWritersSeeOneSnapshot (0.60s)
+      1 --- PASS: TestSummaryConcurrentWritersSeeOneSnapshot (0.62s)
+      2 --- PASS: TestSummaryConcurrentWritersSeeOneSnapshot (0.63s)
+      1 --- PASS: TestSummaryConcurrentWritersSeeOneSnapshot (0.64s)
+      1 --- PASS: TestSummaryConcurrentWritersSeeOneSnapshot (0.79s)
+      1 ok  	github.com/guolichen007/crane-operations-platform/internal/operations	21.123s
+
+real	0m21.605s
+user	0m5.904s
+sys	0m2.148s
+leftover test databases: 0
+backends (not this): 0, idle-in-transaction: 0

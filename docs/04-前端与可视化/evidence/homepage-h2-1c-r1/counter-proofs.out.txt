@@ -1,0 +1,19 @@
+# H2-1C-R1 counter-proofs (each mutation applied alone, test run on PostgreSQL 17.11, mutation restored)
+## concurrent snapshot test
+remove writer/reader barrier (reader no longer waits for each commit)
+  --- FAIL: TestSummaryConcurrentWritersSeeOneSnapshot: after commit 0: registered 21, want 20 (committed state not observed)
+negative control: swap order so the commit no longer lands between the two READ COMMITTED queries
+  --- FAIL: TestSummaryConcurrentWritersSeeOneSnapshot: negative control did not tear: registered 27 boundREAL 25
+## runtime invariants (summary.sql mutated; checkInvariants turns the response into ErrUnavailable / 503)
+at_scope counts unmapped assets too:  count(*) FILTER (WHERE coalesce(child, 0) = 0) AS at_scope
+  --- FAIL: TestSummaryIdentityRuntimeAndAlarms: summary invariant violated: partition 21 != registered 20
+agg_region drops non-ACTIVE assets:   ... AND asset_status = 'ACTIVE' GROUP BY child
+  --- FAIL: TestSummaryIdentityRuntimeAndAlarms: summary invariant violated: partition 13 != registered 20
+bound.REAL double-counts REAL+SIM assets: count(*) FILTER (WHERE has_real) + count(*) FILTER (WHERE has_real AND has_sim)
+  --- FAIL: TestSummaryIdentityRuntimeAndAlarms: summary invariant violated: bound exceeds registered (double-counted identity)
+(non-counter-proof, recorded honestly: "count(*) FILTER (WHERE child = 0)" is equivalent to the original because unmapped
+ assets have child IS NULL — all tests passed; replaced by the coalesce mutation above.)
+## national scope
+repository no longer normalises region=100000 to nil
+  --- FAIL: TestSummaryGeographyCountryProvincePrefectureCounty: region=100000 differs from no region
+## pure invariant unit test (TestSummaryRuntimeInvariants): 15 single-rule breakages, each must return ErrInvariant — all do.

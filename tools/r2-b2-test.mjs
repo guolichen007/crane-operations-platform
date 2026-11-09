@@ -69,6 +69,8 @@ const h21aPackages = [
     'TestSummaryQueryFailureIsUnavailableNotPartial',
     'TestSummaryConcurrentWritersSeeOneSnapshot',
     'TestSummaryLeavesNoSessionSettingOnPooledConnection',
+    'TestSnapshotInvariantDetectsTornReader',
+    'TestSummaryRuntimeInvariants',
   ]],
 ];
 function run(command, args, extra = {}, capture = false) {

@@ -11,8 +11,8 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"runtime"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -261,6 +261,13 @@ func TestSummaryGeographyCountryProvincePrefectureCounty(t *testing.T) {
 	if country.Metrics.Assets.Registered != 24 || country.Metrics.Assets.Unlocated != 2 || country.Metrics.Assets.AtScopeLevel != 0 {
 		t.Fatalf("country assets %+v", country.Metrics.Assets)
 	}
+	// region=100000 (national root) is exactly the same as no region: scope.region null, same name, same
+	// metrics and regions — the repository normalises it, not only the HTTP handler.
+	national := run(t, db, c, Request{User: "u-geo", Region: reg(geo.Country)})
+	national.GeneratedAt = country.GeneratedAt
+	if national.Scope.Region != nil || national.Scope.RegionName != "全部授权范围" || !reflect.DeepEqual(national, country) {
+		t.Fatalf("region=100000 differs from no region:\n%+v\n%+v", national, country)
+	}
 	cr := regions(country)
 	// Zhejiang = P1 19 + P4 1 + P6 1 = 21; Beijing = P5 1. Unlocated P3, P7 (unknown code) belong to no province.
 	if len(cr) != 2 || cr[330000].Registered != 21 || cr[110000].Registered != 1 || cr[330000].Name != "浙江省" {
@@ -395,51 +402,218 @@ func TestSummaryQueryFailureIsUnavailableNotPartial(t *testing.T) {
 	}
 }
 
-// One statement = one snapshot: while a writer keeps committing new assets that each get a REAL
-// identity in the same transaction, every summary must see either both rows or neither, so
-// bound.REAL can never exceed registered and the asset partition always adds up.
+// One statement = one snapshot. Deterministic, bounded read/write interleaving (H2-1C-R1):
+//
+//   - a writer commits exactly `writes` transactions; each inserts an ACTIVE asset AND its REAL
+//     identity in the SAME transaction, so a consistent snapshot always has boundREAL = registered − 2
+//     (P1's A4 and A12 have no REAL identity);
+//   - writer and reader are coordinated with channels: after every commit the reader runs the
+//     production Summary and must see exactly the new committed state (registered increments by one),
+//     so at least writes+1 distinct committed states are observed — if not, the test FAILS;
+//   - in addition the reader runs Summary concurrently while the writer is committing (bounded by the
+//     same writes), asserting the snapshot invariant on every result;
+//   - negative control: the same two facts read as TWO READ COMMITTED statements with a commit placed
+//     between them DO disagree (torn read) — proving the invariant is meaningful and that the single
+//     statement is what prevents it;
+//   - every database call has a deadline, all goroutines are joined, and the test database is dropped
+//     by testsupport.Database's cleanup.
 func TestSummaryConcurrentWritersSeeOneSnapshot(t *testing.T) {
 	db := testsupport.Database(t)
 	seed(t, db)
-	stop := make(chan struct{})
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for i := 0; ; i++ {
-			select {
-			case <-stop:
-				return
-			default:
-			}
-			tx, err := db.Begin()
-			if err != nil {
-				return
-			}
-			id := fmt.Sprintf("C%05d", i)
-			_, err1 := tx.Exec(`INSERT INTO asset_devices(id,project_id,display_name,lifecycle,asset_status) VALUES($1,'P1','c','PLANNED','ACTIVE')`, id)
-			_, err2 := tx.Exec(`INSERT INTO devices(id,project_id,asset_device_id,source_mode) VALUES($1,'P1',$2,'REAL')`, "E"+id, id)
-			if err1 != nil || err2 != nil {
-				_ = tx.Rollback()
-				return
-			}
-			_ = tx.Commit()
+	db.SetMaxOpenConns(4)
+	goroutinesBefore := runtime.NumGoroutine()
+	defer func() {
+		// Every writer/reader goroutine started here must have finished (pool goroutines excluded by
+		// closing the pool's idle connections first).
+		db.SetMaxIdleConns(0)
+		deadline := time.Now().Add(5 * time.Second)
+		for runtime.NumGoroutine() > goroutinesBefore && time.Now().Before(deadline) {
+			time.Sleep(20 * time.Millisecond)
+		}
+		if n := runtime.NumGoroutine(); n > goroutinesBefore {
+			t.Errorf("goroutine leak: %d before, %d after", goroutinesBefore, n)
+		}
+		if st := db.Stats(); st.InUse != 0 {
+			t.Errorf("connections still in use: %+v", st)
 		}
 	}()
-	seen := map[int]bool{}
-	for i := 0; i < 40; i++ {
-		s := run(t, db, cfg(2100, 120), Request{User: "u-viewer-p1"})
-		a := s.Metrics.Assets
-		// P1 assets without REAL identity: A4, A12 — every other registered P1 asset has REAL.
-		if s.Metrics.Bound.REAL != a.Registered-2 {
-			t.Fatalf("torn snapshot: registered %d boundREAL %d", a.Registered, s.Metrics.Bound.REAL)
+	const writes = 4
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	summary := func() contract.OperationsSummary {
+		t.Helper()
+		qctx, qcancel := context.WithTimeout(ctx, 10*time.Second)
+		defer qcancel()
+		s, err := Summary(qctx, db, index(t), cfg(2100, 120), Request{User: "u-viewer-p1", Window: "PT24H"}, fixedNow)
+		if err != nil {
+			t.Fatalf("summary: %v", err)
 		}
-		seen[a.Registered] = true
+		return s
 	}
-	close(stop)
-	wg.Wait()
-	if len(seen) < 2 {
-		t.Log("writer did not interleave; snapshot invariant still held")
+	consistent := func(s contract.OperationsSummary) {
+		t.Helper()
+		if s.Metrics.Bound.REAL != s.Metrics.Assets.Registered-2 {
+			t.Fatalf("torn snapshot: registered %d boundREAL %d", s.Metrics.Assets.Registered, s.Metrics.Bound.REAL)
+		}
+	}
+	commit := func(i int) error {
+		wctx, wcancel := context.WithTimeout(ctx, 10*time.Second)
+		defer wcancel()
+		tx, err := db.BeginTx(wctx, nil)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		id := fmt.Sprintf("C%03d", i)
+		if _, err = tx.ExecContext(wctx, `INSERT INTO asset_devices(id,project_id,display_name,lifecycle,asset_status) VALUES($1,'P1','c','PLANNED','ACTIVE')`, id); err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(wctx, `INSERT INTO devices(id,project_id,asset_device_id,source_mode) VALUES($1,'P1',$2,'REAL')`, "E"+id, id); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+
+	// Phase 1 — barrier-coordinated: one committed state per step, each observed by the production Summary.
+	base := summary()
+	consistent(base)
+	observed := map[int]bool{base.Metrics.Assets.Registered: true}
+	committed := make(chan int)
+	proceed := make(chan struct{})
+	writerErr := make(chan error, 1)
+	go func() {
+		defer close(committed)
+		for i := 0; i < writes; i++ {
+			if err := commit(i); err != nil {
+				writerErr <- err
+				return
+			}
+			select {
+			case committed <- i:
+			case <-ctx.Done():
+				writerErr <- ctx.Err()
+				return
+			}
+			select {
+			case <-proceed:
+			case <-ctx.Done():
+				writerErr <- ctx.Err()
+				return
+			}
+		}
+		writerErr <- nil
+	}()
+	steps := 0
+	for i := range committed {
+		s := summary()
+		consistent(s)
+		if want := base.Metrics.Assets.Registered + i + 1; s.Metrics.Assets.Registered != want {
+			t.Fatalf("after commit %d: registered %d, want %d (committed state not observed)", i, s.Metrics.Assets.Registered, want)
+		}
+		observed[s.Metrics.Assets.Registered] = true
+		steps++
+		proceed <- struct{}{}
+	}
+	if err := <-writerErr; err != nil {
+		t.Fatal(err)
+	}
+	if steps != writes || len(observed) != writes+1 {
+		t.Fatalf("expected %d distinct committed states, observed %d (%v)", writes+1, len(observed), observed)
+	}
+
+	// Phase 2 — concurrent but bounded: the writer commits `writes` more transactions while the reader
+	// keeps reading until the writer is done; every result must be a consistent snapshot.
+	done := make(chan error, 1)
+	go func() {
+		for i := writes; i < 2*writes; i++ {
+			if err := commit(i); err != nil {
+				done <- err
+				return
+			}
+		}
+		done <- nil
+	}()
+	reads := 0
+	var werr error
+loop:
+	for {
+		consistent(summary())
+		reads++
+		select {
+		case werr = <-done:
+			break loop
+		default:
+		}
+	}
+	if werr != nil {
+		t.Fatal(werr)
+	}
+	final := summary()
+	consistent(final)
+	if final.Metrics.Assets.Registered != base.Metrics.Assets.Registered+2*writes || reads < 1 {
+		t.Fatalf("final registered %d reads %d", final.Metrics.Assets.Registered, reads)
+	}
+
+	// Negative control — two READ COMMITTED statements with a commit between them are torn.
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	var registered, boundReal int
+	if err = conn.QueryRowContext(ctx, `SELECT count(*) FROM asset_devices WHERE project_id='P1' AND asset_status <> 'RETIRED'`).Scan(&registered); err != nil {
+		t.Fatal(err)
+	}
+	if err = commit(2 * writes); err != nil { // asset + REAL identity committed between the two reads
+		t.Fatal(err)
+	}
+	if err = conn.QueryRowContext(ctx, `SELECT count(DISTINCT a.id) FROM asset_devices a JOIN devices d ON d.asset_device_id = a.id
+	  WHERE a.project_id='P1' AND a.asset_status <> 'RETIRED' AND d.source_mode='REAL'`).Scan(&boundReal); err != nil {
+		t.Fatal(err)
+	}
+	if boundReal == registered-2 {
+		t.Fatalf("negative control did not tear: registered %d boundREAL %d — the invariant would not detect a split read", registered, boundReal)
+	}
+	// The production single statement at the same point is consistent again.
+	consistent(summary())
+}
+
+// Counter-proof for the snapshot test itself: a deliberately torn reader (registered and boundREAL
+// read by two READ COMMITTED statements with a writer commit between them) must be caught by the
+// same `consistent` check the production test uses. If this test ever passes the check, the
+// snapshot test above has stopped being able to detect a torn read.
+func TestSnapshotInvariantDetectsTornReader(t *testing.T) {
+	db := testsupport.Database(t)
+	seed(t, db)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	torn := func(between func()) (registered, boundReal int) {
+		if err := db.QueryRowContext(ctx, `SELECT count(*) FROM asset_devices WHERE project_id='P1' AND asset_status <> 'RETIRED'`).Scan(&registered); err != nil {
+			t.Fatal(err)
+		}
+		between()
+		if err := db.QueryRowContext(ctx, `SELECT count(DISTINCT a.id) FROM asset_devices a JOIN devices d ON d.asset_device_id = a.id
+		  WHERE a.project_id='P1' AND a.asset_status <> 'RETIRED' AND d.source_mode='REAL'`).Scan(&boundReal); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	// No write between the reads: the split reader happens to be consistent (baseline).
+	if r, b := torn(func() {}); b != r-2 {
+		t.Fatalf("baseline inconsistent: %d %d", r, b)
+	}
+	// A committed asset + REAL identity between the reads: the split reader is torn.
+	r, b := torn(func() {
+		exec(t, db, `INSERT INTO asset_devices(id,project_id,display_name,lifecycle,asset_status) VALUES('TORN','P1','t','PLANNED','ACTIVE');
+		  INSERT INTO devices(id,project_id,asset_device_id,source_mode) VALUES('E-TORN','P1','TORN','REAL')`)
+	})
+	if b == r-2 {
+		t.Fatalf("split READ COMMITTED reader was not torn (registered %d boundREAL %d)", r, b)
+	}
+	// The production single statement over the same data is consistent.
+	s := run(t, db, cfg(2100, 120), Request{User: "u-viewer-p1"})
+	if s.Metrics.Bound.REAL != s.Metrics.Assets.Registered-2 {
+		t.Fatalf("single statement torn: %+v", s.Metrics.Assets)
 	}
 }
 

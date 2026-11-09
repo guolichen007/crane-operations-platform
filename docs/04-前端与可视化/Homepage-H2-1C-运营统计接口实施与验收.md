@@ -71,7 +71,7 @@ Cookie: __Host-crane_session=…
 
 ## 6. 测试与反证
 
-真实 PostgreSQL 必过（r2-db-test 门禁，精确 PASS，SKIP/漏选/失败即失败；本地等价运行 `evidence/homepage-h2-1c/r2-db-gate-local.out.txt` 13 项全部 `R2_REQUIRED_PASS`）：
+真实 PostgreSQL 必过（r2-db-test 门禁，精确 PASS，SKIP/漏选/失败即失败；R1 后共 16 项：inventory 3 + cloud-api 2 + operations 11；本地等价运行 `evidence/homepage-h2-1c/r2-db-gate-local.out.txt` 16 项全部 `R2_REQUIRED_PASS`，见 §10）：
 
 | 测试 | 覆盖 |
 |---|---|
@@ -82,7 +82,9 @@ Cookie: __Host-crane_session=…
 | `TestSummaryEmptyDatabaseIsLegalZero` | 无项目无资产无告警：合法 0、空数组、NOT_AVAILABLE |
 | `TestSummaryMoreThan100RecordsAndReviewAssets` | 158 条记录总数正确；135 个待复核只返回 100 条且顺序确定 |
 | `TestSummaryQueryFailureIsUnavailableNotPartial` | 取消、缺表、索引不可用 → `ErrUnavailable`，无数据 |
-| `TestSummaryConcurrentWritersSeeOneSnapshot` | 写者持续提交「资产+REAL 身份」时，40 次统计都满足 `bound.REAL = registered − 2` |
+| `TestSummaryConcurrentWritersSeeOneSnapshot` | R1 重写：有限 4+4 次写入（资产+REAL 身份同一事务），通道栅栏交错，读者必须观察到 ≥5 个已提交状态且每次满足 `bound.REAL = registered − 2`；负对照证明两条 READ COMMITTED 查询会撕裂；无 goroutine/连接泄漏 |
+| `TestSnapshotInvariantDetectsTornReader` | 拆成两条查询、中间提交 → 不变量检测到撕裂；正式单 SQL 一致 |
+| `TestSummaryRuntimeInvariants` | 运行时不变量 15 种单条破坏均被拒绝（纯函数，无数据库） |
 | `TestSummaryLeavesNoSessionSettingOnPooledConnection` | 单连接池重复统计与取消后 `SHOW jit` 不变 |
 | `TestOperationsSummaryHTTP` | 200/400（9 种）/404/401（无会话、伪造、禁用用户）/503（索引、统计语句、授权查询）及恢复；区域钻取不放大授权；复核资产 id 可在资产中心同授权打开；全部响应按生成契约严格解码 |
 
@@ -128,3 +130,23 @@ B4（CI `b4-business-acceptance`，生产候选镜像 + 真实 Keycloak + Postgr
 | `inventory.Projects` 三个运行计数口径仍未与 summary 统一（契约 §2.7） | 首页不使用它们；H2-1D 前需决定改名或改口径 |
 | 前端尚未接入（H2-1D） | 本轮按要求不切换 |
 | B4 新用例只在 CI 运行 | 以同 SHA CI 结果为准 |
+
+## 10. H2-1C-R1：并发验收修复（基线 `097d230`，CI `42562820069` r2-db-test 失败）
+
+**根因。** CI 原始日志需仓库管理员权限（403），只能读到注解 `Process completed with exit code 1` 与步骤耗时（第 6 步 3 分 08 秒）。本地复现：旧测试写者是无界循环 `for i := 0; ; i++`，读者做 40 次统计期间写者不停插入，表持续增长，每次统计越来越慢；本地 60 s 超时时已插入 417,904 条资产（`evidence/homepage-h2-1c-r1/pre-fix-timeout-repro*.out.txt`）。这是测试设计缺陷，生产 SQL 未改。
+
+**修复（只改测试，未跳过、未调大超时）。** 有限写入 + 栅栏交错：阶段 1 每次写者提交后通过 channel 通知读者，读者统计并断言 `registered` 恰为第 i 个已提交状态，再放行下一次写入；阶段 2 写者再提交 4 次，读者同时不停统计，每次都做完整快照断言。必须观察到 ≥5 个不同已提交状态，否则 FAIL。总 60 s context、单次统计/写入 10 s deadline；连接池上限 4；结束时检查 goroutine 数回落、`db.Stats().InUse = 0`；testsupport 删除临时库。负对照：同一连接上两条 READ COMMITTED 查询，中间提交一条「资产+REAL」，两次计数必然不一致；正式单 SQL 读出一致。
+
+**反证**（`evidence/homepage-h2-1c-r1/counter-proofs.out.txt`）：去掉栅栏 → `committed state not observed`；负对照提交不在两次查询之间 → `negative control did not tear`。
+
+**稳定性。** 隔离 PostgreSQL 17.11（fsync 开）`-race` 连续 20 轮全部 PASS（单测 0.53–0.79 s）；GOMAXPROCS=1 + 单 CPU 绑定 + `-cpu 1` `-race` 10 轮全部 PASS；之后残留测试库 0、其它后端 0、idle in transaction 0。
+
+**运行时不变量**（`checkInvariants`，任一违反 → `ErrUnavailable`/503，无业务例外）：Σ`regions[].registered` + `unlocated` + `atScopeLevel` = `registered`；六格告警记录之和 = `total`；`devicesAll` ≤ 三源之和且各源 ≤ `registered`；`bound.REAL/SIMULATION/TEST` 各 ≤ `registered`（REAL+SIM 双身份不重复计资产）；`connected + pendingReview` ≤ `bound.REAL`；复核明细 ≤ min(`pendingReview`, 100)；区域代码唯一且不超过总数。反证：SQL 把无位置资产也计入本级 → `partition 21 != registered 20`；区域聚合漏掉非 ACTIVE 资产 → `partition 13 != registered 20`；`bound.REAL` 对双身份重复计 → `bound exceeds registered`。（如实记录：`child = 0` 变体与原式等价——无位置资产 `child` 为 NULL——不构成反证，已换成上面的变体。）
+
+**全国语义。** `region=100000` 与不带 `region` 完全等价：Repository 层把 100000 归一为 nil（不再只靠 handler），测试断言两者整份响应逐字段相等（`generatedAt` 除外）且 `scope.region = null`；去掉归一 → 测试失败。
+
+**门禁。** `tools/r2-b2-test.mjs` 必过 16 项（新增 `TestSnapshotInvariantDetectsTornReader`、`TestSummaryRuntimeInvariants`；`TestSummaryLeavesNoSessionSettingOnPooledConnection` 已在列且本地 PASS），精确匹配：缺失/SKIP/FAIL/多余即失败。无数据库 URL 运行 → 三个包均 `GATE_FAIL skipped test present`（`gate-without-database.out.txt`）。
+
+**回归。** operations、cloud-api app 包 `-race` PASS；`go vet` 全部 internal 与 cloud-api；gofmt 无输出；`tests/contract` 49/49；`geoindex --check` 通过。单 SQL、权限、生成契约未改（`git diff` 不含 `summary.sql`、`contracts/`）。前端无改动，未重跑浏览器套件。
+
+**同 SHA CI 与 B4。** 待 OWNER 推送后读取；本地无 Docker，B4 为 NOT_RUN。

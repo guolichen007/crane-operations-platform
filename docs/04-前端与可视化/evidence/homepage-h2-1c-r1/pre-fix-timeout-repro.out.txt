@@ -1,0 +1,9 @@
+=== RUN   TestSummaryConcurrentWritersSeeOneSnapshot
+panic: test timed out after 1m0s
+	internal/operations/summary_test.go:157 +0x149
+	internal/operations/summary_test.go:431 +0x205
+	internal/operations/summary_test.go:421 +0x21c
+	internal/operations/summary_test.go:407 +0x105
+FAIL	github.com/guolichen007/crane-operations-platform/internal/operations	60.011s
+FAIL
+leftover database after 60 s timeout: asset_devices=417904 rows inserted by the unbounded writer loop
