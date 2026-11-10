@@ -5,8 +5,10 @@ BAOBEI_MAIN_MERGE=FORBIDDEN
 BAOBEI_R2_MERGE=FORBIDDEN
 BASE_SHA=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18
 BRANCH=product/baobei-v1
-CURRENT_BATCH=G4_S1B0_PREVIEW_PRECHECK
-STOP_AFTER_G4_S1B0=YES
+CURRENT_BATCH=G4_S1B1_R0_DEPLOY_READINESS
+STOP_AFTER_G4_S1B1_R0=YES
+FROZEN_CANDIDATE_SHA=ca41c3ba090a7dc17120f6565d0a54a2f8d644fd
+G4_S1B1_DEPLOY_READY=NO
 PREVIEW_CODE_READY=YES
 PREVIEW_IMAGES_READY=NO
 PREVIEW_DEPLOYED=NO
@@ -14,7 +16,11 @@ PRODUCTION_DEPLOYED=NO
 
 目标：快速报项目、识别重复、明确归属并跟进。独立产品，永不合并 main/R2。
 
-## 当前实施：G4-S1A-R2 合成数据完整性 + G4-S1B0 首次部署准备
+## 当前实施：G4-S1B1-R0 部署前最终门禁
+
+冻结候选 `ca41c3b`（Run 42812452001 八门通过）。部署前最终执行清单见 [38-G4-S1B1-Preview部署前最终执行清单](38-G4-S1B1-Preview部署前最终执行清单.md)，取代 37 号第 5 节。服务器只读预检 NOT_RUN（无授权访问）、GHCR 镜像未发布、DNS/证书/Keycloak/白名单未就绪：G4_S1B1_DEPLOY_READY=NO。
+
+## 历史：G4-S1A-R2 合成数据完整性 + G4-S1B0 首次部署准备
 
 G4-S1A 原版本 `6e0bbda` 八门通过（Run 42797483906）。合成数据脚本改为对照确定性清单（管理员全局读取）：空库才初始化，完整一致则不写，部分或不一致则报错且不删改。首次 Preview 部署的严格顺序、权限清单、停止与回滚见 [37-G4-S1B0-Preview首次部署准备与只读预检](37-G4-S1B0-Preview首次部署准备与只读预检.md)。GHCR 镜像尚未发布（PREVIEW_IMAGES_READY=NO），服务器只读预检未授权（NOT_RUN）。G4-S1B1 实际部署需另行授权。
 
