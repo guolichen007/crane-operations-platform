@@ -92,10 +92,30 @@ class CertificateLifecycle(unittest.TestCase):
         cls.material = tempfile.TemporaryDirectory(prefix='crane-cert-material-')
         cls.m = Path(cls.material.name)
         cls.crypto('req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '90', '-subj', "/O=Let's Encrypt/CN=Anonymous Fixture CA", '-keyout', str(cls.m/'ca.key'), '-out', str(cls.m/'ca.pem'))
-        for name, domain, days in [('old', DOMAIN, '30'), ('new', DOMAIN, '30'), ('wrong', 'other.example.test', '30'), ('short', DOMAIN, '1'), ('expired', DOMAIN, '-1'), ('six', DOMAIN, '6'), ('above', DOMAIN, '8')]:
+        for name, domain, days in [('old', DOMAIN, '30'), ('new', DOMAIN, '30'), ('wrong', 'other.example.test', '30'), ('short', DOMAIN, '1'), ('expired', DOMAIN, None), ('six', DOMAIN, '6'), ('above', DOMAIN, '8')]:
             cls.crypto('req', '-new', '-newkey', 'rsa:2048', '-nodes', '-subj', '/CN='+domain, '-keyout', str(cls.m/(name+'.key')), '-out', str(cls.m/(name+'.csr')))
             ext=cls.m/(name+'.ext'); ext.write_text('subjectAltName=DNS:'+domain+'\nextendedKeyUsage=serverAuth\n')
-            cls.crypto('x509', '-req', '-in', str(cls.m/(name+'.csr')), '-CA', str(cls.m/'ca.pem'), '-CAkey', str(cls.m/'ca.key'), '-CAcreateserial', '-days', days, '-extfile', str(ext), '-out', str(cls.m/(name+'.pem')))
+            if days is None:
+                cls.sign_expired(name, ext)
+            else:
+                cls.crypto('x509', '-req', '-in', str(cls.m/(name+'.csr')), '-CA', str(cls.m/'ca.pem'), '-CAkey', str(cls.m/'ca.key'), '-CAcreateserial', '-days', days, '-extfile', str(ext), '-out', str(cls.m/(name+'.pem')))
+
+    @classmethod
+    def sign_expired(cls, name, ext):
+        # Newer OpenSSL (Ubuntu 26 runners) rejects a negative `x509 -days`. Sign with the isolated
+        # fixture CA through `openssl ca` and explicit validity dates instead: a real certificate whose
+        # notAfter lies in the past (valid 2 days ago .. 1 day ago). No clock or openssl faking.
+        db=cls.m/'expired-ca'; db.mkdir(mode=0o700)
+        (db/'index.txt').write_text(''); (db/'serial').write_text('1000\n')
+        cnf=db/'ca.cnf'
+        cnf.write_text('[ca]\ndefault_ca=fixture\n[fixture]\n'
+                       f'dir={db}\ndatabase=$dir/index.txt\nserial=$dir/serial\nnew_certs_dir=$dir\n'
+                       'default_md=sha256\npolicy=anything\nunique_subject=no\nemail_in_dn=no\n'
+                       '[anything]\ncommonName=supplied\n')
+        stamp=lambda seconds: time.strftime('%Y%m%d%H%M%SZ', time.gmtime(time.time()+seconds))
+        cls.crypto('ca', '-batch', '-config', str(cnf), '-cert', str(cls.m/'ca.pem'), '-keyfile', str(cls.m/'ca.key'),
+                   '-startdate', stamp(-2*86400), '-enddate', stamp(-86400), '-extfile', str(ext), '-notext',
+                   '-in', str(cls.m/(name+'.csr')), '-out', str(cls.m/(name+'.pem')))
 
     @classmethod
     def tearDownClass(cls): cls.material.cleanup()
@@ -149,6 +169,20 @@ class CertificateLifecycle(unittest.TestCase):
             self.assertNotEqual(r.returncode,0)
             self.assertFalse(any(c[0]=='acme.sh' for c in self.calls()))
             self.assert_old()
+
+    def test_expired_fixture_is_really_expired(self):
+        pem=str(self.m/'expired.pem')
+        # notAfter is genuinely in the past: openssl's own expiry check fails, notBefore < notAfter < now.
+        self.assertNotEqual(subprocess.run(['/usr/bin/openssl','x509','-in',pem,'-noout','-checkend','0'],stdout=subprocess.DEVNULL).returncode,0)
+        dates=dict(line.split('=',1) for line in subprocess.check_output(['/usr/bin/openssl','x509','-in',pem,'-noout','-dates'],text=True).splitlines())
+        parse=lambda v: time.mktime(time.strptime(v.replace('  ',' ').strip(),'%b %d %H:%M:%S %Y %Z'))
+        self.assertLess(parse(dates['notBefore']),parse(dates['notAfter']))
+        self.assertLess(parse(dates['notAfter']),time.mktime(time.gmtime()))
+        # Same CA, SAN and key as the other fixtures: only the validity window differs.
+        san=subprocess.check_output(['/usr/bin/openssl','x509','-in',pem,'-noout','-ext','subjectAltName'],text=True)
+        self.assertIn('DNS:'+DOMAIN,san)
+        verify=subprocess.run(['/usr/bin/openssl','verify','-CAfile',str(self.m/'ca.pem'),pem],capture_output=True,text=True)
+        self.assertNotEqual(verify.returncode,0); self.assertIn('expired',verify.stdout+verify.stderr)
 
     def test_invalid_candidate_refused(self):
         for scenario in ['wrong','short','expired','six','mismatch']:
