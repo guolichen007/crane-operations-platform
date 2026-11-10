@@ -1,5 +1,7 @@
 # H3-P Preview 集成验收与发布候选：执行手册（G0–G5）
 
+> **已被取代（D1，2026-11-10）**：OWNER 取消独立 b4 公网 Preview，开发验收改在 `https://crane.youdaozd.com` 进行。现行流程见《D1-单域名开发发布实施与验收报告.md》。下文的 `preview-candidate` 工作流已删除，由 `dev-candidate` 取代；`uatdata` 守卫和清理逻辑已改写。本文只保留 G0 证据与历史记录。
+
 > 分支：`feature/h3-preview-candidate`（基于 `d0f309e`，只做 Preview 准备，不改业务代码）。
 > 边界：不合并 main，不替换 `crane.youdaozd.com`，不连接生产库、生产 Keycloak 或生产 MQTT，不建 00013，不做 R4，不重做 Three.js。
 > 角色：CC 负责本地提交，OWNER 负责推送、打标签和批准服务器变更。服务器只读预检由 OWNER 或服务器 CC 执行。独立审查方负责封板。
