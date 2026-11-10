@@ -227,7 +227,7 @@ func seed(ctx context.Context) error {
 	// password, no UPDATE_PASSWORD action).
 	for _, item := range []struct {
 		name, project, role string
-	}{{"b4-admin", "P001", "platform_admin"}, {"b4-viewer", "P001", "viewer"}, {"b4-operator", "P001", "operator"}, {"b4-maintainer", "P001", "maintainer"}, {"b4-noauth", "", ""}, {"b4-p002", "P002", "platform_admin"}} {
+	}{{"b4-admin", "P001", "platform_admin"}, {"b4-viewer", "P001", "viewer"}, {"b4-operator", "P001", "operator"}, {"b4-maintainer", "P001", "maintainer"}, {"b4-noauth", "", ""}, {"b4-p002", "P002", "platform_admin"}, {"b4-grantee", "", ""}} {
 		body := map[string]any{"username": item.name, "email": item.name + "@example.test", "emailVerified": true, "enabled": true, "firstName": "Anonymous", "lastName": item.name, "credentials": []any{map[string]any{"type": "password", "value": string(userPassword), "temporary": false}}}
 		if err = request("POST", "/users", body, nil); err != nil {
 			return err
