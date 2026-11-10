@@ -1,0 +1,16 @@
+{
+  "approvalReference": "PREVIEW-SYNTHETIC-0001",
+  "teams": [
+    { "id": "a1a1a1a1-0000-4000-8000-000000000001", "name": "合成一组（Preview）" },
+    { "id": "a1a1a1a1-0000-4000-8000-000000000002", "name": "合成二组（Preview）" }
+  ],
+  "users": [
+    { "subject": "b2b2b2b2-0000-4000-8000-0000000000a1", "displayName": "合成销售 A", "role": "baobei_sales", "team": "a1a1a1a1-0000-4000-8000-000000000001", "active": true },
+    { "subject": "b2b2b2b2-0000-4000-8000-0000000000a2", "displayName": "合成销售 B", "role": "baobei_sales", "team": "a1a1a1a1-0000-4000-8000-000000000001", "active": true },
+    { "subject": "b2b2b2b2-0000-4000-8000-0000000000c1", "displayName": "合成销售 C", "role": "baobei_sales", "team": "a1a1a1a1-0000-4000-8000-000000000002", "active": true },
+    { "subject": "b2b2b2b2-0000-4000-8000-0000000000d1", "displayName": "合成主管", "role": "baobei_manager", "team": "a1a1a1a1-0000-4000-8000-000000000001", "active": true },
+    { "subject": "b2b2b2b2-0000-4000-8000-0000000000d2", "displayName": "合成主管 2", "role": "baobei_manager", "team": "a1a1a1a1-0000-4000-8000-000000000002", "active": true },
+    { "subject": "b2b2b2b2-0000-4000-8000-0000000000e1", "displayName": "合成总监", "role": "baobei_director", "team": "", "active": true },
+    { "subject": "b2b2b2b2-0000-4000-8000-0000000000f1", "displayName": "合成管理员", "role": "baobei_admin", "team": "", "active": true }
+  ]
+}

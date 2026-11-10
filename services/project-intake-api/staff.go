@@ -704,8 +704,10 @@ func (a *App) staffPool() *pgxpool.Pool {
 	if a.staffDB != nil {
 		return a.staffDB
 	}
-	// Synthetic and legacy unit fixtures run against their own disposable database.
-	if a.cfg.Env != "production" {
+	// Synthetic development fixtures run against their own disposable database.
+	// Every other environment (production, preview, or an unknown value) fails
+	// closed: without the dedicated staff connection there is no staff pool.
+	if a.cfg.Env == "development" {
 		return a.db
 	}
 	return nil

@@ -1,0 +1,115 @@
+# G4-S1A Preview — an independent Compose project. Not an overlay of
+# compose.production.yaml: project, services, networks, volume, configs and
+# secrets have their own names, so nothing is inherited from production.
+# Not deployed by this batch. Run only on an approved host with:
+#   docker compose -p baobei-preview -f deploy/baobei/compose.preview.yaml ...
+# direct-deploy.py is production-only and must not be used for Preview.
+name: baobei-preview
+services:
+  baobei-preview-web:
+    image: ${BAOBEI_PREVIEW_WEB_IMAGE:?Pin the approved preview web image digest}
+    restart: unless-stopped
+    networks: [preview-frontend, preview-internal]
+    configs:
+      - source: nginx-preview
+        target: /etc/nginx/conf.d/default.conf
+      - source: nginx-preview-proxy
+        target: /etc/nginx/baobei-proxy.conf
+    read_only: true
+    tmpfs: [/var/cache/nginx, /var/run, /tmp]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, wget, -qO-, http://127.0.0.1:8080/health/ready]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+    depends_on:
+      baobei-preview-api: { condition: service_healthy }
+  baobei-preview-api:
+    image: ${BAOBEI_PREVIEW_API_IMAGE:?Pin the approved preview api image digest}
+    restart: unless-stopped
+    environment:
+      APP_ENV: preview
+      DEV_AUTH: '0'
+      LISTEN_ADDR: 0.0.0.0:8088
+      PUBLIC_ORIGIN: https://baobei-preview.youdaozd.com
+      OIDC_ISSUER: https://crane.youdaozd.com/realms/baobei-preview
+      OIDC_CLIENT_ID: baobei-preview-web
+      OIDC_CLIENT_SECRET_FILE: /run/secrets/preview_oidc_client_secret
+      DATABASE_URL_FILE: /run/secrets/preview_runtime_database_url
+      STAFF_DATABASE_URL_FILE: /run/secrets/preview_staff_database_url
+    secrets: [preview_oidc_client_secret, preview_runtime_database_url, preview_staff_database_url]
+    networks: [preview-internal, preview-egress]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    # The API image is alpine + the static binary (api.Dockerfile): busybox wget exists.
+    healthcheck:
+      test: [CMD, wget, -qO-, http://127.0.0.1:8088/health/ready]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      baobei-preview-postgres: { condition: service_healthy }
+  baobei-preview-postgres:
+    image: postgres:18.4-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: baobei_bootstrap
+      POSTGRES_DB: baobei
+      POSTGRES_PASSWORD_FILE: /run/secrets/preview_db_password
+    secrets: [preview_db_password]
+    networks: [preview-internal]
+    volumes:
+      - baobei-preview-data:/var/lib/postgresql
+      - type: bind
+        source: ./db/initialize.sql
+        target: /docker-entrypoint-initdb.d/10-baobei-roles.sql
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./db/staff-role.sql
+        target: /docker-entrypoint-initdb.d/20-baobei-staff-role.sql
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./db/preview-environment.sql
+        target: /docker-entrypoint-initdb.d/30-baobei-preview-environment.sql
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U baobei_bootstrap -d baobei]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    security_opt: [no-new-privileges:true]
+networks:
+  preview-frontend:
+    name: baobei-preview-frontend
+    external: true
+  preview-internal:
+    name: baobei-preview-internal
+    internal: true
+  preview-egress:
+    name: baobei-preview-egress
+secrets:
+  preview_oidc_client_secret:
+    file: ${BAOBEI_PREVIEW_SECRETS_DIR:?External preview secret directory}/oidc_client_secret
+  preview_runtime_database_url:
+    file: ${BAOBEI_PREVIEW_SECRETS_DIR:?External preview secret directory}/runtime_database_url
+  preview_staff_database_url:
+    file: ${BAOBEI_PREVIEW_SECRETS_DIR:?External preview secret directory}/staff_database_url
+  preview_db_password:
+    file: ${BAOBEI_PREVIEW_SECRETS_DIR:?External preview secret directory}/db_password
+configs:
+  nginx-preview:
+    file: ./nginx.preview.conf
+  nginx-preview-proxy:
+    file: ./nginx.proxy.preview.conf
+volumes:
+  baobei-preview-data:
+    name: baobei-preview-data

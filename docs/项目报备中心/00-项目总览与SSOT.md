@@ -5,14 +5,18 @@ BAOBEI_MAIN_MERGE=FORBIDDEN
 BAOBEI_R2_MERGE=FORBIDDEN
 BASE_SHA=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18
 BRANCH=product/baobei-v1
-CURRENT_BATCH=FULL_ROLE_G3_4_A1_G4_S0
-STOP_AFTER_G34_A1_G4_S0=YES
+CURRENT_BATCH=G4_S1A_PREVIEW_OFFLINE
+STOP_AFTER_G4_S1A=YES
 PREVIEW_DEPLOYED=NO
 PRODUCTION_DEPLOYED=NO
 
 目标：快速报项目、识别重复、明确归属并跟进。独立产品，永不合并 main/R2。
 
-## 当前实施：G3-4-A1 产品验收准备与 G4-S0 Preview 只读预检
+## 当前实施：G4-S1A Preview 离线安全实现
+
+基线 `df2c750`（Run 42755710072 八门通过）。新增 `APP_ENV=preview`：与 production 同一条加固路径（Secure/HttpOnly `__Host-` Cookie、受限角色、独立 staff 连接且 fail closed、public search_path、不自动迁移、`DEV_AUTH=0`），origin/issuer/client 使用与生产互不相交的精确白名单。Preview 数据库带环境标记表 `baobei_environment`（只允许 'preview'），API 与维护命令在任何迁移或业务修改前核对：Preview 要求标记、生产拒绝带标记的库；生产库不需要也不被强制写入标记。独立 `compose.preview.yaml`、Preview Nginx 与 Ingress 示例、静态门 `tests/baobei/preview.mjs`（42 个负例）；备份脚本按环境分别校验表清单与标记；Preview 合成数据脚本只经真实 API；金额面板刷新失败不再展示旧金额。未部署 Preview 或生产。验收见 [36-G4-S1A-Preview离线安全实现与验收](36-G4-S1A-Preview离线安全实现与验收.md)。G4-S1B 实际部署需负责人另行授权。
+
+## 历史：G3-4-A1 产品验收准备与 G4-S0 Preview 只读预检
 
 基线 `886f75c`（Run 42577638773 八门通过）。E2E 跨用例数据污染收口：唯一运行标识、提交前登记的清理 fixture（失败也执行，清理失败报项目 ID/状态/原因）、审核卡翻页定位、运行前只列出（不修改）被强杀运行留下的待审报备，严格模式要求重建库。四角色人工 UAT 脚本已准备（真人 UAT 未执行），自动化预演 34 步及其发现的 3 处交互修复（放弃修改后状态文字、详情页只列合法阶段、窄屏非法字段滚入可见区）；工作台阶段/金额面板显示自己的统计时间。A0 原始 22 张截图包与 A1 扩展截图包（视觉终验待负责人）、b8b1606↔886f75c 同机 10k 性能对比。G4-S0 只做仓库静态审查与 Preview 隔离设计，未部署。验收见 [34-G3-4A1产品UAT准备与质量验收](34-G3-4A1产品UAT准备与质量验收.md)、[35-G4-S0隔离Preview部署预检](35-G4-S0隔离Preview部署预检.md)。不进入 G4-S1；生产与 Preview 均未部署。
 

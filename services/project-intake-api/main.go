@@ -28,7 +28,7 @@ func config() (Config, error) {
 	if c.Origin == "" {
 		c.Origin = "http://127.0.0.1:5188"
 	}
-	if c.Env != "development" && c.Env != "production" {
+	if !knownEnv(c.Env) {
 		return c, fmt.Errorf("explicit APP_ENV required")
 	}
 	if c.Dev {
@@ -37,8 +37,10 @@ func config() (Config, error) {
 			return c, fmt.Errorf("dev auth requires development and loopback listen")
 		}
 	}
-	if c.Env == "production" && (c.Origin != "https://baobei.youdaozd.com" || c.Issuer != "https://crane.youdaozd.com/realms/crane" || c.ClientID != "baobei-web" || c.Secret == "") {
-		return c, fmt.Errorf("production OIDC configuration required")
+	// Each deployed environment accepts exactly its own origin, issuer and
+	// client; a production value in preview (or the reverse) is rejected.
+	if p, ok := deployedProfiles[c.Env]; ok && (c.Origin != p.Origin || c.Issuer != p.Issuer || c.ClientID != p.ClientID || c.Secret == "") {
+		return c, fmt.Errorf("%s OIDC configuration required", c.Env)
 	}
 	return c, nil
 }
@@ -57,7 +59,7 @@ func main() {
 		}
 	}
 	c := Config{Env: os.Getenv("APP_ENV")}
-	if c.Env != "development" && c.Env != "production" {
+	if !knownEnv(c.Env) {
 		log.Fatal("explicit APP_ENV required")
 	}
 	var e error
@@ -77,8 +79,16 @@ func main() {
 	if e != nil {
 		log.Fatal("database configuration failed")
 	}
-	if c.Env == "production" {
+	if deployed(c.Env) {
 		database.ConnConfig.RuntimeParams["search_path"] = "public"
+	}
+	// Serving in a deployed environment needs the separate staff credentials;
+	// refuse before touching the database or the identity provider.
+	var staffConfig *pgxpool.Config
+	if deployed(c.Env) && command == "" {
+		if staffConfig, e = parseStaffConfig(envSecret("STAFF_DATABASE_URL"), database); e != nil {
+			log.Fatal(e)
+		}
 	}
 	pool, e := pgxpool.NewWithConfig(ctx, database)
 	if e != nil {
@@ -117,14 +127,8 @@ func main() {
 	if e != nil {
 		log.Fatal("authentication initialization failed")
 	}
-	if c.Env == "production" {
-		staffConfig, err := pgxpool.ParseConfig(envSecret("STAFF_DATABASE_URL"))
-		if err != nil || staffConfig.ConnConfig.Host != database.ConnConfig.Host ||
-			staffConfig.ConnConfig.Port != database.ConnConfig.Port ||
-			staffConfig.ConnConfig.Database != database.ConnConfig.Database {
-			log.Fatal("separate staff database credentials required")
-		}
-		staffConfig.ConnConfig.RuntimeParams["search_path"] = "public"
+	if deployed(c.Env) {
+		var err error
 		a.staffDB, err = pgxpool.NewWithConfig(ctx, staffConfig)
 		if err != nil {
 			log.Fatal("staff database unavailable")
@@ -132,9 +136,14 @@ func main() {
 		defer a.staffDB.Close()
 		verify, cancel := context.WithTimeout(ctx, 10*time.Second)
 		err = verifyDatabaseRole(verify, a.staffDB, "baobei_staff_api", false)
+		if err != nil {
+			cancel()
+			log.Fatal("staff database role rejected")
+		}
+		err = verifyDatabaseEnvironment(verify, a.staffDB, c.Env)
 		cancel()
 		if err != nil {
-			log.Fatal("staff database role rejected")
+			log.Fatal("staff database environment rejected")
 		}
 	}
 	if c.Dev {

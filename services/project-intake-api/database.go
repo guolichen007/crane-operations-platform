@@ -115,6 +115,9 @@ func prepareDatabase(ctx context.Context, pool *pgxpool.Pool, environment, comma
 	if environment == "development" {
 		return migrate(ctx, pool)
 	}
+	if !deployed(environment) {
+		return errors.New("unknown environment")
+	}
 	role := "baobei_runtime"
 	switch command {
 	case "migrate":
@@ -123,6 +126,11 @@ func prepareDatabase(ctx context.Context, pool *pgxpool.Pool, environment, comma
 		role = "baobei_maintenance"
 	}
 	if err := verifyDatabaseRole(ctx, pool, role, command == "migrate"); err != nil {
+		return err
+	}
+	// The environment marker is checked before migrating: a preview DSN that
+	// points at an unmarked or production database never runs a migration.
+	if err := verifyDatabaseEnvironment(ctx, pool, environment); err != nil {
 		return err
 	}
 	if command == "migrate" {

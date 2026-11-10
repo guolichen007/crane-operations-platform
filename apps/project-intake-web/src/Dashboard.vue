@@ -202,7 +202,7 @@ const amount = computed(() => stagesData.value?.amount ?? null);
         </div>
         <p class="panel-def muted">按销售阶段统计{{ scopeText }}的全部项目（含草稿与退回），与报备状态无关。</p>
         <!-- G3-4-A1: a separate snapshot from the task summary; its own time is shown. -->
-        <p v-if="stagesData && stageState !== 'error'" class="muted panel-asof" data-testid="home-stage-asof">阶段与金额统计时间 {{ when(stagesData.asOf) }}</p>
+        <p v-if="stagesData && stageState === 'ready'" class="muted panel-asof" data-testid="home-stage-asof">阶段与金额统计时间 {{ when(stagesData.asOf) }}</p>
         <p v-if="stageState === 'loading'" class="muted" role="status">正在加载阶段分布…</p>
         <div v-else-if="stageState === 'error'" class="form-alert" role="alert">
           无法加载阶段分布：{{ stageFailure }} <ActionButton action-id="dashboard.stage-reload" :run="loadStages">重新加载</ActionButton>
@@ -232,7 +232,10 @@ const amount = computed(() => stagesData.value?.amount ?? null);
           <ActionButton action-id="nav.open" :run="() => router.push('/statistics')">统计 <ArrowUpRight :size="14" aria-hidden="true" /></ActionButton>
         </div>
         <p class="panel-def muted">项目预估金额中已知的部分（人民币元），不是合同金额、收入或回款。</p>
-        <template v-if="amount && stagesData">
+        <!-- G4-S1A: amounts are shown only for the current successful snapshot.
+             After a failed refresh the previous figures are withheld, so an old
+             amount is never presented as this refresh's live result. -->
+        <template v-if="amount && stagesData && stageState === 'ready'">
           <strong :class="['amount-figure', { long: amount.knownTotal.length > 15, huge: amount.knownTotal.length > 19 }]" data-testid="home-known-total">{{ yuan(amount.knownTotal) }}</strong>
           <p class="muted amount-basis" data-testid="home-known-count">来自 {{ amount.knownCount }} 个项目<template v-if="amount.knownZeroCount">（其中 {{ amount.knownZeroCount }} 个确认为 0）</template><template v-if="!amount.knownCount && stagesData.total">；合计 ¥0.00 不代表项目价值为零</template></p>
           <dl class="amount-split">
@@ -248,7 +251,9 @@ const amount = computed(() => stagesData.value?.amount ?? null);
           </ol>
         </template>
         <p v-else-if="stageState === 'loading'" class="muted" role="status">正在加载金额…</p>
-        <p v-else-if="stageState === 'error'" class="form-alert" role="alert">金额与阶段分布来自同一汇总，暂不可用：{{ stageFailure }}。可在左侧“销售阶段分布”重新加载。</p>
+        <div v-else-if="stageState === 'error'" class="form-alert" role="alert" data-testid="home-amount-error">
+          金额与阶段分布来自同一汇总，本次刷新失败，暂不可用：{{ stageFailure }}。<template v-if="stagesData">上次成功统计（{{ when(stagesData.asOf) }}）的金额已隐藏，避免被误认为当前结果。</template>可在左侧“销售阶段分布”重新加载。
+        </div>
       </section>
 
       <section v-if="can(app.user, 'staff.manage') || can(app.user, 'team.manage')" class="home-panel home-governance" aria-labelledby="home-gov-title">

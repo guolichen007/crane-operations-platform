@@ -46,7 +46,7 @@ func recoverLogin(w http.ResponseWriter, r *http.Request, reason loginFailure, s
 }
 
 func (a *App) loginCookieName() string {
-	if a.cfg.Env == "production" {
+	if deployed(a.cfg.Env) {
 		return "__Host-baobei_login"
 	}
 	return "baobei_login"

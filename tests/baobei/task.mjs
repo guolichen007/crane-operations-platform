@@ -58,6 +58,9 @@ const tasks = {
   'production-check'() {
     run(process.execPath, ['tests/baobei/production.mjs']);
   },
+  'preview-check'() {
+    run(process.execPath, ['tests/baobei/preview.mjs']);
+  },
   backup() {
     run(process.execPath, ['tests/baobei/backup.mjs', 'backup']);
   },
@@ -121,6 +124,7 @@ const tasks = {
   compose() {
     compose('config', '--quiet');
     run(process.execPath, ['tests/baobei/production.mjs']);
+    run(process.execPath, ['tests/baobei/preview.mjs']);
   },
   up() {
     compose('up', '-d', '--build', '--wait', '--wait-timeout', '180');

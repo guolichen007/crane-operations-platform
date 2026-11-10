@@ -52,13 +52,13 @@ func randomToken() string {
 }
 func hash(s string) string { h := sha256.Sum256([]byte(s)); return hex.EncodeToString(h[:]) }
 func (a *App) cookieName() string {
-	if a.cfg.Env == "production" {
+	if deployed(a.cfg.Env) {
 		return "__Host-baobei_session"
 	}
 	return "baobei_dev_session"
 }
 func (a *App) cookie(w http.ResponseWriter, name, value string, age int) {
-	http.SetCookie(w, &http.Cookie{Name: name, Value: value, Path: "/", HttpOnly: true, Secure: a.cfg.Env == "production", SameSite: http.SameSiteLaxMode, MaxAge: age})
+	http.SetCookie(w, &http.Cookie{Name: name, Value: value, Path: "/", HttpOnly: true, Secure: deployed(a.cfg.Env), SameSite: http.SameSiteLaxMode, MaxAge: age})
 }
 func (a *App) user(r *http.Request) (User, error) {
 	var u User

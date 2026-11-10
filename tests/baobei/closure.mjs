@@ -6,7 +6,8 @@ const {parse}=require('yaml');
 const read=(p)=>readFileSync(p,'utf8');
 const PG='postgres:18.4-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15';
 const input={
-  ingress:readdirSync('deploy/baobei/ingress',{recursive:true}).filter(f=>/example|template/.test(f)).map(f=>read('deploy/baobei/ingress/'+f)).join('\n'),
+  // Production ingress only; the Preview example is gated by tests/baobei/preview.mjs (G4-S1A).
+  ingress:readdirSync('deploy/baobei/ingress',{recursive:true}).filter(f=>/example|template/.test(f)&&!/preview/.test(f)).map(f=>read('deploy/baobei/ingress/'+f)).join('\n'),
   common:read('deploy/baobei/ingress/baobei-http-common.conf.example'),
   nginx:read('deploy/baobei/nginx.production.conf'),
   compose:read('deploy/baobei/compose.production.yaml'),

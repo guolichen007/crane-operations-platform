@@ -20,6 +20,9 @@ function checked(args) {
 // Reuse the exact production PostgreSQL digest and initializer in a fresh fixture.
 const compose = readFileSync('deploy/baobei/compose.production.yaml', 'utf8');
 const [, image] = compose.match(/image: (postgres:18\.4-alpine@sha256:[0-9a-f]{64})/);
+// G4-S1A: Preview must use the same pinned PostgreSQL image.
+assert(readFileSync('deploy/baobei/compose.preview.yaml', 'utf8').includes('image: ' + image), 'preview PostgreSQL image differs from production');
+async function fixture(test, portVar) {
 const container = checked([
   'run', '--rm', '-d', '-p', '127.0.0.1::5432',
   '--tmpfs', '/var/lib/postgresql',
@@ -41,14 +44,19 @@ try {
   assert(port, 'Fixture must bind a loopback port');
   const result = spawnSync(process.env.BAOBEI_GO || 'go', [
     'test', ...(process.platform === 'linux' ? ['-race'] : []),
-    '-count=1', '-run', '^TestDatabaseProductionPrivileges$', '-v', './...',
+    '-count=1', '-run', `^${test}$`, '-v', './...',
   ], {
     cwd: 'services/project-intake-api',
-    env: { ...process.env, BAOBEI_PRIVILEGE_TEST_PORT: port },
+    env: { ...process.env, [portVar]: port },
     stdio: 'inherit',
   });
   if (result.error) throw result.error;
-  assert.equal(result.status, 0, 'Production database privilege fixture failed');
+  assert.equal(result.status, 0, test + ' fixture failed');
 } finally {
   checked(['stop', container]);
 }
+}
+await fixture('TestDatabaseProductionPrivileges', 'BAOBEI_PRIVILEGE_TEST_PORT');
+// Fresh fixture without the marker: the test proves refusal first, then adds
+// the marker exactly as deploy/baobei/db/preview-environment.sql does.
+await fixture('TestDatabasePreviewEnvironment', 'BAOBEI_PREVIEW_TEST_PORT');

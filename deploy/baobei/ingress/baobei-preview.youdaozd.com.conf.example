@@ -1,0 +1,52 @@
+# G4-S1A EXAMPLE ONLY — not installed by this batch. Shared ingress vhost for
+# the independent Preview. The ingress joins only baobei-preview-frontend in
+# addition to its existing networks; it never joins baobei-preview-internal.
+# Before reload: nginx -t. Rollback: remove this file and reload.
+# Zones are Preview-specific so Preview traffic cannot exhaust production limits.
+limit_req_zone $binary_remote_addr zone=baobei_preview_ingress_login:1m rate=12r/m;
+limit_req_zone $binary_remote_addr zone=baobei_preview_ingress_callback:1m rate=24r/m;
+server {
+    listen 80;
+    server_name baobei-preview.youdaozd.com;
+    access_log off;
+    error_log /dev/stderr crit;
+    location / { return 308 https://baobei-preview.youdaozd.com$request_uri; }
+}
+server {
+    listen 443 ssl;
+    server_name baobei-preview.youdaozd.com;
+    resolver 127.0.0.11 valid=10s ipv6=off;
+    resolver_timeout 5s;
+    ssl_certificate /etc/nginx/tls/baobei-preview/fullchain.pem;
+    ssl_certificate_key /etc/nginx/tls/baobei-preview/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    access_log off;
+    error_log /dev/stderr crit;
+    client_max_body_size 64k;
+    # Preview is not public: allow only the approved office/VPN egress ranges.
+    # allow <APPROVED_CIDR>;
+    deny all;
+    set $baobei_preview_web http://baobei-preview-web:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Host baobei-preview.youdaozd.com;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header Connection "";
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 30s;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy no-referrer always;
+    add_header X-Robots-Tag "noindex, nofollow" always;
+    location = /auth/login {
+        limit_req zone=baobei_preview_ingress_login burst=8 nodelay;
+        limit_req_status 429;
+        proxy_pass $baobei_preview_web;
+    }
+    location = /auth/callback {
+        limit_req zone=baobei_preview_ingress_callback burst=12 nodelay;
+        limit_req_status 429;
+        proxy_pass $baobei_preview_web;
+    }
+    location / { proxy_pass $baobei_preview_web; }
+}
