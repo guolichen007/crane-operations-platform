@@ -78,6 +78,13 @@ add('/api/v1/portfolio/conflicts/{id}', 'get', 'getConflict', scheduleConflict);
 add('/api/v1/portfolio/conflicts/{id}/override', 'post', 'overrideConflict', null);
 add('/api/v1/portfolio/baselines', 'get', 'listBaselines', { type: 'array', items: scheduleBaseline });
 add('/api/v1/portfolio/baselines', 'post', 'createBaseline', scheduleBaseline, '201');
+// Q2 formal projects (approved intakes) and their initial project grants (portfolio-scoped).
+const portfolioProject = { $ref: '#/components/schemas/PortfolioProject' },
+  projectMember = { $ref: '#/components/schemas/ProjectMember' };
+add('/api/v1/portfolio/projects', 'get', 'listPortfolioProjects', { type: 'array', items: portfolioProject });
+add('/api/v1/portfolio/projects/{id}', 'get', 'getPortfolioProject', portfolioProject);
+add('/api/v1/portfolio/projects/{id}/members', 'get', 'listPortfolioProjectMembers', { type: 'array', items: projectMember });
+add('/api/v1/portfolio/projects/{id}/members', 'post', 'changePortfolioProjectMember', { type: 'array', items: projectMember });
 // Asset master-data business routes.
 const assetMaster = { $ref: '#/components/schemas/AssetMasterData' },
   assetLocation = { $ref: '#/components/schemas/AssetLocation' },

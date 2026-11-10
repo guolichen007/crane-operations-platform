@@ -130,6 +130,20 @@ func TestPortfolioCapabilityBundles(t *testing.T) {
 	assertHave("portfolio_planner", CapPortfolioRead, CapProjectIntakeRead, CapProjectIntakeWrite, CapProjectScheduleRead, CapProjectScheduleWrite, CapResourceCalendarRead)
 	assertLack("portfolio_planner", CapProjectApprove, CapScheduleOverride, CapResourceCalendarWrite)
 	assertHave("portfolio_manager", CapPortfolioRead, CapProjectApprove, CapScheduleOverride, CapResourceCalendarWrite, CapPortfolioRiskWrite)
+	// Q2: grant management is portfolio_manager-only; no project role (incl. platform_admin)
+	// carries it, and it is never a project capability (it cannot read/write project assets).
+	assertHave("portfolio_manager", CapProjectGrantManage)
+	assertLack("portfolio_planner", CapProjectGrantManage)
+	for _, role := range []string{"viewer", "operator", "maintainer", "platform_admin"} {
+		if HasPortfolioCapability(role, CapProjectGrantManage) || HasCapability(role, CapProjectGrantManage) {
+			t.Errorf("%s must not have project_grant_manage", role)
+		}
+	}
+	for _, c := range []Capability{CapRead, CapWatch, CapAssetMasterWrite, CapLocationWrite} {
+		if HasPortfolioCapability("portfolio_manager", c) {
+			t.Errorf("portfolio_manager must not hold project capability %s", c)
+		}
+	}
 }
 
 // PortfolioGrant must never grant project asset access, and a project

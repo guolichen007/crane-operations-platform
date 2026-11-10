@@ -127,6 +127,9 @@ func New(ctx context.Context, db *sql.DB, config Config) (*Manager, error) {
 	return m, nil
 }
 
+// Issuer is the configured OIDC issuer: the only identity source whose users may be granted.
+func (m *Manager) Issuer() string { return m.config.Issuer }
+
 func (m *Manager) digest(domain, value string) []byte {
 	hash := hmac.New(sha256.New, m.key[:])
 	_, _ = hash.Write([]byte(domain + "\x00" + value))

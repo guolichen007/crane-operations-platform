@@ -261,6 +261,7 @@ export interface PortfolioScope {
   name: string;
   status: "ACTIVE" | "DISABLED";
   version: number;
+  myRole: "portfolio_planner" | "portfolio_manager" | null;
 }
 export interface ProjectIntake {
   id: string;
@@ -304,6 +305,30 @@ export interface ProjectIntakeInput {
   projectManagerUserId: string | null;
   technicalLeadUserId: string | null;
   siteLeadUserId: string | null;
+}
+export interface PortfolioProject {
+  id: string;
+  name: string;
+  portfolioScopeId: string;
+  intakeId: string;
+  intakeCode: string;
+  projectPhase: string | null;
+  memberCount: number;
+  grantStatus: "NO_MEMBERS" | "MEMBERS_CONFIGURED";
+  inventoryRegistered: boolean;
+  adminCode: number | null;
+  canManageGrants: boolean;
+}
+export interface ProjectMember {
+  userId: string;
+  displayName: string;
+  role: "viewer" | "operator" | "maintainer" | "platform_admin";
+  enabled: boolean;
+}
+export interface ProjectGrantChange {
+  userId: string;
+  role: "viewer" | "operator" | "maintainer" | "platform_admin" | null;
+  expectedRole: "viewer" | "operator" | "maintainer" | "platform_admin" | null;
 }
 export interface ScheduleItem {
   id: string;

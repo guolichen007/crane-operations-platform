@@ -164,6 +164,16 @@ func ChangeGrant(ctx context.Context, db *sql.DB, user, project, role string, re
 	if err = tx.QueryRowContext(ctx, `SELECT issuer FROM users WHERE id=$1 FOR UPDATE`, user).Scan(&issuer); err != nil || !issuer.Valid {
 		return ErrDenied
 	}
+	if err = writeGrant(ctx, tx, user, project, role, revoke, event); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// writeGrant is the single grant mutation + audit used by ChangeGrant (host tool, fixtures)
+// and ChangeGrantGuarded (portfolio-scoped HTTP). The caller holds the user row lock.
+func writeGrant(ctx context.Context, tx *sql.Tx, user, project, role string, revoke bool, event auditlog.Event) error {
+	var err error
 	if revoke {
 		_, err = tx.ExecContext(ctx, `DELETE FROM project_memberships WHERE user_id=$1 AND project_id=$2`, user, project)
 	} else {
@@ -178,8 +188,95 @@ ON CONFLICT(user_id,project_id) DO UPDATE SET role=excluded.role,updated_at=now(
 	if revoke {
 		event.Result = "revoked:" + user
 	}
-	if err = auditlog.Write(ctx, tx, event); err != nil {
+	return auditlog.Write(ctx, tx, event)
+}
+
+var (
+	// ErrGrantTargetInvalid: the target user does not exist, is disabled, or is not bound to
+	// the expected identity issuer (HTTP 422; nothing is written).
+	ErrGrantTargetInvalid = errors.New("grant target is not an enabled user of this identity provider")
+	// ErrGrantConflict: the membership changed since the caller read it (HTTP 409).
+	ErrGrantConflict = errors.New("project membership changed concurrently")
+	// ErrGrantNoop: revoking a membership that does not exist / granting the role already held (HTTP 409).
+	ErrGrantNoop = errors.New("project membership already in the requested state")
+)
+
+// GrantChange is one portfolio-scoped membership change. ExpectedRole is the role the caller
+// last saw ("" = no membership); the change applies only if it still matches, so concurrent
+// or reordered requests fail with ErrGrantConflict instead of silently overwriting.
+type GrantChange struct {
+	User, Project, Role string
+	Revoke              bool
+	ExpectedRole        string
+	Issuer              string
+}
+
+// ChangeGrantGuarded applies a membership change after the caller proved (with a lock on
+// the project row inside the same transaction, via `precondition`) that the project is
+// manageable by them. It reuses the exact ChangeGrant mutation + audit; it never trusts a
+// project tenant, scope or actor from the request.
+func ChangeGrantGuarded(ctx context.Context, db *sql.DB, c GrantChange, event auditlog.Event, precondition func(*sql.Tx) error) error {
+	if !contract.ValidID(c.User) || !contract.ValidID(c.Project) || (!c.Revoke && !HasCapability(c.Role, CapRead)) {
+		return ErrGrantTargetInvalid
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err = precondition(tx); err != nil {
+		return err
+	}
+	var issuer sql.NullString
+	var enabled bool
+	err = tx.QueryRowContext(ctx, `SELECT issuer,enabled FROM users WHERE id=$1 FOR UPDATE`, c.User).Scan(&issuer, &enabled)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && (!enabled || !issuer.Valid || issuer.String != c.Issuer)) {
+		return ErrGrantTargetInvalid
+	}
+	if err != nil {
+		return err
+	}
+	var current string
+	err = tx.QueryRowContext(ctx, `SELECT role FROM project_memberships WHERE user_id=$1 AND project_id=$2`, c.User, c.Project).Scan(&current)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if current != c.ExpectedRole {
+		return ErrGrantConflict
+	}
+	if (c.Revoke && current == "") || (!c.Revoke && current == c.Role) {
+		return ErrGrantNoop
+	}
+	if err = writeGrant(ctx, tx, c.User, c.Project, c.Role, c.Revoke, event); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+// ProjectMember is one membership of a project, for the project's managers only.
+type ProjectMember struct {
+	UserID      string `json:"userId"`
+	DisplayName string `json:"displayName"`
+	Role        string `json:"role"`
+	Enabled     bool   `json:"enabled"`
+}
+
+func ProjectMembers(ctx context.Context, q interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}, project string) ([]ProjectMember, error) {
+	rows, err := q.QueryContext(ctx, `SELECT u.id,u.display_name,m.role,u.enabled FROM project_memberships m JOIN users u ON u.id=m.user_id
+WHERE m.project_id=$1 ORDER BY u.id`, project)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []ProjectMember{}
+	for rows.Next() {
+		var m ProjectMember
+		if err = rows.Scan(&m.UserID, &m.DisplayName, &m.Role, &m.Enabled); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
 }

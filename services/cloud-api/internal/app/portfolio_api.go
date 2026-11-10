@@ -113,8 +113,16 @@ func (h *apiHandler) portfolioScopes(r *http.Request) (map[string]bool, error) {
 }
 
 func (h *apiHandler) registerPortfolio(api *http.ServeMux) {
+	h.registerPortfolioProjects(api)
 	api.HandleFunc("GET /api/v1/portfolio/scopes", func(w http.ResponseWriter, r *http.Request) {
 		memberships, err := h.portfolioScopes(r)
+		if err != nil {
+			respondAPI(w, 503, map[string]string{"error": "authorization unavailable"})
+			return
+		}
+		// The caller's own role per scope (UX only: e.g. hide the approve button). Every
+		// mutation still re-checks the capability server-side.
+		roles, err := h.portfolioScopeRoles(r)
 		if err != nil {
 			respondAPI(w, 503, map[string]string{"error": "authorization unavailable"})
 			return
@@ -135,6 +143,9 @@ func (h *apiHandler) registerPortfolio(api *http.ServeMux) {
 			if memberships != nil && !memberships[v.Id] {
 				continue
 			}
+			if role, ok := roles[v.Id]; ok {
+				v.MyRole = &role
+			}
 			values = append(values, v)
 		}
 		respondAPI(w, 200, values)
@@ -154,7 +165,7 @@ func (h *apiHandler) registerPortfolio(api *http.ServeMux) {
 		if !h.authorizePortfolio(w, r, in.PortfolioScopeId, identity.CapProjectIntakeWrite) {
 			return
 		}
-		out, err := portfolio.CreateIntake(r.Context(), h.db, in, currentPrincipal(r).user)
+		out, err := portfolio.CreateIntake(r.Context(), h.db, in, currentPrincipal(r).user, requestID(r))
 		if err != nil {
 			switch {
 			case errors.Is(err, portfolio.ErrInvalidIntake):

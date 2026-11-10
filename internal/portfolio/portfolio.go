@@ -72,19 +72,24 @@ func validTransition(from, to string) bool {
 	return false
 }
 
-// CreateIntake inserts a REGISTERED intake. The tenant is derived from the
-// portfolio scope, never from the request.
-func CreateIntake(ctx context.Context, db *sql.DB, in contract.ProjectIntakeInput, registeredBy string) (contract.ProjectIntake, error) {
+// CreateIntake inserts a REGISTERED intake and its `intake_created` audit event in ONE
+// transaction (no row without its audit, no audit without its row). The tenant is derived
+// from the portfolio scope, never from the request.
+func CreateIntake(ctx context.Context, db *sql.DB, in contract.ProjectIntakeInput, registeredBy, requestID string) (contract.ProjectIntake, error) {
 	if err := ValidateIntakeInput(in); err != nil {
 		return contract.ProjectIntake{}, err
 	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return contract.ProjectIntake{}, err
+	}
+	defer tx.Rollback()
 	var tenantID string
-	if err := db.QueryRowContext(ctx, `SELECT tenant_id FROM portfolio_scopes WHERE id=$1`, in.PortfolioScopeId).Scan(&tenantID); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT tenant_id FROM portfolio_scopes WHERE id=$1`, in.PortfolioScopeId).Scan(&tenantID); err != nil {
 		return contract.ProjectIntake{}, fmt.Errorf("portfolio scope: %w", err)
 	}
-	id := platform.ID()
 	out := contract.ProjectIntake{
-		Id:                   id,
+		Id:                   platform.ID(),
 		PortfolioScopeId:     in.PortfolioScopeId,
 		TenantId:             tenantID,
 		IntakeCode:           in.IntakeCode,
@@ -107,13 +112,19 @@ func CreateIntake(ctx context.Context, db *sql.DB, in contract.ProjectIntakeInpu
 		SiteLeadUserId:       in.SiteLeadUserId,
 		Version:              1,
 	}
-	_, err := db.ExecContext(ctx, `INSERT INTO project_intakes(id,portfolio_scope_id,tenant_id,intake_code,project_name,customer_name,project_type,priority,risk_level,scope_summary,site_reference,registered_at,registered_by,requested_start,requested_handover,planned_start,planned_end,status,project_manager_user_id,technical_lead_user_id,site_lead_user_id,version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+	_, err = tx.ExecContext(ctx, `INSERT INTO project_intakes(id,portfolio_scope_id,tenant_id,intake_code,project_name,customer_name,project_type,priority,risk_level,scope_summary,site_reference,registered_at,registered_by,requested_start,requested_handover,planned_start,planned_end,status,project_manager_user_id,technical_lead_user_id,site_lead_user_id,version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
 		out.Id, out.PortfolioScopeId, out.TenantId, out.IntakeCode, out.ProjectName, out.CustomerName, out.ProjectType, out.Priority, out.RiskLevel, out.ScopeSummary, out.SiteReference, out.RegisteredAt, out.RegisteredBy, out.RequestedStart, out.RequestedHandover, out.PlannedStart, out.PlannedEnd, out.Status, out.ProjectManagerUserId, out.TechnicalLeadUserId, out.SiteLeadUserId, out.Version)
 	if err != nil {
 		var pg *pgconn.PgError
 		if errors.As(err, &pg) && pg.Code == "23505" && pg.ConstraintName == "project_intakes_portfolio_scope_id_intake_code_key" {
 			return contract.ProjectIntake{}, ErrDuplicateIntakeCode
 		}
+		return contract.ProjectIntake{}, err
+	}
+	if err = auditlog.Write(ctx, tx, auditlog.Event{Actor: registeredBy, Action: "intake_created", Result: "success:" + out.Id + ":" + out.PortfolioScopeId, RequestID: requestID}); err != nil {
+		return contract.ProjectIntake{}, err
+	}
+	if err = tx.Commit(); err != nil {
 		return contract.ProjectIntake{}, err
 	}
 	return out, nil
@@ -191,4 +202,85 @@ func ApproveIntake(ctx context.Context, db *sql.DB, intakeID, actor, requestID s
 		return "", err
 	}
 	return projectID, nil
+}
+
+// ErrProjectNotManageable: the formal project does not exist, is not an approved intake's
+// project, or belongs to another portfolio scope than the caller manages (HTTP 404).
+var ErrProjectNotManageable = errors.New("formal project not found in a manageable portfolio scope")
+
+const formalProjectSelect = `SELECT p.id,p.name,p.portfolio_scope_id,pi.id,pi.intake_code,p.project_phase,
+ (SELECT count(*) FROM project_memberships m WHERE m.project_id=p.id),
+ p.lifecycle IS NOT NULL, p.admin_code
+FROM projects p JOIN project_intakes pi ON pi.formal_project_id=p.id AND pi.status='APPROVED'
+ AND pi.portfolio_scope_id=p.portfolio_scope_id AND pi.tenant_id=p.tenant_id`
+
+func scanFormal(scan func(...any) error) (contract.PortfolioProject, error) {
+	var v contract.PortfolioProject
+	var adminCode sql.NullInt64
+	if err := scan(&v.Id, &v.Name, &v.PortfolioScopeId, &v.IntakeId, &v.IntakeCode, &v.ProjectPhase, &v.MemberCount, &v.InventoryRegistered, &adminCode); err != nil {
+		return v, err
+	}
+	if adminCode.Valid {
+		c := int(adminCode.Int64)
+		v.AdminCode = &c
+	}
+	v.GrantStatus = "NO_MEMBERS"
+	if v.MemberCount > 0 {
+		v.GrantStatus = "MEMBERS_CONFIGURED"
+	}
+	return v, nil
+}
+
+// FormalProjects lists formal projects created by approved intakes in the given portfolio
+// scopes only (the caller passes the scopes it is a member of). It never returns legacy or
+// Inventory-only projects and never crosses scopes.
+func FormalProjects(ctx context.Context, db *sql.DB, scopes []string) ([]contract.PortfolioProject, error) {
+	out := []contract.PortfolioProject{}
+	if len(scopes) == 0 {
+		return out, nil
+	}
+	rows, err := db.QueryContext(ctx, formalProjectSelect+` WHERE p.portfolio_scope_id = ANY($1) ORDER BY pi.updated_at DESC, p.id`, scopes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		v, err := scanFormal(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+// FormalProject loads one formal project and its owning scope; sql.ErrNoRows when the id is
+// not an approved intake's project.
+func FormalProject(ctx context.Context, q interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}, id string) (contract.PortfolioProject, error) {
+	return scanFormal(q.QueryRowContext(ctx, formalProjectSelect+` WHERE p.id=$1`, id).Scan)
+}
+
+// LockManageableProject is the in-transaction precondition for a grant change: it locks the
+// formal project row and re-checks, inside the same transaction, that the project is an
+// approved intake's project of `scope` and that `actor` still holds `cap` there. A membership
+// revoked between the HTTP check and the write therefore cannot slip through.
+func LockManageableProject(ctx context.Context, tx *sql.Tx, project, scope, actor string, allowed func(role string) bool) error {
+	var owner string
+	err := tx.QueryRowContext(ctx, `SELECT p.portfolio_scope_id FROM projects p JOIN project_intakes pi ON pi.formal_project_id=p.id AND pi.status='APPROVED'
+ AND pi.portfolio_scope_id=p.portfolio_scope_id AND pi.tenant_id=p.tenant_id WHERE p.id=$1 FOR UPDATE OF p`, project).Scan(&owner)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && owner != scope) {
+		return ErrProjectNotManageable
+	}
+	if err != nil {
+		return err
+	}
+	var role string
+	err = tx.QueryRowContext(ctx, `SELECT m.role FROM portfolio_memberships m JOIN users u ON u.id=m.user_id
+ WHERE m.user_id=$1 AND m.portfolio_scope_id=$2 AND u.enabled FOR SHARE OF m`, actor, scope).Scan(&role)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && !allowed(role)) {
+		return ErrProjectNotManageable
+	}
+	return err
 }

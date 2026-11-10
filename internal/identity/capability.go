@@ -38,6 +38,12 @@ const CapResourceCalendarWrite Capability = "resource_calendar_write"
 const CapScheduleOverride Capability = "schedule_override"
 const CapPortfolioRiskWrite Capability = "portfolio_risk_write"
 
+// CapProjectGrantManage (Q2): grant / change / revoke ProjectGrants on the formal projects
+// that were approved inside the SAME portfolio scope. It is not a project capability (it does
+// not read assets or telemetry) and platform_admin does not have it: a ProjectGrant never
+// implies portfolio rights. Bound to portfolio_manager only.
+const CapProjectGrantManage Capability = "project_grant_manage"
+
 // roleCapabilities returns the frozen project capability bundle for a role.
 // Unknown roles yield no capabilities, so any check fails closed.
 func roleCapabilities(role string) []Capability {
@@ -78,6 +84,7 @@ func portfolioRoleCapabilities(role string) []Capability {
 			CapProjectScheduleRead, CapProjectScheduleWrite,
 			CapResourceCalendarRead, CapResourceCalendarWrite,
 			CapScheduleOverride, CapPortfolioRiskWrite,
+			CapProjectGrantManage,
 		}
 	}
 	return nil

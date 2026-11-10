@@ -32,7 +32,7 @@ func TestIntakeStateMachineAndApprove(t *testing.T) {
 		RiskLevel:        "MEDIUM",
 		ScopeSummary:     "test intake",
 	}
-	intake, err := CreateIntake(ctx, db, in, "u-planner")
+	intake, err := CreateIntake(ctx, db, in, "u-planner", "req-c")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,12 +73,12 @@ func TestIntakeDuplicateCodeRejected(t *testing.T) {
 		t.Fatal(err)
 	}
 	in := contract.ProjectIntakeInput{PortfolioScopeId: "PS-2", IntakeCode: "INT-001", ProjectName: "A", ProjectType: "NEW_INSTALLATION", Priority: "MEDIUM", RiskLevel: "MEDIUM"}
-	if _, err := CreateIntake(ctx, db, in, "someone"); err != nil {
+	if _, err := CreateIntake(ctx, db, in, "someone", "req-c"); err != nil {
 		t.Fatal(err)
 	}
 	in2 := in
 	in2.ProjectName = "B"
-	if _, err := CreateIntake(ctx, db, in2, "someone"); !errors.Is(err, ErrDuplicateIntakeCode) {
+	if _, err := CreateIntake(ctx, db, in2, "someone", "req-c"); !errors.Is(err, ErrDuplicateIntakeCode) {
 		t.Fatalf("duplicate intake code: want ErrDuplicateIntakeCode, got %v", err)
 	}
 }
@@ -96,7 +96,7 @@ func TestApproveDoesNotAutoGrantProject(t *testing.T) {
 		t.Fatal(err)
 	}
 	in := contract.ProjectIntakeInput{PortfolioScopeId: "PS-3", IntakeCode: "INT-001", ProjectName: "A", ProjectType: "NEW_INSTALLATION", Priority: "MEDIUM", RiskLevel: "MEDIUM"}
-	intake, err := CreateIntake(ctx, db, in, "u-manager")
+	intake, err := CreateIntake(ctx, db, in, "u-manager", "req-c")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,6 +141,49 @@ func TestValidateIntakeInputRejectsBeforeWriting(t *testing.T) {
 		mutate(&v)
 		if err := ValidateIntakeInput(v); !errors.Is(err, ErrInvalidIntake) {
 			t.Errorf("%s: want ErrInvalidIntake, got %v", name, err)
+		}
+	}
+}
+
+// The in-transaction precondition used by grant changes must re-check BOTH the project's scope
+// and the actor's capability, independently of any earlier HTTP-level check (a membership
+// revoked between the check and the write, or a scope mix-up, must not slip through).
+func TestLockManageableProjectRechecksScopeAndCapability(t *testing.T) {
+	db := testsupport.Database(t)
+	ctx := context.Background()
+	for _, q := range []string{
+		`INSERT INTO users(id,issuer,subject,display_name,enabled) VALUES('u-m','https://i','m','M',true),('u-p','https://i','p','P',true),('u-off','https://i','o','O',false)`,
+		`INSERT INTO portfolio_scopes(id,tenant_id,code,name) VALUES('PS-L','demo','PS-L','L'),('PS-O','demo','PS-O','O')`,
+		`INSERT INTO portfolio_memberships(user_id,portfolio_scope_id,role) VALUES('u-m','PS-L','portfolio_manager'),('u-p','PS-L','portfolio_planner'),('u-off','PS-L','portfolio_manager'),('u-m','PS-O','portfolio_manager')`,
+		`INSERT INTO projects(id,tenant_id,name,portfolio_scope_id) VALUES('FP-L','demo','L','PS-L'),('FP-X','demo','X','PS-L')`,
+		`INSERT INTO project_intakes(id,portfolio_scope_id,tenant_id,intake_code,project_name,project_type,status,formal_project_id) VALUES('I-L','PS-L','demo','I-L','L','T','APPROVED','FP-L')`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatalf("%v: %s", err, q)
+		}
+	}
+	manager := func(role string) bool { return role == "portfolio_manager" }
+	try := func(project, scope, actor string) error {
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback()
+		return LockManageableProject(ctx, tx, project, scope, actor, manager)
+	}
+	if err := try("FP-L", "PS-L", "u-m"); err != nil {
+		t.Fatalf("manager refused: %v", err)
+	}
+	for name, c := range map[string][3]string{
+		"planner":                 {"FP-L", "PS-L", "u-p"},
+		"disabled manager":        {"FP-L", "PS-L", "u-off"},
+		"no membership":           {"FP-L", "PS-L", "u-none"},
+		"scope mismatch":          {"FP-L", "PS-O", "u-m"},
+		"not an approved project": {"FP-X", "PS-L", "u-m"},
+		"unknown project":         {"FP-?", "PS-L", "u-m"},
+	} {
+		if err := try(c[0], c[1], c[2]); !errors.Is(err, ErrProjectNotManageable) {
+			t.Errorf("%s: want ErrProjectNotManageable, got %v", name, err)
 		}
 	}
 }

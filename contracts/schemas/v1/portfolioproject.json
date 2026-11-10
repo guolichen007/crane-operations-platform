@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/portfolioproject.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "name",
+    "portfolioScopeId",
+    "intakeId",
+    "intakeCode",
+    "projectPhase",
+    "memberCount",
+    "grantStatus",
+    "inventoryRegistered",
+    "adminCode",
+    "canManageGrants"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "name": {
+      "type": "string",
+      "maxLength": 256
+    },
+    "portfolioScopeId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "intakeId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "intakeCode": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "projectPhase": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 40
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "memberCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "grantStatus": {
+      "type": "string",
+      "enum": [
+        "NO_MEMBERS",
+        "MEMBERS_CONFIGURED"
+      ]
+    },
+    "inventoryRegistered": {
+      "type": "boolean"
+    },
+    "adminCode": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 100000,
+          "maximum": 999999
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "canManageGrants": {
+      "type": "boolean"
+    }
+  },
+  "$defs": {}
+}

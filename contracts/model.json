@@ -1253,6 +1253,14 @@
       "version": {
         "type": "integer",
         "minimum": 1
+      },
+      "myRole": {
+        "type": "string",
+        "enum": [
+          "portfolio_planner",
+          "portfolio_manager"
+        ],
+        "nullable": true
       }
     },
     "ProjectIntake": {
@@ -1456,6 +1464,104 @@
       "siteLeadUserId": {
         "type": "string",
         "maxLength": 80,
+        "nullable": true
+      }
+    },
+    "PortfolioProject": {
+      "id": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "name": {
+        "type": "string",
+        "maxLength": 256
+      },
+      "portfolioScopeId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "intakeId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "intakeCode": {
+        "type": "string",
+        "maxLength": 80
+      },
+      "projectPhase": {
+        "type": "string",
+        "maxLength": 40,
+        "nullable": true
+      },
+      "memberCount": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "grantStatus": {
+        "type": "string",
+        "enum": [
+          "NO_MEMBERS",
+          "MEMBERS_CONFIGURED"
+        ]
+      },
+      "inventoryRegistered": {
+        "type": "boolean"
+      },
+      "adminCode": {
+        "type": "integer",
+        "minimum": 100000,
+        "maximum": 999999,
+        "nullable": true
+      },
+      "canManageGrants": {
+        "type": "boolean"
+      }
+    },
+    "ProjectMember": {
+      "userId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "displayName": {
+        "type": "string",
+        "maxLength": 256
+      },
+      "role": {
+        "type": "string",
+        "enum": [
+          "viewer",
+          "operator",
+          "maintainer",
+          "platform_admin"
+        ]
+      },
+      "enabled": {
+        "type": "boolean"
+      }
+    },
+    "ProjectGrantChange": {
+      "userId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "role": {
+        "type": "string",
+        "enum": [
+          "viewer",
+          "operator",
+          "maintainer",
+          "platform_admin"
+        ],
+        "nullable": true
+      },
+      "expectedRole": {
+        "type": "string",
+        "enum": [
+          "viewer",
+          "operator",
+          "maintainer",
+          "platform_admin"
+        ],
         "nullable": true
       }
     },
@@ -2150,6 +2256,9 @@
     "PortfolioScope",
     "ProjectIntake",
     "ProjectIntakeInput",
+    "PortfolioProject",
+    "ProjectMember",
+    "ProjectGrantChange",
     "ScheduleItem",
     "Resource",
     "ResourceReservation",

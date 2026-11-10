@@ -36,6 +36,10 @@ func TestPortfolioCoreRoutesRegistered(t *testing.T) {
 		{"GET", "/api/v1/portfolio/conflicts/1"},
 		{"POST", "/api/v1/portfolio/conflicts/1/override"},
 		{"GET", "/api/v1/portfolio/baselines"},
+		{"GET", "/api/v1/portfolio/projects"},
+		{"GET", "/api/v1/portfolio/projects/abc"},
+		{"GET", "/api/v1/portfolio/projects/abc/members"},
+		{"POST", "/api/v1/portfolio/projects/abc/members"},
 		{"POST", "/api/v1/portfolio/baselines"},
 	} {
 		req := httptest.NewRequest(tc.method, tc.path, nil)

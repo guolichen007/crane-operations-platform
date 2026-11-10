@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/projectgrantchange.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "userId",
+    "role",
+    "expectedRole"
+  ],
+  "properties": {
+    "userId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "role": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "viewer",
+            "operator",
+            "maintainer",
+            "platform_admin"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "expectedRole": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "viewer",
+            "operator",
+            "maintainer",
+            "platform_admin"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "$defs": {}
+}
