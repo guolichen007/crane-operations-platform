@@ -40,6 +40,33 @@ export function validateProduction(config) {
   return true;
 }
 
+// D1 development stage on the production origin (no real data/users/devices yet). The development
+// marker overlay may add exactly one cloud-api variable; every production check above still holds.
+export const devOrigin = 'https://crane.youdaozd.com';
+export const devEnvironment = 'crane-dev';
+export const devOverlay = 'deploy/compose/docker-compose.crane-dev.yml';
+export function validateDevelopment(config) {
+  validateProduction(config);
+  const api = config.services['cloud-api'].environment;
+  assert.equal(api.APP_ENV, 'production', 'Development stage must keep APP_ENV=production security');
+  assert.equal(api.CRANE_DEPLOYMENT_ENVIRONMENT, devEnvironment, 'crane-dev sentinel overlay required');
+  assert.equal(api.PUBLIC_URL, devOrigin, 'Single origin is https://crane.youdaozd.com');
+  assert.equal(api.OIDC_ISSUER, devOrigin + '/realms/crane');
+  assert.equal(api.OIDC_CLIENT_ID, 'crane-bff');
+  assert.equal(config.services.keycloak.environment.KC_HOSTNAME, devOrigin);
+  for (const name of ['postgres', 'keycloak', 'mosquitto', 'web-console'])
+    assert.equal(config.services[name].environment?.CRANE_DEPLOYMENT_ENVIRONMENT, undefined, 'Sentinel belongs to cloud-api only');
+  assert.doesNotMatch(JSON.stringify(config).toLowerCase(), /b4[.-]|preview/, 'Preview identifiers must not appear in the crane development configuration');
+  return true;
+}
+/** Development overlay must stay a one-variable marker: no image, port, network, volume, secret or security change. */
+export function validateDevOverlay(overlay) {
+  assert.deepEqual(Object.keys(overlay), ['services'], 'Development overlay may only touch services');
+  assert.deepEqual(Object.keys(overlay.services), ['cloud-api'], 'Development overlay may only touch cloud-api');
+  assert.deepEqual(overlay.services['cloud-api'], { environment: { CRANE_DEPLOYMENT_ENVIRONMENT: devEnvironment } }, 'Development overlay may only set the environment sentinel');
+  return true;
+}
+
 export async function productionContract(docker = 'docker') {
   const { default: YAML } = await import('yaml');
   const fakeDigest = 'a'.repeat(64);
@@ -53,7 +80,17 @@ export async function productionContract(docker = 'docker') {
   if (result.error || result.status) throw Error('Production Compose resolution failed');
   const config = JSON.parse(result.stdout);
   validateProduction(config);
+  assert.equal(config.services['cloud-api'].environment.CRANE_DEPLOYMENT_ENVIRONMENT, undefined, 'Production alone carries no development sentinel');
   assert.equal(config.networks.frontend.name, frontendNetwork);
+  // Real Docker Compose merge of production + development marker (anonymous values, never printed).
+  validateDevOverlay(YAML.parse(readFileSync(devOverlay, 'utf8')));
+  const merged = spawnSync(docker, ['compose', '-f', 'deploy/compose/docker-compose.prod.yml', '-f', devOverlay, 'config', '--format', 'json'], { env, encoding: 'utf8' });
+  if (merged.error || merged.status) throw Error('Development Compose resolution failed');
+  const dev = JSON.parse(merged.stdout);
+  validateDevelopment(dev);
+  const strip = c => { const copy = structuredClone(c); delete copy.services['cloud-api'].environment.CRANE_DEPLOYMENT_ENVIRONMENT; return JSON.stringify(copy); };
+  assert.equal(strip(dev), strip({ ...config, services: { ...config.services, 'cloud-api': { ...config.services['cloud-api'], environment: { ...config.services['cloud-api'].environment, CRANE_DEPLOYMENT_ENVIRONMENT: 'x' } } } }), 'Development merge must equal production except for the sentinel');
+  console.log('CRANE_DEV_SINGLE_ORIGIN_COMPOSE=PASS overlay=sentinel-only APP_ENV=production');
   validateIngress();
   console.log('PRODUCTION_INGRESS_NO_LOOPBACK_UPSTREAM=PASS');
   console.log('PRODUCTION_INGRESS_DOCKER_DNS=PASS');

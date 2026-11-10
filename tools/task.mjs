@@ -121,7 +121,7 @@ const tasks = {
     run(process.execPath, ['tools/production-contract.mjs']);
   },
   'preflight-test'() {
-    run(process.execPath, ['--test', 'tests/contract/production-preflight.test.mjs']);
+    run(process.execPath, ['--test', 'tests/contract/production-preflight.test.mjs', 'tests/contract/dev-release.test.mjs']);
   },
   'a1-production-test'() {
     run(process.execPath, ['tools/a1-production-test.mjs']);

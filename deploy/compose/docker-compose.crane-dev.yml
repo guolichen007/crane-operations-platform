@@ -1,0 +1,14 @@
+# D1 development-stage marker for https://crane.youdaozd.com (development: no real business
+# data, no real users, no real devices). Used ONLY together with docker-compose.prod.yml:
+#
+#   docker compose --project-name u-dao-crane-ops --env-file <private env> \
+#     -f deploy/compose/docker-compose.prod.yml -f deploy/compose/docker-compose.crane-dev.yml ...
+#
+# It adds exactly one server-side sentinel and nothing else. APP_ENV stays "production", so every
+# production security check (OIDC BFF, Secure cookies, CSRF, trusted proxies, no dev token,
+# authorization and audit) remains active. Remove this file from the command line at the formal
+# production go-live; the sentinel then reads "" again.
+services:
+  cloud-api:
+    environment:
+      CRANE_DEPLOYMENT_ENVIRONMENT: crane-dev

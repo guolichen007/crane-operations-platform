@@ -4,14 +4,24 @@ import { dirname, resolve } from 'node:path';
 import { checkProductionDisks } from './disk-check.mjs';
 import { assertExactCheckout, repositoryRoot } from './source-check.mjs';
 
-export function verifyRelease(path, root = repositoryRoot) {
+// Production release images (main only) and D1 development candidates (dev/crane-* tags) live in
+// disjoint registry namespaces; a manifest can never mix them.
+export const IMAGE_NAMESPACES = {
+  production: /^ghcr.io\/guolichen007\/crane-operations-platform\/(cloud-api|web-console)$/,
+  development: /^ghcr.io\/guolichen007\/crane-operations-platform\/dev\/(cloud-api|web-console)$/,
+};
+export function verifyRelease(path, root = repositoryRoot, channel = 'production') {
   path = resolve(path);
   const manifest = JSON.parse(readFileSync(path, 'utf8'));
+  const names = IMAGE_NAMESPACES[channel];
+  if (!names) throw Error('Unknown release channel');
   if (manifest.schema_version !== 1 || !/^[a-f0-9]{40}$/.test(manifest.source_sha || '') || !Array.isArray(manifest.images) || manifest.images.length !== 2) throw Error('Invalid release manifest');
+  if (channel === 'development' && (manifest.kind !== 'crane-dev-candidate' || !Number.isInteger(manifest.schema_version_max))) throw Error('Invalid development candidate manifest');
+  if (channel === 'production' && manifest.kind !== undefined) throw Error('Development candidate cannot be used as a production release');
   assertExactCheckout(manifest.source_sha, root);
   if (new Set(manifest.images.map(item => item.image_name)).size !== 2) throw Error('Cloud and Web images must both be present');
   for (const item of manifest.images) {
-    if (item.source_sha !== manifest.source_sha || !/^sha256:[a-f0-9]{64}$/.test(item.image_digest) || !/^ghcr.io\/guolichen007\/crane-operations-platform\/(cloud-api|web-console)$/.test(item.image_name) || !/^(cloud-api|web-console)\.cdx\.json$/.test(item.sbom_file)) throw Error('Release image/source mismatch');
+    if (item.source_sha !== manifest.source_sha || !/^sha256:[a-f0-9]{64}$/.test(item.image_digest) || !names.test(item.image_name) || !/^(cloud-api|web-console)\.cdx\.json$/.test(item.sbom_file)) throw Error('Release image/source mismatch');
     const actual = createHash('sha256').update(readFileSync(resolve(dirname(path), item.sbom_file))).digest('hex');
     if (actual !== item.sbom_sha256) throw Error('SBOM checksum mismatch');
   }
