@@ -1,21 +1,50 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query';
-import { FolderKanban, Check } from 'lucide-vue-next';
+import { onBeforeRouteLeave } from 'vue-router';
+import { FolderKanban, Check, Plus, RefreshCw } from 'lucide-vue-next';
 import {
-  listIntakes, transitionIntake, approveIntake,
+  listScopes, listIntakes, createIntake, transitionIntake, approveIntake,
   listResources, listScheduleItems, listConflicts, overrideConflict,
 } from '../cloud/portfolio';
+import { listProjects } from '../cloud/api';
 import { ApiError } from '../cloud/client';
+import { allowClose } from '../cloud/draft';
+import { webSession, productionAuth } from '../cloud/session';
+import {
+  blankIntakeForm, formDirty, validateIntakeForm, toIntakeInput, intakeErrorMessage, listState, intakeStages,
+  PRIORITIES, RISK_LEVELS, PRIORITY_TEXT, RISK_TEXT, PROJECT_TYPE_SUGGESTIONS, type IntakeForm,
+} from '../cloud/intake';
+import type { ProjectIntake } from '../../../../contracts/typescript/types.gen';
 
 const queryClient = useQueryClient();
 const tab = ref<'intake' | 'resource' | 'schedule' | 'conflict'>('intake');
 const actionError = ref('');
+const notice = ref('');
 
+const scopesQuery = useQuery({ queryKey: ['portfolio-scopes'], queryFn: listScopes });
 const intakesQuery = useQuery({ queryKey: ['intakes'], queryFn: listIntakes });
 const resourcesQuery = useQuery({ queryKey: ['resources'], queryFn: listResources });
 const scheduleQuery = useQuery({ queryKey: ['schedule-items'], queryFn: listScheduleItems });
 const conflictsQuery = useQuery({ queryKey: ['conflicts'], queryFn: listConflicts });
+// Authorized Inventory projects, only to explain whether an approved project is on the map.
+const inventoryQuery = useQuery({ queryKey: ['projects'], queryFn: listProjects, retry: 0 });
+
+const stateOf = (q: { isLoading: { value: boolean }; isError: { value: boolean }; data: { value: readonly unknown[] | undefined } }) =>
+  computed(() => listState({ isLoading: q.isLoading.value, isError: q.isError.value, data: q.data.value }));
+const intakeState = stateOf(intakesQuery);
+const resourceState = stateOf(resourcesQuery);
+const scheduleState = stateOf(scheduleQuery);
+const conflictState = stateOf(conflictsQuery);
+const errorText = (e: unknown) => intakeErrorMessage(e, 'load');
+
+// The create entry is shown only when the caller has at least one portfolio scope (the scope
+// list is already filtered by membership server-side). The server re-checks project_intake_write
+// on submit; a 403 there is reported in the form.
+const scopes = computed(() => (scopesQuery.data.value ?? []).filter((s) => s.status === 'ACTIVE'));
+const canCreate = computed(() => scopes.value.length > 0);
+const scopeName = (id: string) => scopesQuery.data.value?.find((s) => s.id === id)?.name ?? id;
+const grants = computed(() => (productionAuth ? (webSession.value ? webSession.value.projects : null) : null));
 
 const intakeStatusText: Record<string, string> = {
   REGISTERED: '已登记', REVIEW: '评审中', PLANNING: '规划中', APPROVED: '已批准',
@@ -25,16 +54,84 @@ const nextAction: Record<string, string | null> = {
   REGISTERED: 'REVIEW', REVIEW: 'PLANNING', PLANNING: 'APPROVED',
   APPROVED: null, REJECTED: null, CANCELLED: null,
 };
+const nextText: Record<string, string> = { REVIEW: '提交评审', PLANNING: '进入规划', APPROVED: '批准并生成正式项目' };
 
+// ---- create form ----------------------------------------------------------------------
+const creating = ref(false);
+const initialScope = ref('');
+const form = ref<IntakeForm>(blankIntakeForm());
+const showMore = ref(false);
+const formError = ref('');
+const touched = ref(false);
+const errors = computed(() => validateIntakeForm(form.value, scopes.value.map((s) => s.id)));
+const shownErrors = computed(() => (touched.value ? errors.value : {}));
+const dirty = computed(() => creating.value && formDirty(form.value, initialScope.value));
+const lastCreated = ref<ProjectIntake | null>(null);
+
+const createMutation = useMutation({
+  mutationFn: () => createIntake(toIntakeInput(form.value)),
+  onSuccess: async (created) => {
+    lastCreated.value = created;
+    creating.value = false;
+    notice.value = `已登记「${created.projectName}」（${created.intakeCode}），状态：已登记。`;
+    await queryClient.invalidateQueries({ queryKey: ['intakes'] });
+  },
+  onError: (e) => {
+    formError.value = intakeErrorMessage(e, 'create');
+  },
+});
+
+function openCreate() {
+  initialScope.value = scopes.value.length === 1 ? scopes.value[0].id : '';
+  form.value = blankIntakeForm(initialScope.value);
+  formError.value = '';
+  touched.value = false;
+  showMore.value = false;
+  creating.value = true;
+}
+function submit() {
+  touched.value = true;
+  formError.value = '';
+  if (createMutation.isPending.value || Object.keys(errors.value).length) return;
+  createMutation.mutate();
+}
+function closeCreate() {
+  if (!allowClose(dirty.value, createMutation.isPending.value)) return;
+  creating.value = false;
+  formError.value = '';
+}
+function onKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && creating.value) closeCreate();
+}
+function onBeforeUnload(event: BeforeUnloadEvent) {
+  if (dirty.value || createMutation.isPending.value) {
+    event.preventDefault();
+    event.returnValue = '';
+  }
+}
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown);
+  window.addEventListener('beforeunload', onBeforeUnload);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown);
+  window.removeEventListener('beforeunload', onBeforeUnload);
+});
+onBeforeRouteLeave(() => allowClose(dirty.value, createMutation.isPending.value));
+
+// ---- transitions / approval -------------------------------------------------------------
+const busyId = ref('');
 const transitionMutation = useMutation({
   mutationFn: (v: { id: string; status: string }) => transitionIntake(v.id, v.status, '运营推进'),
-  onSuccess: () => queryClient.invalidateQueries({ queryKey: ['intakes'] }),
-  onError: (e) => (actionError.value = e instanceof ApiError ? e.message : '流转失败'),
+  onSuccess: () => { notice.value = '状态已推进。'; },
+  onError: (e) => (actionError.value = intakeErrorMessage(e, 'transition')),
+  onSettled: () => { busyId.value = ''; return queryClient.invalidateQueries({ queryKey: ['intakes'] }); },
 });
 const approveMutation = useMutation({
   mutationFn: (id: string) => approveIntake(id),
-  onSuccess: () => queryClient.invalidateQueries({ queryKey: ['intakes'] }),
-  onError: (e) => (actionError.value = e instanceof ApiError ? e.message : '批准失败'),
+  onSuccess: (r) => { notice.value = `已批准并生成正式项目 ${r.projectId}。该项目尚未授权给任何人，也未进入运营地图。`; },
+  onError: (e) => (actionError.value = intakeErrorMessage(e, 'approve')),
+  onSettled: () => { busyId.value = ''; return queryClient.invalidateQueries({ queryKey: ['intakes'] }); },
 });
 const overrideMutation = useMutation({
   mutationFn: (v: { id: number; reason: string }) => overrideConflict(v.id, v.reason),
@@ -42,14 +139,20 @@ const overrideMutation = useMutation({
   onError: (e) => (actionError.value = e instanceof ApiError ? e.message : '覆盖失败'),
 });
 
-function advance(id: string, status: string) {
-  if (status === 'APPROVED') approveMutation.mutate(id);
-  else transitionMutation.mutate({ id, status });
+function advance(intake: ProjectIntake, status: string) {
+  if (busyId.value) return;
+  if (status === 'APPROVED' && !window.confirm(`批准「${intake.projectName}」将生成正式项目。\n批准不会自动授予任何人项目访问权限，也不会进入运营地图。确定批准吗？`)) return;
+  actionError.value = '';
+  notice.value = '';
+  busyId.value = intake.id;
+  if (status === 'APPROVED') approveMutation.mutate(intake.id);
+  else transitionMutation.mutate({ id: intake.id, status });
 }
 function override(id: number) {
   const reason = window.prompt('覆盖原因（至少 8 字）');
   if (reason) overrideMutation.mutate({ id, reason });
 }
+const fmtDate = (v: string | null) => (v ? new Date(v).toLocaleDateString('zh-CN') : '—');
 </script>
 <template>
   <section class="workspace-page portfolio-workspace" data-testid="portfolio-workspace">
@@ -57,9 +160,12 @@ function override(id: number) {
       <div>
         <span class="eyebrow">PORTFOLIO / 项目组合</span>
         <h1>项目组合与资源排期</h1>
-        <p>项目登记 · 资源 · 排期 · 冲突 · 状态机由后端控制</p>
+        <p>项目登记 → 评审 → 规划 → 批准生成正式项目；项目授权、资产登记与地图定位是之后的独立步骤</p>
       </div>
-      <FolderKanban :size="20" />
+      <button v-if="tab === 'intake' && canCreate" class="primary-action" data-testid="intake-create" @click="openCreate">
+        <Plus :size="15" />新建项目登记
+      </button>
+      <FolderKanban v-else :size="20" />
     </header>
 
     <div class="tabs" role="tablist">
@@ -69,46 +175,77 @@ function override(id: number) {
       <button :class="{ active: tab === 'conflict' }" @click="tab = 'conflict'">冲突</button>
     </div>
 
-    <p v-if="actionError" class="form-error" role="alert">{{ actionError }}</p>
+    <p v-if="actionError" class="form-error" role="alert" data-testid="portfolio-action-error">{{ actionError }}</p>
+    <p v-if="notice" class="workspace-notice" role="status" data-testid="portfolio-notice">{{ notice }}</p>
 
     <template v-if="tab === 'intake'">
-      <p v-if="intakesQuery.isLoading.value" class="skeleton table-skeleton" aria-busy="true"></p>
-      <p v-else-if="!intakesQuery.data.value?.length" class="workspace-empty">暂无项目登记。</p>
-      <div v-else class="data-table-wrap">
-        <table class="data-table" data-testid="intake-table">
-          <thead><tr><th>编号</th><th>项目名</th><th>客户</th><th>状态</th><th>类型</th><th>优先级</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="i in intakesQuery.data.value" :key="i.id" class="data-row">
-              <td>{{ i.intakeCode }}</td>
-              <td>{{ i.projectName }}</td>
-              <td>{{ i.customerName ?? '—' }}</td>
-              <td>
-                <span class="status-pill" :data-status="i.status === 'APPROVED' ? 'ACTIVE' : i.status === 'REJECTED' || i.status === 'CANCELLED' ? 'RETIRED' : 'DRAFT'">
-                  {{ intakeStatusText[i.status] ?? i.status }}
-                </span>
-              </td>
-              <td>{{ i.projectType }}</td>
-              <td>{{ i.priority }}</td>
-              <td>
-                <button
-                  v-if="nextAction[i.status]"
-                  class="ghost-action"
-                  @click="advance(i.id, nextAction[i.status]!)"
-                >
-                  <Check :size="13" />{{ nextAction[i.status] === 'APPROVED' ? '批准' : '推进' }}
-                </button>
-                <span v-else class="muted">终态</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      <p v-if="scopesQuery.isError.value" class="workspace-error" role="alert" data-testid="scope-error">
+        项目组合范围加载失败，暂时无法新建登记：{{ errorText(scopesQuery.error.value) }}
+        <button class="ghost-action" @click="scopesQuery.refetch()"><RefreshCw :size="13" />重试</button>
+      </p>
+      <p v-else-if="scopesQuery.isSuccess.value && !canCreate" class="workspace-hint" data-testid="intake-no-scope">
+        您不属于任何项目组合，不能新建项目登记。如需登记项目，请联系管理员授予项目组合角色。
+      </p>
+
+      <div v-if="intakeState === 'loading'" class="skeleton table-skeleton" aria-busy="true" data-testid="intake-loading"></div>
+      <div v-else-if="intakeState === 'error'" class="workspace-error" role="alert" data-testid="intake-error">
+        项目登记加载失败：{{ errorText(intakesQuery.error.value) }}
+        <button class="ghost-action" @click="intakesQuery.refetch()"><RefreshCw :size="13" />重试</button>
       </div>
+      <p v-else-if="intakeState === 'empty'" class="workspace-empty" data-testid="intake-empty">暂无项目登记。</p>
+      <template v-else>
+        <p v-if="intakeState === 'stale'" class="workspace-error" role="alert" data-testid="intake-stale">
+          刷新失败，以下为上次成功加载的数据：{{ errorText(intakesQuery.error.value) }}
+          <button class="ghost-action" @click="intakesQuery.refetch()"><RefreshCw :size="13" />重试</button>
+        </p>
+        <div class="data-table-wrap">
+          <table class="data-table" data-testid="intake-table">
+            <thead><tr><th>编号</th><th>项目名</th><th>项目组合</th><th>状态</th><th>后续环节</th><th>优先级</th><th>计划</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr v-for="i in intakesQuery.data.value" :key="i.id" class="data-row" :data-intake-id="i.id" :class="{ 'row-new': lastCreated?.id === i.id }">
+                <td>{{ i.intakeCode }}</td>
+                <td>{{ i.projectName }}<div class="cell-sub">{{ i.customerName ?? '' }}</div></td>
+                <td>{{ scopeName(i.portfolioScopeId) }}</td>
+                <td>
+                  <span class="status-pill" :data-status="i.status === 'APPROVED' ? 'ACTIVE' : i.status === 'REJECTED' || i.status === 'CANCELLED' ? 'RETIRED' : 'DRAFT'">
+                    {{ intakeStatusText[i.status] ?? i.status }}
+                  </span>
+                </td>
+                <td>
+                  <ul class="stage-list" data-testid="intake-stages">
+                    <li v-for="s in intakeStages(i, grants, inventoryQuery.data.value)" :key="s.key" :data-tone="s.tone">{{ s.text }}</li>
+                  </ul>
+                </td>
+                <td>{{ PRIORITY_TEXT[i.priority] ?? i.priority }}</td>
+                <td>{{ fmtDate(i.plannedStart) }} – {{ fmtDate(i.plannedEnd) }}</td>
+                <td>
+                  <button
+                    v-if="nextAction[i.status]"
+                    class="ghost-action"
+                    :disabled="!!busyId"
+                    :data-testid="nextAction[i.status] === 'APPROVED' ? 'intake-approve' : 'intake-advance'"
+                    @click="advance(i, nextAction[i.status]!)"
+                  >
+                    <Check :size="13" />{{ busyId === i.id ? '处理中…' : nextText[nextAction[i.status]!] }}
+                  </button>
+                  <span v-else class="muted">终态</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </template>
     </template>
 
     <template v-else-if="tab === 'resource'">
-      <p v-if="resourcesQuery.isLoading.value" class="skeleton table-skeleton" aria-busy="true"></p>
-      <p v-else-if="!resourcesQuery.data.value?.length" class="workspace-empty">暂无资源。</p>
+      <div v-if="resourceState === 'loading'" class="skeleton table-skeleton" aria-busy="true"></div>
+      <div v-else-if="resourceState === 'error'" class="workspace-error" role="alert" data-testid="resource-error">
+        资源加载失败：{{ errorText(resourcesQuery.error.value) }}
+        <button class="ghost-action" @click="resourcesQuery.refetch()"><RefreshCw :size="13" />重试</button>
+      </div>
+      <p v-else-if="resourceState === 'empty'" class="workspace-empty">暂无资源。</p>
       <div v-else class="data-table-wrap">
+        <p v-if="resourceState === 'stale'" class="workspace-error" role="alert">刷新失败，以下为上次成功加载的数据。</p>
         <table class="data-table">
           <thead><tr><th>名称</th><th>类型</th><th>容量</th><th>独占</th><th>时区</th><th>状态</th></tr></thead>
           <tbody>
@@ -126,9 +263,14 @@ function override(id: number) {
     </template>
 
     <template v-else-if="tab === 'schedule'">
-      <p v-if="scheduleQuery.isLoading.value" class="skeleton table-skeleton" aria-busy="true"></p>
-      <p v-else-if="!scheduleQuery.data.value?.length" class="workspace-empty">暂无排期项。</p>
+      <div v-if="scheduleState === 'loading'" class="skeleton table-skeleton" aria-busy="true"></div>
+      <div v-else-if="scheduleState === 'error'" class="workspace-error" role="alert" data-testid="schedule-error">
+        排期加载失败：{{ errorText(scheduleQuery.error.value) }}
+        <button class="ghost-action" @click="scheduleQuery.refetch()"><RefreshCw :size="13" />重试</button>
+      </div>
+      <p v-else-if="scheduleState === 'empty'" class="workspace-empty">暂无排期项。</p>
       <div v-else class="data-table-wrap">
+        <p v-if="scheduleState === 'stale'" class="workspace-error" role="alert">刷新失败，以下为上次成功加载的数据。</p>
         <table class="data-table">
           <thead><tr><th>名称</th><th>类型</th><th>开始</th><th>结束</th><th>时区</th><th>状态</th><th>优先级</th></tr></thead>
           <tbody>
@@ -147,9 +289,14 @@ function override(id: number) {
     </template>
 
     <template v-else>
-      <p v-if="conflictsQuery.isLoading.value" class="skeleton table-skeleton" aria-busy="true"></p>
-      <p v-else-if="!conflictsQuery.data.value?.length" class="workspace-empty">无未解决冲突。</p>
+      <div v-if="conflictState === 'loading'" class="skeleton table-skeleton" aria-busy="true"></div>
+      <div v-else-if="conflictState === 'error'" class="workspace-error" role="alert" data-testid="conflict-error">
+        冲突加载失败：{{ errorText(conflictsQuery.error.value) }}
+        <button class="ghost-action" @click="conflictsQuery.refetch()"><RefreshCw :size="13" />重试</button>
+      </div>
+      <p v-else-if="conflictState === 'empty'" class="workspace-empty">无未解决冲突。</p>
       <div v-else class="data-table-wrap">
+        <p v-if="conflictState === 'stale'" class="workspace-error" role="alert">刷新失败，以下为上次成功加载的数据。</p>
         <table class="data-table" data-testid="conflict-table">
           <thead><tr><th>类型</th><th>严重度</th><th>左项</th><th>资源</th><th>状态</th><th>操作</th></tr></thead>
           <tbody>
@@ -169,5 +316,98 @@ function override(id: number) {
         </table>
       </div>
     </template>
+
+    <div v-if="creating" class="modal-backdrop" @click.self="closeCreate">
+      <form class="workspace-modal intake-form" data-testid="intake-create-form" novalidate @submit.prevent="submit">
+        <h2>新建项目登记</h2>
+        <p class="form-hint">登记只是立项申请。批准后才会生成正式项目；项目访问授权、资产登记和地图定位需要分别完成。</p>
+        <label>项目组合 *
+          <select v-model="form.portfolioScopeId" aria-label="项目组合" :aria-invalid="!!shownErrors.portfolioScopeId">
+            <option value="" disabled>选择项目组合</option>
+            <option v-for="s in scopes" :key="s.id" :value="s.id">{{ s.name }}（{{ s.code }}）</option>
+          </select>
+          <span v-if="shownErrors.portfolioScopeId" class="field-error">{{ shownErrors.portfolioScopeId }}</span>
+        </label>
+        <div class="form-row">
+          <label>登记编号 *
+            <input v-model="form.intakeCode" aria-label="登记编号" maxlength="80" placeholder="例如 INT-2026-001" :aria-invalid="!!shownErrors.intakeCode" />
+            <span v-if="shownErrors.intakeCode" class="field-error">{{ shownErrors.intakeCode }}</span>
+          </label>
+          <label>项目类型 *
+            <input v-model="form.projectType" aria-label="项目类型" maxlength="80" list="intake-project-types" placeholder="新装 / 改造 / 维保" :aria-invalid="!!shownErrors.projectType" />
+            <datalist id="intake-project-types">
+              <option v-for="t in PROJECT_TYPE_SUGGESTIONS" :key="t.value" :value="t.value">{{ t.label }}</option>
+            </datalist>
+            <span v-if="shownErrors.projectType" class="field-error">{{ shownErrors.projectType }}</span>
+          </label>
+        </div>
+        <label>项目名称 *
+          <input v-model="form.projectName" aria-label="项目名称" maxlength="160" :aria-invalid="!!shownErrors.projectName" />
+          <span v-if="shownErrors.projectName" class="field-error">{{ shownErrors.projectName }}</span>
+        </label>
+        <div class="form-row">
+          <label>优先级
+            <select v-model="form.priority" aria-label="优先级">
+              <option v-for="p in PRIORITIES" :key="p" :value="p">{{ PRIORITY_TEXT[p] }}</option>
+            </select>
+          </label>
+          <label>风险等级
+            <select v-model="form.riskLevel" aria-label="风险等级">
+              <option v-for="r in RISK_LEVELS" :key="r" :value="r">{{ RISK_TEXT[r] }}</option>
+            </select>
+          </label>
+        </div>
+        <label>客户名称<input v-model="form.customerName" aria-label="客户名称" maxlength="160" /></label>
+        <div class="form-row">
+          <label>计划开始<input v-model="form.plannedStart" type="date" aria-label="计划开始" /></label>
+          <label>计划结束
+            <input v-model="form.plannedEnd" type="date" aria-label="计划结束" :aria-invalid="!!shownErrors.plannedEnd" />
+            <span v-if="shownErrors.plannedEnd" class="field-error">{{ shownErrors.plannedEnd }}</span>
+          </label>
+        </div>
+        <button type="button" class="link-action" :aria-expanded="showMore" @click="showMore = !showMore">
+          {{ showMore ? '收起更多信息' : '更多信息（可选）' }}
+        </button>
+        <template v-if="showMore">
+          <label>范围说明<textarea v-model="form.scopeSummary" aria-label="范围说明" maxlength="2000" rows="3"></textarea></label>
+          <label>现场参考<input v-model="form.siteReference" aria-label="现场参考" maxlength="160" placeholder="现场地址或编号（不会自动定位到地图）" /></label>
+          <div class="form-row">
+            <label>期望开工<input v-model="form.requestedStart" type="date" aria-label="期望开工" /></label>
+            <label>期望交付
+              <input v-model="form.requestedHandover" type="date" aria-label="期望交付" :aria-invalid="!!shownErrors.requestedHandover" />
+              <span v-if="shownErrors.requestedHandover" class="field-error">{{ shownErrors.requestedHandover }}</span>
+            </label>
+          </div>
+        </template>
+        <p v-if="formError" class="form-error" role="alert" data-testid="intake-form-error">{{ formError }}</p>
+        <div class="modal-actions">
+          <button type="button" class="ghost-action" :disabled="createMutation.isPending.value" @click="closeCreate">取消</button>
+          <button type="submit" class="primary-action" :disabled="createMutation.isPending.value">
+            {{ createMutation.isPending.value ? '保存中…' : '保存登记' }}
+          </button>
+        </div>
+      </form>
+    </div>
   </section>
 </template>
+<style scoped>
+.workspace-notice { color: #6fd39b; font-size: 13px; margin: 0; }
+.workspace-hint { color: var(--text-3); font-size: 13px; margin: 0; }
+.workspace-error { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.stage-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: 12px; max-width: 320px; }
+.stage-list li[data-tone='ok'] { color: #6fd39b; }
+.stage-list li[data-tone='pending'] { color: #e8b75d; }
+.stage-list li[data-tone='progress'] { color: #6ecdf2; }
+.stage-list li[data-tone='stopped'] { color: #7c8ea2; }
+.cell-sub { font-size: 11px; color: var(--text-3); }
+.row-new td { background: rgba(110, 205, 242, 0.08); }
+.intake-form { width: min(560px, calc(100vw - 48px)); }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-hint { margin: 0; font-size: 12px; color: var(--text-3); }
+.field-error { color: #ff665f; font-size: 11px; }
+.intake-form textarea {
+  padding: 6px 10px; border: 1px solid var(--line-soft); border-radius: 7px;
+  background: var(--surface-900); color: var(--text-1); font: inherit; font-size: 13px; resize: vertical;
+}
+.link-action { align-self: flex-start; border: 0; background: transparent; color: var(--accent-blue); cursor: pointer; padding: 0; font-size: 12px; }
+</style>

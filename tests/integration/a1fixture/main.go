@@ -266,6 +266,20 @@ func seed(ctx context.Context) error {
 	if _, err = db.ExecContext(ctx, `INSERT INTO asset_devices(id,project_id,display_name,lifecycle,asset_code,asset_type,asset_status,version) VALUES('b4-p002-asset','P002','CRN-P002-01','PLANNED','CRN-P002-01','CRANE','ACTIVE',1) ON CONFLICT (id) DO NOTHING`); err != nil {
 		return err
 	}
+	// Q1 project registration: one anonymous portfolio scope. b4-maintainer becomes its
+	// portfolio_manager (can approve) and b4-viewer its portfolio_planner (can register, not
+	// approve). A PortfolioGrant never implies a ProjectGrant; b4-noauth stays without any.
+	for _, stmt := range []string{
+		`INSERT INTO tenants(id,name) VALUES('demo','demo') ON CONFLICT DO NOTHING`,
+		`INSERT INTO portfolio_scopes(id,tenant_id,code,name) VALUES('PS-B4','demo','PS-B4','B4 匿名项目组合') ON CONFLICT (id) DO NOTHING`,
+	} {
+		if _, err = db.ExecContext(ctx, stmt); err != nil {
+			return err
+		}
+	}
+	if _, err = db.ExecContext(ctx, `INSERT INTO portfolio_memberships(user_id,portfolio_scope_id,role) VALUES('b4-maintainer','PS-B4','portfolio_manager'),('b4-viewer','PS-B4','portfolio_planner') ON CONFLICT DO NOTHING`); err != nil {
+		return err
+	}
 	document, err := inventory.Load("/fixture/inventory.json")
 	if err != nil {
 		return err
