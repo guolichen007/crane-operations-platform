@@ -1,3 +1,6 @@
+# DEPRECATED (D1, 2026-11-10): the separate b4 public Preview is cancelled; development acceptance
+# runs on https://crane.youdaozd.com via docker-compose.crane-dev.yml. Kept unchanged (with its
+# contract test) only as the record of the existing b4 base; do not deploy.
 # B4 Preview 隔离叠加层（在 docker-compose.prod.yml 之上，-f 叠加）。
 # 目标：b4.crane.youdaozd.com 独立 Preview，与 production 完全隔离。
 # 未获服务器变更授权前，禁止执行 `docker compose ... up`。

@@ -1,3 +1,7 @@
+// DEPRECATED (D1, 2026-11-10): the b4 public Preview is cancelled. This guard is kept unchanged on
+// purpose: it still refuses every origin except b4, so the write-capable B4 browser suite can never
+// be pointed at https://crane.youdaozd.com through this config. Do NOT retarget it to crane.
+//
 // Fail-closed E2E target guard for the Preview UAT. The Preview browser suite
 // performs real business writes, so it must only run against the isolated
 // Preview origin over HTTPS, and only when the operator has explicitly declared

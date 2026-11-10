@@ -1,3 +1,7 @@
+// DEPRECATED (D1, 2026-11-10): the b4 Preview realm is no longer a deployment target. The precheck
+// stays read-only and fail-closed (it only accepts the b4 realm/client), so it cannot touch the
+// crane realm; remove together with docker-compose.b4-preview.yml once the b4 base is retired.
+//
 // Preview-only read-only precheck. The production provisioner (main.go) hardcodes
 // realm "crane" / client "crane-bff" and must never run against Preview. This
 // precheck is the opposite: it accepts only the exact Preview contract and only

@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # H3-P G1 —— Preview 服务器只读预检。
+# 状态（D1，2026-11-10）：OWNER 已取消独立 b4 Preview；本脚本仅为既有 b4 基座的只读盘点保留，
+# 不再是开发发布流程的一环（开发发布见 deploy/scripts/dev-upgrade.mjs）。
 #
-# 严格只读：本脚本不执行 docker compose up/down/rm/restart、不写 Nginx/证书/网络/卷/数据库、
-# 不输出任何密钥内容（仅比较 Preview 与生产同名密钥的 sha256 前 8 位以判断是否复用）、不连接任何数据库。
-# 所有输出只包含元数据（名称、标签、端口、哈希前缀等）。唯一的写入是可选第 12 节在 /tmp 生成 resolved JSON。
+# 严格只读：本脚本不执行 docker compose up/down/rm/restart、不写 Nginx/证书/网络/卷/数据库、不连接任何数据库、
+# 不落盘任何文件。密钥只用 cmp 判断两套是否相同，输出仅 SAME / DIFFERENT / NOT_ACCESSIBLE，
+# 不输出任何哈希或其片段。resolved compose 只经管道交给契约检查，不打印、不保存。
 # 运行方式（由 OWNER / 服务器 CC 在 Preview 服务器上执行，普通用户 + 需要时 sudo 读 docker）：
 #
 #   bash deploy/scripts/h3-preview-precheck.sh > h3-precheck-$(date +%Y%m%dT%H%M%S).txt 2>&1
@@ -222,12 +224,14 @@ for d in /srv/u-dao/secrets/crane-b4-preview /srv/u-dao/secrets/crane-ops; do
     echo "$d: 不存在或无权限"
   fi
 done
-echo "--- 两套密钥是否相同（只比较 sha256 前 8 位，判断是否复用生产值）"
+echo "--- 两套密钥是否相同（只输出 SAME / DIFFERENT / NOT_ACCESSIBLE，不输出任何哈希或其片段）"
 for f in session_server_secret oidc_client_secret app_db_password; do
-  a=$(sudo -n sha256sum "/srv/u-dao/secrets/crane-b4-preview/$f" 2>/dev/null | cut -c1-8)
-  b=$(sudo -n sha256sum "/srv/u-dao/secrets/crane-ops/$f" 2>/dev/null | cut -c1-8)
-  echo "$f preview=${a:-n/a} prod=${b:-n/a}"
-  [ -n "$a" ] && [ "$a" = "$b" ] && note "BLOCK Preview 的 $f 与生产相同"
+  verdict=NOT_ACCESSIBLE
+  if sudo -n test -r "/srv/u-dao/secrets/crane-b4-preview/$f" 2>/dev/null && sudo -n test -r "/srv/u-dao/secrets/crane-ops/$f" 2>/dev/null; then
+    if sudo -n cmp -s "/srv/u-dao/secrets/crane-b4-preview/$f" "/srv/u-dao/secrets/crane-ops/$f" 2>/dev/null; then verdict=SAME; else verdict=DIFFERENT; fi
+  fi
+  echo "$f $verdict"
+  [ "$verdict" = SAME ] && note "BLOCK Preview 的 $f 与生产相同"
 done
 
 section "11. 镜像、分发与回滚条件"
@@ -240,12 +244,15 @@ echo "--- 备份工具与最近备份（仅列名）"
 for d in /srv/u-dao/backups /srv/u-dao/backup /var/backups/crane; do [ -d "$d" ] && { echo "$d:"; ls -lt "$d" 2>/dev/null | head -5; }; done
 
 if [ -n "$PREVIEW_ENV_FILE" ] && [ -f deploy/compose/docker-compose.b4-preview.yml ]; then
-  section "12. 只读 compose config（不启动容器）"
-  $DOCKER compose --project-name "$PREVIEW_PROJECT" --env-file "$PREVIEW_ENV_FILE" \
+  section "12. 只读 compose config（不启动容器，解析结果只经管道、不落盘、不打印）"
+  if $DOCKER compose --project-name "$PREVIEW_PROJECT" --env-file "$PREVIEW_ENV_FILE" \
     -f deploy/compose/docker-compose.prod.yml -f deploy/compose/docker-compose.b4-preview.yml \
-    config --format json > /tmp/h3-preview.resolved.json 2>/tmp/h3-preview.config.err \
-    && { echo "resolved -> /tmp/h3-preview.resolved.json"; have node && node tools/b4-preview-contract.mjs --resolved /tmp/h3-preview.resolved.json; } \
-    || { echo "compose config 失败："; redact < /tmp/h3-preview.config.err; }
+    config --format json 2>/dev/null | { have node && node tools/b4-preview-contract.mjs --resolved - >/dev/null 2>&1; }; then
+    echo "compose config 契约：PASS"
+  else
+    echo "compose config 契约：FAIL（为避免泄露，不输出解析内容；请在服务器本地人工复核）"
+    note "BLOCK resolved compose 契约未通过"
+  fi
 fi
 
 section "PRECHECK_SUMMARY"
