@@ -16,7 +16,7 @@ const environment = {
 // [name, package path, required PASS tests] — a required test that would otherwise
 // Skip on a missing DATABASE_URL; skipping is a hard failure, never a silent PASS.
 const b2Packages = [
-  ['portfolio', './internal/portfolio', ['TestIntakeStateMachineAndApprove']],
+  ['portfolio', './internal/portfolio', ['TestIntakeStateMachineAndApprove', 'TestIntakeDuplicateCodeRejected', 'TestApproveDoesNotAutoGrantProject']],
   ['scheduling', './internal/scheduling', [
     'TestConcurrentExclusiveApprovalSingleWinner',
     'TestCrossPortfolioReservationRejected',
@@ -57,6 +57,8 @@ const h21aPackages = [
   ['h21a-cloudapi', './services/cloud-api/internal/app', [
     'TestH21AInventoryScopeAuthorizationAndRetiredHistory',
     'TestOperationsSummaryHTTP',
+    // Q1 project registration through the real BFF: create/422/409/transition/approve, no auto-grant.
+    'TestPortfolioIntakeRegistrationFlowHTTP',
   ]],
   // H2-1C operations summary: single-statement repository on the isolated PostgreSQL.
   ['h21c-operations', './internal/operations', [

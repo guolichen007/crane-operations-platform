@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
@@ -141,7 +142,12 @@ func (h *apiHandler) registerPortfolio(api *http.ServeMux) {
 
 	api.HandleFunc("POST /api/v1/portfolio/intakes", func(w http.ResponseWriter, r *http.Request) {
 		var in contract.ProjectIntakeInput
-		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		if err := decodeStrict(r, &in); err != nil {
+			// Unknown fields are a contract violation (422); unreadable JSON stays 400.
+			if strings.HasPrefix(err.Error(), "json: unknown field") {
+				respondAPI(w, 422, map[string]string{"error": "invalid intake input: unknown field"})
+				return
+			}
 			respondAPI(w, 400, map[string]string{"error": "invalid body"})
 			return
 		}
@@ -150,7 +156,14 @@ func (h *apiHandler) registerPortfolio(api *http.ServeMux) {
 		}
 		out, err := portfolio.CreateIntake(r.Context(), h.db, in, currentPrincipal(r).user)
 		if err != nil {
-			respondAPI(w, 503, map[string]string{"error": "database unavailable"})
+			switch {
+			case errors.Is(err, portfolio.ErrInvalidIntake):
+				respondAPI(w, 422, map[string]string{"error": err.Error()})
+			case errors.Is(err, portfolio.ErrDuplicateIntakeCode):
+				respondAPI(w, 409, map[string]string{"error": err.Error()})
+			default:
+				respondAPI(w, 503, map[string]string{"error": "database unavailable"})
+			}
 			return
 		}
 		respondAPI(w, 201, out)
@@ -222,6 +235,10 @@ func (h *apiHandler) registerPortfolio(api *http.ServeMux) {
 		if err := portfolio.TransitionIntake(r.Context(), h.db, intakeID, in.Status, currentPrincipal(r).user, in.Reason, ""); err != nil {
 			if errors.Is(err, portfolio.ErrInvalidTransition) {
 				respondAPI(w, 409, map[string]string{"error": "invalid transition"})
+				return
+			}
+			if errors.Is(err, portfolio.ErrVersionConflict) {
+				respondAPI(w, 409, map[string]string{"error": "intake changed concurrently; reload and retry"})
 				return
 			}
 			respondAPI(w, 503, map[string]string{"error": "database unavailable"})

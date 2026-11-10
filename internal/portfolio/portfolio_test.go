@@ -2,7 +2,10 @@ package portfolio
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
 	"github.com/guolichen007/crane-operations-platform/internal/testsupport"
@@ -75,8 +78,8 @@ func TestIntakeDuplicateCodeRejected(t *testing.T) {
 	}
 	in2 := in
 	in2.ProjectName = "B"
-	if _, err := CreateIntake(ctx, db, in2, "someone"); err == nil {
-		t.Fatal("duplicate intake code accepted")
+	if _, err := CreateIntake(ctx, db, in2, "someone"); !errors.Is(err, ErrDuplicateIntakeCode) {
+		t.Fatalf("duplicate intake code: want ErrDuplicateIntakeCode, got %v", err)
 	}
 }
 
@@ -114,5 +117,30 @@ func TestApproveDoesNotAutoGrantProject(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("approval implicitly created %d project memberships", count)
+	}
+}
+
+func TestValidateIntakeInputRejectsBeforeWriting(t *testing.T) {
+	ok := contract.ProjectIntakeInput{PortfolioScopeId: "PS-1", IntakeCode: "INT-1", ProjectName: "A", ProjectType: "NEW_INSTALLATION", Priority: "MEDIUM", RiskLevel: "LOW"}
+	if err := ValidateIntakeInput(ok); err != nil {
+		t.Fatalf("valid input refused: %v", err)
+	}
+	start, end := time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	for name, mutate := range map[string]func(*contract.ProjectIntakeInput){
+		"blank code":       func(v *contract.ProjectIntakeInput) { v.IntakeCode = " " },
+		"blank name":       func(v *contract.ProjectIntakeInput) { v.ProjectName = "" },
+		"blank type":       func(v *contract.ProjectIntakeInput) { v.ProjectType = "\t" },
+		"bad priority":     func(v *contract.ProjectIntakeInput) { v.Priority = "URGENT" },
+		"bad risk":         func(v *contract.ProjectIntakeInput) { v.RiskLevel = "" },
+		"bad scope id":     func(v *contract.ProjectIntakeInput) { v.PortfolioScopeId = "PS 1" },
+		"name too long":    func(v *contract.ProjectIntakeInput) { v.ProjectName = strings.Repeat("长", 161) },
+		"plan end ≤ start": func(v *contract.ProjectIntakeInput) { v.PlannedStart, v.PlannedEnd = &start, &end },
+		"handover ≤ start": func(v *contract.ProjectIntakeInput) { v.RequestedStart, v.RequestedHandover = &start, &start },
+	} {
+		v := ok
+		mutate(&v)
+		if err := ValidateIntakeInput(v); !errors.Is(err, ErrInvalidIntake) {
+			t.Errorf("%s: want ErrInvalidIntake, got %v", name, err)
+		}
 	}
 }

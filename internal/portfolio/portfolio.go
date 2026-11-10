@@ -9,7 +9,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 
 	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
 	"github.com/guolichen007/crane-operations-platform/internal/auditlog"
@@ -21,7 +24,33 @@ var (
 	ErrVersionConflict   = errors.New("intake version conflict")
 	ErrNotReadyToApprove = errors.New("intake is not ready to approve")
 	ErrAlreadyApproved   = errors.New("intake already has a formal project")
+	// ErrInvalidIntake: the input violates the ProjectIntakeInput contract (HTTP 422).
+	ErrInvalidIntake = errors.New("invalid intake input")
+	// ErrDuplicateIntakeCode: the intake code already exists in this portfolio scope (HTTP 409).
+	ErrDuplicateIntakeCode = errors.New("intake code already exists in this portfolio")
 )
+
+// ValidateIntakeInput checks the generated ProjectIntakeInput contract (lengths, enums,
+// identifier pattern, RFC 3339 times) plus the business rules the schema cannot express:
+// code, name and type must not be blank, and the date pairs must be ordered (the same
+// rule as the table CHECKs). It never substitutes defaults.
+func ValidateIntakeInput(in contract.ProjectIntakeInput) error {
+	if err := contract.ValidateDocument("ProjectIntakeInput", in); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidIntake, err)
+	}
+	for field, value := range map[string]string{"intakeCode": in.IntakeCode, "projectName": in.ProjectName, "projectType": in.ProjectType} {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("%w: %s is required", ErrInvalidIntake, field)
+		}
+	}
+	if in.RequestedStart != nil && in.RequestedHandover != nil && !in.RequestedHandover.After(*in.RequestedStart) {
+		return fmt.Errorf("%w: requestedHandover must be after requestedStart", ErrInvalidIntake)
+	}
+	if in.PlannedStart != nil && in.PlannedEnd != nil && !in.PlannedEnd.After(*in.PlannedStart) {
+		return fmt.Errorf("%w: plannedEnd must be after plannedStart", ErrInvalidIntake)
+	}
+	return nil
+}
 
 // allowedTransitions is the frozen intake state machine. A bare PATCH status is
 // forbidden; every change goes through TransitionIntake.
@@ -46,6 +75,9 @@ func validTransition(from, to string) bool {
 // CreateIntake inserts a REGISTERED intake. The tenant is derived from the
 // portfolio scope, never from the request.
 func CreateIntake(ctx context.Context, db *sql.DB, in contract.ProjectIntakeInput, registeredBy string) (contract.ProjectIntake, error) {
+	if err := ValidateIntakeInput(in); err != nil {
+		return contract.ProjectIntake{}, err
+	}
 	var tenantID string
 	if err := db.QueryRowContext(ctx, `SELECT tenant_id FROM portfolio_scopes WHERE id=$1`, in.PortfolioScopeId).Scan(&tenantID); err != nil {
 		return contract.ProjectIntake{}, fmt.Errorf("portfolio scope: %w", err)
@@ -78,6 +110,10 @@ func CreateIntake(ctx context.Context, db *sql.DB, in contract.ProjectIntakeInpu
 	_, err := db.ExecContext(ctx, `INSERT INTO project_intakes(id,portfolio_scope_id,tenant_id,intake_code,project_name,customer_name,project_type,priority,risk_level,scope_summary,site_reference,registered_at,registered_by,requested_start,requested_handover,planned_start,planned_end,status,project_manager_user_id,technical_lead_user_id,site_lead_user_id,version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
 		out.Id, out.PortfolioScopeId, out.TenantId, out.IntakeCode, out.ProjectName, out.CustomerName, out.ProjectType, out.Priority, out.RiskLevel, out.ScopeSummary, out.SiteReference, out.RegisteredAt, out.RegisteredBy, out.RequestedStart, out.RequestedHandover, out.PlannedStart, out.PlannedEnd, out.Status, out.ProjectManagerUserId, out.TechnicalLeadUserId, out.SiteLeadUserId, out.Version)
 	if err != nil {
+		var pg *pgconn.PgError
+		if errors.As(err, &pg) && pg.Code == "23505" && pg.ConstraintName == "project_intakes_portfolio_scope_id_intake_code_key" {
+			return contract.ProjectIntake{}, ErrDuplicateIntakeCode
+		}
 		return contract.ProjectIntake{}, err
 	}
 	return out, nil
