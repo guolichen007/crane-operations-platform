@@ -72,12 +72,13 @@ const h21aPackages = [
     'TestSnapshotInvariantDetectsTornReader',
     'TestSummaryRuntimeInvariants',
   ]],
-  // H3-P G3 synthetic Preview acceptance dataset: seed/verify/cleanup against the real summary.
+  // D1 synthetic acceptance dataset: exact-id cleanup, ownership refusal, server-side guard.
   ['h3-uatdata', './tools/uatdata', [
     'TestSeedVerifyReseedCleanup',
+    'TestCleanupRefusesForeignOwnership',
     'TestVerifyDetectsDrift',
     'TestVerifyDetectsGrantLeak',
-    'TestGuardRefusesNonPreview',
+    'TestGuardRequiresServerSideIdentity',
   ]],
 ];
 function run(command, args, extra = {}, capture = false) {

@@ -53,7 +53,7 @@ test('r2-b2-test.mjs gates the four H2-1A real-PostgreSQL tests and gives invent
     'TestSummaryFutureSkewBoundariesAndConfig', 'TestSummaryEmptyDatabaseIsLegalZero', 'TestSummaryMoreThan100RecordsAndReviewAssets',
     'TestSummaryQueryFailureIsUnavailableNotPartial', 'TestSummaryConcurrentWritersSeeOneSnapshot',
     'TestSummaryLeavesNoSessionSettingOnPooledConnection', 'TestSnapshotInvariantDetectsTornReader', 'TestSummaryRuntimeInvariants',
-    'TestSeedVerifyReseedCleanup', 'TestVerifyDetectsDrift', 'TestVerifyDetectsGrantLeak', 'TestGuardRefusesNonPreview'])
+    'TestSeedVerifyReseedCleanup', 'TestCleanupRefusesForeignOwnership', 'TestVerifyDetectsDrift', 'TestVerifyDetectsGrantLeak', 'TestGuardRequiresServerSideIdentity'])
     assert.ok(runner.includes(`'${name}'`), `missing required test ${name}`);
   assert.match(runner, /\['h21a-inventory', '\.\/internal\/inventory'/);
   assert.match(runner, /\['h21a-cloudapi', '\.\/services\/cloud-api\/internal\/app'/);

@@ -1,25 +1,33 @@
-// uatdata seeds, refreshes, verifies and removes the H3 Preview synthetic acceptance dataset.
+// uatdata seeds, refreshes, verifies and removes the synthetic acceptance dataset on the D1
+// development environment https://crane.youdaozd.com (development stage: no real business data,
+// no real users, no real devices).
 //
-// It writes ONLY to the UAT namespace (projects/assets/runtimes "UAT-*", users "uat-*") and only
-// after three independent Preview guards pass:
+// It writes ONLY the tool's exact ids (projects/assets/runtimes "UAT-*", users "uat-*"; cleanup uses
+// the id lists, never LIKE) and only after every guard passes. No guard can be satisfied by a URL or
+// flag alone; each is compared with server-side state:
 //
-//  1. --issuer must be exactly the Preview realm issuer;
-//  2. every OIDC-bound user already in the database must carry that same issuer
-//     (a production or mixed database has production-issuer users and is refused);
-//  3. --expect-system-identifier must equal pg_control_system().system_identifier of the
-//     connected cluster (recorded read-only during G1; the production cluster has a different one).
+//  1. database identity: current_database() must be crane_app and pg_control_system()
+//     .system_identifier must equal --expect-system-identifier (recorded read-only beforehand);
+//  2. server-side environment marker: the database-level setting crane.deployment_environment
+//     must be exactly "crane-dev". It is set once by the DBA with
+//     `ALTER DATABASE crane_app SET crane.deployment_environment = 'crane-dev'` (OWNER approval) and
+//     removed at the formal production go-live, after which this tool refuses forever;
+//  3. --issuer must be exactly the crane realm issuer and no account in the database may be bound
+//     to another issuer;
+//  4. ownership (inside the write transaction): existing UAT ids must carry the dataset marker, no
+//     non-UAT account may hold a grant on a UAT project and no UAT account outside UAT — otherwise
+//     the whole operation refuses instead of touching it.
 //
-// Usage (on the Preview host, inside the Preview compose network; never against production):
+// Usage (inside the crane compose network, separately approved; never automatic):
 //
 //	DATABASE_URL=postgres://crane_app@postgres:5432/crane_app?sslmode=disable \
 //	DATABASE_PASSWORD_FILE=/run/secrets/app_db_password \
 //	uatdata <plan|seed|refresh|verify|cleanup> \
-//	  --issuer https://b4.crane.youdaozd.com/realms/crane-preview \
+//	  --issuer https://crane.youdaozd.com/realms/crane \
 //	  --expect-system-identifier <id> [--subjects-file subjects.json] [--confirm-cleanup]
 //
-// subjects.json maps each UAT user id to the Keycloak `sub` of a user that already exists in the
-// Preview realm (`sub` is not a secret). No credentials are read from or printed by this tool
-// beyond the database password file.
+// subjects.json maps each UAT user id to the Keycloak `sub` of an existing test account (`sub` is
+// not a secret). No credentials are read or printed beyond the database password file.
 package main
 
 import (
@@ -38,33 +46,52 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-const previewIssuer = "https://b4.crane.youdaozd.com/realms/crane-preview"
+const (
+	devIssuer      = "https://crane.youdaozd.com/realms/crane"
+	devEnvironment = "crane-dev"
+	envSetting     = "crane.deployment_environment"
+	targetDatabase = "crane_app"
+)
 
 type options struct {
 	issuer, subjectsFile, systemID string
 	confirmCleanup                 bool
 }
 
-func guard(ctx context.Context, db *sql.DB, o options) error {
-	if o.issuer != previewIssuer {
-		return fmt.Errorf("refusing: --issuer must be exactly %s", previewIssuer)
+// guard verifies the target against server-side facts. database is the expected database name
+// (always crane_app from the CLI; tests pass their isolated database).
+func guard(ctx context.Context, db *sql.DB, o options, database string) error {
+	if o.issuer != devIssuer {
+		return fmt.Errorf("refusing: --issuer must be exactly %s", devIssuer)
 	}
 	if _, err := strconv.ParseUint(o.systemID, 10, 64); err != nil {
-		return errors.New("refusing: --expect-system-identifier (numeric, from G1) is required")
+		return errors.New("refusing: --expect-system-identifier (numeric, recorded beforehand) is required")
 	}
-	var sysid string
-	if err := db.QueryRowContext(ctx, `SELECT system_identifier::text FROM pg_control_system()`).Scan(&sysid); err != nil {
-		return fmt.Errorf("refusing: cannot read cluster identifier: %w", err)
+	var name, sysid string
+	var marked bool
+	// The marker is read from the catalog (pg_db_role_setting, database-wide entry), NOT from
+	// current_setting(): a client could inject a session value via PGOPTIONS, the catalog cannot be.
+	if err := db.QueryRowContext(ctx, `SELECT current_database(), (SELECT system_identifier::text FROM pg_control_system()),
+  EXISTS (SELECT 1 FROM pg_db_role_setting s JOIN pg_database d ON d.oid = s.setdatabase
+          WHERE d.datname = current_database() AND s.setrole = 0 AND $1 = ANY (s.setconfig))`, envSetting+"="+devEnvironment).
+		Scan(&name, &sysid, &marked); err != nil {
+		return fmt.Errorf("refusing: cannot read database identity: %w", err)
+	}
+	if name != database {
+		return errors.New("refusing: connected database is not the expected application database")
 	}
 	if sysid != o.systemID {
-		return errors.New("refusing: connected cluster is not the expected Preview cluster")
+		return errors.New("refusing: connected cluster is not the expected cluster")
+	}
+	if !marked {
+		return fmt.Errorf("refusing: database marker %s is not %q (production or unmarked database)", envSetting, devEnvironment)
 	}
 	var foreign int
-	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM users WHERE issuer IS NOT NULL AND issuer <> $1`, previewIssuer).Scan(&foreign); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM users WHERE issuer IS NOT NULL AND issuer <> $1`, devIssuer).Scan(&foreign); err != nil {
 		return err
 	}
 	if foreign > 0 {
-		return fmt.Errorf("refusing: %d user(s) bound to a non-Preview issuer — this is not an isolated Preview database", foreign)
+		return fmt.Errorf("refusing: %d user(s) bound to another issuer", foreign)
 	}
 	return nil
 }
@@ -110,8 +137,9 @@ func readSubjects(path string) (map[string]string, error) {
 // re-binding users or invalidating their web sessions.
 func refresh(ctx context.Context, tx *sql.Tx, now time.Time, anchor time.Time) error {
 	delta := now.Sub(anchor)
+	_, _, _, runtimeIDs := ids()
 	if _, err := tx.ExecContext(ctx, `UPDATE alarms SET observed_at = observed_at + make_interval(secs => $1)
-WHERE device_id IN (SELECT id FROM devices WHERE project_id LIKE 'UAT-%')`, delta.Seconds()); err != nil {
+WHERE device_id = ANY($2)`, delta.Seconds(), runtimeIDs); err != nil {
 		return err
 	}
 	for _, r := range runtimes() {
@@ -131,9 +159,9 @@ func run(args []string, w io.Writer) error {
 	fs := flag.NewFlagSet("uatdata", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var o options
-	fs.StringVar(&o.issuer, "issuer", "", "exact Preview OIDC issuer")
+	fs.StringVar(&o.issuer, "issuer", "", "exact crane realm OIDC issuer")
 	fs.StringVar(&o.subjectsFile, "subjects-file", "", "JSON map uat user id → Keycloak sub")
-	fs.StringVar(&o.systemID, "expect-system-identifier", "", "Preview PostgreSQL system_identifier recorded in G1")
+	fs.StringVar(&o.systemID, "expect-system-identifier", "", "PostgreSQL system_identifier recorded read-only beforehand")
 	fs.BoolVar(&o.confirmCleanup, "confirm-cleanup", false, "required for cleanup")
 	if err := fs.Parse(args[1:]); err != nil || fs.NArg() != 0 {
 		return errors.New("invalid uatdata arguments")
@@ -148,14 +176,14 @@ func run(args []string, w io.Writer) error {
 	defer db.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	if err = guard(ctx, db, o); err != nil {
+	if err = guard(ctx, db, o, targetDatabase); err != nil {
 		return err
 	}
 	return execute(ctx, db, args[0], o, w)
 }
 
 // execute runs one guarded operation. Kept separate from run so the real-PostgreSQL test can
-// exercise it without the Preview-only guard.
+// exercise it on an isolated database (ownership checks still apply inside every write).
 func execute(ctx context.Context, db *sql.DB, op string, o options, w io.Writer) error {
 	enc := json.NewEncoder(w)
 	switch op {
@@ -193,7 +221,7 @@ func execute(ctx context.Context, db *sql.DB, op string, o options, w io.Writer)
 			return err
 		}
 		defer tx.Rollback()
-		removed, err := cleanup(ctx, tx)
+		removed, err := cleanup(ctx, tx, o.issuer)
 		if err != nil {
 			return err
 		}
@@ -211,7 +239,7 @@ func seedAll(ctx context.Context, db *sql.DB, subjects map[string]string, issuer
 		return err
 	}
 	defer tx.Rollback()
-	if _, err = cleanup(ctx, tx); err != nil {
+	if _, err = cleanup(ctx, tx, issuer); err != nil {
 		return err
 	}
 	if err = seedData(ctx, tx, now); err != nil {
