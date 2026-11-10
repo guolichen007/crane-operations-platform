@@ -7,7 +7,7 @@ import { test, expect, type Page } from '@playwright/test';
 
 type Role = 'portfolio_manager' | 'portfolio_planner' | 'none';
 type Intake = Record<string, unknown> & { id: string; intakeCode: string; status: string; formalProjectId: string | null; portfolioScopeId: string; projectName: string };
-const scope = { id: 'PS-A', tenantId: 'demo', code: 'PS-A', name: '华东项目组合', status: 'ACTIVE', version: 1 };
+const scope = { id: 'PS-A', tenantId: 'demo', code: 'PS-A', name: '华东项目组合', status: 'ACTIVE', version: 1, myRole: null as string | null };
 const session = { userId: 'u', displayName: 'pm', projects: [], csrfToken: 'x'.repeat(32), expiresAt: '2099-01-01T00:00:00Z', idleExpiresAt: '2099-01-01T00:00:00Z' };
 const shot = (name: string) => `test-results/q1-portfolio/${name}.png`;
 
@@ -24,7 +24,9 @@ async function mockApi(page: Page, opts: { role?: Role; fail?: Set<string>; crea
     const m = r.request().method();
     if (m !== 'GET') posts.push(`${m} ${p}`);
     if (fail.has(`${m} ${p}`)) return r.fulfill({ status: 503, json: { error: 'database unavailable' } });
-    if (p === 'portfolio/scopes') return r.fulfill({ json: role === 'none' ? [] : [scope] });
+    if (p === 'portfolio/scopes') return r.fulfill({ json: role === 'none' ? [] : [{ ...scope, myRole: role }] });
+    if (p === 'portfolio/projects') return r.fulfill({ json: intakes.filter((i) => i.formalProjectId).map((i) => ({ id: i.formalProjectId, name: i.projectName, portfolioScopeId: i.portfolioScopeId, intakeId: i.id, intakeCode: i.intakeCode, projectPhase: 'REGISTERED', memberCount: 0, grantStatus: 'NO_MEMBERS', inventoryRegistered: false, adminCode: null, canManageGrants: role === 'portfolio_manager' })) });
+    if (p.startsWith('portfolio/projects/') && p.endsWith('/members')) return r.fulfill({ json: [] });
     if (p === 'portfolio/intakes' && m === 'GET') return r.fulfill({ json: [...intakes].reverse() });
     if (p === 'portfolio/intakes' && m === 'POST') {
       if (opts.createDelayMs) await new Promise((x) => setTimeout(x, opts.createDelayMs));
@@ -97,13 +99,16 @@ test('有权限账号：新建登记 → 刷新仍在 → 推进 → 批准返�
   await expect(row).toContainText('已批准');
   const stages = row.getByTestId('intake-stages');
   await expect(stages).toContainText('已生成正式项目 FP-I1');
+  await expect(stages).toContainText('尚未配置项目成员');
   await expect(stages).toContainText('尚未获得该项目的访问');
   await expect(stages).toContainText('未进入运营地图');
-  await expect(row.getByRole('button')).toHaveCount(0);
+  await expect(row.getByTestId('intake-advance')).toHaveCount(0);
+  await expect(row.getByTestId('intake-approve')).toHaveCount(0);
+  await expect(row.getByTestId('open-formal')).toBeVisible();
   await page.screenshot({ path: shot('2-approved-stages') });
 });
 
-test('无权限账号看不到新建入口；规划者批准得到 403 明确提示', async ({ page }) => {
+test('无权限账号看不到新建入口；规划者看不到批准按钮，强行调用仍被 403 拒绝', async ({ page }) => {
   await mockApi(page, { role: 'none' });
   await page.goto('/#/portfolio');
   await expect(page.getByTestId('intake-no-scope')).toBeVisible();
@@ -114,10 +119,13 @@ test('无权限账号看不到新建入口；规划者批准得到 403 明确提
   const api = await mockApi(page2, { role: 'portfolio_planner' });
   api.intakes.push({ id: 'I9', intakeCode: 'X', projectName: '待批项目', status: 'PLANNING', formalProjectId: null, portfolioScopeId: 'PS-A', priority: 'MEDIUM', plannedStart: null, plannedEnd: null, customerName: null });
   await page2.goto('/#/portfolio');
-  page2.once('dialog', (d) => void d.accept());
-  await page2.locator('[data-intake-id="I9"]').getByTestId('intake-approve').click();
-  await expect(page2.getByTestId('portfolio-action-error')).toContainText('无批准权限');
-  await expect(page2.locator('[data-intake-id="I9"]')).toContainText('规划中');
+  const row = page2.locator('[data-intake-id="I9"]');
+  await expect(row).toContainText('规划中');
+  await expect(row.getByTestId('intake-approve')).toHaveCount(0);
+  await expect(row.getByTestId('await-approval')).toContainText('待项目组合经理批准');
+  // Hiding the button is UX only: the server still answers 403 to a planner.
+  const status = await page2.evaluate(async () => (await fetch('/api/v1/portfolio/intakes/I9/approve', { method: 'POST', body: '{}' })).status);
+  expect(status).toBe(403);
 });
 
 test('503 显示错误与重试，不显示「暂无」；恢复后列表正常', async ({ page }) => {

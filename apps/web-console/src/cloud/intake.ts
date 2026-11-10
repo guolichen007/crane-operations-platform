@@ -7,7 +7,7 @@
 //   - the formal project has no Inventory lifecycle / adminCode, so it is NOT in
 //     /api/v1/projects, the operations summary or the national map;
 //   - assets can only be registered after an explicit ProjectGrant with asset_master_write.
-import type { InventoryProject, ProjectGrant, ProjectIntake, ProjectIntakeInput } from '../../../../contracts/typescript/types.gen';
+import type { PortfolioProject, ProjectGrant, ProjectIntake, ProjectIntakeInput } from '../../../../contracts/typescript/types.gen';
 import { ApiError } from './client';
 
 export const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const;
@@ -134,31 +134,37 @@ export function listState(q: { isLoading: boolean; isError: boolean; data: reado
   return q.data.length === 0 ? 'empty' : 'ready';
 }
 
-export type Stage = { key: string; text: string; tone: 'progress' | 'ok' | 'pending' | 'stopped' };
+export type Stage = { key: string; text: string; tone: 'progress' | 'ok' | 'pending' | 'stopped' | 'unknown' };
 
 /**
- * What happens after this intake — only facts the API actually returns:
- * the intake status, its formalProjectId, the caller's own ProjectGrants and the
- * authorized Inventory project list (undefined = not loaded / not available).
+ * What happens after this intake — only facts the API actually returns: the intake status,
+ * its formalProjectId, the caller's own ProjectGrants (null = session unavailable) and the
+ * formal project as reported by /portfolio/projects (undefined = not loaded / failed / not
+ * visible to the caller). Without that server fact the map state is UNKNOWN, never "not on map".
  */
-export function intakeStages(intake: ProjectIntake, grants: ProjectGrant[] | null, inventory: InventoryProject[] | undefined): Stage[] {
+export function intakeStages(
+  intake: ProjectIntake,
+  grants: ProjectGrant[] | null,
+  formal: Pick<PortfolioProject, 'inventoryRegistered' | 'adminCode' | 'grantStatus' | 'memberCount'> | undefined,
+): Stage[] {
   if (intake.status === 'REJECTED' || intake.status === 'CANCELLED')
     return [{ key: 'stopped', text: intake.status === 'REJECTED' ? '已驳回，不会生成正式项目' : '已取消，不会生成正式项目', tone: 'stopped' }];
   if (intake.status !== 'APPROVED' || !intake.formalProjectId)
     return [{ key: 'review', text: '登记 / 评审中：尚未生成正式项目', tone: 'progress' }];
   const id = intake.formalProjectId;
   const stages: Stage[] = [{ key: 'formal', text: `已生成正式项目 ${id}`, tone: 'ok' }];
-  const grant = grants?.find((g) => g.projectId === id);
-  if (grants === null) stages.push({ key: 'grant', text: '项目授权状态未知（当前会话不提供）', tone: 'pending' });
-  else if (!grant) stages.push({ key: 'grant', text: '您尚未获得该项目的访问 / 资产管理授权（审批不会自动授权，需管理员单独授予）', tone: 'pending' });
-  else stages.push({ key: 'grant', text: `已获项目授权（${grant.role}）`, tone: 'ok' });
-  if (!grant || inventory === undefined) {
-    stages.push({ key: 'map', text: '未进入运营地图：正式项目需登记 Inventory 生命周期与行政区后才会出现在全国地图', tone: 'pending' });
-  } else {
-    const inv = inventory.find((p) => p.id === id);
-    if (!inv) stages.push({ key: 'map', text: '未进入运营地图：尚未登记 Inventory 生命周期', tone: 'pending' });
-    else if (inv.adminCode === null) stages.push({ key: 'map', text: '已在项目台账，但尚未关联空间位置（不进入地图钻取）', tone: 'pending' });
-    else stages.push({ key: 'map', text: `已关联行政区 ${inv.adminCode}`, tone: 'ok' });
+  if (formal) {
+    stages.push(formal.grantStatus === 'NO_MEMBERS'
+      ? { key: 'members', text: '尚未配置项目成员（审批不会自动授权）', tone: 'pending' }
+      : { key: 'members', text: `已配置 ${formal.memberCount} 名项目成员`, tone: 'ok' });
   }
+  const grant = grants?.find((g) => g.projectId === id);
+  if (grants === null) stages.push({ key: 'grant', text: '您的项目授权状态未知（当前会话不提供）', tone: 'unknown' });
+  else if (!grant) stages.push({ key: 'grant', text: '您尚未获得该项目的访问 / 资产管理授权（需项目组合经理单独授予）', tone: 'pending' });
+  else stages.push({ key: 'grant', text: `您已获项目授权（${grant.role}）`, tone: 'ok' });
+  if (!formal) stages.push({ key: 'map', text: '运营地图状态未知（正式项目信息未加载或无权查看）', tone: 'unknown' });
+  else if (!formal.inventoryRegistered) stages.push({ key: 'map', text: '未进入运营地图：尚未登记 Inventory 生命周期与行政区', tone: 'pending' });
+  else if (formal.adminCode === null) stages.push({ key: 'map', text: '已在项目台账，但尚未关联空间位置（不进入地图钻取）', tone: 'pending' });
+  else stages.push({ key: 'map', text: `已关联行政区 ${formal.adminCode}`, tone: 'ok' });
   return stages;
 }

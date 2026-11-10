@@ -6,8 +6,9 @@ import { FolderKanban, Check, Plus, RefreshCw } from 'lucide-vue-next';
 import {
   listScopes, listIntakes, createIntake, transitionIntake, approveIntake,
   listResources, listScheduleItems, listConflicts, overrideConflict,
+  listPortfolioProjects,
 } from '../cloud/portfolio';
-import { listProjects } from '../cloud/api';
+import FormalProjectPanel from '../components/FormalProjectPanel.vue';
 import { ApiError } from '../cloud/client';
 import { allowClose } from '../cloud/draft';
 import { webSession, productionAuth } from '../cloud/session';
@@ -18,7 +19,8 @@ import {
 import type { ProjectIntake } from '../../../../contracts/typescript/types.gen';
 
 const queryClient = useQueryClient();
-const tab = ref<'intake' | 'resource' | 'schedule' | 'conflict'>('intake');
+const tab = ref<'intake' | 'formal' | 'resource' | 'schedule' | 'conflict'>('intake');
+const selectedProject = ref('');
 const actionError = ref('');
 const notice = ref('');
 
@@ -27,8 +29,10 @@ const intakesQuery = useQuery({ queryKey: ['intakes'], queryFn: listIntakes });
 const resourcesQuery = useQuery({ queryKey: ['resources'], queryFn: listResources });
 const scheduleQuery = useQuery({ queryKey: ['schedule-items'], queryFn: listScheduleItems });
 const conflictsQuery = useQuery({ queryKey: ['conflicts'], queryFn: listConflicts });
-// Authorized Inventory projects, only to explain whether an approved project is on the map.
-const inventoryQuery = useQuery({ queryKey: ['projects'], queryFn: listProjects, retry: 0 });
+// Formal projects of the caller's portfolios (server facts: members, Inventory, map).
+const formalQuery = useQuery({ queryKey: ['portfolio-projects'], queryFn: listPortfolioProjects });
+const formalState = computed(() => listState({ isLoading: formalQuery.isLoading.value, isError: formalQuery.isError.value, data: formalQuery.data.value }));
+const formalById = computed(() => new Map((formalQuery.data.value ?? []).map((p) => [p.id, p])));
 
 const stateOf = (q: { isLoading: { value: boolean }; isError: { value: boolean }; data: { value: readonly unknown[] | undefined } }) =>
   computed(() => listState({ isLoading: q.isLoading.value, isError: q.isError.value, data: q.data.value }));
@@ -44,6 +48,12 @@ const errorText = (e: unknown) => intakeErrorMessage(e, 'load');
 const scopes = computed(() => (scopesQuery.data.value ?? []).filter((s) => s.status === 'ACTIVE'));
 const canCreate = computed(() => scopes.value.length > 0);
 const scopeName = (id: string) => scopesQuery.data.value?.find((s) => s.id === id)?.name ?? id;
+// UX only (the server re-checks project_approve): planners do not see an approve button.
+const canApprove = (scopeId: string) => scopesQuery.data.value?.find((s) => s.id === scopeId)?.myRole === 'portfolio_manager';
+function openFormal(id: string) {
+  selectedProject.value = id;
+  tab.value = 'formal';
+}
 const grants = computed(() => (productionAuth ? (webSession.value ? webSession.value.projects : null) : null));
 
 const intakeStatusText: Record<string, string> = {
@@ -131,7 +141,10 @@ const approveMutation = useMutation({
   mutationFn: (id: string) => approveIntake(id),
   onSuccess: (r) => { notice.value = `已批准并生成正式项目 ${r.projectId}。该项目尚未授权给任何人，也未进入运营地图。`; },
   onError: (e) => (actionError.value = intakeErrorMessage(e, 'approve')),
-  onSettled: () => { busyId.value = ''; return queryClient.invalidateQueries({ queryKey: ['intakes'] }); },
+  onSettled: async () => {
+    busyId.value = '';
+    await Promise.all([queryClient.invalidateQueries({ queryKey: ['intakes'] }), queryClient.invalidateQueries({ queryKey: ['portfolio-projects'] })]);
+  },
 });
 const overrideMutation = useMutation({
   mutationFn: (v: { id: number; reason: string }) => overrideConflict(v.id, v.reason),
@@ -170,6 +183,7 @@ const fmtDate = (v: string | null) => (v ? new Date(v).toLocaleDateString('zh-CN
 
     <div class="tabs" role="tablist">
       <button :class="{ active: tab === 'intake' }" @click="tab = 'intake'">项目登记</button>
+      <button :class="{ active: tab === 'formal' }" data-testid="tab-formal" @click="tab = 'formal'">正式项目</button>
       <button :class="{ active: tab === 'resource' }" @click="tab = 'resource'">资源</button>
       <button :class="{ active: tab === 'schedule' }" @click="tab = 'schedule'">排期</button>
       <button :class="{ active: tab === 'conflict' }" @click="tab = 'conflict'">冲突</button>
@@ -213,14 +227,15 @@ const fmtDate = (v: string | null) => (v ? new Date(v).toLocaleDateString('zh-CN
                 </td>
                 <td>
                   <ul class="stage-list" data-testid="intake-stages">
-                    <li v-for="s in intakeStages(i, grants, inventoryQuery.data.value)" :key="s.key" :data-tone="s.tone">{{ s.text }}</li>
+                    <li v-for="s in intakeStages(i, grants, i.formalProjectId ? formalById.get(i.formalProjectId) : undefined)" :key="s.key" :data-tone="s.tone">{{ s.text }}</li>
                   </ul>
+                  <button v-if="i.formalProjectId && formalById.get(i.formalProjectId)" class="link-action" data-testid="open-formal" @click="openFormal(i.formalProjectId)">查看正式项目与成员 →</button>
                 </td>
                 <td>{{ PRIORITY_TEXT[i.priority] ?? i.priority }}</td>
                 <td>{{ fmtDate(i.plannedStart) }} – {{ fmtDate(i.plannedEnd) }}</td>
                 <td>
                   <button
-                    v-if="nextAction[i.status]"
+                    v-if="nextAction[i.status] && (nextAction[i.status] !== 'APPROVED' || canApprove(i.portfolioScopeId))"
                     class="ghost-action"
                     :disabled="!!busyId"
                     :data-testid="nextAction[i.status] === 'APPROVED' ? 'intake-approve' : 'intake-advance'"
@@ -228,6 +243,7 @@ const fmtDate = (v: string | null) => (v ? new Date(v).toLocaleDateString('zh-CN
                   >
                     <Check :size="13" />{{ busyId === i.id ? '处理中…' : nextText[nextAction[i.status]!] }}
                   </button>
+                  <span v-else-if="nextAction[i.status] === 'APPROVED'" class="muted" data-testid="await-approval">待项目组合经理批准</span>
                   <span v-else class="muted">终态</span>
                 </td>
               </tr>
@@ -235,6 +251,44 @@ const fmtDate = (v: string | null) => (v ? new Date(v).toLocaleDateString('zh-CN
           </table>
         </div>
       </template>
+    </template>
+
+    <template v-else-if="tab === 'formal'">
+      <p class="workspace-hint">正式项目由批准登记生成。这里配置的是<strong>项目权限</strong>（谁能访问该项目的资产与设备），与上面的项目组合权限无关；审批不会自动授权。</p>
+      <div v-if="formalState === 'loading'" class="skeleton table-skeleton" aria-busy="true" data-testid="formal-loading"></div>
+      <div v-else-if="formalState === 'error'" class="workspace-error" role="alert" data-testid="formal-error">
+        正式项目加载失败：{{ errorText(formalQuery.error.value) }}
+        <button class="ghost-action" @click="formalQuery.refetch()"><RefreshCw :size="13" />重试</button>
+      </div>
+      <p v-else-if="formalState === 'empty'" class="workspace-empty" data-testid="formal-empty">您所在的项目组合暂无已批准的正式项目。</p>
+      <div v-else class="formal-layout">
+        <p v-if="formalState === 'stale'" class="workspace-error" role="alert">刷新失败，以下为上次成功加载的数据。</p>
+        <div class="data-table-wrap">
+          <table class="data-table" data-testid="formal-table">
+            <thead><tr><th>正式项目</th><th>项目组合</th><th>阶段</th><th>项目成员</th><th>运营地图</th><th></th></tr></thead>
+            <tbody>
+              <tr v-for="p in formalQuery.data.value" :key="p.id" class="data-row" :data-formal-id="p.id" :class="{ 'row-new': selectedProject === p.id }">
+                <td>{{ p.name }}<div class="cell-sub">{{ p.id }} · 登记 {{ p.intakeCode }}</div></td>
+                <td>{{ scopeName(p.portfolioScopeId) }}</td>
+                <td>{{ p.projectPhase ?? '—' }}</td>
+                <td>
+                  <span class="status-pill" :data-status="p.grantStatus === 'NO_MEMBERS' ? 'OUT_OF_SERVICE' : 'ACTIVE'">
+                    {{ p.grantStatus === 'NO_MEMBERS' ? '未配置成员' : `${p.memberCount} 名成员` }}
+                  </span>
+                </td>
+                <td class="cell-sub">{{ p.inventoryRegistered ? (p.adminCode ? `行政区 ${p.adminCode}` : '未关联空间位置') : '未进入地图' }}</td>
+                <td><button class="ghost-action" data-testid="formal-open" @click="selectedProject = p.id">{{ p.canManageGrants ? '管理成员' : '查看' }}</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <FormalProjectPanel
+          v-if="selectedProject && formalById.get(selectedProject)"
+          :project="formalById.get(selectedProject)!"
+          :scope-name="scopeName(formalById.get(selectedProject)!.portfolioScopeId)"
+          @close="selectedProject = ''"
+        />
+      </div>
     </template>
 
     <template v-else-if="tab === 'resource'">
@@ -409,5 +463,6 @@ const fmtDate = (v: string | null) => (v ? new Date(v).toLocaleDateString('zh-CN
   padding: 6px 10px; border: 1px solid var(--line-soft); border-radius: 7px;
   background: var(--surface-900); color: var(--text-1); font: inherit; font-size: 13px; resize: vertical;
 }
+.formal-layout { display: flex; flex-direction: column; gap: 16px; }
 .link-action { align-self: flex-start; border: 0; background: transparent; color: var(--accent-blue); cursor: pointer; padding: 0; font-size: 12px; }
 </style>

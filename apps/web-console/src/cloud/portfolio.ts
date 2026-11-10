@@ -9,6 +9,9 @@ import type {
   ScheduleConflict,
   ScheduleDependency,
   ScheduleBaseline,
+  PortfolioProject,
+  ProjectMember,
+  ProjectGrantChange,
 } from '../../../../contracts/typescript/types.gen';
 
 export const listScopes = () => api<PortfolioScope[]>('portfolio/scopes');
@@ -56,3 +59,10 @@ export const overrideConflict = (id: number, reason: string) =>
   api<{ status: string }>(`portfolio/conflicts/${id}/override`, { method: 'POST', body: { reason } });
 
 export const listBaselines = () => api<ScheduleBaseline[]>('portfolio/baselines');
+
+// Q2 formal projects (approved intakes) and their initial ProjectGrants.
+export const listPortfolioProjects = () => api<PortfolioProject[]>('portfolio/projects');
+export const getPortfolioProject = (id: string) => api<PortfolioProject>(`portfolio/projects/${encodeURIComponent(id)}`);
+export const listProjectMembers = (id: string) => api<ProjectMember[]>(`portfolio/projects/${encodeURIComponent(id)}/members`);
+export const changeProjectMember = (id: string, change: ProjectGrantChange) =>
+  api<ProjectMember[]>(`portfolio/projects/${encodeURIComponent(id)}/members`, { method: 'POST', body: change });

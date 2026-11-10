@@ -3,7 +3,7 @@ import {
   blankIntakeForm, formDirty, validateIntakeForm, toIntakeInput, intakeErrorMessage, listState, intakeStages, dateToInstant,
 } from '../src/cloud/intake';
 import { ApiError } from '../src/cloud/client';
-import type { ProjectIntake, InventoryProject } from '../../../contracts/typescript/types.gen';
+import type { ProjectIntake } from '../../../contracts/typescript/types.gen';
 
 const filled = () => ({ ...blankIntakeForm('PS-A'), intakeCode: 'INT-1', projectName: '项目', projectType: 'NEW_INSTALLATION' });
 const intake = (over: Partial<ProjectIntake> = {}): ProjectIntake => ({
@@ -11,10 +11,6 @@ const intake = (over: Partial<ProjectIntake> = {}): ProjectIntake => ({
   priority: 'MEDIUM', riskLevel: 'MEDIUM', scopeSummary: '', siteReference: null, registeredAt: '2026-11-10T00:00:00Z', registeredBy: 'u',
   requestedStart: null, requestedHandover: null, plannedStart: null, plannedEnd: null, status: 'REGISTERED',
   projectManagerUserId: null, technicalLeadUserId: null, siteLeadUserId: null, formalProjectId: null, version: 1, ...over,
-});
-const inv = (id: string, adminCode: number | null): InventoryProject => ({
-  id, name: id, lifecycle: 'PLANNED', province: '', city: '', county: '', locationLabel: '', adminCode, scheduleText: '', notes: '',
-  assetDeviceCount: 0, runtimeDeviceCount: 0, realConnectedCount: 0, simulatedCount: 0,
 });
 
 describe('项目登记表单', () => {
@@ -67,15 +63,21 @@ describe('后续环节说明只基于 API 事实', () => {
     expect(intakeStages(intake({ status: 'PLANNING' }), [], undefined).map((s) => s.key)).toEqual(['review']);
     expect(intakeStages(intake({ status: 'REJECTED' }), [], undefined)[0].tone).toBe('stopped');
   });
-  it('已批准 ≠ 已授权 ≠ 已进入地图', () => {
+  it('已批准 ≠ 已授权 ≠ 已进入地图；无服务端事实时显示「未知」', () => {
     const approved = intake({ status: 'APPROVED', formalProjectId: 'FP1' });
-    const s = intakeStages(approved, [], []);
-    expect(s.map((x) => [x.key, x.tone])).toEqual([['formal', 'ok'], ['grant', 'pending'], ['map', 'pending']]);
+    const formal = { inventoryRegistered: false, adminCode: null, grantStatus: 'NO_MEMBERS' as const, memberCount: 0 };
+    const s = intakeStages(approved, [], formal);
+    expect(s.map((x) => [x.key, x.tone])).toEqual([['formal', 'ok'], ['members', 'pending'], ['grant', 'pending'], ['map', 'pending']]);
     expect(s[1].text).toMatch(/不会自动授权/);
-    const granted = intakeStages(approved, [{ projectId: 'FP1', projectName: 'x', role: 'viewer' }], []);
-    expect(granted[2].text).toMatch(/Inventory/);
-    expect(intakeStages(approved, [{ projectId: 'FP1', projectName: 'x', role: 'viewer' }], [inv('FP1', null)])[2].text).toMatch(/空间位置/);
-    expect(intakeStages(approved, [{ projectId: 'FP1', projectName: 'x', role: 'viewer' }], [inv('FP1', 330481)])[2].tone).toBe('ok');
-    expect(intakeStages(approved, null, undefined)[1].text).toMatch(/未知/);
+    // Formal project not loaded / request failed / not visible → map is UNKNOWN, not "not on map".
+    const unknown = intakeStages(approved, [], undefined);
+    expect(unknown.find((x) => x.key === 'map')).toMatchObject({ tone: 'unknown' });
+    expect(unknown.find((x) => x.key === 'map')!.text).not.toMatch(/未进入/);
+    expect(intakeStages(approved, null, formal).find((x) => x.key === 'grant')!.tone).toBe('unknown');
+    const granted = intakeStages(approved, [{ projectId: 'FP1', projectName: 'x', role: 'viewer' }], { ...formal, grantStatus: 'MEMBERS_CONFIGURED', memberCount: 2 });
+    expect(granted.find((x) => x.key === 'members')!.text).toMatch(/2 名/);
+    expect(granted.find((x) => x.key === 'grant')!.tone).toBe('ok');
+    expect(intakeStages(approved, [], { ...formal, inventoryRegistered: true }).find((x) => x.key === 'map')!.text).toMatch(/空间位置/);
+    expect(intakeStages(approved, [], { ...formal, inventoryRegistered: true, adminCode: 330481 }).find((x) => x.key === 'map')!.tone).toBe('ok');
   });
 });
