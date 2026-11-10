@@ -17,7 +17,10 @@ import {
 //    and reason — it is never swallowed.
 // 3. Review cards are located by paging (findCard), never assumed on page 1.
 //
-// A run that is killed (no teardown at all) is recovered by global-setup.ts.
+// A run that is killed (no teardown at all) leaves its filings behind; the
+// next run's global-setup lists them without touching them (rule 1 and 3 make
+// them harmless) and, with BAOBEI_E2E_REQUIRE_CLEAN=1, asks for a rebuilt DB.
+// Cleanup only ever touches ids this run registered itself.
 
 // Same value in every worker of one run (set by global-setup); a standalone
 // config without global setup still gets a fresh identifier per process.
