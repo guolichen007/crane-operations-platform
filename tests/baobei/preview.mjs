@@ -258,3 +258,6 @@ if (!nginxTest.error && nginxTest.status !== null) {
 } else if (process.env.CI) {
   throw Error('nginx syntax check needs Docker in CI');
 } else console.log('Preview nginx syntax NOT_RUN (no Docker locally; runs in CI compose job)');
+
+// G4-S1A-R2: synthetic-data integrity rule (pure checks).
+await import('./preview/seed-check.mjs');

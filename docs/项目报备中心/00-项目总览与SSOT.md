@@ -5,14 +5,20 @@ BAOBEI_MAIN_MERGE=FORBIDDEN
 BAOBEI_R2_MERGE=FORBIDDEN
 BASE_SHA=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18
 BRANCH=product/baobei-v1
-CURRENT_BATCH=G4_S1A_PREVIEW_OFFLINE
-STOP_AFTER_G4_S1A=YES
+CURRENT_BATCH=G4_S1B0_PREVIEW_PRECHECK
+STOP_AFTER_G4_S1B0=YES
+PREVIEW_CODE_READY=YES
+PREVIEW_IMAGES_READY=NO
 PREVIEW_DEPLOYED=NO
 PRODUCTION_DEPLOYED=NO
 
 目标：快速报项目、识别重复、明确归属并跟进。独立产品，永不合并 main/R2。
 
-## 当前实施：G4-S1A Preview 离线安全实现
+## 当前实施：G4-S1A-R2 合成数据完整性 + G4-S1B0 首次部署准备
+
+G4-S1A 原版本 `6e0bbda` 八门通过（Run 42797483906）。合成数据脚本改为对照确定性清单（管理员全局读取）：空库才初始化，完整一致则不写，部分或不一致则报错且不删改。首次 Preview 部署的严格顺序、权限清单、停止与回滚见 [37-G4-S1B0-Preview首次部署准备与只读预检](37-G4-S1B0-Preview首次部署准备与只读预检.md)。GHCR 镜像尚未发布（PREVIEW_IMAGES_READY=NO），服务器只读预检未授权（NOT_RUN）。G4-S1B1 实际部署需另行授权。
+
+## 历史：G4-S1A Preview 离线安全实现
 
 基线 `df2c750`（Run 42755710072 八门通过）。新增 `APP_ENV=preview`：与 production 同一条加固路径（Secure/HttpOnly `__Host-` Cookie、受限角色、独立 staff 连接且 fail closed、public search_path、不自动迁移、`DEV_AUTH=0`），origin/issuer/client 使用与生产互不相交的精确白名单。Preview 数据库带环境标记表 `baobei_environment`（只允许 'preview'），API 与维护命令在任何迁移或业务修改前核对：Preview 要求标记、生产拒绝带标记的库；生产库不需要也不被强制写入标记。独立 `compose.preview.yaml`、Preview Nginx 与 Ingress 示例、静态门 `tests/baobei/preview.mjs`（42 个负例）；备份脚本按环境分别校验表清单与标记；Preview 合成数据脚本只经真实 API；金额面板刷新失败不再展示旧金额。未部署 Preview 或生产。验收见 [36-G4-S1A-Preview离线安全实现与验收](36-G4-S1A-Preview离线安全实现与验收.md)。G4-S1B 实际部署需负责人另行授权。
 

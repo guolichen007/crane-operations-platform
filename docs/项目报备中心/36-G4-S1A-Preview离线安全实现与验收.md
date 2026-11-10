@@ -5,7 +5,7 @@
 | 项 | 值 |
 | --- | --- |
 | BASE_SHA | `df2c750e2c1004fca79a7171c6e1aab2ab7f5370`（Run `42755710072`，Attempt 1，8/8 success，经 GitHub API 核对） |
-| HEAD_SHA / CI | 推送后按同一 SHA 核对原八门，结果回填于 STOP 回执 |
+| HEAD_SHA / CI | `6e0bbda18457c2ff68aaed15853a99730e4be824`，Run `42797483906`，Attempt 1，8/8 success（compose job 实际执行 Docker 渲染与 Preview nginx -t） |
 | PREVIEW_DEPLOYED | NO |
 | PRODUCTION_DEPLOYED | NO |
 
@@ -243,7 +243,7 @@ CI 的 compose job 照旧跑 `restore-test`（生产默认路径）。
 | Preview 备份与恢复 | 已验证（PG18，本地工具模式） |
 | Preview compose 与 Nginx 规则 | 已验证（本地插值）；compose 渲染和 nginx -t 待 CI |
 | 镜像中存在 healthcheck 命令 | 已验证（alpine 3.23 层） |
-| 合成数据脚本（本地 dev 栈） | 已验证 |
+| 合成数据脚本（本地 dev 栈） | 已验证；G4-S1A-R2 补充了中途失败的完整性校验（37 号第 2 节） |
 | 合成数据脚本（真实 Preview OIDC） | **NOT_RUN** |
 | 真实 Preview 部署、DNS、证书、Keycloak realm/client、ingress 接入、端口与网络实测 | **NOT_RUN**（本批禁止） |
 | 真人 UAT | **NOT_RUN**（脚本已修订，判定栏为空） |
@@ -290,7 +290,7 @@ PREVIEW_STATIC_GATE=PASS (42/42 negatives; compose render + nginx -t in CI)
 SYNTHETIC_DATA_LOCAL=PASS
 SYNTHETIC_DATA_REAL_OIDC=NOT_RUN
 AMOUNT_REFRESH_FIX=PASS
-PREVIEW_CODE_READY=待同 SHA 原八门 CI 通过后确认
+PREVIEW_CODE_READY=YES (6e0bbda, Run 42797483906 Attempt 1 8/8; 见 37 号第 1 节)
 PREVIEW_DEPLOYED=NO
 PRODUCTION_DEPLOYED=NO
 ```
