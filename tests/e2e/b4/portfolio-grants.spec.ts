@@ -77,6 +77,39 @@ test('正式项目授权闭环：经理在浏览器授权 → 被授权人登记
   await expect(detail).toHaveAttribute('data-project-id', projectId);
   await grantee.screenshot({ path: 'test-results/b4-visual/q2-grantee-asset.png' });
 
+  // Q3: before registration the project is not in Inventory; the grantee (project
+  // platform_admin) registers it through the projects page; the SAME id then appears in
+  // /projects with the asset counted and no runtime (REAL 0).
+  const inventoryBefore = await grantee.evaluate(async () => (await fetch('/api/v1/projects')).text());
+  expect(inventoryBefore).not.toContain(projectId);
+  // The portfolio manager holds no ProjectGrant: the server refuses the registration.
+  const pmRegister = await manager.evaluate(async ({ id, csrf }) => (await fetch(`/api/v1/projects/${id}/inventory-registration`, {
+    method: 'POST', headers: { 'X-CSRF-Token': csrf, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lifecycle: 'PLANNED', adminCode: 330481, locationLabel: '', scheduleText: '', notes: '' }),
+  })).status, { id: projectId, csrf: await sessionCsrf(manager) });
+  expect(pmRegister).toBe(404);
+  await grantee.goto('/#/projects');
+  await grantee.locator(`[data-pending-id="${projectId}"]`).getByTestId('register-open').click();
+  const reg = grantee.getByTestId('registration-form');
+  await reg.getByLabel('项目生命周期').selectOption('PLANNED');
+  await reg.getByLabel('省', { exact: true }).selectOption('330000');
+  await reg.getByLabel('市', { exact: true }).selectOption('330400');
+  await reg.getByLabel('区县').selectOption('330481');
+  await reg.getByTestId('registration-submit').click();
+  await expect(reg).toBeHidden();
+  const card = grantee.locator(`[data-project-id="${projectId}"]`);
+  await expect(card).toContainText('浙江省 嘉兴市 海宁市 · 行政区级定位');
+  await expect(card.getByTestId('runtime-source')).toHaveText('尚未接入运行源');
+  await grantee.screenshot({ path: 'test-results/b4-visual/q3-grantee-registered.png' });
+  const inv = await grantee.evaluate(async (id) => {
+    const projects = (await (await fetch('/api/v1/projects')).json()) as { id: string; assetDeviceCount: number; realConnectedCount: number; adminCode: number }[];
+    const summary = await (await fetch('/api/v1/operations/summary?region=330481&alarmWindow=PT24H')).json();
+    return { p: projects.find((x) => x.id === id), registered: summary.metrics.assets.registered, real: summary.metrics.real.connected };
+  }, projectId);
+  expect(inv.p).toMatchObject({ assetDeviceCount: 1, realConnectedCount: 0, adminCode: 330481 });
+  expect(inv.registered).toBeGreaterThanOrEqual(1);
+  expect(inv.real).toBe(0);
+
   // The manager's portfolio role still gives no project asset access.
   const pmView = await manager.evaluate(async (id) => (await fetch(`/api/v1/assets?project=${id}`)).text(), projectId);
   expect(pmView).not.toContain(assetCode);
@@ -103,7 +136,7 @@ test('正式项目授权反证：规划者无授权入口且服务端拒绝；�
   await login(manager, 'b4-maintainer');
   const projectId = await registerAndApprove(planner, manager, code('INT', 'Q2-NEG'));
 
-  await planner.goto('/#/portfolio');
+  // The planner page was loaded before the approval: switching to the formal tab refetches.
   await planner.getByTestId('tab-formal').click();
   await planner.locator(`[data-formal-id="${projectId}"]`).getByTestId('formal-open').click();
   await expect(planner.getByTestId('grant-readonly')).toBeVisible();

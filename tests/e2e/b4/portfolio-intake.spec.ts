@@ -24,16 +24,20 @@ test('项目登记：规划者在浏览器登记并推进，经理批准得到�
   await form.getByRole('button', { name: '保存登记' }).click();
   await expect(form).toBeHidden();
   await planner.reload();
-  const row = planner.locator('tr', { hasText: intakeCode });
+  const row = planner.locator('tr.data-row', { hasText: intakeCode });
   await expect(row).toContainText('已登记');
   await row.getByTestId('intake-advance').click();
   await expect(row).toContainText('评审中');
   await row.getByTestId('intake-advance').click();
   await expect(row).toContainText('规划中');
-  // Planner cannot approve: the server answers 403 and the UI says why.
-  planner.once('dialog', (d) => void d.accept());
-  await row.getByTestId('intake-approve').click();
-  await expect(planner.getByTestId('portfolio-action-error')).toContainText('无批准权限');
+  // Planner cannot approve: no approve button (Q2), and the server still answers 403.
+  await expect(row.getByTestId('intake-approve')).toHaveCount(0);
+  await expect(row.getByTestId('await-approval')).toBeVisible();
+  const intakeId = await row.getAttribute('data-intake-id');
+  const approveStatus = await planner.evaluate(async ({ id, csrf }) => (await fetch(`/api/v1/portfolio/intakes/${id}/approve`, {
+    method: 'POST', headers: { 'X-CSRF-Token': csrf, 'Content-Type': 'application/json' }, body: '{}',
+  })).status, { id: intakeId!, csrf: await sessionCsrf(planner) });
+  expect(approveStatus).toBe(403);
   await expect(row).toContainText('规划中');
   await planner.screenshot({ path: 'test-results/b4-visual/q1-planner-cannot-approve.png' });
 
