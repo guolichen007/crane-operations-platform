@@ -95,6 +95,133 @@ def test():
             finally:
                 docker.call(*args, "down", "--remove-orphans")
         print("BIND_ENGINE_MISSING_DENIED=PASS")
+        postgres_not_recreated(docker, work, manifest, rendered["services"]["baobei-postgres"]["image"])
+
+
+FIXTURE = """name: {project}
+services:
+  baobei-postgres:
+    image: {postgres}
+    environment:
+      POSTGRES_PASSWORD: {password}
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - type: bind
+        source: ./db/initialize.sql
+        target: /docker-entrypoint-initdb.d/10-fixture.sql
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -h 127.0.0.1 -U postgres]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+  baobei-api:
+    image: ${{FIX_API_IMAGE:?fixture api image}}
+    pull_policy: never
+    entrypoint: [sleep, "86400"]
+    healthcheck: {{test: [CMD, "true"], interval: 1s, retries: 30}}
+    depends_on:
+      baobei-postgres: {{condition: service_healthy}}
+  baobei-web:
+    image: ${{FIX_WEB_IMAGE:?fixture web image}}
+    pull_policy: never
+    entrypoint: [sleep, "86400"]
+    healthcheck: {{test: [CMD, "true"], interval: 1s, retries: 30}}
+    depends_on:
+      baobei-api: {{condition: service_healthy}}
+volumes:
+  pgdata: {{}}
+"""
+
+
+class FixtureDocker:
+    """Same compose()/call() surface as direct.Docker, bound to an isolated CI project."""
+
+    def __init__(self, docker, project):
+        self.docker, self.project = docker, project
+
+    def call(self, *args, **kwargs):
+        return self.docker.call(*args, **kwargs)
+
+    def compose(self, release, secrets_dir, images, *args, capture=True):
+        env = {"COMPOSE_DISABLE_ENV_FILE": "1",
+               "FIX_API_IMAGE": images["baobei-api"]["ref"], "FIX_WEB_IMAGE": images["baobei-web"]["ref"]}
+        return self.docker.call("compose", "--project-name", self.project, "-f", str(release / "compose.yaml"),
+                                *args, env=env, cwd=release, capture=capture)
+
+
+def postgres_not_recreated(docker, work, manifest, postgres_image):
+    """T3: a new release path changes the PostgreSQL config hash; start() must not touch it."""
+    if sys.platform != "linux":
+        print("DIRECT_POSTGRES_NOT_RECREATED=NOT_RUN_NON_LINUX")
+        return
+    project = "baobei-direct-pg-" + secrets.token_hex(4)
+    assert not project.startswith("u-dao-")
+    fixture = FixtureDocker(docker, project)
+    password = secrets.token_hex(16)
+    images, releases = {}, {}
+    for label in ("old", "new"):
+        context = work / ("image-" + label)
+        context.mkdir()
+        (context / "Dockerfile").write_text(
+            f'FROM {manifest["images"]["baobei-web"]["ref"]}\nLABEL org.example.fixture-release="{label}"\n')
+        images[label] = {}
+        for service in direct.SERVICES:
+            ref = f"{project}/{service}:{label}"
+            docker.call("build", "--pull=false", "--label", "fixture-service=" + service,
+                        "--tag", ref, str(context), capture=False)
+            images[label][service] = {"ref": ref, "id": docker.call(
+                "image", "inspect", "--format", "{{.Id}}", ref).decode().strip()}
+        release = work / ("release-" + label)
+        (release / "db").mkdir(parents=True)
+        (release / "db/initialize.sql").write_text("CREATE TABLE fixture_marker (note text);\n")
+        (release / "compose.yaml").write_text(FIXTURE.format(project=project, postgres=postgres_image,
+                                                             password=password))
+        releases[label] = release
+    assert images["old"]["baobei-api"]["id"] != images["new"]["baobei-api"]["id"]
+    old, new = releases["old"], releases["new"]
+
+    def psql(container, sql):
+        return docker.call("exec", container, "psql", "-U", "postgres", "-tAc", sql).decode().strip()
+
+    def volume(container):
+        return docker.call("inspect", "--format",
+                           '{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}}{{end}}{{end}}', container).decode()
+
+    def app_ids():
+        return {s: docker.call("inspect", "--format", "{{.Image}}", fixture.compose(
+            new, None, images["new"], "ps", "-q", s).decode().strip()).decode().strip() for s in direct.SERVICES}
+
+    try:
+        fixture.compose(old, None, images["old"], "up", "-d", "--no-build", "--pull", "missing",
+                        "--wait", "--wait-timeout", "180", capture=False)
+        pg_id, started = direct.database_identity(fixture, old, None, images["old"])
+        psql(pg_id, "INSERT INTO fixture_marker VALUES ('kept')")
+        pg_volume = volume(pg_id)
+        hashes = [fixture.compose(r, None, images[k], "config", "--hash", "baobei-postgres").decode().split()[-1]
+                  for k, r in (("old", old), ("new", new))]
+        assert hashes[0] != hashes[1], "fixture must reproduce the release-path config hash change"
+        direct.start(fixture, new, None, {"images": images["new"]})
+        assert direct.database_identity(fixture, new, None, images["new"]) == (pg_id, started)
+        assert volume(pg_id) == pg_volume
+        assert psql(pg_id, "SELECT note FROM fixture_marker") == "kept"
+        assert app_ids() == {s: images["new"][s]["id"] for s in direct.SERVICES}
+        print("DIRECT_POSTGRES_NOT_RECREATED=PASS APP_SWITCHED=PASS")
+        # Control: the pre-fix whole-project up would recreate PostgreSQL in this same fixture.
+        fixture.compose(new, None, images["new"], "up", "-d", "--no-build", "--pull", "never",
+                        "--wait", "--wait-timeout", "180", capture=False)
+        recreated, _ = direct.database_identity(fixture, new, None, images["new"])
+        assert recreated != pg_id, "control did not reproduce the PostgreSQL recreate"
+        assert psql(recreated, "SELECT note FROM fixture_marker") == "kept"
+        print("DIRECT_POSTGRES_CONTROL_WHOLE_PROJECT_RECREATES=PASS")
+    finally:
+        # Only the throwaway fixture project is removed; never a u-dao-* project.
+        fixture.compose(old, None, images["old"], "down", "-v", "--remove-orphans", capture=False)
+        for label in images:
+            for image in images[label].values():
+                docker.call("image", "rm", image["ref"])
 
 
 if __name__ == "__main__":

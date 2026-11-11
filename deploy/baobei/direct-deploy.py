@@ -29,6 +29,12 @@ SNAPSHOT = (
     "nginx.proxy.production.conf", "db/initialize.sql", "db/staff-role.sql",
 )
 SECRET_NAMES = ("db_password", "runtime_database_url", "staff_database_url", "oidc_client_secret")
+# Upgrades and rollbacks must never reconcile PostgreSQL: a new release directory changes
+# the bind-mount source paths and therefore the database service config hash.
+APP_UP = ("up", "-d", "--no-build", "--pull", "never", "--no-deps",
+          "--wait", "--wait-timeout", "180", "baobei-api", "baobei-web")
+DB_UP = ("up", "-d", "--no-build", "--pull", "missing",
+         "--wait", "--wait-timeout", "180", "baobei-postgres")
 PUBLIC_GO_PROXIES = ("https://proxy.golang.org,direct", "https://goproxy.cn,direct")
 BUILD_INPUTS = {
     "apps/project-intake-web": (
@@ -331,10 +337,26 @@ def check_mounts(secrets, command, migrator_dsn):
         require_file(migrator_dsn)
 
 
+def database_identity(docker, release, secrets, images):
+    """Return the running PostgreSQL container identity; refuse if absent or unhealthy."""
+    container = docker.compose(release, secrets, images, "ps", "-q", "baobei-postgres").decode().strip()
+    if not container or len(container.split()) != 1:
+        raise ValueError("PostgreSQL 未运行，拒绝切换应用；首次安装须先执行 db 步骤")
+    state = docker.call("inspect", "--format",
+                        "{{.Id}} {{.State.StartedAt}} {{if .State.Health}}{{.State.Health.Status}}{{end}}",
+                        container).decode().split()
+    if len(state) != 3 or state[2] != "healthy":
+        raise ValueError("PostgreSQL 不健康，拒绝切换应用")
+    return state[0], state[1]
+
+
 def start(docker, release, secrets, manifest):
+    """Reconcile only Web/API. PostgreSQL is created solely by the explicit db command."""
     images = manifest["images"]
-    docker.compose(release, secrets, images, "up", "-d", "--no-build", "--pull", "never",
-                   "--wait", "--wait-timeout", "180", capture=False)
+    database = database_identity(docker, release, secrets, images)
+    docker.compose(release, secrets, images, *APP_UP, capture=False)
+    if database_identity(docker, release, secrets, images) != database:
+        raise ValueError("PostgreSQL 容器在应用切换期间被改变，停止并人工核查")
     for service, image in images.items():
         container = docker.compose(release, secrets, images, "ps", "-q", service).decode().strip()
         if not container or docker.call("inspect", "--format", "{{.Image}}", container).decode().strip() != image["id"]:
@@ -365,8 +387,7 @@ def apply(docker, state, secrets, source, command, migrator_dsn):
             raise ValueError("清单的回滚基线已过期")
         atomic_json(state / "pending.json", {"source_sha": source})
         if command == "db":
-            docker.compose(release, secrets, images, "up", "-d", "--no-build", "--pull", "missing",
-                           "--wait", "--wait-timeout", "180", "baobei-postgres", capture=False)
+            docker.compose(release, secrets, images, *DB_UP, capture=False)
             return
         if command == "migrate":
             docker.call("run", "--rm", "--pull", "never", "--read-only", "--network", "u-dao-baobei-internal",
