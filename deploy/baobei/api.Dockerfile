@@ -1,5 +1,5 @@
 ARG BAOBEI_DEPS=online
-FROM golang:1.27.3-alpine AS source
+FROM golang:1.27.4-alpine AS source
 ARG GOPROXY=https://proxy.golang.org,direct
 ENV GOPROXY=${GOPROXY}
 WORKDIR /src

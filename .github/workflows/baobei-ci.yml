@@ -99,7 +99,7 @@ jobs:
             -e GOPROXY=file:///go/pkg/mod/cache/download -e GOSUMDB=off \
             -v "$PWD/services/project-intake-api:/src:ro" \
             -v "$(go env GOMODCACHE)/cache/download:/cache:ro" \
-            -w /src golang:1.27.3-alpine \
+            -w /src golang:1.27.4-alpine \
             sh -ec 'mkdir -p /go/pkg/mod/cache/download; cp -R /cache/. /go/pkg/mod/cache/download/; go test -mod=readonly -count=1 -run "TestIdentityRootFile|TestDatabaseIdentityCLI" -v ./...'
   baobei-e2e:
     if: startsWith(github.ref, 'refs/heads/product/baobei-')
