@@ -426,29 +426,33 @@ test('管理员（二）：指派、人员与团队、停用、全局统计、�
     expect(post.status).toBe(403);
     return { intakeStatus: r.intakeStatus, 'actions.approve': r.actions.approve, 'POST /approve (direct)': post.status };
   });
-  await step('A-05', '管理员 synthetic-admin', ad, '人员管理：邀请销售 → 待管理员开通', async () => {
+  await step('A-05', '管理员 synthetic-admin', ad, '人员管理：添加销售 → 待开通', async () => {
     await ad.goto('/settings/users');
     await action(ad, 'staff.invite').click();
     const dialog = ad.getByRole('dialog');
     S.email = `uat-${RUN}@example.test`;
-    await dialog.getByLabel('姓名', { exact: true }).fill('合成 UAT 销售');
-    await dialog.getByLabel('工作邮箱').fill(S.email);
-    await dialog.getByLabel('角色').selectOption('baobei_sales');
-    await dialog.getByLabel('团队').selectOption({ label: 'Synthetic Team' });
-    await dialog.getByLabel('操作原因').fill('合成 UAT 添加人员');
+    await dialog.getByLabel(/^姓名/).fill('合成 UAT 销售');
+    await dialog.getByLabel(/^工作手机/).fill('137' + String(Date.now()).slice(-8));
+    await dialog.getByLabel(/^工作邮箱/).fill(S.email);
+    await dialog.getByLabel(/^角色/).selectOption('baobei_sales');
+    await dialog.getByLabel(/^团队/).selectOption({ label: 'Synthetic Team' });
+    await dialog.getByLabel(/^操作原因/).fill('合成 UAT 添加人员');
     await action(ad, 'staff.confirm').click();
-    await expect(ad.locator('.staff-row').filter({ hasText: S.email })).toContainText('待管理员开通');
+    await expect(ad.locator('.staff-title')).toContainText('待开通');
+    await action(ad, 'staff.back').click();
+    await ad.getByLabel('姓名、邮箱或手机').fill(S.email);
+    await action(ad, 'staff.search').click();
     const r = (await api(ad, '/api/v1/staff?q=' + encodeURIComponent(S.email))).body;
     return { 'POST /api/v1/staff': 200, found: r.items?.length ?? r.total };
   });
   await step('A-06', '管理员 synthetic-admin', ad, '停用与归档：停用后归档，保留历史', async () => {
     await action(ad, 'staff.detail').filter({ hasText: S.email }).first().click().catch(async () => action(ad, 'staff.detail').first().click());
     await action(ad, 'staff.suspend').click();
-    await ad.getByRole('dialog').getByLabel('操作原因').fill('合成 UAT 停用');
+    await ad.getByRole('dialog').getByLabel(/^操作原因/).fill('合成 UAT 停用');
     await action(ad, 'staff.confirm').click();
     await expect(ad.locator('.staff-title')).toContainText('已停用');
     await action(ad, 'staff.archive').click();
-    await ad.getByRole('dialog').getByLabel('操作原因').fill('合成 UAT 归档');
+    await ad.getByRole('dialog').getByLabel(/^操作原因/).fill('合成 UAT 归档');
     await action(ad, 'staff.confirm').click();
     await expect(ad.locator('.staff-title')).toContainText('已归档');
     return { status: '已归档' };

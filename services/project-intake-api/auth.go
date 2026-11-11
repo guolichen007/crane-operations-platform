@@ -11,6 +11,8 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -29,6 +31,8 @@ type App struct {
 	cfg      Config
 	oauth    oauth2.Config
 	verifier *oidc.IDTokenVerifier
+	// Keycloak RP-initiated logout endpoint (discovery end_session_endpoint).
+	endSession string
 }
 
 func newApp(ctx context.Context, db *pgxpool.Pool, c Config) (*App, error) {
@@ -39,6 +43,14 @@ func newApp(ctx context.Context, db *pgxpool.Pool, c Config) (*App, error) {
 			return nil, e
 		}
 		a.verifier = p.Verifier(&oidc.Config{ClientID: c.ClientID})
+		var meta struct {
+			EndSession string `json:"end_session_endpoint"`
+		}
+		// HTTPS only; plain http is accepted for loopback test providers.
+		if p.Claims(&meta) == nil && (strings.HasPrefix(meta.EndSession, "https://") ||
+			strings.HasPrefix(meta.EndSession, "http://127.0.0.1:")) {
+			a.endSession = meta.EndSession
+		}
 		a.oauth = oauth2.Config{ClientID: c.ClientID, ClientSecret: c.Secret, Endpoint: p.Endpoint(), RedirectURL: c.Origin + "/auth/callback", Scopes: []string{oidc.ScopeOpenID, "profile", "email"}}
 	}
 	return a, nil
@@ -206,28 +218,59 @@ func (a *App) auth(w http.ResponseWriter, r *http.Request) {
 	case "/auth/callback":
 		a.finishLogin(w, r)
 	case "/auth/logout":
-		u, e := a.user(r)
-		if e != nil {
-			a.sessionFailure(w, e)
-			return
-		}
-		if r.Method != "POST" {
-			fail(w, 405, "METHOD_NOT_ALLOWED", "请使用退出登录操作")
-			return
-		}
-		if !a.csrf(w, r, u) {
-			return
-		}
-		c, _ := r.Cookie(a.cookieName())
-		if _, e = a.db.Exec(r.Context(), `DELETE FROM app_sessions WHERE token_hash=$1`, hash(c.Value)); e != nil {
-			fail(w, 503, "SESSION_UNAVAILABLE", "退出失败，请重试")
-			return
-		}
-		a.cookie(w, a.cookieName(), "", -1)
-		respond(w, 200, map[string]bool{"ok": true})
+		a.logout(w, r)
 	default:
 		fail(w, 404, "NOT_FOUND", "入口不存在")
 	}
+}
+
+// logout ends only the Baobei session (local). scope=sso additionally returns the
+// Keycloak end-session URL; the browser must visit it explicitly, because that ends
+// the shared enterprise SSO session for every application in the realm.
+func (a *App) logout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		fail(w, 405, "METHOD_NOT_ALLOWED", "请使用退出登录操作")
+		return
+	}
+	scope := r.URL.Query().Get("scope")
+	if scope != "" && scope != "sso" || len(r.URL.Query()) > 1 {
+		fail(w, 400, "INVALID_INPUT", "退出范围不正确")
+		return
+	}
+	result := map[string]any{"ok": true}
+	if scope == "sso" {
+		if a.endSession == "" {
+			fail(w, 503, string(loginProviderUnavailable), "企业认证服务暂时不可用，请稍后重试")
+			return
+		}
+		// client_id + post_logout_redirect_uri (Keycloak 26 OIDC RP-initiated logout);
+		// the deprecated redirect_uri parameter is not used. Keycloak asks the user to confirm.
+		result["endSessionUrl"] = a.endSession + "?" + url.Values{
+			"client_id":                {a.cfg.ClientID},
+			"post_logout_redirect_uri": {a.cfg.Origin + "/login?signedOut=sso"},
+		}.Encode()
+	}
+	u, e := a.user(r)
+	if e != nil {
+		if errors.Is(e, http.ErrNoCookie) || errors.Is(e, pgx.ErrNoRows) {
+			// Repeated logout or an already expired session: idempotent, nothing to revoke.
+			a.cookie(w, a.cookieName(), "", -1)
+			result["alreadySignedOut"] = true
+			respond(w, 200, result)
+			return
+		}
+		a.sessionFailure(w, e)
+		return
+	}
+	if !a.csrf(w, r, u) {
+		return
+	}
+	if _, e = a.db.Exec(r.Context(), `DELETE FROM app_sessions WHERE token_hash=$1`, u.sessionHash); e != nil {
+		fail(w, 503, "SESSION_UNAVAILABLE", "退出失败，请重试")
+		return
+	}
+	a.cookie(w, a.cookieName(), "", -1)
+	respond(w, 200, result)
 }
 func (a *App) csrf(w http.ResponseWriter, r *http.Request, u User) bool {
 	if r.Header.Get("Origin") != a.cfg.Origin || subtle.ConstantTimeCompare([]byte(r.Header.Get("X-CSRF-Token")), []byte(u.CSRF)) != 1 {

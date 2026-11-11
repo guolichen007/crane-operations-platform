@@ -15,7 +15,7 @@ import StaffTeams from './StaffTeams.vue';
 import { useApp } from './store';
 import { routeAllowed } from './navigation';
 import { loginErrorMessage } from './login-errors';
-import { clearStaffRoleDraft, readStaffRoleDraft } from './staff-role-draft';
+import { clearStaffDraft, draftPath, readStaffDraft } from './staff-role-draft';
 import './style.css';
 const pinia = createPinia();
 const router = createRouter({
@@ -44,11 +44,13 @@ router.beforeEach(async (to) => {
   if (!app.sessionChecked) await app.loadUser();
   if (!app.user && to.path !== '/login') return { path: '/login', replace: true };
   if (app.user && to.path === '/login' && !loginErrorMessage(to.query.error)) return '/';
+  // Back from enterprise reauthentication: return to the member and action that
+  // asked for it. Drafts of another account are discarded, never applied.
   if (app.user && to.path === '/') {
-    const draft = readStaffRoleDraft();
+    const draft = readStaffDraft();
     if (draft && app.user.role === 'baobei_admin' && draft.actor === app.user.subject)
-      return { path: '/team/members/' + draft.staffId, replace: true };
-    if (draft) clearStaffRoleDraft();
+      return { path: draftPath(draft), query: { resume: draft.action }, replace: true };
+    if (draft) clearStaffDraft();
   }
   // Continuing an existing draft is authorized per project by Project.actions.
   if (to.path === '/new' && to.query.draft) return;

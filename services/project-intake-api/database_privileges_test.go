@@ -160,7 +160,7 @@ func TestDatabaseProductionPrivileges(t *testing.T) {
 	sales := login(t, server, "synthetic-a")
 	manager := login(t, server, "synthetic-manager")
 	director := login(t, server, "synthetic-director")
-	statusStaff, bodyStaff := manager.call("POST", "/api/v1/staff/invitations", staffProfileInput{Name: "合成隔离邀请", Email: "role-fixture@example.test", Role: salesRole, TeamID: syntheticTeam, Reason: "角色隔离验证"})
+	statusStaff, bodyStaff := manager.call("POST", "/api/v1/staff/invitations", staffProfileInput{Name: "合成隔离邀请", Email: "role-fixture@example.test", Phone: "13900000103", Role: salesRole, TeamID: syntheticTeam, Reason: "角色隔离验证"})
 	invitation := memberFrom(t, statusStaff, bodyStaff)
 	receipt := provisionReceipt{StaffID: invitation.ID, Version: invitation.Version, Operation: "approve",
 		Subject: "99999999-9999-4999-8999-999999999999", Email: invitation.Email, IdentityVerified: true, UniqueEmail: true,

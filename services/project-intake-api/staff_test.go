@@ -59,7 +59,7 @@ func TestDatabaseStaffGovernance(t *testing.T) {
 	if !strings.Contains(string(body), `"items":[]`) {
 		t.Fatal("pagination", string(body))
 	}
-	invite := staffProfileInput{Name: "合成邀请", Email: "Invitation@Example.Test", Role: salesRole, TeamID: syntheticTeam, Reason: "合成审批"}
+	invite := staffProfileInput{Name: "合成邀请", Email: "Invitation@Example.Test", Phone: "139 0000 0107", Role: salesRole, TeamID: syntheticTeam, Reason: "合成审批"}
 	status, body = manager.call("POST", base+"/invitations", invite)
 	invited := memberFrom(t, status, body)
 	if invited.Status != staffPending || invited.Email != "invitation@example.test" || len(invited.Permissions) != 3 || invited.SyncStatus != "PENDING" {
@@ -249,7 +249,7 @@ func TestDatabaseStaffGovernance(t *testing.T) {
 	if _, err = db.Exec(ctx, `UPDATE staff_sessions SET reauthenticated_at=NULL WHERE subject='synthetic-admin'`); err != nil {
 		t.Fatal(err)
 	}
-	status, body = admin.call("POST", base+"/invitations", staffProfileInput{Name: "合成主管", Email: "new-manager@example.test", Role: managerRole, TeamID: syntheticTeam, Reason: "高级角色审批"})
+	status, body = admin.call("POST", base+"/invitations", staffProfileInput{Name: "合成主管", Email: "new-manager@example.test", Phone: "13900000108", Role: managerRole, TeamID: syntheticTeam, Reason: "高级角色审批"})
 	expect(t, status, 403, body)
 	if !strings.Contains(string(body), "STAFF_REAUTH_REQUIRED") {
 		t.Fatal(string(body))

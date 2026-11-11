@@ -1,6 +1,12 @@
 import { type Page } from '../../../apps/project-intake-web/node_modules/@playwright/test/index.mjs';
 import { test, expect, findCard, uniq } from './support/isolation';
 
+// Unique synthetic mainland mobile per run (+86 139 xxxx xxxx), never a real number pattern reuse.
+const phoneFor = (unique: string, slot: number) => {
+  let h = slot;
+  for (const ch of unique) h = (h * 31 + ch.charCodeAt(0)) % 100_000_000;
+  return '139' + String(h).padStart(8, '0');
+};
 const action = (page: Page, id: string) => page.locator('[data-action-id="' + id + '"]:visible');
 test.use({ actionTimeout: 10000 });
 
@@ -17,15 +23,15 @@ async function login(page: Page, subject: string) {
 }
 
 async function confirm(page: Page, reason: string) {
-  await page.getByRole('dialog').getByLabel('操作原因').fill(reason);
+  await page.getByRole('dialog').getByLabel(/^操作原因/).fill(reason);
   await action(page, 'staff.confirm').click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 }
 
 async function findMember(page: Page, query: string) {
-  await page.getByLabel('姓名或邮箱').fill(query);
+  await page.getByLabel('姓名、邮箱或手机').fill(query);
   await action(page, 'staff.search').click();
-  await expect(page.locator('.staff-list')).toContainText(query);
+  await expect(page.locator('.staff-table')).toContainText(query);
   await action(page, 'staff.detail').click();
 }
 
@@ -36,6 +42,7 @@ test('B3 主管邀请、调整权限、审核、停用与交接', async ({ page,
   const salesPage = await context.newPage();
   const unique = uniq(info.project.name);
   const email = 'invite-' + unique + '@example.test';
+  const phone = phoneFor(unique, mobile ? 1 : 2);
   const projectName = 'SyntheticB3-' + unique;
   try {
     await login(salesPage, sales);
@@ -84,25 +91,31 @@ test('B3 主管邀请、调整权限、审核、停用与交接', async ({ page,
     const invite = action(page, 'staff.invite');
     await invite.focus();
     await invite.press('Enter');
-    const dialog = page.getByRole('dialog', { name: '添加团队成员' });
-    await expect(dialog.getByLabel('团队')).toBeDisabled();
-    await expect(dialog.getByLabel('角色')).toBeDisabled();
+    const dialog = page.getByRole('dialog', { name: '添加成员' });
+    await expect(dialog.getByLabel(/^团队/)).toBeDisabled();
+    await expect(dialog.getByLabel(/^角色/)).toBeDisabled();
     await page.keyboard.press('Escape');
     await expect(invite).toBeFocused();
     await invite.click();
-    await dialog.getByLabel('姓名', { exact: true }).fill('合成待开通销售');
-    await dialog.getByLabel('工作邮箱').fill(email);
+    await dialog.getByLabel(/^姓名/).fill('合成待开通销售');
+    await dialog.getByLabel(/^工作手机/).fill(phone);
+    await dialog.getByLabel(/^工作邮箱/).fill(email);
     await confirm(page, 'Synthetic B3 添加人员');
-    await expect(page.locator('.staff-row').filter({ hasText: email })).toContainText('待管理员开通');
+    // Saving opens the new member: status and the next step are explicit.
+    await expect(page.locator('.staff-title')).toContainText('待开通');
+    await expect(page.getByText('等待管理员审核开通', { exact: true })).toBeVisible();
+    await action(page, 'staff.back').click();
+    await page.getByLabel('姓名、邮箱或手机').fill(email);
     await page.getByLabel('账号状态').selectOption('PENDING_PROVISION');
     await expect(page.locator('.staff-row')).toHaveCount(1);
+    await expect(page.locator('.staff-row')).toContainText('待开通');
     await page.getByLabel('排序').selectOption('lastLogin');
     await expect(action(page, 'staff.previous')).toBeDisabled();
     await expect(action(page, 'staff.next')).toBeDisabled();
     await action(page, 'staff.detail').click();
-    await expect(page.getByText('等待管理员处理受控开通回执', { exact: false })).toBeVisible();
+    await expect(page.getByText('等待管理员审核开通', { exact: true })).toBeVisible();
     await action(page, 'staff.edit').click();
-    await page.getByRole('dialog').getByLabel('备注').fill('Synthetic B3 团队备注');
+    await page.getByRole('dialog').getByLabel(/^备注/).fill('Synthetic B3 团队备注');
     await confirm(page, 'Synthetic B3 编辑资料');
     await expect(page.getByText('Synthetic B3 团队备注')).toBeVisible();
     await action(page, 'staff.permissions').click();
@@ -111,7 +124,7 @@ test('B3 主管邀请、调整权限、审核、停用与交接', async ({ page,
     await action(page, 'staff.permissions').click();
     await page.getByRole('dialog').getByLabel('记录跟进').uncheck();
     await confirm(page, 'Synthetic B3 收回跟进权限');
-    await expect(page.getByText('记录跟进 · 关闭', { exact: true })).toBeVisible();
+    await expect(page.locator('.staff-permissions li').filter({ hasText: '记录跟进' })).toContainText('关闭');
     await expect(page.getByText('Synthetic B3 收回跟进权限')).toBeVisible();
 
     await action(page, 'staff.back').click();
@@ -131,7 +144,7 @@ test('B3 主管邀请、调整权限、审核、停用与交接', async ({ page,
     await expect(page.getByRole('list', { name: '移交结果' })).toContainText('已移交');
     await action(page, 'staff.reactivate').click();
     await confirm(page, 'Synthetic B3 恢复申请');
-    await expect(page.locator('.staff-title')).toContainText('待管理员开通');
+    await expect(page.locator('.staff-title')).toContainText('待开通');
     await expect(page.getByText(transferReason, { exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
   } finally {
@@ -162,13 +175,13 @@ test('B3 管理员维护团队与邀请高级角色', async ({ page }, info) => 
 
   await page.getByRole('button', { name: '人员管理', exact: true }).click();
   await action(page, 'staff.invite').click();
-  await dialog.getByLabel('姓名', { exact: true }).fill('合成新主管');
-  await dialog.getByLabel('工作邮箱').fill(email);
-  await dialog.getByLabel('角色').selectOption('baobei_manager');
-  await dialog.getByLabel('团队').selectOption({ label: team + '-更新' });
+  await dialog.getByLabel(/^姓名/).fill('合成新主管');
+  await dialog.getByLabel(/^工作手机/).fill(phoneFor(unique, 3));
+  await dialog.getByLabel(/^工作邮箱/).fill(email);
+  await dialog.getByLabel(/^角色/).selectOption('baobei_manager');
+  await dialog.getByLabel(/^团队/).selectOption({ label: team + '-更新' });
   await confirm(page, 'Synthetic B3 高级角色审批');
-  await expect(page.locator('.staff-row').filter({ hasText: email })).toContainText('待管理员开通');
-  await action(page, 'staff.detail').click();
+  await expect(page.locator('.staff-title')).toContainText('待开通');
   await expect(page.getByText('人员管理仅展示项目计数。')).toBeVisible();
   await action(page, 'staff.suspend').click();
   await confirm(page, 'Synthetic B3 停用高级角色');

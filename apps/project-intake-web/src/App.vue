@@ -15,11 +15,11 @@ import {
   Inbox,
   ClipboardCheck,
   Copy,
+  UserRoundCog,
 } from '@lucide/vue';
 import ActionButton from './ActionButton.vue';
 import Modal from './Modal.vue';
 import { useApp } from './store';
-import { clearStaffRoleDraft } from './staff-role-draft';
 import { navigation, navGroups, can, workspaceLabel, roleLabel, type NavItem } from './navigation';
 const app = useApp(),
   router = useRouter(),
@@ -50,15 +50,29 @@ const groups = computed(() => {
 const active = (path: string) =>
   path === '/' ? route.path === '/' : route.path === path || route.path.startsWith(path + '/');
 const createLabel = computed(() => (app.user?.role === 'baobei_admin' ? '新建项目' : '新建报备'));
+const accountOpen = ref(false);
+// Ends this Baobei session only; other enterprise applications stay signed in.
 async function logout() {
-  await app.api('/auth/logout', 'POST', {});
-  clearStaffRoleDraft();
-  app.user = null;
-  app.toast('已退出登录');
+  accountOpen.value = false;
+  await app.logout('local');
+  app.toast('已退出项目报备中心');
   await router.push('/login');
 }
+// Switch account: end the Baobei session, then Keycloak shows the login form
+// (prompt=login) so another identity can be entered explicitly.
+async function switchAccount() {
+  accountOpen.value = false;
+  await app.logout('local');
+  window.location.assign('/auth/login?account=switch');
+}
+// Ends the shared enterprise SSO session (all applications), after confirmation.
+async function signOutEverywhere() {
+  const url = await app.logout('sso');
+  if (url) window.location.assign(url);
+  else await router.push('/login');
+}
 watch(() => app.user, (user, previous) => {
-  if (previous && !user && app.sessionIssue === 'expired' && route.path !== '/login')
+  if (previous && !user && app.sessionIssue && route.path !== '/login')
     void router.replace('/login');
 });
 function showError(event: ErrorEvent) {
@@ -69,7 +83,7 @@ window.addEventListener('error', showError);
 <template>
   <div v-if="app.user && route.path !== '/login'" class="shell">
     <aside class="sidebar" aria-label="主导航">
-      <a href="/" class="brand" data-action-id="nav.open" @click.prevent="router.push('/')"><span class="brand-mark" aria-hidden="true"></span><span>项目报备中心<small>优道行车项目</small></span></a>
+      <a href="/" class="brand" data-action-id="nav.open" @click.prevent="router.push('/')"><span class="brand-mark" aria-hidden="true"></span><span>项目报备中心<small>友道行车项目</small></span></a>
       <div class="workspace-label">{{ workspaceLabel(app.user) }}</div>
       <nav>
         <template v-for="g in groups" :key="g.key">
@@ -116,7 +130,9 @@ window.addEventListener('error', showError);
             :run="() => router.push('/new')"
           >
             <Plus :size="16" aria-hidden="true" /><span>{{ createLabel }}</span>
-          </ActionButton><span class="avatar" aria-hidden="true">{{ app.user.name.slice(-1) }}</span><span class="user-name">{{ app.user.name }}<small>{{ roleLabel(app.user.role) }}</small></span><ActionButton action-id="auth.logout" :run="logout" aria-label="退出登录">
+          </ActionButton><span class="avatar" aria-hidden="true">{{ app.user.name.slice(-1) }}</span><span class="user-name">{{ app.user.name }}<small>{{ roleLabel(app.user.role) }}</small></span><ActionButton action-id="auth.account" aria-label="账号与退出" :run="() => { accountOpen = true; }">
+            <UserRoundCog :size="16" aria-hidden="true" />
+          </ActionButton><ActionButton action-id="auth.logout" :run="logout" aria-label="退出登录">
             <LogOut :size="16" aria-hidden="true" />
           </ActionButton>
         </div>
@@ -129,6 +145,30 @@ window.addEventListener('error', showError);
   <div v-if="app.error && route.path !== '/login'" class="error-banner" role="alert">
     {{ app.error }}<span> · 请重试或刷新页面；表单输入会保留。</span>
   </div>
+  <Modal
+    :open="accountOpen"
+    title="账号与退出"
+    :description="app.user ? `当前账号：${app.user.name} · ${roleLabel(app.user.role)}` : undefined"
+    @update:open="(v) => (accountOpen = v)"
+  >
+    <div class="account-options">
+      <section>
+        <h3>退出项目报备中心</h3>
+        <p class="muted">只结束本系统的登录，企业账号的其他应用不受影响。</p>
+        <ActionButton action-id="auth.logout-confirm" primary :run="logout">退出登录</ActionButton>
+      </section>
+      <section>
+        <h3>切换账号</h3>
+        <p class="muted">退出后进入企业登录页，输入另一个企业账号。</p>
+        <ActionButton action-id="auth.switch" :run="switchAccount">切换到其他账号</ActionButton>
+      </section>
+      <section>
+        <h3>退出企业账号</h3>
+        <p class="muted">同时退出使用同一企业账号登录的所有应用，例如行车平台。仅在共用电脑或离开时使用。</p>
+        <ActionButton action-id="auth.logout-sso" :run="signOutEverywhere">退出企业账号（所有应用）</ActionButton>
+      </section>
+    </div>
+  </Modal>
   <Modal
     :open="app.confirmOpen"
     title="离开当前表单？"

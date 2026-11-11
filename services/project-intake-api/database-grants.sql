@@ -26,9 +26,9 @@ GRANT INSERT ON audit_events TO baobei_maintenance;
 GRANT SELECT ON baobei_migrations, app_users, teams, staff_audit, staff_outbox, staff_handoffs TO baobei_staff_api;
 GRANT SELECT (token_hash,subject,expires_at), INSERT, DELETE ON app_sessions TO baobei_staff_api;
 GRANT SELECT, INSERT ON staff_sessions TO baobei_staff_api;
-GRANT INSERT (subject,display_name,role,team_id,active,staff_id,work_email,staff_status,staff_note,staff_permissions,staff_managed)
+GRANT INSERT (subject,display_name,role,team_id,active,staff_id,work_email,work_phone,staff_status,staff_note,staff_permissions,staff_managed)
  ON app_users TO baobei_staff_api;
-GRANT UPDATE (display_name,role,team_id,active,work_email,staff_status,staff_version,staff_note,staff_permissions,staff_managed,last_login_at)
+GRANT UPDATE (display_name,role,team_id,active,work_email,work_phone,staff_status,staff_version,staff_note,staff_permissions,staff_managed,last_login_at)
  ON app_users TO baobei_staff_api;
 GRANT INSERT, UPDATE (name,staff_version) ON teams TO baobei_staff_api;
 GRANT INSERT ON staff_audit, staff_handoffs TO baobei_staff_api;

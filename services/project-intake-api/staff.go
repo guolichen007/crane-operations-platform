@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/mail"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -29,6 +30,12 @@ const (
 	allCapabilities = 7
 )
 
+var (
+	phonePattern   = regexp.MustCompile(`^\+[1-9][0-9]{7,14}$`)
+	mainlandMobile = regexp.MustCompile(`^\+861[3-9][0-9]{9}$`)
+	digitsOnly     = regexp.MustCompile(`^[0-9\s]+$`)
+)
+
 var capabilityNames = []string{"project.create", "project.submit", "activity.create"}
 var staffStates = []string{staffPending, staffActivation, staffActive, staffSuspended, staffFailed, staffArchived}
 
@@ -40,11 +47,12 @@ type staffProblem struct {
 func (p staffProblem) Error() string { return p.code }
 
 var (
-	staffDenied   = staffProblem{403, "STAFF_FORBIDDEN", "没有人员管理权限"}
-	staffInvalid  = staffProblem{400, "STAFF_INVALID_INPUT", "请检查人员字段和操作原因"}
-	staffMissing  = staffProblem{404, "STAFF_NOT_FOUND", "人员或团队不存在"}
-	staffConflict = staffProblem{409, "STAFF_CONFLICT", "记录或账号状态已变化，请刷新后重试"}
-	staffReauth   = staffProblem{403, "STAFF_REAUTH_REQUIRED", "请先通过企业账号重新认证"}
+	staffDenied         = staffProblem{403, "STAFF_FORBIDDEN", "没有人员管理权限"}
+	staffInvalid        = staffProblem{400, "STAFF_INVALID_INPUT", "请检查人员字段和操作原因"}
+	staffMissing        = staffProblem{404, "STAFF_NOT_FOUND", "人员或团队不存在"}
+	staffConflict       = staffProblem{409, "STAFF_CONFLICT", "记录或账号状态已变化，请刷新后重试"}
+	staffReauth         = staffProblem{403, "STAFF_REAUTH_REQUIRED", "此操作需要重新验证企业账号"}
+	staffReasonRequired = staffProblem{400, "STAFF_REASON_REQUIRED", "请填写操作原因"}
 )
 
 func staffError(w http.ResponseWriter, err error) bool {
@@ -57,7 +65,14 @@ func staffError(w http.ResponseWriter, err error) bool {
 	if errors.As(err, &pgErr) {
 		switch pgErr.Code {
 		case "23505":
-			fail(w, 409, "STAFF_DUPLICATE", "邮箱、身份或团队已存在")
+			switch pgErr.ConstraintName {
+			case "staff_phone_unique":
+				fail(w, 409, "STAFF_PHONE_DUPLICATE", "该工作手机已被其他成员使用")
+			case "staff_email_unique":
+				fail(w, 409, "STAFF_EMAIL_DUPLICATE", "该工作邮箱已被其他成员使用")
+			default:
+				fail(w, 409, "STAFF_DUPLICATE", "邮箱、身份或团队已存在")
+			}
 			return true
 		case "BB001":
 			fail(w, 409, "STAFF_LAST_ADMIN", "必须保留至少一名有效管理员")
@@ -108,6 +123,37 @@ func normalizedEmail(raw string) (string, error) {
 	return value, nil
 }
 
+// normalizedPhone returns canonical E.164. Mainland mobiles may be entered as
+// 11 digits or with an 86/0086/+86 prefix; other countries must start with +.
+func normalizedPhone(raw string) (string, error) {
+	value := strings.Map(func(r rune) rune {
+		if r == ' ' || r == '-' || r == '(' || r == ')' || r == '\u00a0' {
+			return -1
+		}
+		return r
+	}, strings.TrimSpace(raw))
+	switch {
+	case strings.HasPrefix(value, "0086"):
+		value = "+86" + value[4:]
+	case len(value) == 13 && strings.HasPrefix(value, "86"):
+		value = "+" + value
+	case len(value) == 11 && strings.HasPrefix(value, "1"):
+		value = "+86" + value
+	}
+	if !phonePattern.MatchString(value) || strings.HasPrefix(value, "+86") && !mainlandMobile.MatchString(value) {
+		return "", staffProblem{400, "STAFF_PHONE_INVALID", "工作手机格式不正确：国内手机填 11 位号码，境外号码以 + 和国家码开头"}
+	}
+	return value, nil
+}
+
+// maskedPhone keeps lists useful without exposing the full number.
+func maskedPhone(phone string) string {
+	if len(phone) < 8 {
+		return phone
+	}
+	return phone[:len(phone)-8] + "****" + phone[len(phone)-4:]
+}
+
 func staffRole(role string) bool {
 	return role == managerRole || role == directorRole || role == adminRole
 }
@@ -121,17 +167,31 @@ func staffWritable(actor User, subject, role, team string) bool {
 func recentReauth(at *time.Time) bool {
 	return at != nil && time.Since(*at) >= -30*time.Second && time.Since(*at) <= 5*time.Minute
 }
-func needsApproval(actor User, oldRole, newRole string, at *time.Time) error {
+
+// needsApproval: only administrators manage non-sales members. A fresh signed
+// enterprise reauthentication is required only for sensitive identity actions
+// (granting or changing an advanced role, identity re-verification, restoring an
+// advanced account). Ordinary profile edits do not ask for the password again.
+func needsApproval(actor User, oldRole, newRole string, at *time.Time, sensitive bool) error {
 	if oldRole == salesRole && newRole == salesRole {
 		return nil
 	}
 	if actor.Role != adminRole {
 		return staffDenied
 	}
-	if !recentReauth(at) {
+	if sensitive && !recentReauth(at) {
 		return staffReauth
 	}
 	return nil
+}
+
+// reauthExpiry is shown to administrators only; the server re-checks on every write.
+func reauthExpiry(actor User, at *time.Time) *time.Time {
+	if actor.Role != adminRole || !recentReauth(at) {
+		return nil
+	}
+	until := at.Add(5 * time.Minute)
+	return &until
 }
 
 type staffMember struct {
@@ -139,6 +199,7 @@ type staffMember struct {
 	Subject          string     `json:"-"`
 	Name             string     `json:"name"`
 	Email            string     `json:"email"`
+	Phone            string     `json:"phone"`
 	TeamID           string     `json:"teamId"`
 	Team             string     `json:"team"`
 	Role             string     `json:"role"`
@@ -153,6 +214,8 @@ type staffMember struct {
 	IdentityVerified bool       `json:"identityVerified"`
 	IdentityLinked   bool       `json:"identityLinked"`
 	RoleChanged      bool       `json:"roleChanged"`
+	// An administrator approved this exact staff version for controlled provisioning.
+	ProvisionReviewed bool `json:"provisionReviewed"`
 }
 type staffProject struct {
 	ID      string `json:"id"`
@@ -175,13 +238,14 @@ type staffEvent struct {
 	At      time.Time `json:"at"`
 }
 
-const staffColumns = `u.staff_id::text,u.subject,u.display_name,coalesce(u.work_email,''),coalesce(u.team_id::text,''),coalesce(t.name,''),
+const staffColumns = `u.staff_id::text,u.subject,u.display_name,coalesce(u.work_email,''),coalesce(u.work_phone,''),coalesce(u.team_id::text,''),coalesce(t.name,''),
  u.role,u.staff_status,u.staff_version,u.staff_note,u.staff_permissions,
  (SELECT count(*) FROM intake_projects p WHERE p.owner_subject=u.subject
    AND ($1<>'baobei_manager' OR p.team_id::text=$2)),u.last_login_at,
  coalesce((SELECT status FROM staff_outbox o WHERE o.staff_id=u.staff_id ORDER BY o.staff_version DESC,o.created_at DESC LIMIT 1),'NONE'),
  (u.active AND u.staff_managed AND EXISTS(SELECT 1 FROM staff_audit a WHERE a.target_id=u.staff_id AND a.action='staff.activate')),
- EXISTS(SELECT 1 FROM staff_audit a WHERE a.target_id=u.staff_id AND a.action='staff.role-change')`
+ EXISTS(SELECT 1 FROM staff_audit a WHERE a.target_id=u.staff_id AND a.action='staff.role-change'),
+ EXISTS(SELECT 1 FROM staff_audit a WHERE a.target_id=u.staff_id AND a.action='staff.provision.review' AND a.version=u.staff_version)`
 const staffFrom = ` FROM app_users u LEFT JOIN teams t ON t.id=u.team_id `
 const staffScope = ` ($1 IN ('baobei_admin','baobei_director') OR ($1='baobei_manager' AND u.role='baobei_sales' AND u.team_id::text=$2)) `
 const openProjects = `intake_status NOT IN ('REJECTED','CANCELLED','CONVERTED') AND sales_stage NOT IN ('WON','LOST')`
@@ -189,11 +253,17 @@ const openProjects = `intake_status NOT IN ('REJECTED','CANCELLED','CONVERTED') 
 func scanStaff(row interface{ Scan(...any) error }) (staffMember, error) {
 	var m staffMember
 	var mask int
-	err := row.Scan(&m.ID, &m.Subject, &m.Name, &m.Email, &m.TeamID, &m.Team, &m.Role, &m.Status, &m.Version, &m.Note, &mask, &m.Projects, &m.LastLogin, &m.SyncStatus, &m.IdentityVerified, &m.RoleChanged)
+	err := row.Scan(&m.ID, &m.Subject, &m.Name, &m.Email, &m.Phone, &m.TeamID, &m.Team, &m.Role, &m.Status, &m.Version, &m.Note, &mask, &m.Projects, &m.LastLogin, &m.SyncStatus, &m.IdentityVerified, &m.RoleChanged, &m.ProvisionReviewed)
 	m.Permissions = capabilityList(mask)
-	email, emailErr := normalizedEmail(m.Email)
 	m.IdentityLinked = validIdentityUUID(m.Subject)
-	m.IdentityVerified = m.IdentityVerified && m.IdentityLinked && emailErr == nil && email == m.Email
+	// Without an email, the exact Keycloak subject bound by the provisioning receipt
+	// plus an activation login carrying the exact client role is the identity proof.
+	emailOK := m.Email == ""
+	if !emailOK {
+		email, emailErr := normalizedEmail(m.Email)
+		emailOK = emailErr == nil && email == m.Email
+	}
+	m.IdentityVerified = m.IdentityVerified && m.IdentityLinked && emailOK
 	return m, err
 }
 
@@ -209,7 +279,7 @@ func readStaff(ctx context.Context, tx pgx.Tx, actor User, id string) (staffMemb
 	return m, err
 }
 
-func listStaff(ctx context.Context, tx pgx.Tx, actor User, r *http.Request) (any, error) {
+func listStaff(ctx context.Context, tx pgx.Tx, actor User, at *time.Time, r *http.Request) (any, error) {
 	q := r.URL.Query()
 	search, status, order := strings.TrimSpace(q.Get("q")), q.Get("status"), q.Get("sort")
 	if len(search) > 254 || status != "" && !contains(staffStates, status) {
@@ -228,13 +298,18 @@ func listStaff(ctx context.Context, tx pgx.Tx, actor User, r *http.Request) (any
 		page = parsed
 	}
 	const pageSize = 20
-	where := ` WHERE ` + staffScope + ` AND ($3='' OR position(lower($3) in lower(u.display_name))>0 OR position(lower($3) in coalesce(u.work_email,''))>0)
+	phoneQuery := ""
+	if digitsOnly.MatchString(search) {
+		phoneQuery = strings.ReplaceAll(search, " ", "")
+	}
+	where := ` WHERE ` + staffScope + ` AND ($3='' OR position(lower($3) in lower(u.display_name))>0 OR position(lower($3) in coalesce(u.work_email,''))>0
+  OR ($5<>'' AND position($5 in coalesce(u.work_phone,''))>0))
   AND ($4='' OR u.staff_status=$4)`
 	var total int
-	if err := tx.QueryRow(ctx, `SELECT count(*)`+staffFrom+where, actor.Role, actor.TeamID, search, status).Scan(&total); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT count(*)`+staffFrom+where, actor.Role, actor.TeamID, search, status, phoneQuery).Scan(&total); err != nil {
 		return nil, err
 	}
-	rows, err := tx.Query(ctx, `SELECT `+staffColumns+staffFrom+where+` ORDER BY `+ordering+`,u.staff_id LIMIT $5 OFFSET $6`, actor.Role, actor.TeamID, search, status, pageSize, (page-1)*pageSize)
+	rows, err := tx.Query(ctx, `SELECT `+staffColumns+staffFrom+where+` ORDER BY `+ordering+`,u.staff_id LIMIT $6 OFFSET $7`, actor.Role, actor.TeamID, search, status, phoneQuery, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -247,9 +322,10 @@ func listStaff(ctx context.Context, tx pgx.Tx, actor User, r *http.Request) (any
 		}
 		m.CanManage = staffWritable(actor, m.Subject, m.Role, m.TeamID) && m.Status != staffArchived
 		m.Note = ""
+		m.Phone = maskedPhone(m.Phone)
 		items = append(items, m)
 	}
-	return map[string]any{"items": items, "total": total, "page": page, "pageSize": pageSize}, rows.Err()
+	return map[string]any{"items": items, "total": total, "page": page, "pageSize": pageSize, "reauthExpiresAt": reauthExpiry(actor, at)}, rows.Err()
 }
 
 func staffProjects(ctx context.Context, tx pgx.Tx, actor User, m staffMember) ([]staffProject, error) {
@@ -305,6 +381,7 @@ func staffEnqueue(ctx context.Context, tx pgx.Tx, target string, version int, op
 type staffProfileInput struct {
 	Name           string   `json:"name"`
 	Email          string   `json:"email"`
+	Phone          string   `json:"phone"`
 	TeamID         string   `json:"teamId"`
 	Role           string   `json:"role"`
 	Note           string   `json:"note"`
@@ -321,17 +398,36 @@ type staffMutation struct {
 
 func reasonOK(reason string) bool { return strings.TrimSpace(reason) != "" && len(reason) <= 600 }
 
-func validateProfile(ctx context.Context, tx pgx.Tx, actor User, in *staffProfileInput) error {
+func validateProfile(ctx context.Context, tx pgx.Tx, actor User, in *staffProfileInput, phoneOptional bool) error {
 	in.Name = strings.TrimSpace(in.Name)
-	if !identityText(in.Name) || !reasonOK(in.Reason) || len(in.Note) > 1000 ||
+	if !identityText(in.Name) || digitsOnly.MatchString(in.Name) {
+		return staffProblem{400, "STAFF_NAME_INVALID", "请填写成员真实姓名，不能只包含数字"}
+	}
+	if !reasonOK(in.Reason) || len(in.Note) > 1000 ||
 		!contains([]string{salesRole, managerRole, directorRole, adminRole}, in.Role) {
 		return staffInvalid
 	}
-	email, err := normalizedEmail(in.Email)
-	if err != nil {
-		return err
+	if strings.TrimSpace(in.Email) == "" {
+		in.Email = ""
+	} else {
+		email, err := normalizedEmail(in.Email)
+		if err != nil {
+			return staffProblem{400, "STAFF_EMAIL_INVALID", "工作邮箱格式不正确；没有邮箱可以留空"}
+		}
+		in.Email = email
 	}
-	in.Email = email
+	if strings.TrimSpace(in.Phone) == "" {
+		if !phoneOptional {
+			return staffProblem{400, "STAFF_PHONE_REQUIRED", "请填写工作手机"}
+		}
+		in.Phone = ""
+	} else {
+		phone, err := normalizedPhone(in.Phone)
+		if err != nil {
+			return err
+		}
+		in.Phone = phone
+	}
 	if actor.Role != adminRole && in.Role != salesRole {
 		return staffDenied
 	}
@@ -340,7 +436,7 @@ func validateProfile(ctx context.Context, tx pgx.Tx, actor User, in *staffProfil
 	}
 	if in.Role == salesRole || in.Role == managerRole {
 		if !uuidPattern.MatchString(in.TeamID) {
-			return staffInvalid
+			return staffProblem{400, "STAFF_TEAM_REQUIRED", "销售和主管必须选择所属团队"}
 		}
 		var exists bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM teams WHERE id=$1)`, in.TeamID).Scan(&exists); err != nil {
@@ -359,10 +455,14 @@ func inviteStaff(ctx context.Context, tx pgx.Tx, actor User, at *time.Time, in s
 	if in.VerifyIdentity {
 		return nil, staffInvalid
 	}
-	if err := validateProfile(ctx, tx, actor, &in); err != nil {
+	if strings.TrimSpace(in.Reason) == "" {
+		in.Reason = "新增成员"
+	}
+	if err := validateProfile(ctx, tx, actor, &in, false); err != nil {
 		return nil, err
 	}
-	if err := needsApproval(actor, salesRole, in.Role, at); err != nil {
+	// Creating a member with an advanced role grants that role: sensitive.
+	if err := needsApproval(actor, salesRole, in.Role, at, in.Role != salesRole); err != nil {
 		return nil, err
 	}
 	mask := allCapabilities
@@ -375,9 +475,9 @@ func inviteStaff(ctx context.Context, tx pgx.Tx, actor User, at *time.Time, in s
 	}
 	var id string
 	err := tx.QueryRow(ctx, `WITH id AS (SELECT gen_random_uuid() AS v)
- INSERT INTO app_users(staff_id,subject,display_name,work_email,role,team_id,active,staff_status,staff_note,staff_permissions,staff_managed)
- SELECT v,'pending:'||v::text,$1,$2,$3,NULLIF($4,'')::uuid,false,'PENDING_PROVISION',$5,$6,true FROM id RETURNING staff_id::text`,
-		in.Name, in.Email, in.Role, in.TeamID, in.Note, mask).Scan(&id)
+ INSERT INTO app_users(staff_id,subject,display_name,work_email,work_phone,role,team_id,active,staff_status,staff_note,staff_permissions,staff_managed)
+ SELECT v,'pending:'||v::text,$1,NULLIF($2,''),$7,$3,NULLIF($4,'')::uuid,false,'PENDING_PROVISION',$5,$6,true FROM id RETURNING staff_id::text`,
+		in.Name, in.Email, in.Role, in.TeamID, in.Note, mask, in.Phone).Scan(&id)
 	if err != nil {
 		return nil, err
 	}
@@ -397,13 +497,25 @@ func editStaff(ctx context.Context, tx pgx.Tx, actor User, at *time.Time, m staf
 	if in.Version != m.Version {
 		return nil, staffConflict
 	}
-	if err := validateProfile(ctx, tx, actor, &in); err != nil {
-		return nil, err
+	// Ordinary profile edits get a default audit reason; role, team or identity
+	// changes must state one explicitly.
+	if strings.TrimSpace(in.Reason) == "" {
+		if in.Role != m.Role || in.TeamID != m.TeamID || in.VerifyIdentity {
+			return nil, staffReasonRequired
+		}
+		in.Reason = "更新成员资料"
 	}
-	if err := needsApproval(actor, m.Role, in.Role, at); err != nil {
+	// A member without a historical phone may be edited before one is added;
+	// once a phone exists it cannot be removed.
+	if err := validateProfile(ctx, tx, actor, &in, m.Phone == ""); err != nil {
 		return nil, err
 	}
 	roleChanged := m.Role != in.Role
+	sensitive := roleChanged || in.VerifyIdentity || in.Email != m.Email && staffRole(m.Role) ||
+		m.TeamID != in.TeamID && m.Role == managerRole
+	if err := needsApproval(actor, m.Role, in.Role, at, sensitive); err != nil {
+		return nil, err
+	}
 	if roleChanged && (!m.IdentityVerified || in.Email != m.Email) {
 		return nil, staffProblem{409, "STAFF_IDENTITY_NOT_VERIFIED", "请先完成企业身份核对和登录激活，再变更角色"}
 	}
@@ -426,9 +538,9 @@ func editStaff(ctx context.Context, tx pgx.Tx, actor User, at *time.Time, m staf
 		next = staffPending
 	}
 	version := m.Version + 1
-	_, err := tx.Exec(ctx, `UPDATE app_users SET display_name=$2,work_email=$3,role=$4,team_id=NULLIF($5,'')::uuid,
- staff_note=$6,staff_version=$7,staff_status=$8,active=($8='ACTIVE'),staff_managed=true
- WHERE staff_id=$1`, m.ID, in.Name, in.Email, in.Role, in.TeamID, in.Note, version, next)
+	_, err := tx.Exec(ctx, `UPDATE app_users SET display_name=$2,work_email=NULLIF($3,''),role=$4,team_id=NULLIF($5,'')::uuid,
+ staff_note=$6,staff_version=$7,staff_status=$8,active=($8='ACTIVE'),staff_managed=true,work_phone=NULLIF($9,'')
+ WHERE staff_id=$1`, m.ID, in.Name, in.Email, in.Role, in.TeamID, in.Note, version, next, in.Phone)
 	if err != nil {
 		return nil, err
 	}
@@ -453,13 +565,17 @@ func editStaff(ctx context.Context, tx pgx.Tx, actor User, at *time.Time, m staf
 }
 
 func mutateStaff(ctx context.Context, tx pgx.Tx, actor User, at *time.Time, m staffMember, action string, in staffMutation) (any, error) {
-	if !reasonOK(in.Reason) || in.Version < 1 {
+	if in.Version < 1 {
 		return nil, staffInvalid
+	}
+	if !reasonOK(in.Reason) {
+		return nil, staffReasonRequired
 	}
 	if in.Version != m.Version {
 		return nil, staffConflict
 	}
-	if err := needsApproval(actor, m.Role, m.Role, at); err != nil {
+	// Restoring an advanced account is a key identity recovery: sensitive.
+	if err := needsApproval(actor, m.Role, m.Role, at, action == "reactivate"); err != nil {
 		return nil, err
 	}
 	next, operation := m.Status, ""
@@ -485,7 +601,7 @@ func mutateStaff(ctx context.Context, tx pgx.Tx, actor User, at *time.Time, m st
 		}
 		next, operation = staffSuspended, "SUSPEND"
 	case "reactivate":
-		if m.Status != staffSuspended || m.Email == "" {
+		if m.Status != staffSuspended || m.Email == "" && m.Phone == "" && !m.IdentityLinked {
 			return nil, staffConflict
 		}
 		next, operation = staffPending, "PROVISION"
@@ -564,7 +680,10 @@ func transferStaffProjects(ctx context.Context, tx pgx.Tx, actor User, from staf
 	if from.Version != in.Version {
 		return nil, staffConflict
 	}
-	if !reasonOK(in.Reason) || len(in.Projects) == 0 || len(in.Projects) > 100 || in.TargetID == from.ID {
+	if !reasonOK(in.Reason) {
+		return nil, staffReasonRequired
+	}
+	if len(in.Projects) == 0 || len(in.Projects) > 100 || in.TargetID == from.ID {
 		return nil, staffInvalid
 	}
 	target, err := readStaff(ctx, tx, actor, in.TargetID)
@@ -767,7 +886,7 @@ func staffRoute(ctx context.Context, tx pgx.Tx, w http.ResponseWriter, r *http.R
 		return nil, staffMissing
 	}
 	if len(parts) == 1 && r.Method == "GET" {
-		return listStaff(ctx, tx, actor, r)
+		return listStaff(ctx, tx, actor, at, r)
 	}
 	if len(parts) == 2 && parts[1] == "invitations" && r.Method == "POST" {
 		var in staffProfileInput
@@ -791,7 +910,8 @@ func staffRoute(ctx context.Context, tx pgx.Tx, w http.ResponseWriter, r *http.R
 			return nil, staffMissing
 		}
 		projects, err := staffProjects(ctx, tx, actor, m)
-		return map[string]any{"member": m, "projects": projects, "recentReauth": actor.Role == adminRole && recentReauth(at)}, err
+		return map[string]any{"member": m, "projects": projects, "recentReauth": actor.Role == adminRole && recentReauth(at),
+			"reauthExpiresAt": reauthExpiry(actor, at)}, err
 	}
 	if !staffWritable(actor, m.Subject, m.Role, m.TeamID) || m.Status == staffArchived {
 		return nil, staffDenied
@@ -813,6 +933,13 @@ func staffRoute(ctx context.Context, tx pgx.Tx, w http.ResponseWriter, r *http.R
 			return nil, nil
 		}
 		return transferStaffProjects(ctx, tx, actor, m, in)
+	}
+	if action == "provision-review" && r.Method == "POST" {
+		var in provisionReviewInput
+		if !decode(w, r, &in) {
+			return nil, nil
+		}
+		return reviewProvision(ctx, tx, actor, m, in)
 	}
 	if action == "permissions" && r.Method == "PATCH" || r.Method == "POST" && contains([]string{"suspend", "reactivate", "archive", "retry"}, action) {
 		var in staffMutation
@@ -852,4 +979,65 @@ func (a *App) beginBusiness(ctx context.Context, user User, required int) (pgx.T
 		return nil, staffProblem{403, "BUSINESS_PERMISSION_DENIED", "账号状态或业务权限已变化"}
 	}
 	return tx, nil
+}
+
+type provisionReviewInput struct {
+	Version int    `json:"version"`
+	Reason  string `json:"reason"`
+	// Keycloak user UUID, when the administrator already created or located the account.
+	Subject string `json:"subject"`
+	// Keycloak username planned or used for the account; informational only.
+	Username string `json:"username"`
+}
+
+// reviewProvision records the administrator's approval of one exact staff version
+// and returns the receipt draft for the controlled staff-provision tool. It binds no
+// identity: the resident API holds no Keycloak administration permission, and binding
+// still happens only through the maintenance receipt (root-only file).
+func reviewProvision(ctx context.Context, tx pgx.Tx, actor User, m staffMember, in provisionReviewInput) (any, error) {
+	if actor.Role != adminRole {
+		return nil, staffDenied
+	}
+	if in.Version != m.Version {
+		return nil, staffConflict
+	}
+	in.Username = strings.TrimSpace(in.Username)
+	if !reasonOK(in.Reason) || in.Subject != "" && !validIdentityUUID(in.Subject) ||
+		len(in.Username) > 64 || in.Username != "" && !identityText(in.Username) {
+		return nil, staffInvalid
+	}
+	if m.Status != staffPending || m.SyncStatus != "PENDING" {
+		return nil, staffConflict
+	}
+	if m.IdentityLinked && in.Subject != "" && in.Subject != m.Subject {
+		return nil, staffProblem{409, "STAFF_IDENTITY_MISMATCH", "已绑定的企业账号只能以同一账号恢复"}
+	}
+	if in.Subject != "" {
+		var taken bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM app_users WHERE subject=$1 AND staff_id<>$2)`, in.Subject, m.ID).Scan(&taken); err != nil {
+			return nil, err
+		}
+		if taken {
+			return nil, staffProblem{409, "STAFF_IDENTITY_TAKEN", "该企业账号已绑定其他成员"}
+		}
+	}
+	reason := in.Reason
+	if in.Username != "" {
+		reason = "企业账号 " + in.Username + " · " + reason
+	}
+	if err := staffAudit(ctx, tx, m.ID, actor.Subject, "staff.provision.review", reason, m.Version); err != nil {
+		return nil, err
+	}
+	subject := in.Subject
+	if subject == "" && m.IdentityLinked {
+		subject = m.Subject
+	}
+	receipt := map[string]any{
+		"staffId": m.ID, "version": m.Version, "operation": "approve", "subject": subject,
+		"email": m.Email, "phone": m.Phone, "identityVerified": true, "uniqueEmail": m.Email != "",
+		"clientRoles": []string{m.Role}, "reason": in.Reason,
+		"approvalReference": "BAOBEI-REVIEW-" + strings.ToUpper(m.ID[:8]) + "-V" + strconv.Itoa(m.Version),
+	}
+	member, err := readStaff(ctx, tx, actor, m.ID)
+	return map[string]any{"member": member, "receipt": receipt}, err
 }

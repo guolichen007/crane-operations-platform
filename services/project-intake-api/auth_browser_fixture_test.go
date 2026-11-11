@@ -47,7 +47,7 @@ func TestAuthBrowserFixture(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		in := staffProfileInput{Name: "合成主管授权 " + name, Email: name + "@example.test", Role: salesRole, TeamID: syntheticTeam, Reason: "合成角色授权验收"}
+		in := staffProfileInput{Name: "合成主管授权 " + name, Email: name + "@example.test", Phone: map[string]string{"role-desktop": "13900000101", "role-mobile": "13900000102"}[name], Role: salesRole, TeamID: syntheticTeam, Reason: "合成角色授权验收"}
 		result, err := inviteStaff(ctx, tx, User{Subject: "synthetic-admin", Role: adminRole}, nil, in)
 		if err != nil {
 			tx.Rollback(ctx)
@@ -83,7 +83,9 @@ func TestAuthBrowserFixture(t *testing.T) {
 	var mode atomic.Value
 	mode.Store("success")
 	var dbOutage atomic.Bool
-	var exchanges atomic.Int64
+	var exchanges, ssoLogouts atomic.Int64
+	var lastPrompt atomic.Value
+	lastPrompt.Store("")
 	var mu sync.Mutex
 	type attempt struct{ mode, nonce, challenge string }
 	attempts := make(map[string]attempt)
@@ -96,7 +98,20 @@ func TestAuthBrowserFixture(t *testing.T) {
 			respond(w, 200, map[string]any{
 				"issuer": issuer, "authorization_endpoint": issuer + "/authorize", "token_endpoint": issuer + "/token",
 				"jwks_uri": issuer + "/keys", "id_token_signing_alg_values_supported": []string{"RS256"},
+				"end_session_endpoint": issuer + "/logout",
 			})
+		case "/logout":
+			// Keycloak RP-initiated logout: confirm, then return to post_logout_redirect_uri.
+			q := r.URL.Query()
+			if q.Get("client_id") != "baobei-web" || q.Has("redirect_uri") ||
+				q.Get("post_logout_redirect_uri") != appURL+"/login?signedOut=sso" {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			ssoLogouts.Add(1)
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = io.WriteString(w, `<!doctype html><title>企业退出</title><h1>确认退出企业账号</h1><a href="`+
+				template.HTMLEscapeString(q.Get("post_logout_redirect_uri"))+`">确认退出</a>`)
 		case "/keys":
 			respond(w, 200, jose.JSONWebKeySet{Keys: []jose.JSONWebKey{
 				{Key: &key.PublicKey, KeyID: "browser-test", Use: "sig", Algorithm: "RS256"},
@@ -111,6 +126,7 @@ func TestAuthBrowserFixture(t *testing.T) {
 			}
 			code := randomToken()
 			selected := mode.Load().(string)
+			lastPrompt.Store(q.Get("prompt") + "|" + q.Get("max_age"))
 			mu.Lock()
 			attempts[code] = attempt{selected, nonce, challenge}
 			mu.Unlock()
@@ -162,6 +178,8 @@ func TestAuthBrowserFixture(t *testing.T) {
 				email = "different@example.test"
 			case "token":
 				audience = "other-client"
+			case "sales-b":
+				subject, email = "synthetic-c", "synthetic-c@example.test"
 			case "staff-admin":
 				subject = "synthetic-admin"
 				roles = map[string]any{"baobei-web": map[string]any{"roles": []string{adminRole}}}
@@ -236,6 +254,17 @@ func TestAuthBrowserFixture(t *testing.T) {
 				return
 			}
 			w.WriteHeader(http.StatusNoContent)
+		case "/fixture/stale-reauth":
+			if r.Method != http.MethodPost {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			// An administrator whose last enterprise password entry is older than five minutes.
+			if _, err := db.Exec(r.Context(), `UPDATE staff_sessions SET reauthenticated_at=now()-interval '10 minutes'`); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
 		case "/fixture/mode", "/fixture/expire-state", "/fixture/expire-session", "/fixture/db-outage", "/fixture/db-online":
 			if r.Method != http.MethodPost {
 				w.WriteHeader(http.StatusMethodNotAllowed)
@@ -263,7 +292,8 @@ func TestAuthBrowserFixture(t *testing.T) {
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
-			respond(w, 200, map[string]any{"exchanges": exchanges.Load(), "sessions": sessions})
+			respond(w, 200, map[string]any{"exchanges": exchanges.Load(), "sessions": sessions,
+				"ssoLogouts": ssoLogouts.Load(), "prompt": lastPrompt.Load()})
 		default:
 			switch {
 			case strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/auth/"):

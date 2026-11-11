@@ -6,13 +6,33 @@ export const roles: Record<string, string> = {
 };
 
 export const statuses: Record<string, string> = {
-  PENDING_PROVISION: '待管理员开通',
-  PENDING_ACTIVATION: '待企业账号激活',
+  PENDING_PROVISION: '待开通',
+  PENDING_ACTIVATION: '待首次登录',
   ACTIVE: '已启用',
   SUSPENDED: '已停用',
-  PROVISION_FAILED: '开通未完成',
+  PROVISION_FAILED: '开通失败',
   ARCHIVED: '已归档',
 };
+
+// Status shown in lists: "待开通" splits into "awaiting review" and "in progress"
+// once an administrator approved this exact version.
+export function statusLabel(m: Pick<StaffMember, 'status' | 'provisionReviewed'>) {
+  return m.status === 'PENDING_PROVISION' && m.provisionReviewed ? '开通中' : statuses[m.status] ?? m.status;
+}
+
+// The next step for each state, in the words of the person who must act.
+export function nextStep(m: Pick<StaffMember, 'status' | 'provisionReviewed' | 'syncStatus'>, admin: boolean): string {
+  switch (m.status) {
+    case 'PENDING_PROVISION':
+      if (!admin) return '等待管理员审核开通';
+      return m.provisionReviewed ? '等待身份运维创建企业账号并登记' : '请审核开通';
+    case 'PENDING_ACTIVATION': return '等待成员首次登录完成激活';
+    case 'PROVISION_FAILED': return admin ? '查看失败原因后重试' : '等待管理员处理';
+    case 'SUSPENDED': return m.syncStatus === 'FAILED' ? '停用同步失败，请重试' : '可申请恢复或归档';
+    case 'ACTIVE': return '';
+    default: return '';
+  }
+}
 
 export const capabilities: Record<string, string> = {
   'project.create': '新建报备',
@@ -42,12 +62,14 @@ export const staffEvents: Record<string, string> = {
   'staff.provision.approve': '核对开通回执',
   'staff.provision.ack-suspend': '核对停用回执',
   'staff.provision.fail': '登记处理失败',
+  'staff.provision.review': '审核开通',
 };
 
 export interface StaffMember {
   id: string;
   name: string;
   email: string;
+  phone: string;
   teamId: string;
   team: string;
   role: string;
@@ -62,6 +84,7 @@ export interface StaffMember {
   identityLinked: boolean;
   identityVerified: boolean;
   roleChanged: boolean;
+  provisionReviewed: boolean;
 }
 
 export interface StaffProject {

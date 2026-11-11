@@ -16,11 +16,13 @@ import (
 
 // This receipt records a human-reviewed result. The worker has no Keycloak Admin API client.
 type provisionReceipt struct {
-	StaffID           string   `json:"staffId"`
-	Version           int      `json:"version"`
-	Operation         string   `json:"operation"`
-	Subject           string   `json:"subject"`
-	Email             string   `json:"email"`
+	StaffID   string `json:"staffId"`
+	Version   int    `json:"version"`
+	Operation string `json:"operation"`
+	Subject   string `json:"subject"`
+	Email     string `json:"email"`
+	// Phone is checked against the record (exact canonical value) when present.
+	Phone             string   `json:"phone,omitempty"`
 	IdentityVerified  bool     `json:"identityVerified"`
 	UniqueEmail       bool     `json:"uniqueEmail"`
 	ClientRoles       []string `json:"clientRoles,omitempty"`
@@ -64,15 +66,15 @@ func applyProvisionReceipt(ctx context.Context, db *pgxpool.Pool, raw []byte, op
 	if exists {
 		return "ALREADY_APPLIED", nil
 	}
-	var subject, email, state, job, operation, role string
+	var subject, email, phone, state, job, operation, role string
 	var version int
 	var roleChanged bool
-	err = tx.QueryRow(ctx, `SELECT u.subject,coalesce(u.work_email,''),u.staff_status,u.staff_version,o.id::text,o.operation,u.role,
+	err = tx.QueryRow(ctx, `SELECT u.subject,coalesce(u.work_email,''),coalesce(u.work_phone,''),u.staff_status,u.staff_version,o.id::text,o.operation,u.role,
  EXISTS(SELECT 1 FROM staff_audit a WHERE a.target_id=u.staff_id AND a.action='staff.role-change')
  FROM app_users u JOIN staff_outbox o ON o.staff_id=u.staff_id
  WHERE u.staff_id=$1 AND u.staff_managed AND o.status='PENDING'
- ORDER BY o.staff_version DESC LIMIT 1`, in.StaffID).Scan(&subject, &email, &state, &version, &job, &operation, &role, &roleChanged)
-	if errors.Is(err, pgx.ErrNoRows) || err == nil && (version != in.Version || email != in.Email) {
+ ORDER BY o.staff_version DESC LIMIT 1`, in.StaffID).Scan(&subject, &email, &phone, &state, &version, &job, &operation, &role, &roleChanged)
+	if errors.Is(err, pgx.ErrNoRows) || err == nil && (version != in.Version || email != in.Email || in.Phone != "" && in.Phone != phone) {
 		return "", staffConflict
 	}
 	if err != nil {
@@ -81,11 +83,15 @@ func applyProvisionReceipt(ctx context.Context, db *pgxpool.Pool, raw []byte, op
 	next, result, jobState := state, "ACKNOWLEDGED", "ACKNOWLEDGED"
 	switch in.Operation {
 	case "approve":
-		if state != staffPending || operation != "PROVISION" || !in.IdentityVerified || !in.UniqueEmail ||
-			!validIdentityUUID(in.Subject) || email == "" || subject != in.Subject && !strings.HasPrefix(subject, "pending:") {
+		// With an email the operator attests it is unique and verified in Keycloak.
+		// Without one, the exact subject plus the exact Baobei client role is the
+		// binding: the receipt must then name that single client role explicitly.
+		if state != staffPending || operation != "PROVISION" || !in.IdentityVerified ||
+			email != "" && !in.UniqueEmail || email == "" && in.UniqueEmail ||
+			!validIdentityUUID(in.Subject) || subject != in.Subject && !strings.HasPrefix(subject, "pending:") {
 			return "", staffDenied
 		}
-		if (roleChanged || in.ClientRoles != nil) && !exactClientRole(in.ClientRoles, role) {
+		if (roleChanged || in.ClientRoles != nil || email == "") && !exactClientRole(in.ClientRoles, role) {
 			return "", staffDenied
 		}
 		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM app_users WHERE subject=$1 AND staff_id<>$2)`, in.Subject, in.StaffID).Scan(&exists); err != nil {
@@ -178,11 +184,15 @@ func authorizeOIDCSession(ctx context.Context, tx pgx.Tx, subject string, email 
 	if roleChanged && !exactClientRole(roles, role) {
 		return "", loginRoleMissing
 	}
-	if managed && (expected != "" || !active) {
+	if managed && expected != "" {
 		canonical, err := normalizedEmail(email.address)
 		if err != nil || !email.verified || canonical != expected {
 			return "", loginEmailMismatch
 		}
+	} else if managed && !active && !exactClientRole(roles, role) {
+		// No email on record: activation relies on the subject bound by the reviewed
+		// receipt and on exactly one Baobei client role matching the record.
+		return "", loginRoleMissing
 	}
 	if active {
 		return role, nil

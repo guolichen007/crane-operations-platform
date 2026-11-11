@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Project Intake API",
-    "version": "1.5.1-g33b-r1",
-    "description": "全角色项目资源授权、不可覆盖提交证据、管理员未分配草稿及幂等创建；G2 增加审核资格提示、创建意图回执、显示名称与首页最小聚合。完整经营分析不在G2。"
+    "version": "1.6.0-g4s4",
+    "description": "全角色项目资源授权、不可覆盖提交证据、管理员未分配草稿及幂等创建；G2 增加审核资格提示、创建意图回执、显示名称与首页最小聚合。完整经营分析不在G2。 G4-S4：工作手机（新建必填、E.164）、邮箱选填、无邮箱以精确 subject 与唯一 Client Role 激活、管理员审核开通回执、仅敏感人员操作要求重新认证、本地/企业 SSO 退出与切换账号。"
   },
   "servers": [
     {
@@ -3571,6 +3571,79 @@
           }
         }
       }
+    },
+    "/api/v1/staff/{id}/provision-review": {
+      "post": {
+        "operationId": "staff.provisionReview",
+        "summary": "管理员审核开通并生成开通回执",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffProvisionReviewResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/StaffInvalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/StaffUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/StaffForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/StaffNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/StaffConflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/StaffMediaType"
+          },
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffProvisionReview"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -4450,8 +4523,8 @@
           },
           "email": {
             "type": "string",
-            "format": "email",
-            "maxLength": 254
+            "maxLength": 254,
+            "description": "工作邮箱，选填（空串表示无）。填写时须为合法地址且唯一。"
           },
           "teamId": {
             "type": "string",
@@ -4472,8 +4545,9 @@
           },
           "reason": {
             "type": "string",
-            "minLength": 1,
-            "maxLength": 600
+            "minLength": 0,
+            "maxLength": 600,
+            "description": "操作原因。普通新增或资料编辑可留空（记录默认原因）；角色、团队、身份变更必填。"
           },
           "permissions": {
             "type": "array",
@@ -4482,14 +4556,18 @@
             },
             "uniqueItems": true,
             "maxItems": 3
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 32,
+            "description": "工作手机。新建必填；历史成员无手机号时编辑可留空，已有手机号不可清空。"
           }
         },
         "required": [
           "name",
-          "email",
           "teamId",
           "role",
-          "reason"
+          "phone"
         ]
       },
       "StaffProfileChange": {
@@ -4503,8 +4581,8 @@
           },
           "email": {
             "type": "string",
-            "format": "email",
-            "maxLength": 254
+            "maxLength": 254,
+            "description": "工作邮箱，选填（空串表示无）。填写时须为合法地址且唯一。"
           },
           "teamId": {
             "type": "string",
@@ -4525,8 +4603,9 @@
           },
           "reason": {
             "type": "string",
-            "minLength": 1,
-            "maxLength": 600
+            "minLength": 0,
+            "maxLength": 600,
+            "description": "操作原因。普通新增或资料编辑可留空（记录默认原因）；角色、团队、身份变更必填。"
           },
           "version": {
             "type": "integer",
@@ -4535,14 +4614,17 @@
           "verifyIdentity": {
             "type": "boolean",
             "description": "管理员为已有精确 subject 的未核验员工发起身份复核。角色及团队保持一致。"
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 32,
+            "description": "工作手机。新建必填；历史成员无手机号时编辑可留空，已有手机号不可清空。"
           }
         },
         "required": [
           "name",
-          "email",
           "teamId",
           "role",
-          "reason",
           "version"
         ]
       },
@@ -4680,6 +4762,15 @@
           },
           "roleChanged": {
             "type": "boolean"
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 32,
+            "description": "工作手机。规范为 E.164（国内 +861[3-9]xxxxxxxxx）。列表中脱敏，详情对有权管理者完整显示。"
+          },
+          "provisionReviewed": {
+            "type": "boolean",
+            "description": "管理员已审核该版本的开通申请。"
           }
         },
         "required": [
@@ -4723,6 +4814,12 @@
           "pageSize": {
             "type": "integer",
             "minimum": 1
+          },
+          "reauthExpiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "管理员近期企业重新认证的有效截止时间；仅提示，写入时服务端再次校验。"
           }
         },
         "required": [
@@ -4782,6 +4879,12 @@
           "recentReauth": {
             "type": "boolean",
             "description": "当前管理员会话具有近期企业重新认证证明。提交变更时服务端再次检查。"
+          },
+          "reauthExpiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "管理员近期企业重新认证的有效截止时间；仅提示，写入时服务端再次校验。"
           }
         },
         "required": [
@@ -5402,6 +5505,51 @@
             "description": "已知性与数值矛盾、结构非法或两处金额不一致"
           }
         }
+      },
+      "StaffProvisionReview": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 600
+          },
+          "subject": {
+            "type": "string",
+            "description": "已存在的 Keycloak 用户 UUID（选填）。"
+          },
+          "username": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "企业账号用户名（选填，仅记录）。"
+          }
+        },
+        "required": [
+          "version",
+          "reason"
+        ]
+      },
+      "StaffProvisionReviewResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "member": {
+            "$ref": "#/components/schemas/StaffMember"
+          },
+          "receipt": {
+            "type": "object",
+            "description": "供受控 staff-provision 工具使用的回执草稿；常驻 API 不绑定身份。"
+          }
+        },
+        "required": [
+          "member",
+          "receipt"
+        ]
       }
     },
     "responses": {

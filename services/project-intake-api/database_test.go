@@ -526,7 +526,7 @@ func testOIDC(t *testing.T, db *pgxpool.Pool) {
 		}
 		defer tx.Rollback(ctx)
 		actor := User{Subject: "synthetic-manager", Role: managerRole, TeamID: syntheticTeam}
-		result, err := inviteStaff(ctx, tx, actor, nil, staffProfileInput{Name: "合成已审批成员", Email: "signed-staff@example.test", Role: salesRole, TeamID: syntheticTeam, Reason: "合成开通"})
+		result, err := inviteStaff(ctx, tx, actor, nil, staffProfileInput{Name: "合成已审批成员", Email: "signed-staff@example.test", Phone: "13900000104", Role: salesRole, TeamID: syntheticTeam, Reason: "合成开通"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -653,7 +653,7 @@ func testOIDC(t *testing.T, db *pgxpool.Pool) {
 	})
 	t.Run("staff_admin_requires_explicit_fresh_signed_reauthentication", func(t *testing.T) {
 		tokenSubject, roleMode = "synthetic-admin", "admin"
-		invite := staffProfileInput{Name: "合成新主管", Email: "fresh-reauth@example.test", Role: managerRole, TeamID: syntheticTeam, Reason: "核对主管任命"}
+		invite := staffProfileInput{Name: "合成新主管", Email: "fresh-reauth@example.test", Phone: "13900000105", Role: managerRole, TeamID: syntheticTeam, Reason: "核对主管任命"}
 		for _, tc := range []struct {
 			reauth bool
 			age    time.Duration
@@ -697,7 +697,7 @@ func testOIDC(t *testing.T, db *pgxpool.Pool) {
 			return c
 		}
 		admin := signIn("synthetic-admin", "admin", true, 303)
-		profile := staffProfileInput{Name: "合成待升主管", Email: email, Role: salesRole, TeamID: syntheticTeam, Reason: "录入经审批的合成销售"}
+		profile := staffProfileInput{Name: "合成待升主管", Email: email, Phone: "13900000106", Role: salesRole, TeamID: syntheticTeam, Reason: "录入经审批的合成销售"}
 		s, b := admin.call("POST", "/api/v1/staff/invitations", profile)
 		member := memberFrom(t, s, b)
 		path := "/api/v1/staff/" + member.ID
@@ -755,7 +755,8 @@ func testOIDC(t *testing.T, db *pgxpool.Pool) {
 			t.Fatal(err)
 		}
 		invalid := profile
-		invalid.Email, invalid.Version = "legacy-role@example.test", 1
+		// The legacy account has no historical phone; a member's phone is unique.
+		invalid.Email, invalid.Phone, invalid.Version = "legacy-role@example.test", "", 1
 		s, b = admin.call("PATCH", "/api/v1/staff/"+legacyID, invalid)
 		expect(t, s, 409, b)
 		if !strings.Contains(string(b), "STAFF_IDENTITY_NOT_VERIFIED") {
