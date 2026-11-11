@@ -167,20 +167,14 @@ func Import(ctx context.Context, db *sql.DB, d contract.InventoryDocument) error
 const inventoryAssetStatus = `a.asset_status <> 'RETIRED'`
 
 func Projects(ctx context.Context, db *sql.DB) ([]contract.InventoryProject, error) {
-	rows, err := db.QueryContext(ctx, `SELECT p.id,p.name,p.lifecycle,p.province,p.city,p.county,p.location_label,p.admin_code,p.schedule_text,p.notes,
- (SELECT count(*) FROM asset_devices a WHERE a.project_id=p.id AND `+inventoryAssetStatus+`),
- (SELECT count(*) FROM devices d WHERE d.project_id=p.id),
- (SELECT count(*) FROM devices d JOIN device_shadow s ON s.device_id=d.id WHERE d.project_id=p.id AND d.source_mode='REAL' AND s.payload_json#>>'{presence,connectivity}'='MQTT_CONNECTED'),
- (SELECT count(*) FROM devices d WHERE d.project_id=p.id AND d.source_mode='SIMULATION')
- FROM projects p WHERE p.lifecycle IS NOT NULL ORDER BY p.id`)
+	rows, err := db.QueryContext(ctx, projectSelect+` ORDER BY p.id`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	result := []contract.InventoryProject{}
 	for rows.Next() {
-		var p contract.InventoryProject
-		err = rows.Scan(&p.Id, &p.Name, &p.Lifecycle, &p.Province, &p.City, &p.County, &p.LocationLabel, &p.AdminCode, &p.ScheduleText, &p.Notes, &p.AssetDeviceCount, &p.RuntimeDeviceCount, &p.RealConnectedCount, &p.SimulatedCount)
+		p, err := scanProject(rows.Scan)
 		if err != nil {
 			return nil, err
 		}
@@ -263,11 +257,34 @@ type Region struct {
 // RegionResolver resolves an administrative code (internal/geo). ok=false = unknown code.
 type RegionResolver func(code int) (Region, bool)
 
+// RegisterAuth is re-checked INSIDE the registration transaction (Q3-R1): the HTTP-level check
+// is only a fast path, never the authority.
+type RegisterAuth struct {
+	User    string
+	Allowed func(role string) bool // capability check on the CURRENT project role
+	// Test hooks (nil in production): AfterLock runs once every lock is held; BeforeRead fails
+	// the in-transaction response read (fault injection).
+	AfterLock  func()
+	BeforeRead func() error
+}
+
+// ErrRegistrationDenied: inside the transaction the user no longer holds an enabled project
+// membership with the required capability (revoked / downgraded / disabled). HTTP 404/403.
+var ErrRegistrationDenied = errors.New("project grant no longer allows inventory registration")
+
 // RegisterFormalProject sets the Inventory fields of one formal project in a single
-// transaction together with its audit event. Repeated / concurrent requests: the row lock +
-// `lifecycle IS NULL` check make exactly one succeed; later ones get ErrAlreadyRegistered and
-// write nothing (no overwrite of an imported or already registered project).
-func RegisterFormalProject(ctx context.Context, db *sql.DB, project string, in contract.ProjectInventoryRegistration, resolve RegionResolver, event auditlog.Event) (contract.InventoryProject, error) {
+// transaction together with its audit event and builds the response from the same snapshot.
+//
+// Lock order (compatible with identity.ChangeGrantGuarded, which also locks the project row
+// FIRST and the user row after it):
+//  1. projects row FOR UPDATE (+ approved-intake check, first-registration check);
+//  2. the caller's users row and project_memberships row FOR SHARE — a concurrent revoke /
+//     role change / user disable must wait for this transaction (or this one waits for it),
+//     so the authorization that is checked is the one in force when the row is written.
+//
+// Repeated / concurrent requests: exactly one succeeds; later ones get ErrAlreadyRegistered.
+// Nothing is read after Commit, so a committed registration is never reported as a failure.
+func RegisterFormalProject(ctx context.Context, db *sql.DB, project string, in contract.ProjectInventoryRegistration, resolve RegionResolver, auth RegisterAuth, event auditlog.Event) (contract.InventoryProject, error) {
 	var out contract.InventoryProject
 	if err := contract.ValidateDocument("ProjectInventoryRegistration", in); err != nil {
 		return out, fmt.Errorf("%w: %v", ErrInvalidRegistration, err)
@@ -275,6 +292,9 @@ func RegisterFormalProject(ctx context.Context, db *sql.DB, project string, in c
 	region, ok := resolve(in.AdminCode)
 	if !ok || region.Level == "country" {
 		return out, fmt.Errorf("%w: adminCode %d is not a province, prefecture or county in the administrative index", ErrInvalidRegistration, in.AdminCode)
+	}
+	if auth.User == "" || auth.Allowed == nil {
+		return out, ErrRegistrationDenied
 	}
 	label := strings.TrimSpace(in.LocationLabel)
 	if label == "" {
@@ -294,6 +314,19 @@ func RegisterFormalProject(ctx context.Context, db *sql.DB, project string, in c
 	if err != nil {
 		return out, err
 	}
+	// Authorization from the database, in this transaction, with the rows locked.
+	var role string
+	err = tx.QueryRowContext(ctx, `SELECT m.role FROM project_memberships m JOIN users u ON u.id=m.user_id
+ WHERE m.user_id=$1 AND m.project_id=$2 AND u.enabled FOR SHARE OF m, u`, auth.User, project).Scan(&role)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && !auth.Allowed(role)) {
+		return out, ErrRegistrationDenied
+	}
+	if err != nil {
+		return out, err
+	}
+	if auth.AfterLock != nil {
+		auth.AfterLock()
+	}
 	if lifecycle.Valid {
 		return out, ErrAlreadyRegistered
 	}
@@ -309,19 +342,37 @@ func RegisterFormalProject(ctx context.Context, db *sql.DB, project string, in c
 	if err = auditlog.Write(ctx, tx, event); err != nil {
 		return out, err
 	}
-	if err = tx.Commit(); err != nil {
-		return out, err
-	}
-	projects, err := Projects(ctx, db)
-	if err != nil {
-		return out, err
-	}
-	for _, p := range projects {
-		if p.Id == project {
-			return p, nil
+	// The response comes from the same transaction (sees its own write): real counts, no guesses.
+	if auth.BeforeRead != nil {
+		if err = auth.BeforeRead(); err != nil {
+			return out, err // rolls back: nothing written, nothing audited
 		}
 	}
-	return out, errors.New("registered project not readable")
+	if out, err = projectRow(ctx, tx, project); err != nil {
+		return contract.InventoryProject{}, err
+	}
+	if err = tx.Commit(); err != nil {
+		return contract.InventoryProject{}, err
+	}
+	return out, nil
+}
+
+const projectSelect = `SELECT p.id,p.name,p.lifecycle,p.province,p.city,p.county,p.location_label,p.admin_code,p.schedule_text,p.notes,
+ (SELECT count(*) FROM asset_devices a WHERE a.project_id=p.id AND ` + inventoryAssetStatus + `),
+ (SELECT count(*) FROM devices d WHERE d.project_id=p.id),
+ (SELECT count(*) FROM devices d JOIN device_shadow s ON s.device_id=d.id WHERE d.project_id=p.id AND d.source_mode='REAL' AND s.payload_json#>>'{presence,connectivity}'='MQTT_CONNECTED'),
+ (SELECT count(*) FROM devices d WHERE d.project_id=p.id AND d.source_mode='SIMULATION')
+ FROM projects p WHERE p.lifecycle IS NOT NULL`
+
+func scanProject(scan func(...any) error) (contract.InventoryProject, error) {
+	var p contract.InventoryProject
+	err := scan(&p.Id, &p.Name, &p.Lifecycle, &p.Province, &p.City, &p.County, &p.LocationLabel, &p.AdminCode, &p.ScheduleText, &p.Notes, &p.AssetDeviceCount, &p.RuntimeDeviceCount, &p.RealConnectedCount, &p.SimulatedCount)
+	return p, err
+}
+
+// projectRow reads one Inventory project with exactly the counts Projects() reports.
+func projectRow(ctx context.Context, tx *sql.Tx, id string) (contract.InventoryProject, error) {
+	return scanProject(tx.QueryRowContext(ctx, projectSelect+` AND p.id=$1`, id).Scan)
 }
 
 func nonEmpty(values ...string) []string {

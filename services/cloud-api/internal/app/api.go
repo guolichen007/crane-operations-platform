@@ -45,6 +45,10 @@ type apiHandler struct {
 	geo func() (*geo.Index, error)
 	// membersReadHook (tests only) fails the post-commit member re-read of a grant change.
 	membersReadHook func() error
+	// registrationAfterLock / registrationBeforeRead (tests only): pause inside the registration
+	// transaction once its locks are held, and fail the in-transaction response read.
+	registrationAfterLock  func()
+	registrationBeforeRead func() error
 }
 
 type principal struct {

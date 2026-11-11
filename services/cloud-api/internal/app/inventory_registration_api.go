@@ -76,10 +76,18 @@ func (h *apiHandler) registerInventoryRegistration(api *http.ServeMux) {
 		p := currentPrincipal(r)
 		event := p.meta.Event(p.user, project, "", "", "")
 		event.RequestID = requestIDOr(r, event.RequestID)
-		out, err := inventory.RegisterFormalProject(r.Context(), h.db, project, in, regionResolver(ix), event)
+		auth := inventory.RegisterAuth{User: p.user, Allowed: func(role string) bool { return identity.HasCapability(role, identity.CapLocationWrite) },
+			AfterLock: h.registrationAfterLock, BeforeRead: h.registrationBeforeRead}
+		if h.web == nil {
+			auth.User, auth.Allowed = "", nil // development mode has no project memberships
+		}
+		out, err := inventory.RegisterFormalProject(r.Context(), h.db, project, in, regionResolver(ix), auth, event)
 		switch {
 		case err == nil:
 			respondAPI(w, 200, out)
+		case errors.Is(err, inventory.ErrRegistrationDenied):
+			// Revoked / downgraded / disabled between the fast-path check and the locked write.
+			h.deny(w, r, 403, project, "", "project_grant_changed")
 		case errors.Is(err, inventory.ErrInvalidRegistration):
 			respondAPI(w, 422, map[string]string{"error": err.Error()})
 		case errors.Is(err, inventory.ErrAlreadyRegistered):

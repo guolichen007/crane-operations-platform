@@ -69,6 +69,11 @@ const h21aPackages = [
     'TestInventoryRegistrationFlowAndConsistencyHTTP',
     'TestInventoryRegistrationConcurrencyHTTP',
     'TestPortfolioGrantCommittedButReadFailsHTTP',
+    // Q3-R1: in-transaction re-authorization, serialization with revokes, rollback on read failure.
+    'TestInventoryRegistrationRevokedBeforeLockIsRefusedHTTP',
+    'TestInventoryRegistrationRevokeAfterLockSerializesHTTP',
+    'TestInventoryRegistrationAndGuardedGrantNoDeadlockHTTP',
+    'TestInventoryRegistrationResponseReadFailsRollsBackHTTP',
   ]],
   // H2-1C operations summary: single-statement repository on the isolated PostgreSQL.
   ['h21c-operations', './internal/operations', [
