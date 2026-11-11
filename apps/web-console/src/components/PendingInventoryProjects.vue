@@ -24,6 +24,8 @@ const geoQuery = useQuery({ queryKey: ['geo-manifest'], queryFn: loadGeoManifest
 const manifest = computed(() => geoQuery.data.value);
 
 const target = ref<PendingInventoryProject | null>(null);
+const verifying = ref(false);
+const confirmed = ref('');
 const form = ref<RegistrationForm>(blankRegistration());
 const touched = ref(false);
 const formError = ref('');
@@ -54,7 +56,25 @@ const mutation = useMutation({
   },
   onError: async (e) => {
     formError.value = registrationErrorMessage(e);
-    await queryClient.invalidateQueries({ queryKey: ['inventory-pending'] });
+    // Server errors are rolled back (Q3-R1); a network error or a 409 means the outcome must be
+    // confirmed from the server before anything is resubmitted: reload the pending list, and if
+    // the project is no longer pending it IS registered — close the form instead of retrying.
+    const id = target.value?.id;
+    verifying.value = true;
+    try {
+      const pending = await queryClient.fetchQuery({ queryKey: ['inventory-pending'], queryFn: listPendingInventoryProjects, staleTime: 0 });
+      if (id && !pending.some((p) => p.id === id)) {
+        target.value = null;
+        form.value = blankRegistration();
+        confirmed.value = `${id} 已登记（服务端确认）。为避免重复提交，表单已关闭。`;
+        await Promise.all([queryClient.invalidateQueries({ queryKey: ['portfolio-projects'] }), sceneProvider.refresh().catch(() => undefined)]);
+        emit('registered', { id } as InventoryProject);
+      }
+    } catch {
+      formError.value += ' 无法确认当前状态，请稍后刷新页面查看，不要重复提交。';
+    } finally {
+      verifying.value = false;
+    }
   },
 });
 
@@ -72,7 +92,7 @@ function close() {
 function submit() {
   touched.value = true;
   formError.value = '';
-  if (mutation.isPending.value || Object.keys(errors.value).length) return;
+  if (mutation.isPending.value || verifying.value || Object.keys(errors.value).length) return;
   mutation.mutate();
 }
 function onKeydown(e: KeyboardEvent) { if (e.key === 'Escape' && target.value) close(); }
@@ -86,6 +106,7 @@ const lifecycleText = (v: string) => LIFECYCLES.find((l) => l.value === v)?.labe
 </script>
 <template>
   <section class="pending-inventory" data-testid="pending-inventory">
+    <p v-if="confirmed" class="confirmed" role="status" data-testid="registration-confirmed">{{ confirmed }}</p>
     <div v-if="pendingQuery.isLoading.value" class="skeleton" style="height: 48px" aria-busy="true"></div>
     <p v-else-if="pendingQuery.isError.value" class="workspace-error" role="alert" data-testid="pending-error">
       待登记项目加载失败：{{ intakeErrorMessage(pendingQuery.error.value, 'load') }}
@@ -151,8 +172,8 @@ const lifecycleText = (v: string) => LIFECYCLES.find((l) => l.value === v)?.labe
         <p v-if="formError" class="form-error" role="alert" data-testid="registration-error">{{ formError }}</p>
         <div class="modal-actions">
           <button type="button" class="ghost-action" :disabled="mutation.isPending.value" @click="close">取消</button>
-          <button type="submit" class="primary-action" :disabled="mutation.isPending.value" data-testid="registration-submit">
-            {{ mutation.isPending.value ? '保存中…' : `登记为「${lifecycleText(form.lifecycle) || '…'}」` }}
+          <button type="submit" class="primary-action" :disabled="mutation.isPending.value || verifying" data-testid="registration-submit">
+            {{ mutation.isPending.value ? '保存中…' : verifying ? '确认状态中…' : `登记为「${lifecycleText(form.lifecycle) || '…'}」` }}
           </button>
         </div>
       </form>
@@ -162,6 +183,7 @@ const lifecycleText = (v: string) => LIFECYCLES.find((l) => l.value === v)?.labe
 <style scoped>
 .pending-inventory { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
 .pending-inventory h2 { margin: 0; font-size: 15px; color: var(--text-1); display: flex; align-items: center; gap: 6px; }
+.confirmed { color: #6fd39b; font-size: 13px; margin: 0; }
 .hint { margin: 0; font-size: 12px; color: var(--text-3); }
 .sub { font-size: 11px; color: var(--text-3); }
 .registration-form { width: min(600px, calc(100vw - 48px)); }

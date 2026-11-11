@@ -10,7 +10,7 @@ const shot = (name: string) => `test-results/q3-inventory/${name}.png`;
 type Grant = { projectId: string; projectName: string; role: string };
 const NAMES: Record<number, [string, string, string]> = { 330481: ['浙江省', '嘉兴市', '海宁市'], 330400: ['浙江省', '嘉兴市', ''], 440300: ['广东省', '深圳市', ''] };
 
-async function mock(page: Page, opts: { grants?: Grant[]; failPending?: boolean; failRegister?: number; failGeo?: boolean; registered?: boolean } = {}) {
+async function mock(page: Page, opts: { grants?: Grant[]; failPending?: boolean; failRegister?: number; failGeo?: boolean; registered?: boolean; abortAfterCommit?: boolean } = {}) {
   const grants = opts.grants ?? [{ projectId: 'FP-1', projectName: 'Q3 华东新装项目', role: 'platform_admin' }];
   const state = { registered: opts.registered ?? false, adminCode: 330481, posts: 0 };
   const assets = [
@@ -39,6 +39,8 @@ async function mock(page: Page, opts: { grants?: Grant[]; failPending?: boolean;
       const b = r.request().postDataJSON() as { adminCode: number };
       state.registered = true;
       state.adminCode = b.adminCode;
+      // Committed on the server, but the response never reaches the browser.
+      if (opts.abortAfterCommit) return r.abort('connectionreset');
       return r.fulfill({ json: inventoryProject() });
     }
     if (p === 'projects') return r.fulfill({ json: visible ? [inventoryProject()] : [] });
@@ -142,6 +144,18 @@ test('失败不显示假数据：待登记 503、行政区清单失败、登记 
   await expect(form).toBeHidden();
   expect(s3.posts).toBe(2);
   await expect(p3.locator('[data-project-id="FP-1"]')).toContainText('广东省 深圳市');
+});
+
+test('Q3-R1：登记已提交但响应丢失时，向服务端确认状态并关闭表单，不重复提交', async ({ page }) => {
+  const state = await mock(page, { abortAfterCommit: true });
+  await page.goto('/#/projects');
+  const form = await register(page, { province: '330000', prefecture: '330400', county: '330481' });
+  await form.getByTestId('registration-submit').click();
+  await expect(page.getByTestId('registration-confirmed')).toContainText('已登记（服务端确认）');
+  await expect(form).toBeHidden();
+  expect(state.posts).toBe(1);
+  await expect(page.locator('[data-project-id="FP-1"]')).toBeVisible();
+  await page.screenshot({ path: shot('7-commit-confirmed') });
 });
 
 test('WebGL 不可用时首页回退二维并仍显示已登记项目的行政区统计', async ({ page }) => {

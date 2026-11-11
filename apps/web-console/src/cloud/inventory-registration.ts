@@ -85,15 +85,15 @@ export function registrationErrorMessage(e: unknown): string {
   if (e instanceof ApiError) {
     switch (e.status) {
       case 401: return '登录已失效，请重新登录。';
-      case 403: return '无权登记：需要该项目的「项目管理员」权限（位置与资产管理）。';
       case 404: return '项目不存在、尚未批准，或您没有该项目的授权。';
-      case 409: return '该项目已登记 Inventory（可能已被他人登记），列表已刷新。';
+      case 403: return '无权登记：需要该项目的「项目管理员」权限（位置与资产管理）；您的授权可能刚被调整，未做任何修改。';
+      case 409: return '该项目已登记 Inventory（可能已被他人登记），正在确认当前状态。';
       case 422: return `输入不符合要求：${e.message}`;
-      case 503: return e.message.includes('administrative') ? '服务端行政区数据暂不可用，未做任何修改，请稍后重试。' : '服务暂不可用，未确认是否登记成功，列表已刷新。';
+      case 503: return e.message.includes('administrative') ? '服务端行政区数据暂不可用，未做任何修改，请稍后重试。' : '服务暂不可用，登记未完成（未做任何修改），可稍后重试。';
       default: return `请求失败（${e.status}）：${e.message}`;
     }
   }
-  return '网络连接失败或请求超时；请刷新后确认是否已登记。已输入的内容已保留。';
+  return '网络连接失败或请求超时，结果未知：正在向服务端确认是否已登记，请勿重复提交。已输入的内容已保留。';
 }
 
 /** Runtime source of an Inventory project, from facts only (Q3 principle 7/8). */
