@@ -4,9 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
-	"github.com/guolichen007/crane-operations-platform/internal/fleet"
+	"fmt"
 	"strings"
+
+	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
+	"github.com/guolichen007/crane-operations-platform/internal/auditlog"
+	"github.com/guolichen007/crane-operations-platform/internal/fleet"
 )
 
 func Load(path string) (contract.InventoryDocument, error) {
@@ -228,4 +231,135 @@ func ResetLegacy(ctx context.Context, db *sql.DB, env string) error {
 		}
 	}
 	return tx.Commit()
+}
+
+// ---------------------------------------------------------------------------------------------
+// Q3: formal project → Inventory registration.
+//
+// `projects` is the single entity for formal and Inventory projects (one id). A formal project
+// (created by ApproveIntake: portfolio_scope_id set, approved intake, lifecycle NULL) becomes an
+// Inventory project by setting lifecycle + the administrative fields ONCE. Province / city /
+// county are DERIVED from the administrative index (never typed by the user), so the level and
+// the display names cannot contradict each other; no coordinates are stored or invented — the
+// map places the project at administrative-region precision only. The caller has already proved
+// location_write on this project (ProjectGrant); this function re-checks nothing about the user
+// but locks the row and refuses anything that is not an approved, unregistered formal project.
+
+var (
+	// ErrNotFormalProject: unknown id, legacy/Inventory-only project or not from an approved intake.
+	ErrNotFormalProject = errors.New("not an approved formal project")
+	// ErrAlreadyRegistered: lifecycle is already set (first registration only; HTTP 409).
+	ErrAlreadyRegistered = errors.New("project is already registered in Inventory")
+	// ErrInvalidRegistration: contract / region violation (HTTP 422).
+	ErrInvalidRegistration = errors.New("invalid inventory registration")
+)
+
+// Region is the administrative resolution of a code: names per level, from the index.
+type Region struct {
+	Province, City, County string
+	Level                  string
+}
+
+// RegionResolver resolves an administrative code (internal/geo). ok=false = unknown code.
+type RegionResolver func(code int) (Region, bool)
+
+// RegisterFormalProject sets the Inventory fields of one formal project in a single
+// transaction together with its audit event. Repeated / concurrent requests: the row lock +
+// `lifecycle IS NULL` check make exactly one succeed; later ones get ErrAlreadyRegistered and
+// write nothing (no overwrite of an imported or already registered project).
+func RegisterFormalProject(ctx context.Context, db *sql.DB, project string, in contract.ProjectInventoryRegistration, resolve RegionResolver, event auditlog.Event) (contract.InventoryProject, error) {
+	var out contract.InventoryProject
+	if err := contract.ValidateDocument("ProjectInventoryRegistration", in); err != nil {
+		return out, fmt.Errorf("%w: %v", ErrInvalidRegistration, err)
+	}
+	region, ok := resolve(in.AdminCode)
+	if !ok || region.Level == "country" {
+		return out, fmt.Errorf("%w: adminCode %d is not a province, prefecture or county in the administrative index", ErrInvalidRegistration, in.AdminCode)
+	}
+	label := strings.TrimSpace(in.LocationLabel)
+	if label == "" {
+		label = strings.Join(nonEmpty(region.Province, region.City, region.County), " ")
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return out, err
+	}
+	defer tx.Rollback()
+	var lifecycle sql.NullString
+	err = tx.QueryRowContext(ctx, `SELECT p.lifecycle FROM projects p JOIN project_intakes pi ON pi.formal_project_id=p.id AND pi.status='APPROVED'
+ AND pi.portfolio_scope_id=p.portfolio_scope_id AND pi.tenant_id=p.tenant_id WHERE p.id=$1 FOR UPDATE OF p`, project).Scan(&lifecycle)
+	if errors.Is(err, sql.ErrNoRows) {
+		return out, ErrNotFormalProject
+	}
+	if err != nil {
+		return out, err
+	}
+	if lifecycle.Valid {
+		return out, ErrAlreadyRegistered
+	}
+	res, err := tx.ExecContext(ctx, `UPDATE projects SET lifecycle=$2,province=$3,city=$4,county=$5,location_label=$6,admin_code=$7,schedule_text=$8,notes=$9,updated_at=now()
+ WHERE id=$1 AND lifecycle IS NULL`, project, in.Lifecycle, region.Province, region.City, region.County, label, in.AdminCode, strings.TrimSpace(in.ScheduleText), strings.TrimSpace(in.Notes))
+	if err != nil {
+		return out, err
+	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		return out, ErrAlreadyRegistered
+	}
+	event.Project, event.Action, event.Result = project, "project_inventory_registered", fmt.Sprintf("success:%s:%d", in.Lifecycle, in.AdminCode)
+	if err = auditlog.Write(ctx, tx, event); err != nil {
+		return out, err
+	}
+	if err = tx.Commit(); err != nil {
+		return out, err
+	}
+	projects, err := Projects(ctx, db)
+	if err != nil {
+		return out, err
+	}
+	for _, p := range projects {
+		if p.Id == project {
+			return p, nil
+		}
+	}
+	return out, errors.New("registered project not readable")
+}
+
+func nonEmpty(values ...string) []string {
+	out := []string{}
+	for _, v := range values {
+		if v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// PendingFormalProject is an approved formal project, not yet in Inventory, on which the user
+// holds a project grant.
+type PendingFormalProject struct {
+	ID, Name, PortfolioScopeID, Role string
+	Phase                            sql.NullString
+	AssetCount                       int
+}
+
+// PendingFormalProjects lists the caller's granted, approved, unregistered formal projects.
+func PendingFormalProjects(ctx context.Context, db *sql.DB, user string) ([]PendingFormalProject, error) {
+	rows, err := db.QueryContext(ctx, `SELECT p.id,p.name,p.portfolio_scope_id,p.project_phase,m.role,
+ (SELECT count(*) FROM asset_devices a WHERE a.project_id=p.id AND `+inventoryAssetStatus+`)
+FROM projects p JOIN project_intakes pi ON pi.formal_project_id=p.id AND pi.status='APPROVED' AND pi.portfolio_scope_id=p.portfolio_scope_id AND pi.tenant_id=p.tenant_id
+JOIN project_memberships m ON m.project_id=p.id AND m.user_id=$1 JOIN users u ON u.id=m.user_id AND u.enabled
+WHERE p.lifecycle IS NULL ORDER BY p.id`, user)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []PendingFormalProject{}
+	for rows.Next() {
+		var v PendingFormalProject
+		if err = rows.Scan(&v.ID, &v.Name, &v.PortfolioScopeID, &v.Phase, &v.Role, &v.AssetCount); err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
 }

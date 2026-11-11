@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/projectinventoryregistration.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "lifecycle",
+    "adminCode",
+    "locationLabel",
+    "scheduleText",
+    "notes"
+  ],
+  "properties": {
+    "lifecycle": {
+      "type": "string",
+      "enum": [
+        "PLANNED",
+        "PRE_DEVELOPMENT",
+        "COMPLETED"
+      ]
+    },
+    "adminCode": {
+      "type": "integer",
+      "minimum": 100000,
+      "maximum": 999999
+    },
+    "locationLabel": {
+      "type": "string",
+      "maxLength": 240
+    },
+    "scheduleText": {
+      "type": "string",
+      "maxLength": 400
+    },
+    "notes": {
+      "type": "string",
+      "maxLength": 1000
+    }
+  },
+  "$defs": {}
+}

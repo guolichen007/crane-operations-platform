@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/projectgrantresult.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "result",
+    "members",
+    "membersRefreshed"
+  ],
+  "properties": {
+    "result": {
+      "type": "string",
+      "enum": [
+        "APPLIED"
+      ]
+    },
+    "members": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ProjectMember"
+      }
+    },
+    "membersRefreshed": {
+      "type": "boolean"
+    }
+  },
+  "$defs": {
+    "ProjectMember": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "userId",
+        "displayName",
+        "role",
+        "enabled"
+      ],
+      "properties": {
+        "userId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        },
+        "displayName": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "viewer",
+            "operator",
+            "maintainer",
+            "platform_admin"
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

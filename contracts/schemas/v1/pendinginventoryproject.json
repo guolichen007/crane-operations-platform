@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/pendinginventoryproject.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "name",
+    "portfolioScopeId",
+    "projectPhase",
+    "role",
+    "canRegister",
+    "assetCount"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "name": {
+      "type": "string",
+      "maxLength": 256
+    },
+    "portfolioScopeId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "projectPhase": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 40
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "viewer",
+        "operator",
+        "maintainer",
+        "platform_admin"
+      ]
+    },
+    "canRegister": {
+      "type": "boolean"
+    },
+    "assetCount": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "$defs": {}
+}

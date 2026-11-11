@@ -64,6 +64,11 @@ const h21aPackages = [
     'TestPortfolioProjectGrantLifecycleHTTP',
     'TestPortfolioProjectGrantRefusalsHTTP',
     'TestPortfolioProjectGrantConcurrencyHTTP',
+    // Q3 formal project → Inventory registration + Q2 fix A (committed grant, failed re-read).
+    'TestInventoryRegistrationPermissionsHTTP',
+    'TestInventoryRegistrationFlowAndConsistencyHTTP',
+    'TestInventoryRegistrationConcurrencyHTTP',
+    'TestPortfolioGrantCommittedButReadFailsHTTP',
   ]],
   // H2-1C operations summary: single-statement repository on the isolated PostgreSQL.
   ['h21c-operations', './internal/operations', [

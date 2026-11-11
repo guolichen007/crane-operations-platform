@@ -125,13 +125,26 @@ func (h *apiHandler) registerPortfolioProjects(api *http.ServeMux) {
 			respondAPI(w, 503, map[string]string{"error": "database unavailable"})
 			return
 		}
-		members, err := identity.ProjectMembers(r.Context(), h.db, v.Id)
-		if err != nil {
-			respondAPI(w, 503, map[string]string{"error": "database unavailable"})
-			return
+		// The change is COMMITTED. A failure to re-read the member list must never turn that into
+		// an error response (the client would retry an already-applied change): answer 200
+		// APPLIED with membersRefreshed=false and let the client reload the list separately.
+		result := contract.ProjectGrantResult{Result: "APPLIED", Members: []contract.ProjectMember{}}
+		if members, err := h.membersAfterChange(r, v.Id); err == nil {
+			result.Members, result.MembersRefreshed = toContractMembers(members), true
 		}
-		respondAPI(w, 200, toContractMembers(members))
+		respondAPI(w, 200, result)
 	})
+}
+
+// membersAfterChange re-reads the member list after a committed change. Tests can inject a
+// failure through apiHandler.membersReadHook to prove a committed change is still reported.
+func (h *apiHandler) membersAfterChange(r *http.Request, project string) ([]identity.ProjectMember, error) {
+	if h.membersReadHook != nil {
+		if err := h.membersReadHook(); err != nil {
+			return nil, err
+		}
+	}
+	return identity.ProjectMembers(r.Context(), h.db, project)
 }
 
 // formalProjectFor resolves {id} → formal project → owning scope from the DB and checks one

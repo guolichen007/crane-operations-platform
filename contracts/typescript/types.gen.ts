@@ -330,6 +330,27 @@ export interface ProjectGrantChange {
   role: "viewer" | "operator" | "maintainer" | "platform_admin" | null;
   expectedRole: "viewer" | "operator" | "maintainer" | "platform_admin" | null;
 }
+export interface ProjectGrantResult {
+  result: "APPLIED";
+  members: (ProjectMember)[];
+  membersRefreshed: boolean;
+}
+export interface ProjectInventoryRegistration {
+  lifecycle: "PLANNED" | "PRE_DEVELOPMENT" | "COMPLETED";
+  adminCode: number;
+  locationLabel: string;
+  scheduleText: string;
+  notes: string;
+}
+export interface PendingInventoryProject {
+  id: string;
+  name: string;
+  portfolioScopeId: string;
+  projectPhase: string | null;
+  role: "viewer" | "operator" | "maintainer" | "platform_admin";
+  canRegister: boolean;
+  assetCount: number;
+}
 export interface ScheduleItem {
   id: string;
   projectId: string | null;

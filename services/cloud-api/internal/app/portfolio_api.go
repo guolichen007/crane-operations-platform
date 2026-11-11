@@ -114,6 +114,7 @@ func (h *apiHandler) portfolioScopes(r *http.Request) (map[string]bool, error) {
 
 func (h *apiHandler) registerPortfolio(api *http.ServeMux) {
 	h.registerPortfolioProjects(api)
+	h.registerInventoryRegistration(api)
 	api.HandleFunc("GET /api/v1/portfolio/scopes", func(w http.ResponseWriter, r *http.Request) {
 		memberships, err := h.portfolioScopes(r)
 		if err != nil {

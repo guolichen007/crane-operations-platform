@@ -1565,6 +1565,85 @@
         "nullable": true
       }
     },
+    "ProjectGrantResult": {
+      "result": {
+        "type": "string",
+        "enum": [
+          "APPLIED"
+        ]
+      },
+      "members": {
+        "type": "array",
+        "items": {
+          "ref": "ProjectMember"
+        }
+      },
+      "membersRefreshed": {
+        "type": "boolean"
+      }
+    },
+    "ProjectInventoryRegistration": {
+      "lifecycle": {
+        "type": "string",
+        "enum": [
+          "PLANNED",
+          "PRE_DEVELOPMENT",
+          "COMPLETED"
+        ]
+      },
+      "adminCode": {
+        "type": "integer",
+        "minimum": 100000,
+        "maximum": 999999
+      },
+      "locationLabel": {
+        "type": "string",
+        "maxLength": 240
+      },
+      "scheduleText": {
+        "type": "string",
+        "maxLength": 400
+      },
+      "notes": {
+        "type": "string",
+        "maxLength": 1000
+      }
+    },
+    "PendingInventoryProject": {
+      "id": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "name": {
+        "type": "string",
+        "maxLength": 256
+      },
+      "portfolioScopeId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "projectPhase": {
+        "type": "string",
+        "maxLength": 40,
+        "nullable": true
+      },
+      "role": {
+        "type": "string",
+        "enum": [
+          "viewer",
+          "operator",
+          "maintainer",
+          "platform_admin"
+        ]
+      },
+      "canRegister": {
+        "type": "boolean"
+      },
+      "assetCount": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
     "ScheduleItem": {
       "id": {
         "type": "string",
@@ -2259,6 +2338,9 @@
     "PortfolioProject",
     "ProjectMember",
     "ProjectGrantChange",
+    "PendingInventoryProject",
+    "ProjectInventoryRegistration",
+    "ProjectGrantResult",
     "ScheduleItem",
     "Resource",
     "ResourceReservation",

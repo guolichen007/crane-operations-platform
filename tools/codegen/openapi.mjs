@@ -84,7 +84,10 @@ const portfolioProject = { $ref: '#/components/schemas/PortfolioProject' },
 add('/api/v1/portfolio/projects', 'get', 'listPortfolioProjects', { type: 'array', items: portfolioProject });
 add('/api/v1/portfolio/projects/{id}', 'get', 'getPortfolioProject', portfolioProject);
 add('/api/v1/portfolio/projects/{id}/members', 'get', 'listPortfolioProjectMembers', { type: 'array', items: projectMember });
-add('/api/v1/portfolio/projects/{id}/members', 'post', 'changePortfolioProjectMember', { type: 'array', items: projectMember });
+add('/api/v1/portfolio/projects/{id}/members', 'post', 'changePortfolioProjectMember', { $ref: '#/components/schemas/ProjectGrantResult' });
+// Q3 formal project → Inventory registration (project-scoped, location_write).
+add('/api/v1/inventory/pending-projects', 'get', 'listPendingInventoryProjects', { type: 'array', items: { $ref: '#/components/schemas/PendingInventoryProject' } });
+add('/api/v1/projects/{projectId}/inventory-registration', 'post', 'registerProjectInventory', { $ref: '#/components/schemas/InventoryProjectInput' });
 // Asset master-data business routes.
 const assetMaster = { $ref: '#/components/schemas/AssetMasterData' },
   assetLocation = { $ref: '#/components/schemas/AssetLocation' },

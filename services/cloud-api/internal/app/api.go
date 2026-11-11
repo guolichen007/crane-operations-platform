@@ -43,6 +43,8 @@ type apiHandler struct {
 	ops       operations.Config
 	// geo overrides the embedded administrative index (tests inject failures); nil = geo.Default.
 	geo func() (*geo.Index, error)
+	// membersReadHook (tests only) fails the post-commit member re-read of a grant change.
+	membersReadHook func() error
 }
 
 type principal struct {
