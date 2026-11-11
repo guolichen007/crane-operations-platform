@@ -5,9 +5,17 @@ import { ArrowUpRight, MapPin, Box, Search } from 'lucide-vue-next';
 import { listProjects } from '../cloud/api';
 import { useCloudQuery } from '../cloud/useCloudQuery';
 import { lifecycleName, projectConnection } from '../cloud/inventory';
+import { runtimeSourceText } from '../cloud/inventory-registration';
+import { productionAuth } from '../cloud/session';
+import PendingInventoryProjects from '../components/PendingInventoryProjects.vue';
 import StatusPill from '../components/StatusPill.vue';
 import SkeletonPanel from '../components/SkeletonPanel.vue';
-const { data, error, loading } = useCloudQuery(listProjects);
+const { data, error, loading, refresh } = useCloudQuery(listProjects);
+const justRegistered = ref('');
+function onRegistered(p: { id: string }) {
+  justRegistered.value = p.id;
+  void refresh();
+}
 const route = useRoute(),
   search = ref(''),
   lifecycle = ref('');
@@ -30,6 +38,10 @@ const projects = computed(
       </div>
       <span class="data-origin">{{ data?.length ?? '—' }} PROJECTS / CLOUD API</span>
     </div>
+    <PendingInventoryProjects v-if="productionAuth" @registered="onRegistered" />
+    <p v-if="justRegistered" class="registered-notice" role="status" data-testid="registered-notice">
+      已登记 {{ justRegistered }}：同一项目已进入项目列表与运营地图（行政区级定位）。
+    </p>
     <div class="premium-filterbar">
       <label class="premium-search"
         ><Search :size="14" /><input
@@ -54,6 +66,7 @@ const projects = computed(
         :key="p.id"
         class="premium-project-card"
         data-testid="inventory-project"
+        :data-project-id="p.id"
       >
         <div class="project-thumbnail">
           <span>{{ p.id }} / ASSET SITE</span>
@@ -69,7 +82,7 @@ const projects = computed(
           <p class="project-card-location">
             <MapPin :size="12" />{{ p.locationLabel || '行政区未配置' }} · 行政区级定位
           </p>
-          <p class="project-card-source">{{ projectConnection(p) }}</p>
+          <p class="project-card-source">{{ projectConnection(p) }} · <span data-testid="runtime-source">{{ runtimeSourceText(p) }}</span></p>
           <div class="project-card-stats">
             <span
               ><Box :size="13" /> 行车资产 <b>{{ p.assetDeviceCount }}</b></span
@@ -85,6 +98,8 @@ const projects = computed(
               >沙盘定位 <ArrowUpRight :size="13" /></RouterLink
             ><RouterLink :to="'/devices?project=' + encodeURIComponent(p.id)"
               >查看该项目资产 <ArrowUpRight :size="13"
+            /></RouterLink><RouterLink :to="'/assets?project=' + encodeURIComponent(p.id)" data-testid="ledger-link"
+              >资产台账 <ArrowUpRight :size="13"
             /></RouterLink>
           </div>
         </div>
@@ -93,3 +108,6 @@ const projects = computed(
     <p v-if="data?.length && !projects.length" class="no-data">无匹配项目</p>
   </main>
 </template>
+<style scoped>
+.registered-notice { color: #6fd39b; font-size: 13px; margin: 0 0 12px; }
+</style>

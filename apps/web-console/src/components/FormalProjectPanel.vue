@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query';
 import { onBeforeRouteLeave } from 'vue-router';
 import { RefreshCw, UserPlus, X } from 'lucide-vue-next';
@@ -9,7 +9,7 @@ import { webSession, queryWebSession, productionAuth } from '../cloud/session';
 import {
   PROJECT_ROLES, PROJECT_ROLE_TEXT, validateGrantForm, grantChange, grantErrorMessage, mapStatus, type GrantForm, type ProjectRole,
 } from '../cloud/project-grants';
-import type { PortfolioProject, ProjectMember } from '../../../../contracts/typescript/types.gen';
+import type { PortfolioProject, ProjectMember, ProjectGrantResult } from '../../../../contracts/typescript/types.gen';
 
 const props = defineProps<{ project: PortfolioProject; scopeName: string }>();
 const emit = defineEmits<{ close: [] }>();
@@ -32,15 +32,15 @@ const notice = ref('');
 const errors = computed(() => validateGrantForm(form.value, selfId.value));
 const shown = computed(() => (touched.value ? errors.value : {}));
 const dirty = computed(() => form.value.userId.trim() !== '' || form.value.role !== '');
-watch(() => props.project.id, () => {
-  form.value = { userId: '', role: '' };
-  touched.value = false;
-  formError.value = '';
-  notice.value = '';
-});
+// The parent must ask canLeave() before switching tab / project or closing the panel, so a
+// typed draft or an in-flight change is never silently discarded (DirtyGuard, Q3 fix B).
+defineExpose({ canLeave: () => allowClose(dirty.value, grantMutation.isPending.value) });
 
-async function refreshAfterChange(list: ProjectMember[]) {
-  queryClient.setQueryData(['project-members', props.project.id], list);
+async function refreshAfterChange(result: ProjectGrantResult) {
+  // The change is committed whatever the re-read did (Q3 fix A). A missing list is reloaded
+  // separately instead of being treated as a failed grant.
+  if (result.membersRefreshed) queryClient.setQueryData(['project-members', props.project.id], result.members);
+  else void membersQuery.refetch();
   // Grant state, the caller's own session (if they changed themselves — refused server-side)
   // and every project-scoped view that depends on grants.
   await Promise.all([
@@ -53,11 +53,12 @@ async function refreshAfterChange(list: ProjectMember[]) {
 
 const grantMutation = useMutation({
   mutationFn: (v: { userId: string; role: ProjectRole | null }) => changeProjectMember(props.project.id, grantChange(v.userId, v.role, members.value)),
-  onSuccess: async (list, v) => {
+  onSuccess: async (result, v) => {
     notice.value = v.role ? `已将 ${v.userId} 设为「${PROJECT_ROLE_TEXT[v.role].label}」，立即生效。` : `已撤销 ${v.userId} 的项目权限，其现有会话的下一次请求即失效。`;
+    if (!result.membersRefreshed) notice.value += '（成员列表刷新失败，正在重新加载；授权本身已生效）';
     form.value = { userId: '', role: '' };
     touched.value = false;
-    await refreshAfterChange(list);
+    await refreshAfterChange(result);
   },
   onError: async (e) => {
     formError.value = grantErrorMessage(e);

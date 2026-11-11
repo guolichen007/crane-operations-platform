@@ -50,7 +50,25 @@ const canCreate = computed(() => scopes.value.length > 0);
 const scopeName = (id: string) => scopesQuery.data.value?.find((s) => s.id === id)?.name ?? id;
 // UX only (the server re-checks project_approve): planners do not see an approve button.
 const canApprove = (scopeId: string) => scopesQuery.data.value?.find((s) => s.id === scopeId)?.myRole === 'portfolio_manager';
+// DirtyGuard for the grant form inside the formal-project panel (Q3 fix B): switching tab,
+// switching project or closing the panel asks the panel first; an in-flight change blocks.
+const formalPanel = ref<{ canLeave: () => boolean } | null>(null);
+const panelAllowsLeave = () => !formalPanel.value || formalPanel.value.canLeave();
+type Tab = 'intake' | 'formal' | 'resource' | 'schedule' | 'conflict';
+function switchTab(next: Tab) {
+  if (next === tab.value) return;
+  if (tab.value === 'formal' && !panelAllowsLeave()) return;
+  tab.value = next;
+  // Approvals by others since the page loaded must show up when the formal tab is opened.
+  if (next === 'formal') void formalQuery.refetch();
+}
+function selectProject(id: string) {
+  if (id === selectedProject.value) return;
+  if (!panelAllowsLeave()) return;
+  selectedProject.value = id;
+}
 function openFormal(id: string) {
+  if (!panelAllowsLeave()) return;
   selectedProject.value = id;
   tab.value = 'formal';
 }
@@ -127,7 +145,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown);
   window.removeEventListener('beforeunload', onBeforeUnload);
 });
-onBeforeRouteLeave(() => allowClose(dirty.value, createMutation.isPending.value));
+onBeforeRouteLeave(() => allowClose(dirty.value, createMutation.isPending.value) && panelAllowsLeave());
 
 // ---- transitions / approval -------------------------------------------------------------
 const busyId = ref('');
@@ -182,11 +200,11 @@ const fmtDate = (v: string | null) => (v ? new Date(v).toLocaleDateString('zh-CN
     </header>
 
     <div class="tabs" role="tablist">
-      <button :class="{ active: tab === 'intake' }" @click="tab = 'intake'">项目登记</button>
-      <button :class="{ active: tab === 'formal' }" data-testid="tab-formal" @click="tab = 'formal'">正式项目</button>
-      <button :class="{ active: tab === 'resource' }" @click="tab = 'resource'">资源</button>
-      <button :class="{ active: tab === 'schedule' }" @click="tab = 'schedule'">排期</button>
-      <button :class="{ active: tab === 'conflict' }" @click="tab = 'conflict'">冲突</button>
+      <button :class="{ active: tab === 'intake' }" @click="switchTab('intake')">项目登记</button>
+      <button :class="{ active: tab === 'formal' }" data-testid="tab-formal" @click="switchTab('formal')">正式项目</button>
+      <button :class="{ active: tab === 'resource' }" @click="switchTab('resource')">资源</button>
+      <button :class="{ active: tab === 'schedule' }" @click="switchTab('schedule')">排期</button>
+      <button :class="{ active: tab === 'conflict' }" @click="switchTab('conflict')">冲突</button>
     </div>
 
     <p v-if="actionError" class="form-error" role="alert" data-testid="portfolio-action-error">{{ actionError }}</p>
@@ -277,12 +295,14 @@ const fmtDate = (v: string | null) => (v ? new Date(v).toLocaleDateString('zh-CN
                   </span>
                 </td>
                 <td class="cell-sub">{{ p.inventoryRegistered ? (p.adminCode ? `行政区 ${p.adminCode}` : '未关联空间位置') : '未进入地图' }}</td>
-                <td><button class="ghost-action" data-testid="formal-open" @click="selectedProject = p.id">{{ p.canManageGrants ? '管理成员' : '查看' }}</button></td>
+                <td><button class="ghost-action" data-testid="formal-open" @click="selectProject(p.id)">{{ p.canManageGrants ? '管理成员' : '查看' }}</button></td>
               </tr>
             </tbody>
           </table>
         </div>
         <FormalProjectPanel
+          ref="formalPanel"
+          :key="selectedProject"
           v-if="selectedProject && formalById.get(selectedProject)"
           :project="formalById.get(selectedProject)!"
           :scope-name="scopeName(formalById.get(selectedProject)!.portfolioScopeId)"

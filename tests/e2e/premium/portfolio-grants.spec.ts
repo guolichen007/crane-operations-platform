@@ -11,7 +11,7 @@ const formal = (over: Record<string, unknown> = {}) => ({
   memberCount: 0, grantStatus: 'NO_MEMBERS', inventoryRegistered: false, adminCode: null, canManageGrants: true, ...over,
 });
 
-async function mock(page: Page, opts: { role?: 'portfolio_manager' | 'portfolio_planner'; fail?: Set<string>; delayMs?: number; projects?: unknown[] } = {}) {
+async function mock(page: Page, opts: { role?: 'portfolio_manager' | 'portfolio_planner'; fail?: Set<string>; delayMs?: number; projects?: unknown[]; readFailsAfterCommit?: boolean } = {}) {
   const role = opts.role ?? 'portfolio_manager';
   const fail = opts.fail ?? new Set<string>();
   const members: Member[] = [];
@@ -38,7 +38,8 @@ async function mock(page: Page, opts: { role?: 'portfolio_manager' | 'portfolio_
       if (b.role === null) members.splice(members.indexOf(cur!), 1);
       else if (cur) cur.role = b.role;
       else members.push({ userId: b.userId, displayName: 'Anonymous ' + b.userId, role: b.role, enabled: true });
-      return r.fulfill({ json: members });
+      if (opts.readFailsAfterCommit) return r.fulfill({ json: { result: 'APPLIED', members: [], membersRefreshed: false } });
+      return r.fulfill({ json: { result: 'APPLIED', members, membersRefreshed: true } });
     }
     return r.fulfill({ json: [] });
   });
@@ -152,6 +153,61 @@ test('规划者：可查看正式项目，没有授权入口；空状态与失�
   await expect(p3.getByTestId('formal-error')).toContainText('服务暂不可用');
   await expect(p3.getByText('暂无已批准的正式项目')).toHaveCount(0);
   await p3.screenshot({ path: shot('5-formal-503') });
+});
+
+test('CI 发现：页面打开后才被批准的正式项目，切到「正式项目」页签即可见（不受缓存影响）', async ({ page }) => {
+  const projects: unknown[] = [];
+  await mock(page, { projects });
+  await page.goto('/#/portfolio');
+  await page.getByTestId('tab-formal').click();
+  await expect(page.getByTestId('formal-empty')).toBeVisible();
+  await page.locator('.tabs button', { hasText: '项目登记' }).click();
+  projects.push(formal()); // approved by someone else meanwhile
+  await page.getByTestId('tab-formal').click();
+  await expect(page.locator('[data-formal-id="FP-1"]')).toBeVisible();
+});
+
+test('Q3 修复 A：授权已提交但成员列表读取失败时显示成功，单独重新加载，不重复提交', async ({ page }) => {
+  const api = await mock(page, { readFailsAfterCommit: true });
+  const panel = await openFormal(page);
+  const form = panel.getByTestId('grant-form');
+  await form.getByLabel('平台账号 ID').fill('user-new');
+  await form.getByLabel('项目角色').selectOption('viewer');
+  await form.getByTestId('grant-submit').click();
+  await expect(panel.getByTestId('grant-notice')).toContainText('授权本身已生效');
+  await expect(panel.getByTestId('grant-error')).toHaveCount(0);
+  // The separate reload (GET) shows the committed member; exactly one POST was sent.
+  await expect(panel.locator('[data-member="user-new"]')).toBeVisible();
+  expect(api.posts).toHaveLength(1);
+  await expect(form.getByLabel('平台账号 ID')).toHaveValue('');
+});
+
+test('Q3 修复 B：授权表单有草稿时切换页签、切换项目、关闭面板都需确认；保存中不可切换', async ({ page }) => {
+  const api = await mock(page, { delayMs: 1500, projects: [formal(), formal({ id: 'FP-2', name: '第二个正式项目', intakeId: 'I2', intakeCode: 'INT-2' })] });
+  const panel = await openFormal(page);
+  await panel.getByTestId('grant-form').getByLabel('平台账号 ID').fill('user-new');
+  const prompts: string[] = [];
+  page.on('dialog', (d) => { prompts.push(d.message()); void d.dismiss(); });
+  await page.locator('.tabs button', { hasText: '项目登记' }).click();
+  await page.locator('[data-formal-id="FP-2"]').getByTestId('formal-open').click();
+  await panel.getByRole('button', { name: '关闭正式项目' }).click();
+  expect(prompts).toHaveLength(3);
+  await expect(page.getByTestId('tab-formal')).toHaveClass(/active/);
+  await expect(panel).toContainText('Q2 华东新装项目');
+  await expect(panel.getByTestId('grant-form').getByLabel('平台账号 ID')).toHaveValue('user-new');
+  // In-flight: switching is refused outright (no prompt), exactly one POST, then success.
+  await panel.getByTestId('grant-form').getByLabel('项目角色').selectOption('viewer');
+  await panel.getByTestId('grant-submit').click();
+  await expect(panel.getByRole('button', { name: '保存中…' })).toBeDisabled();
+  await page.locator('.tabs button', { hasText: '资源' }).click();
+  await page.locator('[data-formal-id="FP-2"]').getByTestId('formal-open').click();
+  expect(prompts).toHaveLength(3);
+  await expect(panel.getByTestId('grant-notice')).toContainText('立即生效');
+  expect(api.posts).toHaveLength(1);
+  // Clean form: switching no longer asks.
+  await page.locator('[data-formal-id="FP-2"]').getByTestId('formal-open').click();
+  await expect(panel).toContainText('第二个正式项目');
+  expect(prompts).toHaveLength(3);
 });
 
 for (const [w, h] of [[1280, 720], [1366, 768], [1920, 1080]] as const) {

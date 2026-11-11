@@ -185,6 +185,14 @@ const faultText = computed(() => props.device.fault || '暂无数据');
       }}
     </p>
     <RouterLink
+      v-if="sceneProvider.mode === 'api'"
+      :to="'/assets/' + encodeURIComponent(device.deviceId)"
+      class="ghost-action detail-link"
+      data-testid="asset-ledger-link"
+    >
+      查看资产台账<ArrowUpRight :size="14" />
+    </RouterLink>
+    <RouterLink
       :to="'/monitor?device=' + device.deviceId"
       class="primary-button detail-link"
     >

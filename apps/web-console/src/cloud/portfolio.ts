@@ -12,6 +12,10 @@ import type {
   PortfolioProject,
   ProjectMember,
   ProjectGrantChange,
+  ProjectGrantResult,
+  PendingInventoryProject,
+  ProjectInventoryRegistration,
+  InventoryProject,
 } from '../../../../contracts/typescript/types.gen';
 
 export const listScopes = () => api<PortfolioScope[]>('portfolio/scopes');
@@ -65,4 +69,9 @@ export const listPortfolioProjects = () => api<PortfolioProject[]>('portfolio/pr
 export const getPortfolioProject = (id: string) => api<PortfolioProject>(`portfolio/projects/${encodeURIComponent(id)}`);
 export const listProjectMembers = (id: string) => api<ProjectMember[]>(`portfolio/projects/${encodeURIComponent(id)}/members`);
 export const changeProjectMember = (id: string, change: ProjectGrantChange) =>
-  api<ProjectMember[]>(`portfolio/projects/${encodeURIComponent(id)}/members`, { method: 'POST', body: change });
+  api<ProjectGrantResult>(`portfolio/projects/${encodeURIComponent(id)}/members`, { method: 'POST', body: change });
+
+// Q3 formal project → Inventory registration (project grant with location_write).
+export const listPendingInventoryProjects = () => api<PendingInventoryProject[]>('inventory/pending-projects');
+export const registerProjectInventory = (projectId: string, body: ProjectInventoryRegistration) =>
+  api<InventoryProject>(`projects/${encodeURIComponent(projectId)}/inventory-registration`, { method: 'POST', body });
