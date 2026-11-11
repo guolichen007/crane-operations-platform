@@ -5,8 +5,9 @@ BAOBEI_MAIN_MERGE=FORBIDDEN
 BAOBEI_R2_MERGE=FORBIDDEN
 BASE_SHA=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18
 BRANCH=product/baobei-v1
-CURRENT_BATCH=G4_S1B1_R0_DEPLOY_READINESS
-STOP_AFTER_G4_S1B1_R0=YES
+CURRENT_BATCH=G4_S4_GO_LIVE_REMEDIATION
+DEPLOYED_SHA=7b9558084d73f5210cdd08e8240883ecc1659de8
+SCHEMA_VERSION=00005
 RELEASE_SHA=572c6aa609e06419b832f7652e73bf29e8c65c37
 CODE_SHA=ca41c3ba090a7dc17120f6565d0a54a2f8d644fd
 SERVER_PRECHECK=NOT_RUN
@@ -14,11 +15,15 @@ G4_S1B1_DEPLOY_READY=NO
 PREVIEW_CODE_READY=YES
 PREVIEW_IMAGES_READY=NO
 PREVIEW_DEPLOYED=NO
-PRODUCTION_DEPLOYED=NO
+PRODUCTION_DEPLOYED=YES (7b95580; G4-S4 未部署)
 
 目标：快速报项目、识别重复、明确归属并跟进。独立产品，永不合并 main/R2。
 
-## 当前实施：G4-S1B1-R0 部署前最终门禁
+## 当前实施：G4-S4 正式使用前全链路整改
+
+基线为现网部署版 `7b95580`（Run 42948894591 八门通过）。退出/切换账号/企业 SSO 退出分开；重新认证只用于敏感人员操作并可在弹窗内续办；成员列表与详情按状态给出下一步，管理员审核开通生成受控回执（常驻 API 不持有 Keycloak 管理权限）；工作手机必填（迁移 00005）、邮箱选填且无邮箱可按精确 subject 与唯一角色激活；表单错误摘要与就近提示；品牌改为“友道”并重做登录页。验收与未完成项见 [39-G4-S4正式使用前全链路整改验收](39-G4-S4正式使用前全链路整改验收.md)。
+
+## 历史：G4-S1B1-R0 部署前最终门禁
 
 RELEASE_SHA `572c6aa`（Run 42930430139 八门通过；代码与 `ca41c3b` 相同，之后只有文档提交）。正式 Baobei 现网公开端点在线（Web 为 a4f488a 构建）。部署前最终执行清单（R1，含资源就绪矩阵）见 [38-G4-S1B1-Preview部署前最终执行清单](38-G4-S1B1-Preview部署前最终执行清单.md)，取代 37 号第 5 节。服务器只读预检 NOT_RUN（无授权访问）、GHCR 镜像未发布、DNS/证书/Keycloak/白名单未就绪：G4_S1B1_DEPLOY_READY=NO。
 
