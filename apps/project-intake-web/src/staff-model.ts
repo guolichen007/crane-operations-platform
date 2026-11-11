@@ -17,7 +17,7 @@ export const statuses: Record<string, string> = {
 // Status shown in lists: "待开通" splits into "awaiting review" and "in progress"
 // once an administrator approved this exact version.
 export function statusLabel(m: Pick<StaffMember, 'status' | 'provisionReviewed'>) {
-  return m.status === 'PENDING_PROVISION' && m.provisionReviewed ? '开通中' : statuses[m.status] ?? m.status;
+  return m.status === 'PENDING_PROVISION' && m.provisionReviewed ? '待身份核验' : statuses[m.status] ?? m.status;
 }
 
 // The next step for each state, in the words of the person who must act.
@@ -25,7 +25,7 @@ export function nextStep(m: Pick<StaffMember, 'status' | 'provisionReviewed' | '
   switch (m.status) {
     case 'PENDING_PROVISION':
       if (!admin) return '等待管理员审核开通';
-      return m.provisionReviewed ? '等待身份运维创建企业账号并登记' : '请审核开通';
+      return m.provisionReviewed ? '审核已通过，等待企业身份核验' : '请审核开通';
     case 'PENDING_ACTIVATION': return '等待成员首次登录完成激活';
     case 'PROVISION_FAILED': return admin ? '查看失败原因后重试' : '等待管理员处理';
     case 'SUSPENDED': return m.syncStatus === 'FAILED' ? '停用同步失败，请重试' : '可申请恢复或归档';
@@ -59,10 +59,10 @@ export const staffEvents: Record<string, string> = {
   'staff.archive': '归档账号',
   'staff.transfer': '移交项目',
   'staff.activate': '企业账号激活',
-  'staff.provision.approve': '核对开通回执',
+  'staff.provision.approve': '企业身份核验并绑定',
   'staff.provision.ack-suspend': '核对停用回执',
   'staff.provision.fail': '登记处理失败',
-  'staff.provision.review': '审核开通',
+  'staff.provision.review': '审核开通（业务批准）',
 };
 
 export interface StaffMember {

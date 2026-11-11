@@ -182,6 +182,19 @@ test('B3 管理员维护团队与邀请高级角色', async ({ page }, info) => 
   await dialog.getByLabel(/^团队/).selectOption({ label: team + '-更新' });
   await confirm(page, 'Synthetic B3 高级角色审批');
   await expect(page.locator('.staff-title')).toContainText('待开通');
+  // G4-S4-R1: business approval is not identity verification.
+  await action(page, 'staff.provision-review').click();
+  const review = page.getByRole('dialog', { name: '审核开通' });
+  await review.getByLabel(/^操作原因/).fill('Synthetic 业务批准');
+  await review.getByRole('button', { name: '批准开通' }).click();
+  await expect(review).toContainText('审核已通过，等待企业身份核验');
+  await expect(review).toContainText('账号尚未开通');
+  await expect(review.locator('pre')).toContainText('"identityVerified": false');
+  await expect(review.locator('pre')).toContainText('PENDING_IDENTITY_VERIFICATION');
+  await action(page, 'staff.cancel').click();
+  await expect(page.locator('.staff-title')).toContainText('待身份核验');
+  await expect(page.locator('.staff-title')).not.toContainText('已启用');
+  await expect(page.locator('.staff-hint')).toHaveText('审核已通过，等待企业身份核验');
   await expect(page.getByText('人员管理仅展示项目计数。')).toBeVisible();
   await action(page, 'staff.suspend').click();
   await confirm(page, 'Synthetic B3 停用高级角色');

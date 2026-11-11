@@ -164,8 +164,8 @@ window.addEventListener('error', showError);
       </section>
       <section>
         <h3>退出企业账号</h3>
-        <p class="muted">同时退出使用同一企业账号登录的所有应用，例如行车平台。仅在共用电脑或离开时使用。</p>
-        <ActionButton action-id="auth.logout-sso" :run="signOutEverywhere">退出企业账号（所有应用）</ActionButton>
+        <p class="muted">结束本报备中心的登录，并结束企业认证服务的登录会话：此后在本浏览器打开任何使用企业账号的应用，都需要重新输入密码。已经打开的其他应用（例如行车平台）可能保留各自的登录，直到它们过期或单独退出。共用电脑请同时在那些应用中退出。</p>
+        <ActionButton action-id="auth.logout-sso" :run="signOutEverywhere">退出企业账号</ActionButton>
       </section>
     </div>
   </Modal>

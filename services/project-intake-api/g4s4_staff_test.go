@@ -247,18 +247,36 @@ func TestDatabaseG4S4NoEmailProvisioning(t *testing.T) {
 	s, b = admin.call("POST", path+"/provision-review", review)
 	expect(t, s, 200, b)
 	var reviewed struct {
-		Member  staffMember     `json:"member"`
-		Receipt json.RawMessage `json:"receipt"`
+		Member staffMember     `json:"member"`
+		Draft  json.RawMessage `json:"draft"`
 	}
-	if err := json.Unmarshal(b, &reviewed); err != nil || !reviewed.Member.ProvisionReviewed || reviewed.Member.Status != staffPending {
-		t.Fatal("review must not bind identity or change status", string(b))
+	if err := json.Unmarshal(b, &reviewed); err != nil || !reviewed.Member.ProvisionReviewed || reviewed.Member.Status != staffPending ||
+		reviewed.Member.IdentityLinked || reviewed.Member.IdentityVerified {
+		t.Fatal("business review must not bind or verify identity", string(b))
 	}
-	// The returned draft is a valid receipt for the controlled tool as-is.
-	var receipt provisionReceipt
-	if err := json.Unmarshal(reviewed.Receipt, &receipt); err != nil || receipt.Subject != subject || receipt.Email != "" ||
-		receipt.UniqueEmail || !exactClientRole(receipt.ClientRoles, salesRole) || receipt.Phone != "+8613920000001" {
-		t.Fatal("receipt draft", string(reviewed.Receipt))
+	var draft map[string]any
+	if err := json.Unmarshal(reviewed.Draft, &draft); err != nil || draft["draftStatus"] != "PENDING_IDENTITY_VERIFICATION" ||
+		draft["identityVerified"] != false || draft["subjectClaimed"] != subject || draft["subject"] != nil {
+		t.Fatal("review result must be an unverified draft", string(reviewed.Draft))
 	}
+	// The draft as produced, or with only the identity flag flipped, never passes staff-provision.
+	if _, err := applyProvisionReceipt(ctx, db, reviewed.Draft, "synthetic-operator", true); err == nil {
+		t.Fatal("unverified review draft accepted by staff-provision")
+	}
+	forged := map[string]any{}
+	for k, v := range draft {
+		if k != "draftStatus" && k != "businessApprovalBy" && k != "subjectClaimed" && k != "identityChecklist" {
+			forged[k] = v
+		}
+	}
+	forged["subject"], forged["identityVerified"] = subject, true
+	if _, err := applyProvisionReceipt(ctx, db, mustJSON(forged), "synthetic-operator", true); err == nil {
+		t.Fatal("draft with self-asserted identityVerified and the review reference accepted")
+	}
+	// Identity operations verify the Keycloak user independently and write their own receipt.
+	receipt := provisionReceipt{StaffID: m.ID, Version: m.Version, Operation: "approve", Subject: subject,
+		Phone: "+8613920000001", IdentityVerified: true, ClientRoles: []string{salesRole},
+		ApprovalReference: "IDOPS-SYNTHETIC-0001", Reason: "运维已在 Keycloak 核对 UUID、唯一角色与归属"}
 
 	reject := func(r provisionReceipt, why string) {
 		t.Helper()
@@ -281,6 +299,21 @@ func TestDatabaseG4S4NoEmailProvisioning(t *testing.T) {
 	phone := receipt
 	phone.Phone = "+8613920000002"
 	reject(phone, "phone mismatch")
+	unverified := receipt
+	unverified.IdentityVerified = false
+	reject(unverified, "identityVerified=false")
+	oldVersion := receipt
+	oldVersion.Version--
+	reject(oldVersion, "stale version")
+	reviewRef := receipt
+	reviewRef.ApprovalReference = reviewReferencePrefix + "ANY-V1"
+	reject(reviewRef, "business review reference instead of identity verification")
+	duplicate := receipt
+	duplicate.Subject = "dddddddd-0000-4000-8000-000000000001"
+	if _, err := db.Exec(ctx, `INSERT INTO app_users(subject,display_name,role,team_id) VALUES($1,'合成已绑定成员','baobei_sales',$2)`, duplicate.Subject, syntheticTeam); err != nil {
+		t.Fatal(err)
+	}
+	reject(duplicate, "subject already bound to another member")
 
 	raw := mustJSON(receipt)
 	if got, err := applyProvisionReceipt(ctx, db, raw, "synthetic-operator", true); err != nil || got != "DRY_RUN_"+staffActivation {

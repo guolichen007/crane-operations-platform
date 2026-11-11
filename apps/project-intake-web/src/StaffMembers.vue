@@ -39,7 +39,7 @@ const dialog = ref<Dialog | null>(null);
 const emptyForm = () => ({ name: '', phone: '', email: '', teamId: '', role: 'baobei_sales', note: '', reason: '', permissions: [] as string[] });
 const form = ref(emptyForm());
 const review = ref({ subject: '', username: '' });
-const receipt = ref('');
+const receipt = ref(''); // review draft (unverified), shown for identity operations
 const errors = ref<StaffErrors>({});
 const formIssue = ref('');
 const target = ref('');
@@ -69,7 +69,7 @@ const descriptions: Partial<Record<Dialog, string>> = {
   transfer: '仅移交选中项目，保留创建人、审批和重复裁决记录。',
   archive: '归档保留人员历史记录，不能再登录。',
   retry: '把失败的开通任务重新排队。',
-  review: '核对成员信息后批准开通。批准只记录审核结论，企业账号由身份运维按回执创建并绑定。',
+  review: '确认此人可以加入报备中心及其角色。审核只记录业务批准，不代表企业身份已核验；身份运维核验后才会开通。',
 };
 const canManage = computed(() => member.value?.canManage ?? false);
 const showRoleAction = computed(() => administrator.value && canManage.value && member.value?.status === 'ACTIVE' &&
@@ -252,11 +252,11 @@ async function save() {
       }
       await app.api(path, 'PATCH', {...payload, version});
     } else if (kind === 'review') {
-      const result = await app.api<{receipt: unknown}>(path + '/provision-review', 'POST', {
+      const result = await app.api<{draft: unknown}>(path + '/provision-review', 'POST', {
         version, reason, subject: review.value.subject.trim(), username: review.value.username.trim(),
       });
-      receipt.value = JSON.stringify(result.receipt, null, 2);
-      app.toast('已批准开通，请把开通回执交给身份运维');
+      receipt.value = JSON.stringify(result.draft, null, 2);
+      app.toast('审核已通过，等待企业身份核验');
       await load();
       return;
     } else if (kind === 'permissions') {
@@ -304,7 +304,7 @@ async function save() {
 
 async function copyReceipt() {
   await navigator.clipboard.writeText(receipt.value);
-  app.toast('开通回执已复制');
+  app.toast('待核验草稿已复制');
 }
 
 onMounted(async () => {
@@ -346,7 +346,7 @@ onMounted(async () => {
       <div class="staff-filters panel">
         <label>姓名、邮箱或手机<input v-model="q" aria-label="姓名、邮箱或手机" maxlength="254" @keyup.enter="searchFromInput" /></label>
         <label>账号状态<select v-model="status" @change="searchFromInput"><option value="">全部状态</option>
-          <option value="PENDING_PROVISION">待开通 / 开通中</option>
+          <option value="PENDING_PROVISION">待开通 / 待身份核验</option>
           <option value="PENDING_ACTIVATION">待首次登录</option>
           <option value="ACTIVE">已启用</option>
           <option value="PROVISION_FAILED">开通失败</option>
@@ -406,7 +406,7 @@ onMounted(async () => {
         <ol v-if="member.status !== 'ACTIVE' && member.status !== 'ARCHIVED'" class="staff-progress" aria-label="开通进度">
           <li :data-done="true">已添加成员</li>
           <li :data-done="member.provisionReviewed || ['PENDING_ACTIVATION','ACTIVE'].includes(member.status)" :data-current="member.status === 'PENDING_PROVISION' && !member.provisionReviewed">管理员审核开通</li>
-          <li :data-done="['PENDING_ACTIVATION','ACTIVE'].includes(member.status)" :data-current="member.status === 'PENDING_PROVISION' && member.provisionReviewed" :data-failed="member.status === 'PROVISION_FAILED'">创建并绑定企业账号</li>
+          <li :data-done="['PENDING_ACTIVATION','ACTIVE'].includes(member.status)" :data-current="member.status === 'PENDING_PROVISION' && member.provisionReviewed" :data-failed="member.status === 'PROVISION_FAILED'">企业身份核验并绑定</li>
           <li :data-current="member.status === 'PENDING_ACTIVATION'">成员首次登录激活</li>
         </ol>
         <p v-if="nextStep(member, administrator)" class="staff-hint" role="status">{{ nextStep(member, administrator) }}</p>
@@ -419,7 +419,7 @@ onMounted(async () => {
             v-if="administrator && member.status === 'PENDING_PROVISION' && member.syncStatus === 'PENDING'"
             action-id="staff.provision-review" primary :run="() => open('review')"
           >
-            {{ member.provisionReviewed ? '重新生成开通回执' : '审核开通' }}
+            {{ member.provisionReviewed ? '重新生成待核验草稿' : '审核开通' }}
           </ActionButton>
           <ActionButton
             v-if="showRoleAction && member.role === 'baobei_sales'" action-id="staff.promote"
@@ -533,9 +533,9 @@ onMounted(async () => {
           <label>企业账号用户名（选填）<input v-model="review.username" maxlength="64" autocomplete="off" placeholder="身份运维创建账号时使用" /></label>
           <label>企业账号 ID（选填）<input v-model="review.subject" maxlength="36" autocomplete="off" placeholder="已有账号时填写 Keycloak 用户 ID" /></label>
           <div v-if="receipt" class="receipt">
-            <p><strong>已批准。</strong>把下面的开通回执交给身份运维：创建企业账号（只分配“{{ roles[member.role] }}”一个角色）、补上账号 ID 后执行受控开通。成员首次登录后自动启用。</p>
+            <p><strong>审核已通过，等待企业身份核验。</strong>账号尚未开通。下面是待核验草稿，不能直接用于开通：请交给身份运维在企业认证系统中核对账号 ID、{{ member.email ? '邮箱、' : '' }}唯一的“{{ roles[member.role] }}”角色和归属，由运维写出最终开通回执。成员首次登录后才会启用。</p>
             <pre>{{ receipt }}</pre>
-            <ActionButton action-id="staff.receipt-copy" :run="copyReceipt">复制开通回执</ActionButton>
+            <ActionButton action-id="staff.receipt-copy" :run="copyReceipt">复制待核验草稿</ActionButton>
           </div>
         </template>
         <fieldset v-if="dialog === 'permissions' || dialog === 'invite' && form.role === 'baobei_sales'">

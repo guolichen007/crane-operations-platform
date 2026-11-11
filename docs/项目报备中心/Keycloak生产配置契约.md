@@ -43,6 +43,8 @@ Baobei 请求 `openid profile email`。由负责人在专用 Client 的测试账
 
 自动开户在共享 Realm 的最小权限隔离尚待 Keycloak 26.8.x 验证。新增邀请或恢复申请显示待管理员开通。负责人通过已批准的身份流程，核对人员归属、精确 UUID `sub`、唯一工作邮箱和预期的 `baobei-web` Client Role。邮箱重复、归属不明或无法确认专属角色时暂停处理，使用失败回执记录原因。
 
+管理员在人员详情点“审核开通”只代表业务批准，得到的是待身份核验草稿（`identityVerified=false`、`BAOBEI-REVIEW-` 引用），staff-provision 会拒绝它。身份运维须在 Keycloak 中独立核对 UUID、邮箱（如有）、唯一 `baobei-web` 角色及未绑定其他成员，然后以自己的核验编号（不得以 `BAOBEI-REVIEW-` 开头）写最终回执。没有邮箱的成员，回执必须写 `uniqueEmail=false` 和唯一的 `clientRoles`。
+
 通过独立维护 DSN，在 Linux 一次性容器以 root 运行以下命令。回执遵循生产部署契约中的文件属主和权限规则。先 dry-run，再用同一份获批文件正式执行。
 
 ```bash

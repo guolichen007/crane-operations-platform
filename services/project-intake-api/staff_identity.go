@@ -47,6 +47,7 @@ func applyProvisionReceipt(ctx context.Context, db *pgxpool.Pool, raw []byte, op
 	if err := decoder.Decode(&in); err != nil || !uuidPattern.MatchString(in.StaffID) || in.Version < 1 ||
 		!reasonOK(in.Reason) || !evidenceID.MatchString(in.ApprovalReference) ||
 		!contains([]string{"approve", "ack-suspend", "fail"}, in.Operation) ||
+		strings.HasPrefix(in.ApprovalReference, reviewReferencePrefix) ||
 		in.Operation != "approve" && in.ClientRoles != nil {
 		return "", staffInvalid
 	}

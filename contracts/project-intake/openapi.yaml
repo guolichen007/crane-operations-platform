@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Project Intake API",
-    "version": "1.6.0-g4s4",
+    "version": "1.6.1-g4s4-r1",
     "description": "全角色项目资源授权、不可覆盖提交证据、管理员未分配草稿及幂等创建；G2 增加审核资格提示、创建意图回执、显示名称与首页最小聚合。完整经营分析不在G2。 G4-S4：工作手机（新建必填、E.164）、邮箱选填、无邮箱以精确 subject 与唯一 Client Role 激活、管理员审核开通回执、仅敏感人员操作要求重新认证、本地/企业 SSO 退出与切换账号。"
   },
   "servers": [
@@ -3575,7 +3575,7 @@
     "/api/v1/staff/{id}/provision-review": {
       "post": {
         "operationId": "staff.provisionReview",
-        "summary": "管理员审核开通并生成开通回执",
+        "summary": "管理员审核开通（业务批准），生成待身份核验草稿",
         "security": [
           {
             "session": []
@@ -5541,14 +5541,14 @@
           "member": {
             "$ref": "#/components/schemas/StaffMember"
           },
-          "receipt": {
+          "draft": {
             "type": "object",
-            "description": "供受控 staff-provision 工具使用的回执草稿；常驻 API 不绑定身份。"
+            "description": "待身份核验草稿（draftStatus=PENDING_IDENTITY_VERIFICATION，identityVerified=false，approvalReference 以 BAOBEI-REVIEW- 开头）。staff-provision 拒绝该草稿；身份运维须独立核对 Keycloak 用户后写最终回执。"
           }
         },
         "required": [
           "member",
-          "receipt"
+          "draft"
         ]
       }
     },

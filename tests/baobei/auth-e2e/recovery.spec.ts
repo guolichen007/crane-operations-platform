@@ -315,7 +315,7 @@ test('退出、切换账号、多标签同步与企业账号退出', async ({ pa
   await expect(page.locator('.user-name')).toContainText('示例销售 C');
   // Global SSO logout goes to Keycloak end-session with client_id + post_logout_redirect_uri.
   await page.locator('[data-action-id="auth.account"]:visible').click();
-  await page.getByRole('button', { name: '退出企业账号（所有应用）' }).click();
+  await page.getByRole('button', { name: '退出企业账号', exact: true }).click();
   await expect(page.getByRole('heading', { name: '确认退出企业账号' })).toBeVisible();
   await page.getByRole('link', { name: '确认退出' }).click();
   await expect(page).toHaveURL('/login?signedOut=sso');
