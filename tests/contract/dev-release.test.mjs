@@ -6,7 +6,7 @@ import { basename, dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import YAML from 'yaml';
-import { record, plan, apply, rollback, verifyBackup, Stop, UPDATABLE } from '../../deploy/scripts/dev-upgrade.mjs';
+import { record, plan, apply, rollback, verifyBackup, recoveryGuidance, Stop, UPDATABLE } from '../../deploy/scripts/dev-upgrade.mjs';
 import { verifyRelease } from '../../deploy/scripts/release-check.mjs';
 import { productionProject, validateProduction, validateDevelopment, validateDevOverlay } from '../../tools/production-contract.mjs';
 import { checkInputs, DEV_REGISTRY, schemaVersion } from '../../tools/dev-candidate.mjs';
@@ -180,10 +180,27 @@ test('apply 涉及迁移：缺备份 STOP，备份过旧/来源错误拒绝，�
   assert.ok(ok.state.calls.some(c => c[0] === 'python3' && c.includes('drill')));
 });
 
-test('apply 冒烟失败返回 3 并给出回滚指令；迁移后的回滚在 schema 不一致时 STOP', t => {
+test('apply 冒烟失败返回 3，恢复提示只给可执行的路径；迁移后的回滚在 schema 不一致时 STOP', t => {
   const f = fixture(t);
   const bad = (url) => url.includes('/api/') ? { status: 200, body: '[]' } : goodProbe(url);
-  assert.throws(() => apply(f.manifestPath, f.envFile, f.previousPath, undefined, opts(f, fakeDocker(f), { probe: bad })), e => e.code === 3 && /Rollback/.test(e.message));
+  // D1-R2: the previous revision (first upgrade from a pre-D1 version) has no dev-upgrade.mjs nor
+  // the crane-dev overlay → no "git checkout <old> && dev-upgrade rollback" instruction.
+  assert.throws(() => apply(f.manifestPath, f.envFile, f.previousPath, undefined, opts(f, fakeDocker(f), { probe: bad })),
+    e => e.code === 3 && /does not contain dev-upgrade\.mjs/.test(e.message) && !/git checkout/.test(e.message) && !/dev-upgrade\.mjs rollback/.test(e.message));
+  // Schema moved (e.g. 4->12): never an image rollback, whatever the previous revision contains.
+  const migrated = recoveryGuidance(f.root, { source_sha: f.sha }, { migration: true, current_schema: 4, target_schema: 12 });
+  assert.match(migrated, /^STOP: schema moved 4->12\. Do NOT roll back images/);
+  assert.match(migrated, /verified manual restore procedure/);
+  assert.doesNotMatch(migrated, /git checkout|dev-upgrade\.mjs rollback/);
+  // Only when the previous revision itself ships the tool and the overlay is its rollback offered.
+  mkdirSync(join(f.root, 'deploy/scripts'), { recursive: true });
+  writeFileSync(join(f.root, 'deploy/scripts/dev-upgrade.mjs'), '// fixture\n');
+  writeFileSync(join(f.root, 'deploy/compose/docker-compose.crane-dev.yml'), 'services: {}\n');
+  f.git('add', '.'); f.git('commit', '--quiet', '-m', 'anonymous fixture with tool');
+  const withTool = f.git('rev-parse', 'HEAD');
+  assert.match(recoveryGuidance(f.root, { source_sha: withTool }, { migration: false }), new RegExp(`clean checkout of ${withTool}.*dev-upgrade\\.mjs rollback`));
+  assert.match(recoveryGuidance(f.root, { source_sha: withTool }, { migration: true, current_schema: 12, target_schema: 13 }), /^STOP: schema moved/);
+  f.git('reset', '--quiet', '--hard', f.sha);
   // rollback requires the previous SHA checkout; the fixture HEAD is the candidate, so it is refused before Docker.
   const d = fakeDocker(f);
   assert.throws(() => rollback(f.envFile, f.previousPath, opts(f, d)), /differs from release source SHA/);

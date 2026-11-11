@@ -8,11 +8,12 @@ import { onBeforeRouteLeave } from 'vue-router';
 import { RefreshCw, MapPinned } from 'lucide-vue-next';
 import { listPendingInventoryProjects, registerProjectInventory } from '../cloud/portfolio';
 import { loadGeoManifest } from '../scene/geo-manifest';
+import { listProjects } from '../cloud/api';
 import { allowClose } from '../cloud/draft';
 import { sceneProvider } from '../scene/provider';
 import {
   LIFECYCLES, blankRegistration, registrationDirty, provinces, childrenOf, precisionText, validateRegistration, toRegistration,
-  registrationErrorMessage, type RegistrationForm,
+  registrationErrorMessage, verifyOutcome, type RegistrationForm,
 } from '../cloud/inventory-registration';
 import { intakeErrorMessage } from '../cloud/intake';
 import type { InventoryProject, PendingInventoryProject } from '../../../../contracts/typescript/types.gen';
@@ -55,23 +56,38 @@ const mutation = useMutation({
     ]);
   },
   onError: async (e) => {
-    formError.value = registrationErrorMessage(e);
-    // Server errors are rolled back (Q3-R1); a network error or a 409 means the outcome must be
-    // confirmed from the server before anything is resubmitted: reload the pending list, and if
-    // the project is no longer pending it IS registered — close the form instead of retrying.
+    const { text, provenUnwritten } = registrationErrorMessage(e);
+    formError.value = text;
+    if (provenUnwritten) return; // answered before any database work: nothing to verify
+    // The outcome is uncertain: look for POSITIVE evidence in the caller's authorized Inventory
+    // read. Absence from the pending list proves nothing (revoked grant, disabled account…).
     const id = target.value?.id;
+    const submitted = toRegistration(form.value);
+    if (!id) return;
     verifying.value = true;
     try {
-      const pending = await queryClient.fetchQuery({ queryKey: ['inventory-pending'], queryFn: listPendingInventoryProjects, staleTime: 0 });
-      if (id && !pending.some((p) => p.id === id)) {
+      let inventory: InventoryProject[] | null = null;
+      try {
+        inventory = await listProjects();
+      } catch {
+        inventory = null;
+      }
+      const outcome = verifyOutcome(id, submitted, inventory);
+      if (outcome.kind === 'registered') {
         target.value = null;
         form.value = blankRegistration();
-        confirmed.value = `${id} 已登记（服务端确认）。为避免重复提交，表单已关闭。`;
-        await Promise.all([queryClient.invalidateQueries({ queryKey: ['portfolio-projects'] }), sceneProvider.refresh().catch(() => undefined)]);
-        emit('registered', { id } as InventoryProject);
+        formError.value = '';
+        confirmed.value = outcome.text;
+        emit('registered', outcome.project);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['inventory-pending'] }),
+          queryClient.invalidateQueries({ queryKey: ['portfolio-projects'] }),
+          sceneProvider.refresh().catch(() => undefined),
+        ]);
+      } else {
+        formError.value = `${text} ${outcome.text} 已输入的内容已保留。`;
+        await queryClient.invalidateQueries({ queryKey: ['inventory-pending'] });
       }
-    } catch {
-      formError.value += ' 无法确认当前状态，请稍后刷新页面查看，不要重复提交。';
     } finally {
       verifying.value = false;
     }

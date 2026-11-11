@@ -10,14 +10,14 @@ const shot = (name: string) => `test-results/q3-inventory/${name}.png`;
 type Grant = { projectId: string; projectName: string; role: string };
 const NAMES: Record<number, [string, string, string]> = { 330481: ['浙江省', '嘉兴市', '海宁市'], 330400: ['浙江省', '嘉兴市', ''], 440300: ['广东省', '深圳市', ''] };
 
-async function mock(page: Page, opts: { grants?: Grant[]; failPending?: boolean; failRegister?: number; failGeo?: boolean; registered?: boolean; abortAfterCommit?: boolean } = {}) {
+async function mock(page: Page, opts: { grants?: Grant[]; failPending?: boolean; failRegister?: number; failGeo?: boolean; registered?: boolean; abortAfterCommit?: boolean; revokeDuring?: boolean; registeredElsewhere?: number; failWith?: { status: number; error: string } | 'timeout'; failProjects?: boolean } = {}) {
   const grants = opts.grants ?? [{ projectId: 'FP-1', projectName: 'Q3 华东新装项目', role: 'platform_admin' }];
-  const state = { registered: opts.registered ?? false, adminCode: 330481, posts: 0 };
+  const state = { registered: opts.registered ?? false, adminCode: 330481, posts: 0, granted: true };
   const assets = [
     { assetDeviceId: 'AS-1', projectId: 'FP-1', displayName: 'Q3 1 号行车', craneModel: null, ratedCapacityT: null, spanM: null, workClass: null, grabType: null, lifecycle: 'PLANNED', runtimeSource: null, runtimeDeviceId: null, connectivity: null },
     { assetDeviceId: 'AS-2', projectId: 'FP-1', displayName: 'Q3 2 号行车', craneModel: null, ratedCapacityT: null, spanM: null, workClass: null, grabType: null, lifecycle: 'PLANNED', runtimeSource: null, runtimeDeviceId: null, connectivity: null },
   ];
-  const granted = grants.some((g) => g.projectId === 'FP-1');
+  state.granted = grants.some((g) => g.projectId === 'FP-1');
   const inventoryProject = () => {
     const [province, city, county] = NAMES[state.adminCode] ?? ['', '', ''];
     return { id: 'FP-1', name: 'Q3 华东新装项目', lifecycle: 'PLANNED', province, city, county, locationLabel: [province, city, county].filter(Boolean).join(' '), adminCode: state.adminCode, scheduleText: '2027 Q1 安装', notes: '', assetDeviceCount: 2, runtimeDeviceCount: 0, realConnectedCount: 0, simulatedCount: 0 };
@@ -27,6 +27,7 @@ async function mock(page: Page, opts: { grants?: Grant[]; failPending?: boolean;
   await page.route('**/api/v1/**', async (r) => {
     const p = new URL(r.request().url()).pathname.replace('/api/v1/', '');
     const m = r.request().method();
+    const granted = state.granted;
     const visible = granted && state.registered;
     if (p === 'inventory/pending-projects') {
       if (opts.failPending) return r.fulfill({ status: 503, json: { error: 'database unavailable' } });
@@ -34,6 +35,19 @@ async function mock(page: Page, opts: { grants?: Grant[]; failPending?: boolean;
     }
     if (p === 'projects/FP-1/inventory-registration' && m === 'POST') {
       state.posts++;
+      if (opts.revokeDuring) {
+        // The grant is revoked while the request is in flight: refused, and the project is no
+        // longer readable nor pending for this user.
+        state.granted = false;
+        return r.fulfill({ status: 403, json: { error: 'Forbidden' } });
+      }
+      if (opts.registeredElsewhere !== undefined) {
+        state.registered = true;
+        state.adminCode = opts.registeredElsewhere;
+        return r.fulfill({ status: 409, json: { error: 'project is already registered in Inventory' } });
+      }
+      if (opts.failWith === 'timeout') return r.abort('timedout');
+      if (opts.failWith) return r.fulfill({ status: opts.failWith.status, json: { error: opts.failWith.error } });
       if (opts.failRegister && state.posts <= opts.failRegister) return r.fulfill({ status: 503, json: { error: 'administrative index unavailable' } });
       if (state.registered) return r.fulfill({ status: 409, json: { error: 'project is already registered in Inventory' } });
       const b = r.request().postDataJSON() as { adminCode: number };
@@ -43,13 +57,16 @@ async function mock(page: Page, opts: { grants?: Grant[]; failPending?: boolean;
       if (opts.abortAfterCommit) return r.abort('connectionreset');
       return r.fulfill({ json: inventoryProject() });
     }
-    if (p === 'projects') return r.fulfill({ json: visible ? [inventoryProject()] : [] });
+    if (p === 'projects') {
+      if (opts.failProjects) return r.fulfill({ status: 503, json: { error: 'inventory unavailable' } });
+      return r.fulfill({ json: visible ? [inventoryProject()] : [] });
+    }
     if (p === 'assets/devices') return r.fulfill({ json: visible ? assets : [] });
     if (p === 'assets/AS-1') return r.fulfill({ json: { id: 'AS-1', projectId: 'FP-1', displayName: 'Q3 1 号行车', assetCode: 'Q3-CRN-1', assetType: 'CRANE', assetStatus: 'ACTIVE', manufacturerId: null, manufacturerSnapshot: '', brandSnapshot: '', modelSnapshot: '', serialNumber: null, manufactureDate: null, installationDate: null, commissioningDate: null, liftingHeightM: null, applicationType: null, controlMode: null, version: 1, specialEquipmentCode: null, useRegistrationNo: null } });
     if (p === 'assets') return r.fulfill({ json: granted ? [{ id: 'AS-1', projectId: 'FP-1', displayName: 'Q3 1 号行车', assetCode: 'Q3-CRN-1', assetType: 'CRANE', assetStatus: 'ACTIVE', manufacturerId: null, manufacturerSnapshot: '', brandSnapshot: '', modelSnapshot: '', serialNumber: null, manufactureDate: null, installationDate: null, commissioningDate: null, liftingHeightM: null, applicationType: null, controlMode: null, version: 1, specialEquipmentCode: null, useRegistrationNo: null }] : [] });
     return r.fulfill({ json: [] });
   });
-  await routeSummary(page, (c) => inventorySummary(state.registered && granted ? [{ id: 'FP-1', adminCode: state.adminCode }] : [], state.registered && granted ? [{ projectId: 'FP-1' }, { projectId: 'FP-1' }] : [], c.region));
+  await routeSummary(page, (c) => inventorySummary(state.registered && state.granted ? [{ id: 'FP-1', adminCode: state.adminCode }] : [], state.registered && state.granted ? [{ projectId: 'FP-1' }, { projectId: 'FP-1' }] : [], c.region));
   return state;
 }
 
@@ -156,6 +173,61 @@ test('Q3-R1：登记已提交但响应丢失时，向服务端确认状态并关
   expect(state.posts).toBe(1);
   await expect(page.locator('[data-project-id="FP-1"]')).toBeVisible();
   await page.screenshot({ path: shot('7-commit-confirmed') });
+});
+
+test('D1-R2：提交期间授权被撤销——pending 不含项目、Inventory 不可读，绝不显示已登记', async ({ page }) => {
+  const state = await mock(page, { revokeDuring: true });
+  await page.goto('/#/projects');
+  const form = await register(page, { province: '330000', prefecture: '330400', county: '330481' });
+  await form.getByTestId('registration-submit').click();
+  await expect(form.getByTestId('registration-error')).toContainText('结果待核实');
+  await expect(page.getByTestId('registration-confirmed')).toHaveCount(0);
+  await expect(form).toBeVisible();
+  await expect(form.getByLabel('区县')).toHaveValue('330481');
+  expect(state.posts).toBe(1);
+  await page.screenshot({ path: shot('8-revoked-unverified') });
+});
+
+test('D1-R2：已由其他操作登记（409）——显示服务端实际行政区，声明本次表单未应用', async ({ page }) => {
+  await mock(page, { registeredElsewhere: 440300 });
+  await page.goto('/#/projects');
+  const form = await register(page, { province: '330000', prefecture: '330400', county: '330481' });
+  await form.getByTestId('registration-submit').click();
+  const ok = page.getByTestId('registration-confirmed');
+  await expect(ok).toContainText('已由其他操作登记');
+  await expect(ok).toContainText('广东省 深圳市');
+  await expect(ok).toContainText('本次表单内容未被应用');
+  await expect(form).toBeHidden();
+});
+
+for (const [name, failWith, extra] of [
+  ['通用 503', { status: 503, error: 'database unavailable' }, {}],
+  ['403', { status: 403, error: 'Forbidden' }, {}],
+  ['409 但 Inventory 读取失败', { status: 409, error: 'project is already registered in Inventory' }, { failProjects: true }],
+  ['网络超时', 'timeout', {}],
+] as const) {
+  test(`D1-R2：${name} 不产生虚假成功提示，保留草稿`, async ({ page }) => {
+    const state = await mock(page, { failWith, ...extra });
+    await page.goto('/#/projects');
+    const form = await register(page, { province: '330000', prefecture: '330400', county: '330481' });
+    await form.getByTestId('registration-submit').click();
+    await expect(form.getByTestId('registration-error')).toContainText('结果待核实');
+    await expect(form.getByTestId('registration-error')).not.toContainText('未做任何修改');
+    await expect(page.getByTestId('registration-confirmed')).toHaveCount(0);
+    await expect(form.getByLabel('区县')).toHaveValue('330481');
+    await expect(form.getByTestId('registration-submit')).toBeEnabled();
+    expect(state.posts).toBe(1);
+  });
+}
+
+test('D1-R2：401 会话失效——回到登录页，没有任何「已登记」提示，也不重发请求', async ({ page }) => {
+  const state = await mock(page, { failWith: { status: 401, error: 'session required' } });
+  await page.goto('/#/projects');
+  const form = await register(page, { province: '330000', prefecture: '330400', county: '330481' });
+  await form.getByTestId('registration-submit').click();
+  await expect(page.getByRole('link', { name: '账号登录' })).toBeVisible();
+  await expect(page.getByText(/已登记（服务端确认）|已由其他操作登记/)).toHaveCount(0);
+  expect(state.posts).toBe(1);
 });
 
 test('WebGL 不可用时首页回退二维并仍显示已登记项目的行政区统计', async ({ page }) => {

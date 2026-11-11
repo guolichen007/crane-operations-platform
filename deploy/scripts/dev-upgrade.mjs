@@ -6,6 +6,8 @@
 //   apply    <dev-manifest.json> <private.env> <prev.json> [backupDir]
 //            separately approved change window only: (backup drill) → pull → up cloud-api web-console
 //   rollback <private.env> <prev.json>                      restore the pinned images; STOPs if schema moved
+//            (only usable from a checkout of a previous revision that ships this tool; after a
+//             migration there is NO image rollback — see recoveryGuidance and the D1 report §4.1)
 //
 // Only cloud-api and web-console are ever pulled/recreated (--no-deps). PostgreSQL, Keycloak,
 // Mosquitto, the shared ingress and other platforms are never touched by this tool.
@@ -199,12 +201,39 @@ export function apply(manifestArgument, environmentArgument, previousArgument, b
   const s = smoke(ctx);
   ctx.log('DEV_SMOKE ' + s.checks.join(' '));
   if (!s.ok) {
-    const e = Error(`Smoke failed. Do not continue. Rollback: git checkout ${previous.source_sha} && restore the previous env file && node deploy/scripts/dev-upgrade.mjs rollback <env> <prev.json>` +
-      (p.migration ? ` — schema moved ${p.current_schema}->${p.target_schema}: rollback will STOP until old-version compatibility is decided` : ''));
+    const e = Error('Smoke failed. Do not continue. ' + recoveryGuidance(ctx.root, previous, p));
     e.code = 3; throw e;
   }
   ctx.log(`DEV_APPLY=PASS source_sha=${manifest.source_sha} schema=${p.target_schema} — browser login + business smoke still required (manual checklist)`);
   return p;
+}
+
+/** True when the previous source revision itself ships this tool and the crane-dev overlay. */
+export function previousHasTool(root, sha) {
+  if (!/^[a-f0-9]{40}$/.test(sha || '')) return false;
+  for (const path of ['deploy/scripts/dev-upgrade.mjs', devOverlay]) {
+    const r = spawnSync('git', ['-C', root, 'cat-file', '-e', `${sha}:${path}`], { stdio: 'ignore' });
+    if (r.error || r.status !== 0) return false;
+  }
+  return true;
+}
+
+/**
+ * Recovery guidance after a failed upgrade. Only states what is executable:
+ *  - schema moved (migration): NO image rollback at all — the old binary is not proven against
+ *    the new schema; recovery is a verified restore from the pre-upgrade backup, decided by OWNER;
+ *  - previous revision without this tool (e.g. the first upgrade from a pre-D1 version): there is
+ *    no automatic rollback — `git checkout <old> && dev-upgrade rollback` cannot run there;
+ *  - otherwise: the rollback command of the previous revision's own checkout.
+ */
+export function recoveryGuidance(root, previous, plan) {
+  if (plan.migration)
+    return `STOP: schema moved ${plan.current_schema}->${plan.target_schema}. Do NOT roll back images (old-binary compatibility with the new schema is not proven). ` +
+      'Recover only by the verified manual restore procedure (pre-upgrade backup set + isolated drill already passed), with OWNER approval; see docs/08-部署运维与成本/D1-单域名开发发布实施与验收报告.md §4.1.';
+  if (!previousHasTool(root, previous.source_sha))
+    return `STOP: the previous revision ${previous.source_sha} does not contain dev-upgrade.mjs / the crane-dev overlay, so no automatic rollback exists for it. ` +
+      'Use the verified manual procedure (restore the previous env file, recreate only cloud-api and web-console from the pinned previous digests from the retained control checkout) with OWNER approval; see §4.1.';
+  return `Rollback: in a clean checkout of ${previous.source_sha}, restore the previous env file, then run node deploy/scripts/dev-upgrade.mjs rollback <env> <prev.json>.`;
 }
 
 export function rollback(environmentArgument, previousArgument, options) {

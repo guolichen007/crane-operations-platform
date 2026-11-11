@@ -81,19 +81,48 @@ export function toRegistration(f: RegistrationForm): ProjectInventoryRegistratio
   };
 }
 
-export function registrationErrorMessage(e: unknown): string {
+/**
+ * Message for a failed registration request, stating only what the response proves.
+ * `provenUnwritten` = the server answered before any database work (validation / missing
+ * administrative index); everything else must be verified against the Inventory read.
+ */
+export function registrationErrorMessage(e: unknown): { text: string; provenUnwritten: boolean } {
   if (e instanceof ApiError) {
     switch (e.status) {
-      case 401: return '登录已失效，请重新登录。';
-      case 404: return '项目不存在、尚未批准，或您没有该项目的授权。';
-      case 403: return '无权登记：需要该项目的「项目管理员」权限（位置与资产管理）；您的授权可能刚被调整，未做任何修改。';
-      case 409: return '该项目已登记 Inventory（可能已被他人登记），正在确认当前状态。';
-      case 422: return `输入不符合要求：${e.message}`;
-      case 503: return e.message.includes('administrative') ? '服务端行政区数据暂不可用，未做任何修改，请稍后重试。' : '服务暂不可用，登记未完成（未做任何修改），可稍后重试。';
-      default: return `请求失败（${e.status}）：${e.message}`;
+      case 400: return { text: '请求格式错误，未被受理。', provenUnwritten: true };
+      case 422: return { text: `输入不符合要求，未被受理：${e.message}`, provenUnwritten: true };
+      case 401: return { text: '登录已失效。', provenUnwritten: false };
+      case 403: return { text: '服务端拒绝：需要该项目的「项目管理员」权限，您的授权可能刚被调整。', provenUnwritten: false };
+      case 404: return { text: '项目不存在、尚未批准，或您已没有该项目的授权。', provenUnwritten: false };
+      case 409: return { text: '该项目已存在 Inventory 登记（可能由其他操作完成）。', provenUnwritten: false };
+      case 503:
+        if (e.message.includes('administrative')) return { text: '服务端行政区数据暂不可用，请求未被受理，可稍后重试。', provenUnwritten: true };
+        return { text: '服务暂不可用。', provenUnwritten: false };
+      default: return { text: `请求失败（${e.status}）：${e.message}`, provenUnwritten: false };
     }
   }
-  return '网络连接失败或请求超时，结果未知：正在向服务端确认是否已登记，请勿重复提交。已输入的内容已保留。';
+  return { text: '网络连接失败或请求超时，结果未知。', provenUnwritten: false };
+}
+
+export type VerifyOutcome =
+  | { kind: 'registered'; text: string; project: InventoryProject; applied: 'same' | 'different' }
+  | { kind: 'unverified'; text: string };
+
+/**
+ * Decide the outcome of an uncertain registration from POSITIVE server evidence only: the
+ * caller's authorized Inventory read (GET /api/v1/projects) must contain the project with a
+ * lifecycle. Absence (revoked grant, disabled account, scope change) or a failed read is
+ * "unverified" — never success, never "nothing changed".
+ */
+export function verifyOutcome(id: string, submitted: ProjectInventoryRegistration, inventory: InventoryProject[] | null): VerifyOutcome {
+  if (inventory === null) return { kind: 'unverified', text: '结果待核实：无法读取 Inventory，请稍后刷新页面查看。' };
+  const p = inventory.find((x) => x.id === id);
+  if (!p || !p.lifecycle) return { kind: 'unverified', text: '结果待核实：在您当前可读取的项目中未找到该项目的 Inventory 登记（授权可能已变化），不能确认是否已登记。' };
+  const where = [p.province, p.city, p.county].filter(Boolean).join(' ') || `行政区 ${p.adminCode ?? '—'}`;
+  const same = p.adminCode === submitted.adminCode && p.lifecycle === submitted.lifecycle;
+  return same
+    ? { kind: 'registered', applied: 'same', project: p, text: `${id} 已登记（服务端确认）：${where}。` }
+    : { kind: 'registered', applied: 'different', project: p, text: `${id} 已由其他操作登记。服务端当前保存的是：${where}（${p.lifecycle}），本次表单内容未被应用。` };
 }
 
 /** Runtime source of an Inventory project, from facts only (Q3 principle 7/8). */
