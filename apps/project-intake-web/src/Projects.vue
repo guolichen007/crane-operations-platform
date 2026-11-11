@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue';
+import { ref, watch, computed, onBeforeUnmount } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { Search, SlidersHorizontal, ArrowUpRight } from '@lucide/vue';
+import { Search, SlidersHorizontal, ArrowUpRight, List, Columns3 } from '@lucide/vue';
+import { readFilters, writeFilters, toPipeline } from './view-state';
 import { useApp } from './store';
 import { type Project, statuses, stages, when } from './model';
 import { projectScopeLabel, can } from './navigation';
@@ -14,14 +15,16 @@ const app = useApp(),
   items = ref<Project[]>([]),
   total = ref(0),
   asOf = ref(''),
-  q = ref(String(route.query.q || '')),
-  status = ref(String(route.query.status || '')),
+  // G4-S5-R0: filters, sort and page live in the URL (back/forward/refresh/share).
+  initial = readFilters(route.query),
+  q = ref(initial.q),
+  status = ref(initial.status),
   // G3-3B: the statistics page links here with the same base filters.
-  stage = ref(String(route.query.stage || '')),
-  province = ref(String(route.query.province || '')),
-  after = ref(String(route.query.after || '')),
-  sort = ref('updated'),
-  page = ref(1),
+  stage = ref(initial.stage),
+  province = ref(initial.province),
+  after = ref(initial.after),
+  sort = ref<'updated' | 'name'>(initial.sort),
+  page = ref(initial.page),
   preview = ref<Project | null>(null),
   columns = ref(false),
   showLocation = ref(true),
@@ -77,18 +80,56 @@ async function load() {
     if (n === generation) loading.value = false;
   }
 }
+const current = () => ({ q: q.value.trim(), status: status.value, stage: stage.value, province: province.value.trim(), after: after.value, sort: sort.value, page: page.value });
+// Keep the URL in step with the screen (replace: typing does not flood history).
+// Bound to this page's route: a pending sync must never rewrite another page's URL.
+const ownPath = route.path;
+function syncUrl() {
+  if (route.path !== ownPath) return;
+  const query = { ...writeFilters(current()), ...(view.value === 'followups' && followup.value === 'upcoming' ? { window: 'upcoming' } : {}) };
+  if (JSON.stringify(query) !== JSON.stringify(route.query)) void router.replace({ query });
+}
 let timer: ReturnType<typeof setTimeout>;
+let applying = false;
 watch([q, status, stage, province, after, sort, followup], () => {
+  if (applying) return;
   page.value = 1;
   clearTimeout(timer);
-  timer = setTimeout(load, 250);
+  timer = setTimeout(() => {
+    syncUrl();
+    void load();
+  }, 250);
 });
-watch(page, load);
+watch(page, () => {
+  if (applying) return;
+  syncUrl();
+  void load();
+});
+// Back/forward or a link (global search, statistics) changed the query: apply it.
 watch(
-  () => route.query.q,
-  (v) => (q.value = String(v || ''))
+  () => route.query,
+  (query) => {
+    const f = readFilters(query);
+    const same = JSON.stringify(f) === JSON.stringify(current()) &&
+      (query.window === 'upcoming') === (followup.value === 'upcoming');
+    if (same || route.path !== ownPath) return;
+    applying = true;
+    q.value = f.q; status.value = f.status; stage.value = f.stage; province.value = f.province;
+    after.value = f.after; sort.value = f.sort; page.value = f.page;
+    followup.value = query.window === 'upcoming' ? 'upcoming' : 'overdue';
+    void Promise.resolve().then(() => {
+      applying = false;
+      void load();
+    });
+  }
 );
+onBeforeUnmount(() => clearTimeout(timer));
 void load();
+const here = () => router.resolve({ path: route.path, query: route.query }).fullPath;
+function openDetail(id: string) {
+  return router.push({ path: '/projects/' + id, query: { from: here() } });
+}
+const pipelineLink = computed(() => ({ path: '/pipeline', query: toPipeline(current()) }));
 async function open(p: Project) {
   preview.value = await app.api<Project>('/api/v1/projects/' + p.id);
 }
@@ -106,6 +147,10 @@ const asOfText = computed(() => (asOf.value ? new Date(asOf.value).toLocaleStrin
       </p>
     </div>
     <div class="actions">
+      <nav v-if="view === 'projects'" class="view-switch" aria-label="切换视图">
+        <span class="view-current" aria-current="page"><List :size="15" aria-hidden="true" />列表视图</span>
+        <ActionButton action-id="view.pipeline" :run="() => router.push(pipelineLink)"><Columns3 :size="15" aria-hidden="true" />管道视图</ActionButton>
+      </nav>
       <ActionButton v-if="view === 'unassigned' && can(app.user, 'project.create')" action-id="project.create" primary :run="() => router.push('/new')">新建项目</ActionButton>
     </div>
   </div>
@@ -286,7 +331,7 @@ const asOfText = computed(() => (asOf.value ? new Date(asOf.value).toLocaleStrin
             () => {
               const id = preview?.id;
               preview = null;
-              return router.push('/projects/' + id);
+              return id && openDetail(id);
             }
           "
         >

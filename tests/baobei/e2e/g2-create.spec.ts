@@ -32,7 +32,7 @@ async function saveDraft(p: Page) {
   expect((await done).status()).toBe(200);
 }
 const unique = (info: { project: { name: string } }, label: string) => `G2${label}-${info.project.name}-${Date.now()}`;
-const draftId = (p: Page) => new URL(p.url()).searchParams.get('draft') || p.url().split('/').at(-2)!;
+const draftId = (p: Page) => new URL(p.url()).searchParams.get('draft') || new URL(p.url()).pathname.split('/').at(-2)!;
 
 test('admin unassigned draft, real assignment, then admin cannot review own participation', async ({ page }, info) => {
   await login(page, 'synthetic-admin');
@@ -131,6 +131,7 @@ test('lost create response is recovered by receipt after retry and after refresh
   const key = creates.at(-1)!;
   const own = await api(page, '/api/v1/project-create-receipts/' + key);
   expect(own.status).toBe(200);
+  await action(page, 'auth.account').click();
   await action(page, 'auth.logout').click();
   // Wait for the logout to finish: /login redirects to / while the session is still valid.
   await expect(page).toHaveURL('/login');

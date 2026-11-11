@@ -104,12 +104,13 @@ test('E2 admin full path with zero sales: draft → assign → submit → blocke
   await expect(page.locator('.owner-strip')).toContainText('示例销售 A');
   await action(page, 'project.submit').click();
   await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+$/);
-  const id = page.url().split('/').pop()!;
+  const id = new URL(page.url()).pathname.split('/').pop()!;
   await action(page, 'project.tab').filter({ hasText: '审批和重复风险' }).click();
   await expect(page.locator('.review-eligibility')).toContainText('你参与过此项目');
   await page.screenshot({ path: out('flow-admin-04-self-review-blocked'), fullPage: true });
   const denied = await api(page, `/api/v1/projects/${id}/approve`, 'POST', { version: (await api(page, '/api/v1/projects/' + id)).body.version, reason: '证据：自审尝试' });
   expect(denied.status).toBe(403);
+  await action(page, 'auth.account').click();
   await action(page, 'auth.logout').click();
   // Wait for the logout to finish: /login redirects to / while the session is still valid.
   await expect(page).toHaveURL('/login');

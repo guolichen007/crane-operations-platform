@@ -3,8 +3,9 @@
 // (server aggregation over the whole scope); each column pages independently
 // through GET /projects?stage=…. Nothing here counts the loaded cards.
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
-import { useRouter } from 'vue-router';
-import { Search, RefreshCw, ArrowUpRight } from '@lucide/vue';
+import { useRoute, useRouter } from 'vue-router';
+import { Search, RefreshCw, ArrowUpRight, List, Columns3 } from '@lucide/vue';
+import { readFilters, writeFilters, toList } from './view-state';
 import { useApp } from './store';
 import { type Project, statuses, stages, when } from './model';
 import { recovery } from './reasons';
@@ -14,7 +15,8 @@ import Modal from './Modal.vue';
 
 const pageSize = 10;
 const app = useApp(),
-  router = useRouter();
+  router = useRouter(),
+  route = useRoute();
 const scopeNote = computed(
   () =>
     ({
@@ -26,10 +28,14 @@ const scopeNote = computed(
 );
 
 // Base filters (apply to the summary and to every column).
-const q = ref(''),
-  status = ref(''),
-  province = ref(''),
-  after = ref('');
+// G4-S5-R0: same URL filters as the list view; `col` remembers the stage the
+// user was looking at so returning from a project lands on the same column.
+const initial = readFilters(route.query);
+const q = ref(initial.q),
+  status = ref(initial.status),
+  province = ref(initial.province),
+  after = ref(initial.after);
+const initialStage = typeof route.query.col === 'string' && route.query.col in stages ? route.query.col : '';
 const filters = computed<PipelineFilters>(() => ({
   q: q.value.trim(),
   status: status.value,
@@ -56,7 +62,8 @@ const columns = reactive<Record<string, Column>>(Object.fromEntries(stageCodes.m
 const summary = ref<{ asOf: string; total: number; counts: Record<string, number>; unclassified: number } | null>(null);
 const summaryState = ref<'loading' | 'ready' | 'error'>('loading'),
   summaryFailure = ref(''),
-  mobileStage = ref('L0_LEAD');
+  mobileStage = ref(initialStage || 'L0_LEAD'),
+  focusStage = ref(initialStage);
 // Every filter change starts a new generation; responses of older generations
 // are discarded so a slow request can never overwrite newer results.
 let generation = 0,
@@ -120,11 +127,28 @@ function reload() {
   for (const code of visible) void loadColumn(code);
   if (isMobile.value) void loadColumn(mobileStage.value);
 }
+const shared = () => ({ q: q.value.trim(), status: status.value, province: province.value.trim(), after: after.value });
+const ownPath = route.path;
+function syncUrl() {
+  if (route.path !== ownPath) return;
+  const query = { ...writeFilters(shared()), ...(focusStage.value ? { col: focusStage.value } : {}) };
+  if (JSON.stringify(query) !== JSON.stringify(route.query)) void router.replace({ query });
+}
 let timer: ReturnType<typeof setTimeout>;
 watch(filters, () => {
   clearTimeout(timer);
-  timer = setTimeout(reload, 250);
+  timer = setTimeout(() => {
+    syncUrl();
+    reload();
+  }, 250);
 }, { deep: true });
+const listLink = computed(() => ({ path: '/projects', query: toList({ ...readFilters({}), ...shared() }) }));
+function openDetail(p: Project, code: string) {
+  focusStage.value = code;
+  syncUrl();
+  const from = router.resolve({ path: '/pipeline', query: { ...writeFilters(shared()), col: code } }).fullPath;
+  return router.push({ path: '/projects/' + p.id, query: { from } });
+}
 
 // Lazy column loading on desktop/tablet: a column loads when it scrolls into view.
 const board = ref<HTMLElement | null>(null);
@@ -155,6 +179,8 @@ onMounted(async () => {
     { root: board.value, rootMargin: '0px 200px 0px 200px' }
   );
   board.value?.querySelectorAll<HTMLElement>('[data-stage]').forEach((el) => observer!.observe(el));
+  // Returning from a project: bring its column back into view.
+  if (initialStage && !isMobile.value) jump(initialStage, 'auto');
 });
 onBeforeUnmount(() => {
   observer?.disconnect();
@@ -163,14 +189,17 @@ onBeforeUnmount(() => {
 });
 // Desktop/tablet stage strip: real counts for all 12 stages; scrolls the
 // board horizontally to the chosen column (which then loads lazily).
-function jump(code: string) {
+function jump(code: string, behavior: ScrollBehavior = 'smooth') {
   const el = board.value?.querySelector<HTMLElement>(`[data-stage="${code}"]`);
   if (!el || !board.value) return;
-  board.value.scrollTo({ left: el.offsetLeft - board.value.offsetLeft - 8, behavior: 'smooth' });
+  focusStage.value = code;
+  board.value.scrollTo({ left: el.offsetLeft - board.value.offsetLeft - 8, behavior });
   if (columns[code].state === 'idle') void loadColumn(code);
 }
 function chooseMobile(code: string) {
   mobileStage.value = code;
+  focusStage.value = code;
+  syncUrl();
   if (columns[code].state === 'idle') void loadColumn(code);
 }
 
@@ -193,6 +222,7 @@ const moving = ref<Project | null>(null),
   moveFailure = ref('');
 async function openMove(p: Project) {
   moveFailure.value = '';
+  moveErrors.value = {};
   target.value = '';
   moveReason.value = '';
   try {
@@ -208,9 +238,20 @@ async function closeMove() {
   if (moveReason.value.trim() && !(await app.confirmDiscard())) return;
   moving.value = null;
 }
+const moveErrors = ref<Record<string, string>>({});
 async function confirmMove() {
   const p = moving.value;
   if (!p) return;
+  const errors: Record<string, string> = {};
+  if (!target.value) errors.targetStage = '请选择目标阶段';
+  if (!moveReason.value.trim()) errors.stageReason = '请填写变更原因';
+  moveErrors.value = errors;
+  const first = Object.keys(errors)[0];
+  if (first) {
+    moveFailure.value = `还有 ${Object.keys(errors).length} 项需要填写：` + Object.values(errors).join('；');
+    requestAnimationFrame(() => document.querySelector<HTMLElement>(`[name="${first}"]`)?.focus());
+    return;
+  }
   const from = p.salesStage;
   try {
     await app.api(`/api/v1/projects/${p.id}/stage-change`, 'POST', { version: p.version, salesStage: target.value, reason: moveReason.value });
@@ -231,7 +272,7 @@ async function confirmMove() {
         /* keep the dialog; the error above is shown */
       }
     }
-    throw new Error(moveFailure.value);
+    return;
   }
   moving.value = null;
   app.toast(`已从“${stages[from]}”推进到“${stages[target.value]}”，操作已记录`);
@@ -253,8 +294,11 @@ async function confirmMove() {
       </p>
     </div>
     <div class="actions">
+      <nav class="view-switch" aria-label="切换视图">
+        <ActionButton action-id="view.list" :run="() => router.push(listLink)"><List :size="15" aria-hidden="true" />列表视图</ActionButton>
+        <span class="view-current" aria-current="page"><Columns3 :size="15" aria-hidden="true" />管道视图</span>
+      </nav>
       <ActionButton action-id="pipeline.refresh" :run="reload"><RefreshCw :size="15" aria-hidden="true" />刷新</ActionButton>
-      <ActionButton action-id="nav.open" :run="() => router.push('/projects')">列表视图</ActionButton>
     </div>
   </div>
   <div class="filterbar pipeline-filters">
@@ -314,7 +358,7 @@ async function confirmMove() {
       </p>
       <div class="stage-cards">
         <article v-for="p in columns[code].items" :key="p.id" class="stage-card">
-          <ActionButton action-id="project.detail" class="stage-card-main" :run="() => router.push('/projects/' + p.id)">
+          <ActionButton action-id="project.detail" class="stage-card-main" :run="() => openDetail(p, code)">
             <strong class="clamp">{{ p.projectName || '未命名草稿' }}</strong>
             <span class="mono">{{ p.registrationNo }}</span>
             <span class="clamp muted">{{ p.customer || '待填写客户' }}</span>
@@ -358,18 +402,18 @@ async function confirmMove() {
       <p class="muted">当前阶段：{{ stages[moving.salesStage] }} · 报备状态：{{ statuses[moving.intakeStatus] }}</p>
       <p v-if="moveFailure" class="form-alert" role="alert">{{ moveFailure }}</p>
       <p v-if="moveHint && !moveHint.allowed" class="form-alert" role="alert">当前不能修改阶段。</p>
-      <label>目标阶段<select v-model="target" name="targetStage">
+      <label :class="{ invalid: moveErrors.targetStage }">目标阶段 <span class="req" aria-hidden="true">*</span><select v-model="target" name="targetStage" aria-required="true" :aria-invalid="!!moveErrors.targetStage">
         <option value="">请选择</option>
         <option v-for="s in moveTargets" :key="s" :value="s">{{ stages[s] }}</option>
-      </select></label>
+      </select><small v-if="moveErrors.targetStage" class="field-error">{{ moveErrors.targetStage }}</small></label>
       <p v-if="!moveTargets.length" class="muted">该项目当前没有可推进的阶段。</p>
-      <label>变更原因 *<textarea v-model="moveReason" name="stageReason" maxlength="1000" rows="3"></textarea></label>
+      <label :class="{ invalid: moveErrors.stageReason }">变更原因 <span class="req" aria-hidden="true">*</span><textarea v-model="moveReason" name="stageReason" maxlength="1000" rows="3" aria-required="true" :aria-invalid="!!moveErrors.stageReason"></textarea><small v-if="moveErrors.stageReason" class="field-error">{{ moveErrors.stageReason }}</small></label>
       <div class="actions modal-actions">
         <ActionButton action-id="dialog.cancel" :run="closeMove">取消</ActionButton><ActionButton
           action-id="pipeline.stage-confirm"
           primary
-          :disabled="!target || !moveReason.trim() || !moveHint?.allowed"
-          :reason="!target ? '请选择目标阶段' : '请填写变更原因'"
+          :disabled="!moveHint?.allowed || !moveTargets.length"
+          reason="当前不能修改阶段"
           :run="confirmMove"
         >
           确认推进

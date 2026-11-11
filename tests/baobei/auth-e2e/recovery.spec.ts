@@ -12,7 +12,7 @@ async function begin(page: Page, mode = 'success') {
   await control(page, 'mode?value=' + mode);
   await page.goto('/login');
   await expect(page.getByText('仅限本地开发', { exact: false })).toHaveCount(0);
-  await page.getByRole('button', { name: /^(企业账号登录|重新登录)$/ }).click();
+  await page.getByRole('button', { name: /^(登录|重新登录)$/ }).click();
   await expect(page.getByRole('heading', { name: '隔离企业认证' })).toBeVisible();
   const url = new URL(page.url());
   expect(url.hostname).toBe('localhost');
@@ -68,7 +68,7 @@ test('取消登录消耗状态并允许重新登录', async ({ page }) => {
   await begin(page);
   const callback = await page.getByRole('link', { name: '继续企业登录' }).getAttribute('href');
   await page.getByRole('link', { name: '取消企业登录' }).click();
-  await failure(page, 'LOGIN_CANCELLED', '您已取消企业登录', previous.sessions);
+  await failure(page, 'LOGIN_CANCELLED', '您已取消登录', previous.sessions);
   await page.goto(callback!);
   await failure(page, 'LOGIN_STATE_INVALID', '已使用', previous.sessions);
   expect(await metrics(page)).toEqual(previous);
@@ -98,17 +98,17 @@ test('缺少绑定 Cookie 不兑换授权码', async ({ page }) => {
 });
 
 for (const [mode, code, message] of [
-  ['oauth-error', 'LOGIN_PROVIDER_REJECTED', '企业认证未完成'],
-  ['exchange', 'LOGIN_EXCHANGE_FAILED', '企业登录未能完成'],
-  ['token', 'LOGIN_TOKEN_INVALID', '无法验证企业身份'],
-  ['nonce', 'LOGIN_NONCE_INVALID', '无法确认本次企业登录'],
+  ['oauth-error', 'LOGIN_PROVIDER_REJECTED', '登录未完成'],
+  ['exchange', 'LOGIN_EXCHANGE_FAILED', '登录未能完成'],
+  ['token', 'LOGIN_TOKEN_INVALID', '无法验证登录身份'],
+  ['nonce', 'LOGIN_NONCE_INVALID', '无法确认本次登录'],
   ['unopened', 'LOGIN_NOT_PROVISIONED', '尚未开通'],
   ['role', 'LOGIN_ROLE_MISSING', '缺少报备中心访问权限'],
   ['disabled', 'LOGIN_DISABLED', '已停用'],
   ['email', 'LOGIN_EMAIL_MISMATCH', '与开通信息不一致'],
-  ['unverified', 'LOGIN_EMAIL_MISMATCH', '尚未验证'],
-  ['unavailable', 'LOGIN_PROVIDER_UNAVAILABLE', '认证服务暂时不可用'],
-  ['network', 'LOGIN_PROVIDER_UNAVAILABLE', '认证服务暂时不可用'],
+  ['unverified', 'LOGIN_EMAIL_MISMATCH', '与开通信息不一致'],
+  ['unavailable', 'LOGIN_PROVIDER_UNAVAILABLE', '登录服务暂时不可用'],
+  ['network', 'LOGIN_PROVIDER_UNAVAILABLE', '登录服务暂时不可用'],
 ] as const) {
   test('生产回调分类 ' + mode, async ({ page }) => {
     const previous = await metrics(page);
@@ -175,7 +175,7 @@ test('登录配置网络失败后重试，未知查询值不回显', async ({ pa
   await expect(page.getByRole('alert')).toContainText('网络连接失败');
   await expect(page.locator('body')).not.toContainText('sensitive-fixture-description');
   await page.getByRole('button', { name: '重试连接' }).click();
-  await expect(page.getByRole('button', { name: '企业账号登录', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '登录', exact: true })).toBeEnabled();
 });
 
 test('管理员经真实重新认证返回同一员工，确认后才提交主管授权', async ({ page, browser, baseURL }, info) => {
@@ -201,14 +201,14 @@ test('管理员经真实重新认证返回同一员工，确认后才提交主�
     await page.getByRole('button', { name: '设为销售主管' }).click();
     const reason = '合成审批，调整本团队负责人';
     await page.getByLabel(/^操作原因/).fill(reason);
-    await expect(page.getByText('需要重新输入企业账号密码', { exact: false })).toBeVisible();
-    await page.getByRole('button', { name: '验证企业账号并继续' }).click();
+    await expect(page.getByText('需要再次输入你的登录密码', { exact: false })).toBeVisible();
+    await page.getByRole('button', { name: '验证密码并继续' }).click();
     await expect(page).toHaveURL(url => url.hostname === 'localhost' && url.searchParams.get('prompt') === 'login' &&
       url.searchParams.get('max_age') === '0');
     await authorize(page);
     await expect(page).toHaveURL(url => url.pathname === detail && url.searchParams.get('resume') === 'promote');
     await expect(page.getByLabel(/^操作原因/)).toHaveValue(reason);
-    await expect(page.getByText(/企业账号已验证，\d 分钟内可提交/)).toBeVisible();
+    await expect(page.getByText(/已验证密码，\d 分钟内可提交/)).toBeVisible();
     expect((await employee.request.get('/api/v1/me')).status()).toBe(200);
     await page.getByRole('button', { name: '保存' }).click();
     await expect(page.locator('.staff-title')).toContainText('待开通');
@@ -235,7 +235,7 @@ test('管理员经真实重新认证返回同一员工，确认后才提交主�
   }
 });
 
-test('邀请主管：认证超时后在弹窗内验证企业账号并返回续办，表单保留', async ({ page }, info) => {
+test('邀请主管：认证超时后在弹窗内验证密码并返回续办，表单保留', async ({ page }, info) => {
   const tag = info.project.name === 'desktop' ? 'd' : 'm';
   const phone = '1365' + String(Date.now()).slice(-6) + (tag === 'd' ? '1' : '2');
   await begin(page, 'staff-admin');
@@ -252,14 +252,14 @@ test('邀请主管：认证超时后在弹窗内验证企业账号并返回续�
   await dialog.getByLabel(/^姓名/).fill('合成邀请主管' + tag);
   await dialog.getByLabel(/^工作手机/).fill('12345');
   await dialog.getByLabel(/^角色/).selectOption('baobei_manager');
-  await dialog.getByRole('button', { name: /添加成员|验证企业账号并继续/ }).click();
+  await dialog.getByRole('button', { name: /添加成员|验证密码并继续/ }).click();
   await expect(dialog.getByText('手机格式不正确', { exact: false }).first()).toBeVisible();
   await expect(dialog.getByLabel(/^工作手机/)).toBeFocused();
   await dialog.getByLabel(/^工作手机/).fill(phone);
   await dialog.getByLabel(/^团队/).selectOption({ index: 1 });
   await dialog.getByLabel(/^操作原因/).fill('合成任命主管');
-  await expect(dialog.getByText('需要重新输入企业账号密码', { exact: false })).toBeVisible();
-  await dialog.getByRole('button', { name: '验证企业账号并继续' }).click();
+  await expect(dialog.getByText('需要再次输入你的登录密码', { exact: false })).toBeVisible();
+  await dialog.getByRole('button', { name: '验证密码并继续' }).click();
   await expect(page).toHaveURL(url => url.searchParams.get('prompt') === 'login' && url.searchParams.get('max_age') === '0');
   await authorize(page);
   await expect(page).toHaveURL(url => url.pathname === '/settings/users' && url.searchParams.get('resume') === 'invite');
@@ -274,55 +274,45 @@ test('邀请主管：认证超时后在弹窗内验证企业账号并返回续�
   await control(page, 'stale-reauth');
   await page.reload();
   await page.locator('[data-action-id="staff.edit"]:visible').click();
-  await expect(dialog.getByText('需要重新输入企业账号密码', { exact: false })).toHaveCount(0);
+  await expect(dialog.getByText('需要再次输入你的登录密码', { exact: false })).toHaveCount(0);
   await dialog.getByLabel(/^备注/).fill('合成日常备注');
   await dialog.getByRole('button', { name: '保存' }).click();
   await expect(page.getByText('合成日常备注', { exact: true })).toBeVisible();
 });
 
-test('退出、切换账号、多标签同步与企业账号退出', async ({ page, browser, baseURL }) => {
-  const ssoBefore = (await metrics(page)).ssoLogouts; // shared fixture counter across projects
+test('单一退出：会话失效、多标签同步、旧 Cookie 失效、下次登录必须输入密码并可换人', async ({ page, browser, baseURL }) => {
   await begin(page);
   await authorize(page);
   await workspace(page);
   const second = await page.context().newPage();
   await second.goto('/');
   await workspace(second);
-  // Local logout: the session ends server-side; the other tab follows; old cookie is dead.
+  // One account menu: profile and a single sign-out. No duplicate exits.
+  await page.locator('[data-action-id="auth.account"]:visible').click();
+  const menu = page.getByRole('dialog', { name: '个人账号' });
+  await expect(menu.getByRole('region', { name: '个人资料' })).toBeVisible();
+  await expect(menu.locator('[data-action-id^="auth."]')).toHaveCount(1);
+  await expect(page.locator('[data-action-id="auth.switch"], [data-action-id="auth.logout-sso"]')).toHaveCount(0);
   const before = (await page.context().cookies()).find(c => c.name === '__Host-baobei_session')!;
-  await page.locator('[data-action-id="auth.logout"]:visible').click();
+  await menu.getByRole('button', { name: '退出登录' }).click();
   await expect(page).toHaveURL('/login');
-  await expect(page.getByRole('alert')).toContainText('已退出项目报备中心');
+  await expect(page.getByRole('alert')).toContainText('已退出登录');
   await expect(second).toHaveURL('/login');
   const replay = await browser.newContext({ baseURL, ignoreHTTPSErrors: true });
   await replay.addCookies([{ ...before }]);
   expect((await replay.request.get('/api/v1/me')).status()).toBe(401);
   await replay.close();
-  expect((await metrics(page)).ssoLogouts).toBe(ssoBefore);
-  // Logging in again with the shared SSO keeps convenience (no forced form)…
-  await page.getByRole('button', { name: '企业账号登录', exact: true }).click();
-  expect((await metrics(page)).prompt).toBe('|');
-  await authorize(page);
-  await workspace(page);
-  // …while "switch account" forces the enterprise login form and lands as user B.
+  // The next sign-in always asks for the password (prompt=login), so a different person can sign in.
   await control(page, 'mode?value=sales-b');
-  await page.locator('[data-action-id="auth.account"]:visible').click();
-  await page.getByRole('button', { name: '切换到其他账号' }).click();
-  await expect(page.getByRole('heading', { name: '隔离企业认证' })).toBeVisible();
+  await page.getByRole('button', { name: '登录', exact: true }).click();
   expect((await metrics(page)).prompt).toBe('login|');
   await authorize(page);
   await workspace(page);
   await expect(page.locator('.user-name')).toContainText('示例销售 C');
-  // Global SSO logout goes to Keycloak end-session with client_id + post_logout_redirect_uri.
-  await page.locator('[data-action-id="auth.account"]:visible').click();
-  await page.getByRole('button', { name: '退出企业账号', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '确认退出企业账号' })).toBeVisible();
-  await page.getByRole('link', { name: '确认退出' }).click();
-  await expect(page).toHaveURL('/login?signedOut=sso');
-  await expect(page.getByRole('alert')).toContainText('已退出企业账号');
-  expect((await metrics(page)).ssoLogouts).toBe(ssoBefore + 1);
-  expect((await page.request.get('/api/v1/me')).status()).toBe(401);
   // Repeated logout after the session is gone is harmless.
+  await page.locator('[data-action-id="auth.account"]:visible').click();
+  await page.getByRole('dialog', { name: '个人账号' }).getByRole('button', { name: '退出登录' }).click();
+  await expect(page).toHaveURL('/login');
   const again = await page.request.post('/auth/logout', { headers: { 'Content-Type': 'application/json' }, data: {} });
   expect(again.status()).toBe(200);
   await control(page, 'mode?value=success');

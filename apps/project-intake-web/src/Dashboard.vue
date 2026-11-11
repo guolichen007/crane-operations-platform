@@ -155,7 +155,7 @@ const amount = computed(() => stagesData.value?.amount ?? null);
       <p class="home-question">{{ question }}</p>
     </div>
     <div class="home-actions">
-      <ActionButton v-if="role === 'baobei_admin' && can(app.user, 'staff.manage')" action-id="nav.open" :run="() => router.push('/settings/users')"><UserPlus :size="16" aria-hidden="true" />邀请销售</ActionButton>
+      <ActionButton v-if="role === 'baobei_admin' && can(app.user, 'staff.manage')" action-id="staff.invite-start" :run="() => router.push({ path: '/settings/users', query: { add: '1' } })"><UserPlus :size="16" aria-hidden="true" />添加成员</ActionButton>
     </div>
   </div>
 
@@ -275,7 +275,7 @@ const amount = computed(() => stagesData.value?.amount ?? null);
           <ActionButton action-id="nav.open" :run="() => router.push('/projects')">查看{{ projectScopeLabel(app.user) }} <ArrowUpRight :size="14" aria-hidden="true" /></ActionButton>
         </div>
         <div class="recent-list">
-          <ActionButton v-for="p in data.recent" :key="p.id" action-id="project.detail" :run="() => router.push('/projects/' + p.id)">
+          <ActionButton v-for="p in data.recent" :key="p.id" action-id="project.detail" :run="() => router.push({ path: '/projects/' + p.id, query: { from: '/' } })">
             <span class="record-title">{{ p.projectName || '未命名草稿' }}<small>{{ p.customer || '待填写客户' }} · {{ p.registrationNo }} · {{ p.ownerName || '待分配' }}</small></span><span :class="['badge', p.intakeStatus.toLowerCase()]">{{ statuses[p.intakeStatus] }}</span><span class="muted desktop">{{ stages[p.salesStage] }}</span><span class="muted">{{ when(p.updatedAt) }}</span>
           </ActionButton>
         </div>
@@ -290,7 +290,7 @@ const amount = computed(() => stagesData.value?.amount ?? null);
         <ol class="followup-list">
           <li v-for="p in data.followups" :key="p.id" :class="{ late: p.nextFollowupAt && new Date(p.nextFollowupAt) < new Date(data.asOf) }">
             <time>{{ when(p.nextFollowupAt) }}<span v-if="p.nextFollowupAt && new Date(p.nextFollowupAt) < new Date(data.asOf)" class="late-tag">已逾期</span></time>
-            <ActionButton action-id="project.detail" class="clamp-2" :title="p.projectName" :run="() => router.push('/projects/' + p.id)">{{ p.projectName || '未命名草稿' }}</ActionButton>
+            <ActionButton action-id="project.detail" class="clamp-2" :title="p.projectName" :run="() => router.push({ path: '/projects/' + p.id, query: { from: '/' } })">{{ p.projectName || '未命名草稿' }}</ActionButton>
             <small class="clamp-2">{{ p.nextAction || '尚未记录下一步' }}</small>
           </li>
         </ol>

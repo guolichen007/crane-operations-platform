@@ -78,7 +78,9 @@ test('flow: draft, edit, submit, preview, followup, list, actions', async ({ pag
   await expect(page).toHaveURL(/\/projects\/[a-f0-9-]+$/);
   await expect(page.locator('.detail-heading').getByText('已提交', { exact: true })).toBeVisible();
   await action(page, 'activity.open').click();
-  await expect(action(page, 'activity.create')).toBeDisabled();
+  // G4-S5-R0: the save button explains what is missing instead of staying grey.
+  await action(page, 'activity.create').click();
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('请填写跟进摘要');
   await action(page, 'dialog.cancel').click();
   await action(page, 'activity.open').click();
   await page.locator('[name=summary]').fill('Synthetic 电话确认');
@@ -111,6 +113,7 @@ test('flow: draft, edit, submit, preview, followup, list, actions', async ({ pag
     ),
     fullPage: true,
   });
+  await action(page, 'auth.account').click();
   await action(page, 'auth.logout').click();
   await expect(page).toHaveURL('/login');
   expect(errors).toEqual([]);
@@ -124,7 +127,7 @@ test('duplicate warning and sales B cannot guess A UUID', async ({ page, browser
   await remaining(page);
   await action(page, 'project.submit').click();
   await expect(page).toHaveURL(/\/projects\/[a-f0-9-]+$/);
-  const id = page.url().split('/').pop()!;
+  const id = new URL(page.url()).pathname.split('/').pop()!;
   const other = await browser.newContext({
     baseURL: 'http://127.0.0.1:5188',
     viewport: info.project.use.viewport,

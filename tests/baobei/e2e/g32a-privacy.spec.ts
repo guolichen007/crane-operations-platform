@@ -15,6 +15,7 @@ async function login(p: Page, subject: string) {
   await expect(p.getByRole('heading', { name: '工作台', exact: true })).toBeVisible();
 }
 async function logout(p: Page) {
+  await action(p, 'auth.account').click();
   await action(p, 'auth.logout').click();
   await expect(p).toHaveURL('/login');
 }

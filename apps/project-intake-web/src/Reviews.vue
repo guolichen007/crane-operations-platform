@@ -155,7 +155,7 @@ async function decide() {
     if (r.kind === 'conflict' || r.kind === 'missing' || r.kind === 'forbidden') void load();
     // Shown inside the dialog: the page banner is behind the modal. Input is kept.
     decideFailure.value = r.message;
-    throw new Error(r.message);
+    return;
   }
   operation.value = '';
   selected.value = null;
@@ -365,7 +365,7 @@ const fields = [
           拒绝
         </ActionButton><ActionButton
           action-id="project.detail"
-          :run="() => router.push('/projects/' + selected?.id)"
+          :run="() => router.push({ path: '/projects/' + selected?.id, query: { from: router.resolve({ path: route.path, query: route.query }).fullPath } })"
         >
           完整详情
         </ActionButton><ActionButton

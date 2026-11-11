@@ -3,6 +3,7 @@ import { computed, ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useApp } from './store';
 import ActionButton from './ActionButton.vue';
+import BrandMark from './BrandMark.vue';
 import { ApiError } from './api-client';
 import { loginErrorMessage } from './login-errors';
 import { readStaffDraft } from './staff-role-draft';
@@ -19,15 +20,13 @@ const sessionMessages = {
   expired: '登录已过期，请重新登录。',
   network: '网络连接失败，请检查网络后重试。',
   unavailable: '会话服务暂时不可用，请稍后重试。',
-  'signed-out': '已退出项目报备中心。',
+  'signed-out': '已退出登录。',
   switched: '此浏览器已在其他标签页登录了另一个账号，请重新登录。',
 };
-const ssoSignedOut = computed(() => route.query.signedOut === 'sso');
 const notice = computed(() => configIssue.value || callbackIssue.value ||
-  (ssoSignedOut.value ? '已退出企业账号。下次登录需要重新输入账号和密码。' : '') ||
   (app.sessionIssue ? sessionMessages[app.sessionIssue] : ''));
 const noticeTone = computed(() => !configIssue.value && !callbackIssue.value &&
-  (ssoSignedOut.value || app.sessionIssue === 'signed-out') ? 'info' : 'warn');
+  app.sessionIssue === 'signed-out' ? 'info' : 'warn');
 const canRetry = computed(() => !!configIssue.value || app.sessionIssue === 'network' || app.sessionIssue === 'unavailable');
 
 async function loadConfig() {
@@ -37,13 +36,13 @@ async function loadConfig() {
     const c = await app.api<{ development: boolean; oidc: boolean }>('/auth/config');
     dev.value = c.development === true;
     oidc.value = c.oidc === true;
-    if (!oidc.value && !dev.value) configIssue.value = '企业认证服务暂时不可用，请稍后重试。';
+    if (!oidc.value && !dev.value) configIssue.value = '登录服务暂时不可用，请稍后重试。';
   } catch (e) {
     oidc.value = false;
     dev.value = false;
     configIssue.value = e instanceof ApiError && e.status === 0
       ? '网络连接失败，请检查网络后重试。'
-      : '企业认证服务暂时不可用，请稍后重试。';
+      : '登录服务暂时不可用，请稍后重试。';
   } finally {
     loading.value = false;
   }
@@ -62,11 +61,10 @@ async function login() {
   }
 }
 // The password is entered only on the enterprise (Keycloak) page, never here.
-async function enterpriseLogin(account: 'same' | 'switch' = 'same') {
+async function enterpriseLogin() {
   await loadConfig();
   if (!oidc.value) return;
-  if (account === 'switch') window.location.assign('/auth/login?account=switch');
-  else window.location.assign(readStaffDraft() ? '/auth/login?reauth=1' : '/auth/login');
+  window.location.assign(readStaffDraft() ? '/auth/login?reauth=1' : '/auth/login');
 }
 async function retry() {
   await Promise.all([app.loadUser(), loadConfig()]);
@@ -75,8 +73,8 @@ async function retry() {
 </script>
 <template>
   <div class="login">
-    <section class="login-cover" aria-label="友道项目报备中心">
-      <div class="login-brand"><span class="brand-mark" aria-hidden="true"></span>友道</div>
+    <section class="login-cover" aria-label="U·DAO 友道智造 项目报备中心">
+      <BrandMark variant="full" tagline inverse class="login-brand" />
       <svg class="login-crane" viewBox="0 0 640 300" role="img" aria-label="桥式行车示意图">
         <!-- runway rails and columns -->
         <g class="crane-structure">
@@ -118,26 +116,18 @@ async function retry() {
     </section>
     <section class="login-panel">
       <div class="login-box">
-        <div class="login-brand compact"><span class="brand-mark" aria-hidden="true"></span>友道</div>
+        <BrandMark variant="full" class="login-brand compact" />
         <h1>登录项目报备中心</h1>
-        <p class="muted">使用公司企业账号登录。密码只在企业认证页面输入。</p>
+        <p class="muted">使用管理员为你开通的账号和密码登录。</p>
         <p v-if="notice" class="login-notice" :data-tone="noticeTone" role="alert">{{ notice }}</p>
         <ActionButton
           action-id="auth.login"
           primary
           :disabled="loading || !oidc"
-          :reason="loading ? '正在检查企业认证服务' : '请重试连接企业认证服务'"
+          :reason="loading ? '正在连接登录服务' : '请重试连接登录服务'"
           :run="() => enterpriseLogin()"
         >
-          {{ callbackIssue || app.sessionIssue === 'expired' ? '重新登录' : '企业账号登录' }}
-        </ActionButton>
-        <ActionButton
-          action-id="auth.login-switch"
-          :disabled="loading || !oidc"
-          reason="请重试连接企业认证服务"
-          :run="() => enterpriseLogin('switch')"
-        >
-          使用其他企业账号登录
+          {{ callbackIssue || app.sessionIssue === 'expired' ? '重新登录' : '登录' }}
         </ActionButton>
         <ActionButton v-if="canRetry" action-id="auth.retry" :disabled="loading" :run="retry">重试连接</ActionButton>
         <p class="muted login-help">还没有账号或无法登录，请联系系统管理员。</p>

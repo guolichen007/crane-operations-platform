@@ -60,7 +60,7 @@ const titles: Record<Dialog, string> = {
 };
 const descriptions: Partial<Record<Dialog, string>> = {
   invite: '保存后成员进入“待开通”，由管理员审核并开通企业账号。',
-  edit: '修改姓名、电话、邮箱或备注无需重新验证企业账号。',
+  edit: '修改姓名、电话、邮箱或备注无需再次输入密码。',
   verify: '成员原登录会撤销，核验并重新登录后恢复访问。',
   promote: '提交后立即撤销该成员的旧会话；开通主管角色并重新登录后生效。',
   demote: '提交后立即撤销主管会话；移除主管角色并重新登录后恢复销售权限。',
@@ -217,7 +217,7 @@ async function save() {
   formIssue.value = '';
   if (!checkForm()) return;
   if (needsReauth.value) {
-    formIssue.value = '此操作需要先重新验证企业账号。';
+    formIssue.value = '此操作需要先再次输入你的登录密码。';
     return;
   }
   working.value = true;
@@ -284,7 +284,7 @@ async function save() {
     if (error instanceof ApiError) {
       if (error.code === 'STAFF_REAUTH_REQUIRED') {
         reauthUntil.value = 0;
-        formIssue.value = '企业账号验证已超时，请重新验证后继续。表单内容会保留。';
+        formIssue.value = '密码验证已超时，请重新验证后继续。表单内容会保留。';
         return;
       }
       const field = serverFieldErrors[error.code] as StaffField | undefined;
@@ -310,6 +310,13 @@ async function copyReceipt() {
 onMounted(async () => {
   try {
     await load();
+    // Entry from the workspace "添加成员": open the add form right away, then
+    // drop the flag so refresh/back does not reopen it.
+    if (route.query.add === '1' && !memberId.value) {
+      void router.replace({ query: { ...route.query, add: undefined } });
+      await open('invite');
+      return;
+    }
     const draft = readStaffDraft();
     if (!draft || route.query.resume !== draft.action) return;
     clearStaffDraft();
@@ -320,8 +327,8 @@ onMounted(async () => {
     }
     await open(draft.action);
     form.value = { ...draft.form, permissions: [...draft.form.permissions] };
-    if (reauthActive.value) app.toast(`企业账号验证成功，${reauthMinutes.value} 分钟内可完成此操作`);
-    else formIssue.value = '企业账号验证未完成或已超时，请重新验证。';
+    if (reauthActive.value) app.toast(`密码验证成功，${reauthMinutes.value} 分钟内可完成此操作`);
+    else formIssue.value = '密码验证未完成或已超时，请重新验证。';
   } catch (error) { app.error = (error as Error).message; }
 });
 </script>
@@ -335,7 +342,7 @@ onMounted(async () => {
       </div>
       <div class="actions">
         <span v-if="administrator && reauthActive" class="reauth-chip" role="status">
-          <ShieldCheck :size="15" aria-hidden="true" />企业账号已验证 · {{ reauthMinutes }} 分钟内有效
+          <ShieldCheck :size="15" aria-hidden="true" />已验证密码 · {{ reauthMinutes }} 分钟内有效
         </span>
         <ActionButton v-if="!memberId" action-id="staff.invite" primary :run="() => open('invite')">添加成员</ActionButton>
         <ActionButton v-else action-id="staff.back" :run="() => router.push(administrator ? '/settings/users' : '/team/members')">返回成员列表</ActionButton>
@@ -558,13 +565,13 @@ onMounted(async () => {
         </label>
         <div v-if="sensitive && !receipt" class="reauth-note" :data-ok="reauthActive">
           <ShieldCheck :size="16" aria-hidden="true" />
-          <span v-if="reauthActive">企业账号已验证，{{ reauthMinutes }} 分钟内可提交。</span>
-          <span v-else>授予或变更高级角色前，需要重新输入企业账号密码。验证后会回到这里，已填内容会保留。</span>
+          <span v-if="reauthActive">已验证密码，{{ reauthMinutes }} 分钟内可提交。</span>
+          <span v-else>授予或变更高级角色前，需要再次输入你的登录密码。验证后会回到这里，已填内容会保留。</span>
         </div>
         <div class="actions">
           <ActionButton action-id="staff.cancel" :disabled="working" :run="() => dialog = null">{{ receipt ? '完成' : '取消' }}</ActionButton>
           <template v-if="!receipt">
-            <ActionButton v-if="needsReauth" action-id="staff.role-reauth" primary :run="reauthenticateAndResume">验证企业账号并继续</ActionButton>
+            <ActionButton v-if="needsReauth" action-id="staff.role-reauth" primary :run="reauthenticateAndResume">验证密码并继续</ActionButton>
             <ActionButton v-else action-id="staff.confirm" primary :disabled="working" :run="save">
               {{ dialog === 'invite' ? '添加成员' : dialog === 'review' ? '批准开通' : dialog === 'suspend' ? '确认停用' : dialog === 'archive' ? '确认归档' : '保存' }}
             </ActionButton>

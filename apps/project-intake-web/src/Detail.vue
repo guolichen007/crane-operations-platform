@@ -24,6 +24,7 @@ import { nextStages } from './pipeline';
 import { hintReason, recovery } from './reasons';
 import ActionButton from './ActionButton.vue';
 import Modal from './Modal.vue';
+import { returnLabel, safeReturn } from './view-state';
 const protectionLabels: Record<string, string> = { NOT_STARTED: '未开始', ACTIVE: '有效', WARNING: '需要跟进', EXPIRING: '即将到期', EXPIRED: '需主管复核' };
 const auditLabels: Record<string, string> = {
   'project.create': '创建报备',
@@ -66,6 +67,8 @@ const governanceOpen = ref(''),
   target = ref(''),
   targetStage = ref(''),
   candidates = ref<{ subject: string; name: string }[]>([]);
+// G4-S5-R0: go back to the exact list/pipeline view (filters, page, column) it came from.
+const backTarget = computed(() => safeReturn(route.query.from));
 const can = (action: string) => !!p.value?.actions?.[action]?.allowed;
 // Hide actions that do not apply to this role or status; show a disabled
 // button with its reason only when the action applies but a condition is unmet.
@@ -82,6 +85,7 @@ const governanceTitles: Record<string, string> = {
   reject: '拒绝报备',
 };
 async function openGovernance(action: string) {
+  governanceErrors.value = {};
   governanceReason.value = '';
   target.value = '';
   targetStage.value = '';
@@ -95,15 +99,24 @@ async function closeGovernance() {
   if (governanceReason.value.trim() && !(await app.confirmDiscard())) return;
   governanceOpen.value = '';
 }
-const governanceReady = computed(() => {
-  if (!governanceReason.value.trim()) return false;
-  if (governanceOpen.value === 'ownership-transfer') return !!target.value;
-  if (governanceOpen.value === 'stage-change') return !!targetStage.value;
-  return true;
-});
+const governanceErrors = ref<Record<string, string>>({});
+const activityErrors = ref<Record<string, string>>({});
+function focusInvalid(selector: string) {
+  requestAnimationFrame(() => document.querySelector<HTMLElement>(selector)?.focus());
+}
 async function saveGovernance() {
   if (!p.value) return;
   const action = governanceOpen.value;
+  const errors: Record<string, string> = {};
+  if (action === 'ownership-transfer' && !target.value) errors.targetOwner = '请选择新负责人';
+  if (action === 'stage-change' && !targetStage.value) errors.targetStage = '请选择目标阶段';
+  if (!governanceReason.value.trim()) errors.governanceReason = '请填写操作原因';
+  governanceErrors.value = errors;
+  const first = Object.keys(errors)[0];
+  if (first) {
+    focusInvalid(`[name="${first}"]`);
+    throw new Error(`还有 ${Object.keys(errors).length} 项需要填写：` + Object.values(errors).join('；'));
+  }
   const body: Record<string, unknown> = { version: p.value.version, reason: governanceReason.value };
   if (action === 'ownership-transfer') body.targetSubject = target.value;
   if (action === 'stage-change') body.salesStage = targetStage.value;
@@ -143,6 +156,15 @@ async function submit() {
 }
 async function record() {
   if (!p.value) return;
+  const errors: Record<string, string> = {};
+  if (!activity.occurredAt) errors.occurredAt = '请填写跟进时间';
+  if (!activity.summary.trim()) errors.summary = '请填写跟进摘要';
+  activityErrors.value = errors;
+  const first = Object.keys(errors)[0];
+  if (first) {
+    focusInvalid(`[name="${first}"]`);
+    throw new Error(`还有 ${Object.keys(errors).length} 项需要填写：` + Object.values(errors).join('；'));
+  }
   try {
     await app.api('/api/v1/projects/' + p.value.id + '/activities', 'POST', {
       ...activity,
@@ -191,8 +213,8 @@ const reviewSummary = computed(() => {
     {{ failure }} <ActionButton action-id="project.reload" :run="load">重新加载</ActionButton>
   </p>
   <template v-if="p">
-    <ActionButton action-id="nav.open" class="back-link" :run="() => router.push('/projects')">
-      <ArrowLeft :size="14" aria-hidden="true" />返回{{ projectScopeLabel(app.user) }}
+    <ActionButton action-id="nav.open" class="back-link" :run="() => router.push(backTarget)">
+      <ArrowLeft :size="14" aria-hidden="true" />{{ returnLabel(backTarget, projectScopeLabel(app.user)) }}
     </ActionButton>
     <div class="detail-heading">
       <div>
@@ -379,23 +401,21 @@ const reviewSummary = computed(() => {
       description="请填写依据。操作会校验当前版本并记录操作人与时间。"
       @update:open="closeGovernance"
     >
-      <label v-if="governanceOpen === 'ownership-transfer'">新负责人<select v-model="target" name="targetOwner">
+      <label v-if="governanceOpen === 'ownership-transfer'" :class="{ invalid: governanceErrors.targetOwner }">新负责人 <span class="req" aria-hidden="true">*</span><select v-model="target" name="targetOwner" aria-required="true" :aria-invalid="!!governanceErrors.targetOwner">
         <option value="">请选择</option>
         <option v-for="c in candidates" :key="c.subject" :value="c.subject">{{ c.name }}</option>
-      </select></label>
+      </select><small v-if="governanceErrors.targetOwner" class="field-error">{{ governanceErrors.targetOwner }}</small></label>
       <p v-if="governanceOpen === 'ownership-transfer' && !candidates.length" class="muted">当前没有可指派的有效销售。</p>
-      <label v-if="governanceOpen === 'stage-change'">目标阶段<select v-model="targetStage" name="targetStage">
+      <label v-if="governanceOpen === 'stage-change'" :class="{ invalid: governanceErrors.targetStage }">目标阶段 <span class="req" aria-hidden="true">*</span><select v-model="targetStage" name="targetStage" aria-required="true" :aria-invalid="!!governanceErrors.targetStage">
         <option value="">请选择</option>
         <!-- G3-4-A1 UAT-F2: only the stages the server accepts (same rule as the pipeline). -->
         <option v-for="key in nextStages(p.salesStage, p.intakeStatus)" :key="key" :value="key">{{ stages[key] }}</option>
-      </select></label>
-      <label>操作原因<textarea v-model="governanceReason" name="governanceReason" maxlength="1000"></textarea></label>
+      </select><small v-if="governanceErrors.targetStage" class="field-error">{{ governanceErrors.targetStage }}</small></label>
+      <label :class="{ invalid: governanceErrors.governanceReason }">操作原因 <span class="req" aria-hidden="true">*</span><textarea v-model="governanceReason" name="governanceReason" maxlength="1000" aria-required="true" :aria-invalid="!!governanceErrors.governanceReason"></textarea><small v-if="governanceErrors.governanceReason" class="field-error">{{ governanceErrors.governanceReason }}</small></label>
       <div class="actions modal-actions">
         <ActionButton action-id="dialog.cancel" :run="closeGovernance">取消</ActionButton><ActionButton
           action-id="governance.confirm"
           primary
-          :disabled="!governanceReady"
-          reason="请选择目标并填写原因"
           :run="saveGovernance"
         >
           确认
@@ -405,12 +425,14 @@ const reviewSummary = computed(() => {
       <div class="form-grid">
         <label>跟进类型<select v-model="activity.type">
           <option v-for="(v, k) in activityTypes" :key="k" :value="k">{{ v }}</option>
-        </select></label><label>时间 *<input v-model="activity.occurredAt" type="datetime-local" /></label><label class="wide">摘要 *<textarea
+        </select></label><label :class="{ invalid: activityErrors.occurredAt }">时间 <span class="req" aria-hidden="true">*</span><input v-model="activity.occurredAt" name="occurredAt" type="datetime-local" aria-required="true" :aria-invalid="!!activityErrors.occurredAt" /><small v-if="activityErrors.occurredAt" class="field-error">{{ activityErrors.occurredAt }}</small></label><label class="wide" :class="{ invalid: activityErrors.summary }">摘要 <span class="req" aria-hidden="true">*</span><textarea
           v-model="activity.summary"
           name="summary"
           rows="3"
           maxlength="2000"
-        ></textarea></label><label class="wide">结果<textarea v-model="activity.result" rows="2"></textarea></label><label class="wide">下一步动作<input v-model="activity.nextAction" name="nextAction" /></label><label class="wide">下一次跟进时间<input
+          aria-required="true"
+          :aria-invalid="!!activityErrors.summary"
+        ></textarea><small v-if="activityErrors.summary" class="field-error">{{ activityErrors.summary }}</small></label><label class="wide">结果<textarea v-model="activity.result" rows="2"></textarea></label><label class="wide">下一步动作<input v-model="activity.nextAction" name="nextAction" /></label><label class="wide">下一次跟进时间<input
           v-model="activity.nextFollowupAt"
           type="datetime-local"
           name="nextFollowupAt"
@@ -420,8 +442,8 @@ const reviewSummary = computed(() => {
         <ActionButton action-id="dialog.cancel" :run="closeActivity">取消</ActionButton><ActionButton
           action-id="activity.create"
           primary
-          :disabled="!can('activities') || !activity.summary.trim() || !activity.occurredAt"
-          :reason="can('activities') ? '请填写跟进时间和摘要' : reason('activities')"
+          :disabled="!can('activities')"
+          :reason="reason('activities')"
           :run="record"
         >
           保存跟进

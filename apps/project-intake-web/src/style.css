@@ -941,15 +941,7 @@ dd {
     #173f74;
   overflow: hidden;
 }
-.login-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-}
-.login-cover .brand-mark { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35); }
+.login-brand { justify-self: start; }
 .login-crane {
   align-self: center;
   width: 100%;
@@ -2783,3 +2775,28 @@ td.unassigned,
 .staff-form > label > .req { margin-left: 2px; }
 .staff-name .muted { overflow-wrap: anywhere; font-size: 13px; }
 .staff-table .staff-row > span[role="cell"]:nth-child(2) { font-size: 14px; }
+
+/* G4-S5-R0: account menu, view switch, dialog close and inline dialog errors. */
+.account-trigger { display: inline-flex; align-items: center; gap: 10px; padding: 4px 10px 4px 4px; border-radius: 999px; }
+.account-trigger .user-name { text-align: left; }
+.account-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 16px; margin: 0; }
+.account-facts dt { font-size: 12px; color: var(--ink-4); }
+.account-facts dd { margin: 2px 0 0; }
+.view-switch { display: inline-flex; align-items: stretch; border: 1px solid var(--rule); border-radius: var(--radius); overflow: hidden; }
+.view-switch > button { border: 0; border-radius: 0; display: inline-flex; align-items: center; gap: 6px; }
+.view-switch > .view-current { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; font-size: 13px; background: var(--blue-wash); color: var(--blue-2); font-weight: 600; }
+.view-switch > * + * { border-left: 1px solid var(--rule); }
+.modal { padding-top: 32px; }
+.modal-close { position: absolute; top: 12px; right: 12px; width: 34px; height: 34px; padding: 0; display: grid; place-items: center; border-color: transparent; background: transparent; }
+.modal-close:hover { background: var(--steel); }
+.modal-title { padding-right: 36px; }
+.modal-failure { margin: 0 0 14px; }
+.modal label.invalid :is(input, select, textarea) { border-color: var(--risk); }
+.modal .req { color: var(--risk); }
+.brand-logo { flex: none; }
+.brand small { letter-spacing: 0.02em; }
+.login-brand { color: inherit; }
+@media (max-width: 700px) {
+  .account-trigger .user-name { display: none; }
+  .account-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

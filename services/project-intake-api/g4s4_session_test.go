@@ -152,7 +152,7 @@ func TestDatabaseG4S4SessionLogoutSwitch(t *testing.T) {
 		signIn(&c, "synthetic-b", "?account=switch")
 	})
 
-	t.Run("switch_forces_login_form_reauth_keeps_max_age", func(t *testing.T) {
+	t.Run("every_signin_forces_login_form_reauth_keeps_max_age", func(t *testing.T) {
 		mu.Lock()
 		authorizeQueries = nil
 		mu.Unlock()
@@ -165,11 +165,11 @@ func TestDatabaseG4S4SessionLogoutSwitch(t *testing.T) {
 		if len(authorizeQueries) != 3 {
 			t.Fatal(len(authorizeQueries))
 		}
-		if authorizeQueries[0].Has("prompt") {
-			t.Fatal("ordinary login must keep SSO convenience")
-		}
-		if authorizeQueries[1].Get("prompt") != "login" || authorizeQueries[1].Has("max_age") {
-			t.Fatal("switch account must force the login form", authorizeQueries[1])
+		// G4-S5: every sign-in forces the password form; only reauth bounds age.
+		for i := 0; i < 2; i++ {
+			if authorizeQueries[i].Get("prompt") != "login" || authorizeQueries[i].Has("max_age") {
+				t.Fatal("sign-in must force the login form", i, authorizeQueries[i])
+			}
 		}
 		if authorizeQueries[2].Get("prompt") != "login" || authorizeQueries[2].Get("max_age") != "0" {
 			t.Fatal("reauth parameters", authorizeQueries[2])

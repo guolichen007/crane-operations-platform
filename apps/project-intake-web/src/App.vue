@@ -18,6 +18,7 @@ import {
   UserRoundCog,
 } from '@lucide/vue';
 import ActionButton from './ActionButton.vue';
+import BrandMark from './BrandMark.vue';
 import Modal from './Modal.vue';
 import { useApp } from './store';
 import { navigation, navGroups, can, workspaceLabel, roleLabel, type NavItem } from './navigation';
@@ -51,25 +52,13 @@ const active = (path: string) =>
   path === '/' ? route.path === '/' : route.path === path || route.path.startsWith(path + '/');
 const createLabel = computed(() => (app.user?.role === 'baobei_admin' ? '新建项目' : '新建报备'));
 const accountOpen = ref(false);
-// Ends this Baobei session only; other enterprise applications stay signed in.
+// One sign-out: ends this Baobei session on the server. The next sign-in always
+// asks for the password again (prompt=login), so another person can sign in.
 async function logout() {
   accountOpen.value = false;
-  await app.logout('local');
-  app.toast('已退出项目报备中心');
+  await app.logout();
+  app.toast('已退出登录');
   await router.push('/login');
-}
-// Switch account: end the Baobei session, then Keycloak shows the login form
-// (prompt=login) so another identity can be entered explicitly.
-async function switchAccount() {
-  accountOpen.value = false;
-  await app.logout('local');
-  window.location.assign('/auth/login?account=switch');
-}
-// Ends the shared enterprise SSO session (all applications), after confirmation.
-async function signOutEverywhere() {
-  const url = await app.logout('sso');
-  if (url) window.location.assign(url);
-  else await router.push('/login');
 }
 watch(() => app.user, (user, previous) => {
   if (previous && !user && app.sessionIssue && route.path !== '/login')
@@ -83,7 +72,7 @@ window.addEventListener('error', showError);
 <template>
   <div v-if="app.user && route.path !== '/login'" class="shell">
     <aside class="sidebar" aria-label="主导航">
-      <a href="/" class="brand" data-action-id="nav.open" @click.prevent="router.push('/')"><span class="brand-mark" aria-hidden="true"></span><span>项目报备中心<small>友道行车项目</small></span></a>
+      <a href="/" class="brand" data-action-id="nav.open" @click.prevent="router.push('/')"><BrandMark class="brand-logo" /><span>项目报备中心<small>U·DAO 友道智造</small></span></a>
       <div class="workspace-label">{{ workspaceLabel(app.user) }}</div>
       <nav>
         <template v-for="g in groups" :key="g.key">
@@ -130,10 +119,8 @@ window.addEventListener('error', showError);
             :run="() => router.push('/new')"
           >
             <Plus :size="16" aria-hidden="true" /><span>{{ createLabel }}</span>
-          </ActionButton><span class="avatar" aria-hidden="true">{{ app.user.name.slice(-1) }}</span><span class="user-name">{{ app.user.name }}<small>{{ roleLabel(app.user.role) }}</small></span><ActionButton action-id="auth.account" aria-label="账号与退出" :run="() => { accountOpen = true; }">
-            <UserRoundCog :size="16" aria-hidden="true" />
-          </ActionButton><ActionButton action-id="auth.logout" :run="logout" aria-label="退出登录">
-            <LogOut :size="16" aria-hidden="true" />
+          </ActionButton><ActionButton action-id="auth.account" class="account-trigger" :aria-label="'个人账号：' + app.user.name" :run="() => { accountOpen = true; }">
+            <span class="avatar" aria-hidden="true">{{ app.user.name.slice(-1) }}</span><span class="user-name">{{ app.user.name }}<small>{{ roleLabel(app.user.role) }}</small></span><UserRoundCog :size="16" aria-hidden="true" />
           </ActionButton>
         </div>
       </header>
@@ -147,25 +134,25 @@ window.addEventListener('error', showError);
   </div>
   <Modal
     :open="accountOpen"
-    title="账号与退出"
-    :description="app.user ? `当前账号：${app.user.name} · ${roleLabel(app.user.role)}` : undefined"
+    title="个人账号"
+    description="查看个人资料或退出登录。"
     @update:open="(v) => (accountOpen = v)"
   >
-    <div class="account-options">
-      <section>
-        <h3>退出项目报备中心</h3>
-        <p class="muted">只结束本系统的登录，企业账号的其他应用不受影响。</p>
-        <ActionButton action-id="auth.logout-confirm" primary :run="logout">退出登录</ActionButton>
+    <div v-if="app.user" class="account-options">
+      <section aria-label="个人资料">
+        <h3>个人资料</h3>
+        <dl class="account-facts">
+          <div><dt>姓名</dt><dd>{{ app.user.name }}</dd></div>
+          <div><dt>角色</dt><dd>{{ roleLabel(app.user.role) }}</dd></div>
+          <div><dt>工作空间</dt><dd>{{ workspaceLabel(app.user) }}</dd></div>
+        </dl>
+      </section>
+      <section aria-label="修改密码">
+        <h3>修改密码</h3>
+        <p class="muted">手机号登录上线后可在这里修改密码。目前如需修改，请联系管理员。</p>
       </section>
       <section>
-        <h3>切换账号</h3>
-        <p class="muted">退出后进入企业登录页，输入另一个企业账号。</p>
-        <ActionButton action-id="auth.switch" :run="switchAccount">切换到其他账号</ActionButton>
-      </section>
-      <section>
-        <h3>退出企业账号</h3>
-        <p class="muted">结束本报备中心的登录，并结束企业认证服务的登录会话：此后在本浏览器打开任何使用企业账号的应用，都需要重新输入密码。已经打开的其他应用（例如行车平台）可能保留各自的登录，直到它们过期或单独退出。共用电脑请同时在那些应用中退出。</p>
-        <ActionButton action-id="auth.logout-sso" :run="signOutEverywhere">退出企业账号</ActionButton>
+        <ActionButton action-id="auth.logout" primary :run="logout"><LogOut :size="16" aria-hidden="true" />退出登录</ActionButton>
       </section>
     </div>
   </Modal>

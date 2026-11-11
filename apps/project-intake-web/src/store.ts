@@ -66,17 +66,13 @@ export const useApp = defineStore('app', () => {
       sessionChecked.value = true;
     }
   }
-  // scope 'local' ends the Baobei session only. 'sso' also returns Keycloak's
-  // end-session URL, which signs the enterprise account out of every application.
-  async function logout(scope: 'local' | 'sso' = 'local'): Promise<string | undefined> {
-    const csrf = user.value?.csrfToken || '';
-    const result = await request<{ ok: boolean; endSessionUrl?: string }>(
-      '/auth/logout' + (scope === 'sso' ? '?scope=sso' : ''), 'POST', {}, csrf);
+  // Ends this Baobei session on the server; every tab of this browser follows.
+  async function logout() {
+    await request<{ ok: boolean }>('/auth/logout', 'POST', {}, user.value?.csrfToken || '');
     clearStaffDraft();
     user.value = null;
     sessionIssue.value = 'signed-out';
     broadcast({ type: 'signed-out' });
-    return result.endSessionUrl;
   }
   function confirmDiscard() {
     confirmOpen.value = true;

@@ -5,7 +5,7 @@ BAOBEI_MAIN_MERGE=FORBIDDEN
 BAOBEI_R2_MERGE=FORBIDDEN
 BASE_SHA=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18
 BRANCH=product/baobei-v1
-CURRENT_BATCH=G4_S4_GO_LIVE_REMEDIATION
+CURRENT_BATCH=G4_S5_R0_NAVIGATION_FEEDBACK_BRAND
 DEPLOYED_SHA=7b9558084d73f5210cdd08e8240883ecc1659de8
 SCHEMA_VERSION=00005
 RELEASE_SHA=572c6aa609e06419b832f7652e73bf29e8c65c37
@@ -19,7 +19,11 @@ PRODUCTION_DEPLOYED=YES (7b95580; G4-S4 未部署)
 
 目标：快速报项目、识别重复、明确归属并跟进。独立产品，永不合并 main/R2。
 
-## 当前实施：G4-S4 正式使用前全链路整改
+## 当前实施：G4-S5-R0 视图切换、导航、弹窗反馈与 U·DAO 品牌
+
+基线 `59fc14e`。阶段 A 完整功能动作审计与 R0 交付见 [40-G4-S5阶段A完整功能动作审计](40-G4-S5阶段A完整功能动作审计.md)。R1（手机号+密码登录、真实开户与密码生命周期、受限身份服务）与 R2（团队/人员/项目生命周期与全业务 E2E）需另行审查后开工。
+
+## 历史：G4-S4 正式使用前全链路整改
 
 基线为现网部署版 `7b95580`（Run 42948894591 八门通过）。退出/切换账号/企业 SSO 退出分开；重新认证只用于敏感人员操作并可在弹窗内续办；成员列表与详情按状态给出下一步，管理员审核开通生成受控回执（常驻 API 不持有 Keycloak 管理权限）；工作手机必填（迁移 00005）、邮箱选填且无邮箱可按精确 subject 与唯一角色激活；表单错误摘要与就近提示；品牌改为“友道”并重做登录页。验收与未完成项见 [39-G4-S4正式使用前全链路整改验收](39-G4-S4正式使用前全链路整改验收.md)。 R1 收口（基线 `253b4a8`）：销售身份重新核验必须近期企业认证；管理员审核只生成待身份核验草稿，staff-provision 拒绝；“退出企业账号”文案按实际注销能力说明。
 

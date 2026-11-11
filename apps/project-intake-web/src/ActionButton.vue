@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { inject, ref } from 'vue';
+import { modalErrorKey } from './modal-error';
 import { rememberAction } from './focus';
 import { useApp } from './store';
 const props = withDefaults(
@@ -14,15 +15,20 @@ const props = withDefaults(
 );
 const busy = ref(false);
 const app = useApp();
+// Inside a dialog, failures are reported to that dialog (see Modal.vue).
+const reportInDialog = inject(modalErrorKey, null);
 async function activate(event: MouseEvent) {
   rememberAction(event.currentTarget as HTMLElement);
   if (busy.value || props.disabled) return;
   busy.value = true;
   app.error = '';
+  reportInDialog?.('');
   try {
     await props.run?.();
   } catch (e) {
-    app.error = e instanceof Error ? e.message : '操作失败，请重试';
+    const message = e instanceof Error ? e.message : '操作失败，请重试';
+    if (reportInDialog) reportInDialog(message);
+    else app.error = message;
   } finally {
     busy.value = false;
   }

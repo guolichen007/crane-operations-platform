@@ -59,7 +59,8 @@ func (a *App) startLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	state, nonce, binding, verifier := randomToken(), randomToken(), randomToken(), oauth2.GenerateVerifier()
 	query := r.URL.Query()
-	reauth, switching := query.Get("reauth") == "1", query.Get("account") == "switch"
+	// account=switch is still accepted from old bookmarks; all sign-ins prompt now.
+	reauth := query.Get("reauth") == "1"
 	if reauth {
 		nonce = "reauth-" + nonce
 	}
@@ -73,12 +74,13 @@ func (a *App) startLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	a.cookie(w, a.loginCookieName(), binding, 300)
 	options := []oauth2.AuthCodeOption{oidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier)}
+	// G4-S5: every Baobei sign-in asks for the password (prompt=login), so a
+	// shared SSO session never signs anyone in silently and another person can
+	// always sign in after "退出登录". Per-request parameter only; the shared
+	// realm's authentication flow is unchanged. Reauthentication also bounds age.
+	options = append(options, oauth2.SetAuthURLParam("prompt", "login"))
 	if reauth {
-		options = append(options, oauth2.SetAuthURLParam("prompt", "login"), oauth2.SetAuthURLParam("max_age", "0"))
-	} else if switching {
-		// Switching account: Keycloak must show the login form even with a live SSO
-		// session, so the user explicitly enters another identity.
-		options = append(options, oauth2.SetAuthURLParam("prompt", "login"))
+		options = append(options, oauth2.SetAuthURLParam("max_age", "0"))
 	}
 	http.Redirect(w, r, a.oauth.AuthCodeURL(state, options...), http.StatusFound)
 }

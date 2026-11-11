@@ -159,7 +159,9 @@ for (const vp of [
     await expect(dialog).toContainText('当前阶段：技术交流');
     const options = await dialog.locator('select[name=targetStage] option').allTextContents();
     expect(options).toEqual(['请选择', '现场勘察', '暂缓', '已失单']);
-    await expect(action(sales, 'pipeline.stage-confirm')).toBeDisabled();
+    // G4-S5-R0: confirming without a choice explains it inside the dialog; nothing is sent.
+    await action(sales, 'pipeline.stage-confirm').click();
+    await expect(dialog.getByRole('alert').first()).toContainText('请选择目标阶段');
     // Another session changes the project first: stale version → 409, reason kept, card stays.
     const cur = (await api(sales, `/api/v1/projects/${moving.id}`)).body;
     expect((await api(sales, `/api/v1/projects/${moving.id}/activities`, 'POST', { version: cur.version, type: 'PHONE', occurredAt: new Date().toISOString(), summary: '另一会话', result: '', nextAction: '合成下一步', nextFollowupAt: new Date(Date.now() + 3 * day).toISOString() })).status).toBe(200);

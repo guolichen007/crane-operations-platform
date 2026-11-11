@@ -215,7 +215,8 @@ test('G3-3A 遗留：409 后最新阶段已变，目标阶段需重新确认', a
     await action(p, 'pipeline.stage-confirm').click();
     await expect(dialog.getByRole('alert').first()).toContainText('请重新选择目标阶段');
     await expect(dialog.locator('select[name=targetStage]')).toHaveValue('');
-    await expect(action(p, 'pipeline.stage-confirm')).toBeDisabled();
+    await action(p, 'pipeline.stage-confirm').click();
+    await expect(dialog.getByRole('alert').first()).toContainText('请选择目标阶段');
     expect(await dialog.locator('select[name=targetStage] option').allTextContents()).toEqual(['请选择', '需求确认']);
     await expect(dialog.locator('[name=stageReason]')).toHaveValue('合成：推进到招投标');
     expect((await api(p, `/api/v1/projects/${proj.id}`)).body.salesStage).toBe('HOLD');

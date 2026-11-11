@@ -67,7 +67,8 @@ test('admin assigns and submits from detail; independent manager approves from d
   await action(page, 'project.tab').filter({ hasText: '操作审计' }).click();
   await expect(page.locator('.detail-body')).toContainText('创建待分配草稿');
   await expect(page.locator('.detail-body')).not.toContainText('synthetic-admin');
-  const id = page.url().split('/').pop()!;
+  const id = new URL(page.url()).pathname.split('/').pop()!;
+  await action(page, 'auth.account').click();
   await action(page, 'auth.logout').click();
   // Wait for the logout to finish: /login redirects to / while the session is still valid.
   await expect(page).toHaveURL('/login');
@@ -124,6 +125,7 @@ test('sales cannot reach admin or review routes; director sees no unassigned dra
     await expect(page).toHaveURL('/');
   }
   expect((await api(page, '/api/v1/reviews')).status).toBe(403);
+  await action(page, 'auth.account').click();
   await action(page, 'auth.logout').click();
   // Wait for the logout to finish: /login redirects to / while the session is still valid.
   await expect(page).toHaveURL('/login');
