@@ -7,7 +7,9 @@ BASE_SHA=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18
 BRANCH=product/baobei-v1
 CURRENT_BATCH=G4_S1B1_R0_DEPLOY_READINESS
 STOP_AFTER_G4_S1B1_R0=YES
-FROZEN_CANDIDATE_SHA=ca41c3ba090a7dc17120f6565d0a54a2f8d644fd
+RELEASE_SHA=572c6aa609e06419b832f7652e73bf29e8c65c37
+CODE_SHA=ca41c3ba090a7dc17120f6565d0a54a2f8d644fd
+SERVER_PRECHECK=NOT_RUN
 G4_S1B1_DEPLOY_READY=NO
 PREVIEW_CODE_READY=YES
 PREVIEW_IMAGES_READY=NO
@@ -18,7 +20,7 @@ PRODUCTION_DEPLOYED=NO
 
 ## 当前实施：G4-S1B1-R0 部署前最终门禁
 
-冻结候选 `ca41c3b`（Run 42812452001 八门通过）。部署前最终执行清单见 [38-G4-S1B1-Preview部署前最终执行清单](38-G4-S1B1-Preview部署前最终执行清单.md)，取代 37 号第 5 节。服务器只读预检 NOT_RUN（无授权访问）、GHCR 镜像未发布、DNS/证书/Keycloak/白名单未就绪：G4_S1B1_DEPLOY_READY=NO。
+RELEASE_SHA `572c6aa`（Run 42930430139 八门通过；代码与 `ca41c3b` 相同，之后只有文档提交）。正式 Baobei 现网公开端点在线（Web 为 a4f488a 构建）。部署前最终执行清单（R1，含资源就绪矩阵）见 [38-G4-S1B1-Preview部署前最终执行清单](38-G4-S1B1-Preview部署前最终执行清单.md)，取代 37 号第 5 节。服务器只读预检 NOT_RUN（无授权访问）、GHCR 镜像未发布、DNS/证书/Keycloak/白名单未就绪：G4_S1B1_DEPLOY_READY=NO。
 
 ## 历史：G4-S1A-R2 合成数据完整性 + G4-S1B0 首次部署准备
 
