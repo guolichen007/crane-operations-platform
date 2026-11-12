@@ -126,7 +126,7 @@ P0 已在本分支修复，修复前后都有浏览器证据，所以本轮不�
 | 全局搜索 Ctrl+K | GlobalSearch.choose → 深链 | 数据来自授权 Inventory | c/search-deeplink | **p/identity-isolation：换身份后搜不到 A** |
 | 项目登记 新建 / 推进 | PortfolioWorkspace.submit/advance → `POST /portfolio/intakes`、`…/transition` | project_intake_write | p/portfolio-intake、b4/portfolio-intake | p/portfolio-intake：422/409/503、双击、草稿；无权限无入口 |
 | 批准 | advance(APPROVED) → `…/approve` | project_approve（仅 manager） | b4/portfolio-intake | p/portfolio-intake：规划者无按钮，强制调用返回 403 |
-| 成员授权 授予 / 调整 / 撤销 | FormalProjectPanel → `PUT/DELETE …/members` | project_grant_manage | p/portfolio-grants、b4/portfolio-grants | p/portfolio-grants：422/409/503；撤销后旧会话失效（b4） |
+| 成员授权 授予 / 调整 / 撤销 | FormalProjectPanel → `POST /portfolio/projects/{id}/members`（同一端点，role 为空即撤销；R1a 更正：此前误写为 PUT/DELETE） | project_grant_manage | p/portfolio-grants、b4/portfolio-grants | p/portfolio-grants：422/409/503；撤销后旧会话失效（b4） |
 | 运营信息登记 | PendingInventoryProjects.submit → `POST /projects/{id}/inventory-registration` | location_write | p/inventory-registration | p/inventory-registration：503/403/409/超时/401/撤销/响应丢失 |
 | 冲突覆盖 | PortfolioWorkspace.override → `POST …/conflicts/{id}/override` | schedule_override；硬冲突返回 409 | **p/catalog-override：经理一次请求** | **p/catalog-override：规划员、混合角色、硬冲突无按钮**；go/portfolio_security_test |
 | 资产 新建 | AssetCenter.createMutation → `POST /assets`（幂等键） | asset_master_write | b4/asset-crud | p/asset-guards：草稿保护；b4/rbac：越权写入 P002 |
@@ -163,3 +163,79 @@ P0 已在本分支修复，修复前后都有浏览器证据，所以本轮不�
 ## 8. 结论
 
 结论在 CI 九项通过后给出：ACCEPT_FOR_DEV_UAT 或 BLOCKED。
+
+---
+
+## 9. Q4-QA-R1a：安全门禁与跨项目误写的最小收口
+
+**基线**：`21425c5`。CI Run `43143593507` Attempt 1 中，security 作业失败，原因是 govulncheck 报 GO-2026-6859；其余 8 项均成功，b4 也成功。
+
+### 9.1 Go 安全漏洞
+
+- **漏洞**：GO-2026-6859 / CVE-2026-97054，影响标准库 `net/http`（MaxBytesReader 并发设置 `Connection: close` 可能导致 panic）。受影响版本是 go1.27.0 至 go1.27.4 之前，修复版本是 go1.27.4。来源：pkg.go.dev/vuln/GO-2026-6859。
+- **修改的文件**：
+  - `go.mod`：`go 1.27.4`。
+  - `.github/workflows/ci.yml`：9 处 `go-version: '1.27.4'`。
+  - `deploy/Dockerfile.backend` 与 `deploy/production/images.json`：改为 `golang:1.27.4-alpine@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf`。
+- **digest 来源**：从 Docker Hub 官方 `library/golang` 读取 `1.27.4-alpine` 的 OCI index digest；其 amd64 镜像配置中的 `GOLANG_VERSION=1.27.4`。digest 没有手写或编造。
+- **未改动的部分**：所有安全扫描步骤都没有改动，也没有添加任何忽略规则。
+- **本地验证**：
+  - 用官方 `go1.27.4.linux-amd64.tar.gz`（sha256 `7226736c…4840`，与 go.dev 公布值一致），`go version` 输出 `go1.27.4`。
+  - 在干净 worktree 中运行 govulncheck v1.9.0：
+    - 修复前（go1.27.3）：报告 `GO-2026-6859 Found in net/http@go1.27.3, Fixed in net/http@go1.27.4`。
+    - 修复后（go1.27.4）：`No vulnerabilities found.`
+  - `npm audit --audit-level=high` 通过（只有 8 个 moderate）。
+- **只在 CI 中运行的扫描**：gitleaks 本地下载依赖超时，未运行；Trivy 文件系统扫描和镜像扫描需要 Docker。这三项由 CI 的 security 作业执行，结果见 §9.6。
+
+### 9.2 资产详情同组件切换导致误写（P0，已复现并修复）
+
+- **复现**：打开资产 A 的编辑表单并填写草稿，然后只改路由参数到 `/assets/B`（组件复用，不卸载）。表单仍然存在，点击保存后实际发出的是 `PATCH /api/v1/assets/B`，`If-Match: "3"`，请求体为 `{"displayName":"A 的草稿名称"}`。A 和 B 的版本号相同时，服务端会接受这次写入。移动和退役对话框同样会写入 B。截图见 `evidence/q4-qa/before-asset-route-switch-edit.png`。
+- **位置**：`views/AssetDetail.vue`。所有写操作都使用实时的 `id.value`（`route.params.id`），而且只有 `onBeforeRouteLeave`，没有 `onBeforeRouteUpdate`。
+- **修复**：
+  - 编辑、移动、退役、Equipment 安装在打开对话框时就固定资产 ID（`editTarget`、`moveTarget`、`retireTarget`、`equipmentAddTarget`），提交时只发往这个 ID；版本号在打开时就已固定。
+  - 新增 `onBeforeRouteUpdate`：提交中直接拒绝切换；有草稿时需要用户确认放弃；切换后关闭上一资产的所有对话框。
+  - 后端 RBAC 和 If-Match 都没有改动。
+- **测试**：`premium/asset-route-switch.spec.ts`（编辑草稿、移动、退役、Equipment 安装、提交中切换、干净状态切换，共 6 项）。修复前 5 项失败，修复后 6/6 通过。
+
+### 9.3 位置表单跨项目误写（已复现并修复）
+
+- **复现**：同一个管理员同时拥有甲、乙两个项目的 `location_write`。在 `?project=PA` 下打开新建表单并填写，然后切换到 `?project=PB`。表单仍然存在，提交时请求 `POST /projects/PB/locations`，请求体是甲的草稿（名称"甲一车间"，parentId 为 A-SITE）。这次写入被拒绝，只是因为服务端检查发现父位置不属于乙项目；如果没有填父位置，就会直接在乙项目下创建成功。截图见 `evidence/q4-qa/before-location-project-switch.png`。
+- **修复**（`views/LocationCenter.vue`）：
+  - 打开表单时固定 `formProject`，提交到这个项目；上级位置只从这个项目里选，标题也显示这个项目。
+  - `onBeforeRouteUpdate`：提交中拒绝切换项目；有草稿时需要确认放弃；切换后关闭表单。
+  - 服务端仍然以 URL 路径中的项目、`location_write` 和父位置同项目检查为准。
+- **测试**：`premium/location-project-switch.spec.ts`，3 项，修复前全部失败，修复后 3/3 通过。
+
+### 9.4 项目组合授权（PortfolioGrant）撤销与降级（已复现并修复）
+
+- **原因**：WebSession 的 `projects` 记录的是 ProjectGrant，不包含 PortfolioGrant，所以项目组合授权被撤销或降级时，前端不会收到身份变化事件。
+- **复现**：
+  - 撤销后再执行写操作，得到 403，但登记列表和新建入口仍然显示。
+  - 从经理降级为规划员后，"批准"按钮仍然存在。
+  - 离开页面再回来，仍然显示缓存中的甲组合数据（30 秒的 staleTime 内不会重新请求）。
+- **修复**：
+  - 新增 `cloud/queryClient.ts` 的 `resetPortfolioScope()`，重置所有项目组合相关缓存（scopes、intakes、resources、schedule-items、conflicts、portfolio-projects、project-members）。重置时直接丢弃旧数据，不作为过期数据保留，并按当前授权范围重新读取。
+  - 两个时机会触发重置：进入项目组合页面时；任何项目组合写操作返回 403 时（登记新建与推进、批准、覆盖、成员授权）。
+  - 没有改动认证系统。
+- **测试**：`premium/portfolio-grant-revoke.spec.ts`，3 项，修复前全部失败，修复后 3/3 通过。
+
+### 9.5 报告更正
+
+成员授权使用的是 `POST /portfolio/projects/{id}/members`：同一个端点，`role: null` 表示撤销。原 §5 中误写为 `PUT/DELETE`，已更正。
+
+### 9.6 本地回归（R1a HEAD）
+
+| 项目 | 结果 |
+|---|---|
+| vitest | 218 通过，另有 1 个原有的 expected fail |
+| vue-tsc、eslint | 0 错误 |
+| 契约测试 | 63/63 |
+| Go（go1.27.4，真实 PG17） | `./internal/...` 与 `services/cloud-api/internal/app` 全部 ok；`go vet` ok |
+| premium | 全部 18 个 spec 通过，另有 1 项 skipped：原有的真实 GPU 验收用例 |
+| cloud | 14/14 |
+| DEMO | overview 17、spatial 5、其余 14 |
+| govulncheck（go1.27.4） | No vulnerabilities found |
+| npm audit high | 通过 |
+| gitleaks、Trivy、b4 真实 Keycloak + PG | 本地未运行，由 CI 执行 |
+
+CI 结果和最终结论在推送后补记。
