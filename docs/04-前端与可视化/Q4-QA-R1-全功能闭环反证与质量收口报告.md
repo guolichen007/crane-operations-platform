@@ -238,4 +238,23 @@ P0 已在本分支修复，修复前后都有浏览器证据，所以本轮不�
 | npm audit high | 通过 |
 | gitleaks、Trivy、b4 真实 Keycloak + PG | 本地未运行，由 CI 执行 |
 
-CI 结果和最终结论在推送后补记。
+#### CI 结果（973e134）
+
+CI Run [43157872522](https://github.com/guolichen007/crane-operations-platform/actions/runs/43157872522)（Attempt 1），由 push 触发（2026-11-12 04:55 UTC），head SHA 为 `973e134de99cbede898b6e3098a345312ddddd6c`，总体 Success，总耗时 19m 11s。
+
+| 作业 | Job ID | 结果 | 耗时 |
+|---|---|---|---|
+| repository-contract | 130981920922 | success | 49s |
+| backend | 130981920938 | success | 1m 28s |
+| edge | 130981920729 | success | 40s |
+| r2-db-test | 130981920522 | success | 2m 3s |
+| frontend | 130981920969 | success | 19m 8s |
+| integration | 130981921078 | success | 5m 51s |
+| security | 130981920852 | success | 2m 15s |
+| a1-security | 130981921153 | success | 3m 8s |
+| b4-business-acceptance | 130981920903 | success | 9m 56s |
+| production-release | 130988680147 | skipped（非 main，按设计跳过） | 0s |
+
+security 作业各步骤均为 success：gitleaks v8.30.1、`npm audit --audit-level=high`、govulncheck v1.9.0（21425c5 上的 GO-2026-6859 已不再出现）、Trivy 0.74.0 fs（HIGH/CRITICAL）、构建 `Dockerfile.backend` 后执行 Trivy image（HIGH/CRITICAL）。frontend 作业中的 typecheck、lint、test、build 和 `test:e2e` 也均为 success。
+
+**结论**：Q4-QA-R1a 为 PASS，同一 SHA 的九项 CI 全部通过。建议将 `973e134` 作为 RC2 候选。RC2 标签由 OWNER 决定，本轮不创建标签、不构建镜像、不部署。
