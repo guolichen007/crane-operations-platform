@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
+import { useRoute, useRouter, onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query';
 import { Search, MapPin, Plus, RefreshCw } from 'lucide-vue-next';
 import { listAllLocations, createLocation } from '../cloud/asset';
@@ -91,6 +91,11 @@ const errors = computed(() => validateLocation(form.value));
 const shown = computed(() => (touched.value ? errors.value : {}));
 const dirty = computed(() => creating.value && locationDirty(form.value));
 const created = ref('');
+// Q4-QA-R1a: the target project is pinned when the form opens; a later ?project= change (top bar)
+// never redirects this draft to another project. The server stays the authority (URL path project,
+// location_write, parent in the same project).
+const formProject = ref('');
+const formParents = computed(() => (formProject.value === projectId.value ? activeParents.value : []));
 
 function openCreate() {
   if (!allowClose(dirty.value, mutation.isPending.value)) return;
@@ -98,6 +103,7 @@ function openCreate() {
   touched.value = false;
   formError.value = '';
   created.value = '';
+  formProject.value = projectId.value;
   creating.value = true;
 }
 function closeCreate() {
@@ -105,7 +111,7 @@ function closeCreate() {
   creating.value = false;
 }
 const mutation = useMutation({
-  mutationFn: () => createLocation(toNewLocation(projectId.value, form.value)),
+  mutationFn: () => createLocation(toNewLocation(formProject.value, form.value)),
   onSuccess: async (loc) => {
     creating.value = false;
     created.value = `已创建位置「${loc.name}」（${KIND_TEXT[loc.kind] ?? loc.kind}，坐标未知）。可在资产详情中把资产移动到这里。`;
@@ -139,6 +145,15 @@ function onBeforeUnload(e: BeforeUnloadEvent) { if (dirty.value || mutation.isPe
 onMounted(() => { window.addEventListener('keydown', onKeydown); window.addEventListener('beforeunload', onBeforeUnload); });
 onBeforeUnmount(() => { window.removeEventListener('keydown', onKeydown); window.removeEventListener('beforeunload', onBeforeUnload); });
 onBeforeRouteLeave(() => allowClose(dirty.value, mutation.isPending.value));
+// Same page, another project: refuse while submitting, ask before discarding a draft, then close it.
+onBeforeRouteUpdate((to, from) => {
+  if (to.query.project === from.query.project) return true;
+  if (!allowClose(dirty.value, mutation.isPending.value)) return false;
+  creating.value = false;
+  formError.value = '';
+  created.value = '';
+  return true;
+});
 </script>
 <template>
   <section class="workspace-page location-center" data-testid="location-center">
@@ -213,7 +228,7 @@ onBeforeRouteLeave(() => allowClose(dirty.value, mutation.isPending.value));
 
     <div v-if="creating" class="modal-backdrop" @click.self="closeCreate">
       <form class="workspace-modal" data-testid="location-create-form" novalidate @submit.prevent="submit">
-        <h2>新建位置 · {{ projectId }}</h2>
+        <h2>新建位置 · {{ formProject }}</h2>
         <label>类型 *
           <select v-model="form.kind" aria-label="位置类型" :aria-invalid="!!shown.kind">
             <option value="" disabled>选择类型</option>
@@ -228,7 +243,7 @@ onBeforeRouteLeave(() => allowClose(dirty.value, mutation.isPending.value));
         <label>上级位置
           <select v-model="form.parentId" aria-label="上级位置">
             <option value="">（无，顶层位置）</option>
-            <option v-for="l in activeParents" :key="l.id" :value="l.id">{{ l.name }}（{{ KIND_TEXT[l.kind] ?? l.kind }}）</option>
+            <option v-for="l in formParents" :key="l.id" :value="l.id">{{ l.name }}（{{ KIND_TEXT[l.kind] ?? l.kind }}）</option>
           </select>
         </label>
         <label>地址<input v-model="form.address" aria-label="地址" maxlength="240" /></label>
