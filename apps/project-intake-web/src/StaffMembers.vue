@@ -310,7 +310,7 @@ async function save() {
     } catch (error) {
       if (error instanceof ApiError) {
         if (error.code === 'STAFF_REAUTH_REQUIRED') reauthUntil.value = 0;
-        const field = serverFieldErrors[error.code] ?? (error.code.startsWith('ACCOUNT_PHONE') ? 'phone' : undefined);
+        const field = serverFieldErrors[error.code] ?? (fieldOrder.includes(error.field as StaffField) ? error.field as StaffField : undefined) ?? (error.code.startsWith('ACCOUNT_PHONE') ? 'phone' : undefined);
         if (field) {
           errors.value = { [field]: error.message };
           void focusFirstError();
@@ -395,7 +395,7 @@ async function save() {
         formIssue.value = '密码验证已超时，请重新验证后继续。表单内容会保留。';
         return;
       }
-      const field = serverFieldErrors[error.code] as StaffField | undefined;
+      const field = (serverFieldErrors[error.code] ?? (fieldOrder.includes(error.field as StaffField) ? error.field : undefined)) as StaffField | undefined;
       if (field) {
         errors.value = { [field]: error.message };
         void focusFirstError();
@@ -501,7 +501,7 @@ onMounted(async () => {
           </ActionButton></span>
         </article>
       </div>
-      <div class="actions staff-pagination">
+      <div v-if="total > 0" class="actions staff-pagination">
         <span class="muted">共 {{ total }} 人 · 第 {{ page }} 页</span>
         <ActionButton action-id="staff.previous" :disabled="page <= 1 || loading" :run="() => changePage(page - 1)">上一页</ActionButton>
         <ActionButton action-id="staff.next" :disabled="page * pageSize >= total || loading" :run="() => changePage(page + 1)">下一页</ActionButton>

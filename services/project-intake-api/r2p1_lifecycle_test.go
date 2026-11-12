@@ -453,13 +453,13 @@ func TestDatabaseR2P1DraftDiscardRestore(t *testing.T) {
 	}
 	before := p
 	// Permission negatives: other sales and manager cannot discard.
-	s, b = cb.call("POST", "/api/v1/projects/"+p.ID+"/discard", map[string]any{"version": p.Version})
+	s, b = cb.call("POST", "/api/v1/projects/"+p.ID+"/discard", map[string]any{"version": p.Version, "reason": "合成废弃"})
 	expect(t, s, 404, b)
-	s, b = mgr.call("POST", "/api/v1/projects/"+p.ID+"/discard", map[string]any{"version": p.Version})
+	s, b = mgr.call("POST", "/api/v1/projects/"+p.ID+"/discard", map[string]any{"version": p.Version, "reason": "合成废弃"})
 	if s != 403 && s != 404 {
 		t.Fatal("manager discarded", s, string(b))
 	}
-	s, b = ca.call("POST", "/api/v1/projects/"+p.ID+"/discard", map[string]any{"version": p.Version - 1})
+	s, b = ca.call("POST", "/api/v1/projects/"+p.ID+"/discard", map[string]any{"version": p.Version - 1, "reason": "合成废弃"})
 	expect(t, s, 409, b)
 	// Concurrent double click: exactly one succeeds.
 	var wg sync.WaitGroup
@@ -515,7 +515,7 @@ func TestDatabaseR2P1DraftDiscardRestore(t *testing.T) {
 	s, b = ca.call("POST", "/api/v1/projects/"+p.ID+"/submit", map[string]int{"version": r.Version})
 	sub := projectFrom(t, s, b)
 	// Submitted projects cannot be discarded (and never hard-deleted).
-	s, b = ca.call("POST", "/api/v1/projects/"+p.ID+"/discard", map[string]any{"version": sub.Version})
+	s, b = ca.call("POST", "/api/v1/projects/"+p.ID+"/discard", map[string]any{"version": sub.Version, "reason": "合成废弃"})
 	expect(t, s, 409, b)
 	s, b = f.admin.call("GET", "/api/v1/projects/"+p.ID, nil)
 	if s != 200 || !strings.Contains(string(b), "project.discard") || !strings.Contains(string(b), "project.restore") {
@@ -524,7 +524,7 @@ func TestDatabaseR2P1DraftDiscardRestore(t *testing.T) {
 	// Admin can discard an unassigned draft and restore it.
 	s, b = f.admin.call("POST", "/api/v1/projects", sample("合成管理员草稿"))
 	ad := projectFrom(t, s, b)
-	s, b = f.admin.call("POST", "/api/v1/projects/"+ad.ID+"/discard", map[string]any{"version": ad.Version})
+	s, b = f.admin.call("POST", "/api/v1/projects/"+ad.ID+"/discard", map[string]any{"version": ad.Version, "reason": "合成废弃"})
 	ad = projectFrom(t, s, b)
 	s, b = f.admin.call("POST", "/api/v1/projects/"+ad.ID+"/restore", map[string]any{"version": ad.Version})
 	expect(t, s, 200, b)

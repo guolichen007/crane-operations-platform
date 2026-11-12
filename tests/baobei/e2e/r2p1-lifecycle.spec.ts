@@ -311,3 +311,41 @@ test('撤销待核对在管理员页面显示原因与核对入口（模拟服�
   await expect(action(page, 'staff.revoke')).toHaveCount(0);
   await shot(page, '13-revoke-review');
 });
+
+test('G5-D1 服务端字段错误就近显示并聚焦：废弃原因、团队名称', async ({ page, browser }, info) => {
+  test.skip(info.project.name !== 'desktop', 'one check per run');
+  const unique = uniq('G5D1');
+  await login(page, 'synthetic-a');
+  const created = await api(page, '/api/v1/projects', 'POST', {
+    projectName: '合成字段错误' + unique, customer: '合成客户', location: { province: '合成省', city: '合成市', district: '', industrialPark: '', factoryName: '合成一厂', workshop: '', addressDetail: '' },
+    salesStage: 'L1_REQUIREMENT', projectType: 'RETROFIT', informationSource: 'END_CUSTOMER', confidenceLevel: 'CUSTOMER_CONFIRMED', requirements: [], plannedEquipment: [],
+  });
+  const p = created.body as { id: string; version: number };
+  // Real server: a blank reason sent directly is refused with details.field.
+  const blank = await api(page, `/api/v1/projects/${p.id}/discard`, 'POST', { version: p.version, reason: '   ' });
+  expect(blank.status).toBe(400);
+  expect(blank.body.details.field).toBe('reason');
+  await page.goto('/projects/' + p.id);
+  await action(page, 'project.discard').click();
+  const dlg = page.getByRole('dialog', { name: '废弃草稿' });
+  await dlg.getByLabel(/^操作原因/).fill('有内容但服务端拒绝');
+  // Forward the real refusal body the server gives for a blank reason.
+  await page.route('**/discard', (r) => r.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify(blank.body) }), { times: 1 });
+  await dlg.getByRole('button', { name: '确认' }).click();
+  await expect(dlg.locator('.field-error')).toHaveText('请填写废弃原因');
+  await expect(dlg.getByLabel(/^操作原因/)).toBeFocused();
+  await expect(dlg.getByLabel(/^操作原因/)).toHaveValue('有内容但服务端拒绝');
+  await shot(page, '14-reason-field-error');
+  await action(page, 'dialog.cancel').click();
+  const admin = await browser.newPage();
+  await login(admin, 'synthetic-admin');
+  await admin.goto('/settings/teams');
+  await action(admin, 'team.create').click();
+  const t = admin.getByRole('dialog', { name: '新建团队' });
+  await t.getByLabel(/^团队名称/).fill('Synthetic Team');
+  await t.getByLabel(/^操作原因/).fill('重名');
+  await t.getByRole('button', { name: '保存团队' }).click();
+  await expect(t.locator('.field-error')).toContainText('同名团队');
+  await expect(t.getByLabel(/^团队名称/)).toBeFocused();
+  await admin.close();
+});

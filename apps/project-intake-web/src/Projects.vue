@@ -270,7 +270,7 @@ const asOfText = computed(() => (asOf.value ? new Date(asOf.value).toLocaleStrin
       <p class="muted">{{ q || status || stage || province || after ? '调整或清空筛选条件后再试。' : '新建报备后会出现在这里。' }}</p>
     </div>
   </template>
-  <div class="pagination">
+  <div v-if="total > 0" class="pagination">
     <span class="muted">共 {{ total }} 项 · 第 {{ page }} 页 · 本页 {{ items.length }} 项</span><ActionButton
       action-id="project.page-prev"
       :disabled="page === 1 || loading"

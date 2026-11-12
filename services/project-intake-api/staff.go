@@ -57,9 +57,36 @@ var (
 	staffReasonRequired = staffProblem{400, "STAFF_REASON_REQUIRED", "请填写操作原因"}
 )
 
+// fieldProblem is a staffProblem that names the offending request field
+// (details.field); code and message stay exactly as before for old clients.
+type fieldProblem struct {
+	staffProblem
+	field string
+}
+
+func (p fieldProblem) Unwrap() error { return p.staffProblem }
+
+// staffFields: request field for the existing field-specific staff codes.
+var staffFields = map[string]string{
+	"STAFF_NAME_INVALID": "name", "STAFF_PHONE_REQUIRED": "phone", "STAFF_PHONE_INVALID": "phone",
+	"STAFF_PHONE_DUPLICATE": "phone", "STAFF_PHONE_ACCOUNT_BOUND": "phone", "STAFF_EMAIL_INVALID": "email",
+	"STAFF_EMAIL_DUPLICATE": "email", "STAFF_TEAM_REQUIRED": "teamId", "STAFF_REASON_REQUIRED": "reason",
+	"TEAM_ARCHIVED": "teamId", "TEAM_NAME_DUPLICATE": "name", "ACCOUNT_PHONE_MAINLAND_ONLY": "phone",
+	"ACCOUNT_PHONE_TAKEN": "phone", "ACCOUNT_PHONE_BUSY": "phone", "ACCOUNT_PHONE_UNCHANGED": "phone",
+}
+
 func staffError(w http.ResponseWriter, err error) bool {
+	var fp fieldProblem
+	if errors.As(err, &fp) {
+		failField(w, fp.status, fp.code, fp.message, fp.field)
+		return true
+	}
 	var p staffProblem
 	if errors.As(err, &p) {
+		if f := staffFields[p.code]; f != "" {
+			failField(w, p.status, p.code, p.message, f)
+			return true
+		}
 		fail(w, p.status, p.code, p.message)
 		return true
 	}
@@ -850,8 +877,11 @@ func staffTeams(ctx context.Context, tx pgx.Tx, actor User, w http.ResponseWrite
 		return nil, nil
 	}
 	in.Name = strings.TrimSpace(in.Name)
-	if !identityText(in.Name) || !reasonOK(in.Reason) {
-		return nil, staffInvalid
+	if !identityText(in.Name) {
+		return nil, fieldProblem{staffInvalid, "name"}
+	}
+	if !reasonOK(in.Reason) {
+		return nil, fieldProblem{staffInvalid, "reason"}
 	}
 	if id != "" {
 		var status string
@@ -1116,6 +1146,19 @@ func (a *App) staff(w http.ResponseWriter, r *http.Request, actor User) error {
 
 func staffRoute(ctx context.Context, tx pgx.Tx, w http.ResponseWriter, r *http.Request, actor User, at *time.Time) (any, error) {
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/v1/"), "/")
+	// G5-D1: the collections answer with or without one trailing slash
+	// (/api/v1/staff/, /api/v1/teams/). Authorization is unchanged.
+	if len(parts) == 2 && parts[1] == "" {
+		parts = parts[:1]
+	}
+	// Any other segment that is not a member id is hidden like an unknown member
+	// (404), never a 400 that confirms the route shape.
+	if parts[0] == "staff" && len(parts) >= 2 && parts[1] != "invitations" && !uuidPattern.MatchString(parts[1]) {
+		return nil, staffMissing
+	}
+	if parts[0] == "staff" && len(parts) >= 2 && parts[1] == "invitations" && !(len(parts) == 2 && r.Method == "POST") {
+		return nil, staffMissing
+	}
 	if parts[0] == "teams" {
 		if len(parts) == 1 {
 			return staffTeams(ctx, tx, actor, w, r, "")

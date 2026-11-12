@@ -252,7 +252,7 @@ const fields = [
   </template>
   <!-- G3-3P0-R1: paging is driven by the loaded view only; while a view or
        page is loading, the previous view's total must not enable paging. -->
-  <div class="pagination">
+  <div v-if="total > 0 || loadState === 'loading'" class="pagination">
     <span>{{ total }} 项 · 第 {{ page }} 页</span><ActionButton
       action-id="project.page-prev"
       :disabled="page === 1 || loadState === 'loading'"

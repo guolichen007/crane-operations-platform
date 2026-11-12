@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Project Intake API",
-    "version": "1.7.0-g4s5-r2p1",
+    "version": "1.7.1-g5d1",
     "description": "全角色项目资源授权、不可覆盖提交证据、管理员未分配草稿及幂等创建；G2 增加审核资格提示、创建意图回执、显示名称与首页最小聚合。完整经营分析不在G2。 G4-S4：工作手机（新建必填、E.164）、邮箱选填、无邮箱以精确 subject 与唯一 Client Role 激活、管理员审核开通回执、仅敏感人员操作要求重新认证、本地/企业 SSO 退出与切换账号。 G4-S5-R1-F2/R2-P1：身份映射冲突拒绝、历史身份不可回退；撤销未完成开户、团队归档与恢复、草稿废弃与回收站恢复。"
   },
   "servers": [
@@ -3982,7 +3982,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DraftLifecycleChange"
+                "$ref": "#/components/schemas/DraftDiscard"
               }
             }
           }
@@ -6035,6 +6035,37 @@
           "reason": {
             "type": "string",
             "maxLength": 1000
+          }
+        },
+        "description": "恢复原因选填（已发布契约不变）；提供时去除首尾空白，不超过 1000 字"
+      },
+      "DraftDiscard": {
+        "type": "object",
+        "required": [
+          "version",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "description": "废弃原因必填：去除首尾空白后非空，不超过 1000 字（G5-D1）",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000,
+            "pattern": "\\S"
+          }
+        }
+      },
+      "ErrorDetails": {
+        "type": "object",
+        "description": "G5-D1：字段错误时 details.field 指明请求字段（如 reason、name、phone）；旧客户端忽略即可",
+        "properties": {
+          "field": {
+            "type": "string"
           }
         }
       }

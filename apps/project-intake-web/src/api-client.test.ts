@@ -65,3 +65,12 @@ describe('生产 HTTP 失败模型', () => {
     expect(seen).toEqual([intent, intent]);
   });
 });
+
+describe('结构化字段错误（G5-D1）', () => {
+  it('details.field 传给调用方，旧响应无 field 时保持兼容', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ code: 'REASON_REQUIRED', message: '请填写废弃原因', details: { field: 'reason' } }), { status: 400, headers: { 'Content-Type': 'application/json' } })));
+    await expect(request('/api/x', 'POST', {})).rejects.toMatchObject({ status: 400, code: 'REASON_REQUIRED', field: 'reason', message: '请填写废弃原因' });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ code: 'INVALID_INPUT', message: '请求字段不正确', details: {} }), { status: 400, headers: { 'Content-Type': 'application/json' } })));
+    await expect(request('/api/x', 'POST', {})).rejects.toMatchObject({ code: 'INVALID_INPUT', field: '' });
+  });
+});

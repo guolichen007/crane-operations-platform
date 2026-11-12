@@ -86,6 +86,12 @@ async function save() {
     // Keep the dialog and what was typed; show the server's reason inside it.
     if (error instanceof ApiError) {
       formIssue.value = error.message;
+      // Server field errors (details.field) go next to the field and get focus.
+      const field = ({ name: 'teamName', reason: 'teamReason' } as Record<string, string>)[error.field];
+      if (field) {
+        errors.value = { [field]: error.message };
+        requestAnimationFrame(() => document.querySelector<HTMLElement>(`[name="${field}"]`)?.focus());
+      }
       if (error.code === 'STAFF_CONFLICT') formIssue.value = '团队已被他人修改，已刷新最新信息，请核对后重试。';
       await load().catch(() => undefined);
       const fresh = teams.value.find(t => t.id === existing?.id);

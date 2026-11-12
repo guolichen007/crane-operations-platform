@@ -3,6 +3,8 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly code: string = '',
+    // details.field from the server (G5-D1): the request field to mark, if any.
+    readonly field: string = '',
   ) {
     super(message);
   }
@@ -60,7 +62,8 @@ export async function request<T>(
         message = value.message;
       const code = value && typeof value === 'object' && 'code' in value && typeof value.code === 'string'
         ? value.code : '';
-      throw new ApiError(message, r.status, code);
+      const details = value && typeof value === 'object' && 'details' in value ? (value as { details?: { field?: unknown } }).details : undefined;
+      throw new ApiError(message, r.status, code, typeof details?.field === 'string' ? details.field : '');
     }
     if (r.status === 204) return undefined as T;
     if (value === undefined) throw new Error('服务返回格式异常，请稍后重试');

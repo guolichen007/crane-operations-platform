@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 func (a *App) handler() http.Handler {
@@ -476,8 +477,16 @@ func (a *App) discardOrRestore(w http.ResponseWriter, r *http.Request, tx pgx.Tx
 	if !decode(w, r, &b) {
 		return nil
 	}
-	if len(b.Reason) > 1000 {
-		fail(w, 400, "INVALID_INPUT", "原因过长")
+	// Same contract as other governance actions: the discard reason is required
+	// (trimmed, at most 1000 characters). Restore keeps the published contract:
+	// the reason is optional, but when given it is trimmed and length-checked.
+	b.Reason = strings.TrimSpace(b.Reason)
+	if action == "discard" && b.Reason == "" {
+		failField(w, 400, "REASON_REQUIRED", "请填写废弃原因", "reason")
+		return nil
+	}
+	if utf8.RuneCountInString(b.Reason) > 1000 {
+		failField(w, 400, "REASON_TOO_LONG", "原因不能超过 1000 字", "reason")
 		return nil
 	}
 	if b.Version != p.Version {
@@ -501,7 +510,7 @@ func (a *App) discardOrRestore(w http.ResponseWriter, r *http.Request, tx pgx.Tx
 	if e != nil {
 		return e
 	}
-	reason := strings.TrimSpace(b.Reason)
+	reason := b.Reason
 	if _, e = tx.Exec(ctx, `INSERT INTO audit_events(project_id,subject,action,revision,details) VALUES($1,$2,$3,$4,$5::jsonb)`,
 		p.ID, u.Subject, "project."+action, updated.Version, string(mustJSON(map[string]string{"reason": reason}))); e != nil {
 		return e

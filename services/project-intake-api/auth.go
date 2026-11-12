@@ -381,6 +381,12 @@ func respond(w http.ResponseWriter, status int, v any) {
 func fail(w http.ResponseWriter, status int, code, message string) {
 	respond(w, status, map[string]any{"code": code, "message": message, "requestId": w.Header().Get("X-Request-ID"), "details": map[string]any{}})
 }
+
+// failField is fail plus the offending request field in details.field. Old
+// clients keep reading code/message; new clients place the error by the field.
+func failField(w http.ResponseWriter, status int, code, message, field string) {
+	respond(w, status, map[string]any{"code": code, "message": message, "requestId": w.Header().Get("X-Request-ID"), "details": map[string]any{"field": field}})
+}
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	if r.Header.Get("Content-Type") != "application/json" {
 		fail(w, 415, "CONTENT_TYPE", "请使用 JSON 请求")

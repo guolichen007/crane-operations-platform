@@ -22,6 +22,7 @@ import {
 import { projectScopeLabel } from './navigation';
 import { nextStages } from './pipeline';
 import { hintReason, recovery } from './reasons';
+import { ApiError } from './api-client';
 import ActionButton from './ActionButton.vue';
 import Modal from './Modal.vue';
 import { returnLabel, safeReturn } from './view-state';
@@ -127,6 +128,11 @@ async function saveGovernance() {
   try {
     await app.api(`/api/v1/projects/${p.value.id}/${action}`, 'POST', body);
   } catch (e) {
+    // A server field error is shown next to the field and focused (G5-D1).
+    if (e instanceof ApiError && e.field === 'reason') {
+      governanceErrors.value = { governanceReason: e.message };
+      focusInvalid('[name="governanceReason"]');
+    }
     throw new Error(recovery(e).message);
   }
   governanceOpen.value = '';

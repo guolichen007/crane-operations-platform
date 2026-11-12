@@ -3,7 +3,7 @@
   --ink: #1b2430;
   --ink-2: #3c4757;
   --ink-3: #5f6b7c;
-  --ink-4: #8a94a3;
+  --ink-4: #667080; /* G5-D1: was #8a94a3 (2.6–3.1:1); now >= 4.5:1 on white and steel */
   --surface: #ffffff;
   --steel: #f2f4f7;
   --steel-2: #e8ecf1;
@@ -476,7 +476,7 @@ h1 small {
 .badge.submitted,
 .badge.approved {
   background: #eaf4ef;
-  color: #4d8270;
+  color: #2f6150; /* G5-D1: was #4d8270 (3.9:1) */
 }
 .badge.under_review {
   background: #fff3de;
@@ -810,7 +810,7 @@ dd {
 .note {
   background: #f6f8fc;
   border-left: 3px solid #9fb6dc;
-  color: #758199;
+  color: var(--ink-3);
   padding: 16px 18px;
   font-size: 13px;
   line-height: 1.7;
@@ -1228,11 +1228,11 @@ dd {
     display: flex;
     gap: 9px;
     align-items: center;
-    color: #9099a6;
+    color: var(--ink-3);
   }
   .project-card small {
     font-size: 13px;
-    color: #929ca9;
+    color: var(--ink-3);
   }
   .filterbar {
     gap: 9px;
@@ -2799,4 +2799,17 @@ td.unassigned,
 @media (max-width: 700px) {
   .account-trigger .user-name { display: none; }
   .account-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* G5-D1 minimal mobile fixes: common touch targets reach 44px at 390px. */
+@media (max-width: 700px) {
+  .global-search, .global-search input,
+  .filterbar :is(input, select, .search-field), .staff-filters :is(input, select),
+  .staff-form :is(input, select, textarea:not([rows])), .form-grid :is(input, select), .wizard :is(input, select) { min-height: 44px; }
+  .account-trigger { min-width: 44px; }
+  .stage-bar { min-height: 44px; }
+  .link-button, .scope-asof .link-button { min-height: 44px; min-width: 44px; padding-inline: 8px; }
+  .filterbar select, label > select { min-height: 44px; }
+  .segmented button, .segmented [role="tab"] { min-height: 44px; }
+  :is(.review-views, .reviews-views) button { min-height: 44px; }
 }
