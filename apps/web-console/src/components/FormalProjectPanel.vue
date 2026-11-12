@@ -5,6 +5,8 @@ import { onBeforeRouteLeave } from 'vue-router';
 import { RefreshCw, UserPlus, X } from 'lucide-vue-next';
 import { listProjectMembers, changeProjectMember } from '../cloud/portfolio';
 import { allowClose } from '../cloud/draft';
+import { ApiError } from '../cloud/client';
+import { resetPortfolioScope } from '../cloud/queryClient';
 import { webSession, queryWebSession, productionAuth } from '../cloud/session';
 import {
   PROJECT_ROLES, PROJECT_ROLE_TEXT, validateGrantForm, grantChange, grantErrorMessage, mapStatus, type GrantForm, type ProjectRole,
@@ -62,7 +64,10 @@ const grantMutation = useMutation({
   },
   onError: async (e) => {
     formError.value = grantErrorMessage(e);
-    await membersQuery.refetch();
+    // 403 = the caller's portfolio role changed (PortfolioGrant, not in the web session): re-read
+    // the whole portfolio scope (Q4-QA-R1a); otherwise just refresh the member list.
+    if (e instanceof ApiError && e.status === 403) await resetPortfolioScope();
+    else await membersQuery.refetch();
   },
 });
 

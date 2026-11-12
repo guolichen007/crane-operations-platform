@@ -10,6 +10,7 @@ import {
 } from '../cloud/portfolio';
 import FormalProjectPanel from '../components/FormalProjectPanel.vue';
 import { ApiError } from '../cloud/client';
+import { resetPortfolioScope } from '../cloud/queryClient';
 import { allowClose } from '../cloud/draft';
 import { webSession, productionAuth } from '../cloud/session';
 import {
@@ -24,6 +25,14 @@ const selectedProject = ref('');
 const actionError = ref('');
 const notice = ref('');
 
+// A 403 on a portfolio action means the membership/role the page was built on is no longer the
+// server's view (revoked or downgraded PortfolioGrant): re-read the whole portfolio scope.
+function scopeMayHaveChanged(e: unknown) {
+  if (e instanceof ApiError && e.status === 403) void resetPortfolioScope();
+}
+// Entering the page re-reads the caller's portfolio scope instead of showing cached data of a
+// portfolio the caller may have lost meanwhile (PortfolioGrants are not in the web session).
+void resetPortfolioScope();
 const scopesQuery = useQuery({ queryKey: ['portfolio-scopes'], queryFn: listScopes });
 const intakesQuery = useQuery({ queryKey: ['intakes'], queryFn: listIntakes });
 const resourcesQuery = useQuery({ queryKey: ['resources'], queryFn: listResources });
@@ -105,7 +114,8 @@ const createMutation = useMutation({
     await queryClient.invalidateQueries({ queryKey: ['intakes'] });
   },
   onError: (e) => {
-    formError.value = intakeErrorMessage(e, 'create');
+    formError.value = intakeErrorMessage(e, 'create'); // the form and its input stay open
+    scopeMayHaveChanged(e);
   },
 });
 
@@ -152,13 +162,13 @@ const busyId = ref('');
 const transitionMutation = useMutation({
   mutationFn: (v: { id: string; status: string }) => transitionIntake(v.id, v.status, '运营推进'),
   onSuccess: () => { notice.value = '状态已推进。'; },
-  onError: (e) => (actionError.value = intakeErrorMessage(e, 'transition')),
+  onError: (e) => { actionError.value = intakeErrorMessage(e, 'transition'); scopeMayHaveChanged(e); },
   onSettled: () => { busyId.value = ''; return queryClient.invalidateQueries({ queryKey: ['intakes'] }); },
 });
 const approveMutation = useMutation({
   mutationFn: (id: string) => approveIntake(id),
   onSuccess: (r) => { notice.value = `已批准并生成正式项目 ${r.projectId}。该项目尚未授权给任何人，也未进入运营地图。`; },
-  onError: (e) => (actionError.value = intakeErrorMessage(e, 'approve')),
+  onError: (e) => { actionError.value = intakeErrorMessage(e, 'approve'); scopeMayHaveChanged(e); },
   onSettled: async () => {
     busyId.value = '';
     await Promise.all([queryClient.invalidateQueries({ queryKey: ['intakes'] }), queryClient.invalidateQueries({ queryKey: ['portfolio-projects'] })]);
@@ -167,7 +177,7 @@ const approveMutation = useMutation({
 const overrideMutation = useMutation({
   mutationFn: (v: { id: number; reason: string }) => overrideConflict(v.id, v.reason),
   onSuccess: () => queryClient.invalidateQueries({ queryKey: ['conflicts'] }),
-  onError: (e) => (actionError.value = e instanceof ApiError ? e.message : '覆盖失败'),
+  onError: (e) => { actionError.value = e instanceof ApiError ? e.message : '覆盖失败'; scopeMayHaveChanged(e); },
 });
 
 function advance(intake: ProjectIntake, status: string) {
