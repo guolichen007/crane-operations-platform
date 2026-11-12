@@ -19,7 +19,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version: '24.19.0', cache: npm }
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
-        with: { go-version: '1.27.3', cache: true }
+        with: { go-version: '1.27.4', cache: true }
       - run: npm ci
       - run: node tools/diagnostics/repository.mjs
       - run: node tools/codegen/contracts.mjs --check && node tools/codegen/openapi.mjs --check && node tools/codegen/geoindex.mjs --check
@@ -32,7 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
-        with: { go-version: '1.27.3', cache: true }
+        with: { go-version: '1.27.4', cache: true }
       - run: go test -race ./services/... ./internal/... ./contracts/... ./deploy/postgres/... ./tools/certs/... ./tools/identity/... ./tools/provision-keycloak/... ./tools/astguard/...
       - run: go vet ./...
       - name: gofmt gate（打印未格式化文件）
@@ -54,7 +54,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
-        with: { go-version: '1.27.3', cache: true }
+        with: { go-version: '1.27.4', cache: true }
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with: { node-version: '24.19.0', cache: npm }
       - run: npm ci
@@ -64,7 +64,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
-        with: { go-version: '1.27.3', cache: true }
+        with: { go-version: '1.27.4', cache: true }
       - run: go test -race ./edge/... ./simulators/...
   frontend:
     runs-on: ubuntu-latest
@@ -95,7 +95,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
-        with: { go-version: '1.27.3', cache: true }
+        with: { go-version: '1.27.4', cache: true }
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with: { node-version: '24.19.0', cache: npm }
       - run: node tools/task.mjs bootstrap
@@ -113,7 +113,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with: { fetch-depth: 0 }
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
-        with: { go-version: '1.27.3', cache: true }
+        with: { go-version: '1.27.4', cache: true }
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with: { node-version: '24.19.0', cache: npm }
       - run: go run github.com/zricethezav/gitleaks/v8@v8.30.1 git . --redact
@@ -129,7 +129,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
-        with: { go-version: '1.27.3', cache: true }
+        with: { go-version: '1.27.4', cache: true }
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with: { node-version: '24.19.0', cache: npm }
       - run: npm ci
@@ -154,7 +154,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with: { fetch-depth: 0 }
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
-        with: { go-version: '1.27.3', cache: true }
+        with: { go-version: '1.27.4', cache: true }
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with: { node-version: '24.19.0', cache: npm }
       - run: npm ci
@@ -191,7 +191,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
-        with: { go-version: '1.27.3', cache: true }
+        with: { go-version: '1.27.4', cache: true }
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with: { node-version: '24.19.0', cache: npm }
       - run: npm ci
