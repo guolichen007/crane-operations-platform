@@ -377,7 +377,14 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 		in.ProjectId = projectID
 		out, err := asset.CreateLocation(r.Context(), h.db, in, currentPrincipal(r).user, requestID(r))
 		if err != nil {
-			respondAPI(w, 503, map[string]string{"error": "database unavailable"})
+			switch {
+			case errors.Is(err, asset.ErrInvalidInput):
+				respondAPI(w, 422, map[string]string{"error": err.Error()})
+			case errors.Is(err, asset.ErrDuplicateLocation):
+				respondAPI(w, 409, map[string]string{"error": err.Error()})
+			default:
+				respondAPI(w, 503, map[string]string{"error": "database unavailable"})
+			}
 			return
 		}
 		setETag(w, out.Version)

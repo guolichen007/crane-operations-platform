@@ -20,7 +20,13 @@ import (
 	"github.com/guolichen007/crane-operations-platform/internal/auditlog"
 	"github.com/guolichen007/crane-operations-platform/internal/equipment"
 	"github.com/guolichen007/crane-operations-platform/internal/platform"
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+func isUniqueViolation(err error, constraint string) bool {
+	var pg *pgconn.PgError
+	return errors.As(err, &pg) && pg.Code == "23505" && pg.ConstraintName == constraint
+}
 
 var (
 	ErrVersionConflict  = errors.New("version conflict")
@@ -501,7 +507,71 @@ func scanLocation(row interface{ Scan(...any) error }) (contract.AssetLocation, 
 // CreateLocation inserts a location. code may be empty (unnumbered location);
 // blank code is normalized to NULL so the UNIQUE(project_id, code) permits
 // multiple unnumbered locations.
+var (
+	locationKinds        = map[string]bool{"SITE": true, "PLANT": true, "WORKSHOP": true, "BAY": true, "RUNWAY": true, "OTHER": true}
+	coordinateSystems    = map[string]bool{"WGS84": true, "GCJ02": true, "LOCAL_SITE": true, "UNKNOWN": true}
+	coordinateSources    = map[string]bool{"MANUAL": true, "SURVEY": true, "IMPORTED": true, "SITE_CENTER": true}
+	ErrDuplicateLocation = errors.New("location code already exists in this project")
+)
+
+// validateNewLocation checks the contract (contracts/model.json AssetLocation) before any write, so a
+// user input error is a 422 and never a "database unavailable" (Q4-QA-R1). Coordinates are never
+// invented: a geographic system (WGS84/GCJ02) needs both longitude and latitude; without real
+// coordinates the system stays UNKNOWN.
+func validateNewLocation(in contract.AssetLocation) error {
+	name := strings.TrimSpace(in.Name)
+	if name == "" {
+		return invalid("name is required")
+	}
+	if err := maxRunes("name", name, 256); err != nil {
+		return err
+	}
+	if !locationKinds[in.Kind] {
+		return invalid("kind must be one of SITE, PLANT, WORKSHOP, BAY, RUNWAY, OTHER")
+	}
+	if in.Code != nil {
+		if err := maxRunes("code", strings.TrimSpace(*in.Code), 160); err != nil {
+			return err
+		}
+	}
+	for field, v := range map[string]string{"address": in.Address, "province": in.Province, "city": in.City, "county": in.County} {
+		limit := 80
+		if field == "address" {
+			limit = 240
+		}
+		if err := maxRunes(field, v, limit); err != nil {
+			return err
+		}
+	}
+	if in.Status != "" && in.Status != "ACTIVE" {
+		return invalid("a new location is ACTIVE")
+	}
+	if in.CoordinateSystem != "" && !coordinateSystems[in.CoordinateSystem] {
+		return invalid("unknown coordinateSystem")
+	}
+	if in.CoordinateSource != "" && !coordinateSources[in.CoordinateSource] {
+		return invalid("unknown coordinateSource")
+	}
+	if (in.Longitude == nil) != (in.Latitude == nil) {
+		return invalid("longitude and latitude must be given together")
+	}
+	if in.Longitude != nil && (*in.Longitude < -180 || *in.Longitude > 180 || *in.Latitude < -90 || *in.Latitude > 90) {
+		return invalid("coordinates out of range")
+	}
+	if (in.CoordinateSystem == "WGS84" || in.CoordinateSystem == "GCJ02") && in.Longitude == nil {
+		return invalid("a geographic coordinate system requires longitude and latitude")
+	}
+	if in.Longitude != nil && (in.CoordinateSystem == "" || in.CoordinateSystem == "UNKNOWN") {
+		return invalid("coordinates require a coordinateSystem")
+	}
+	return nil
+}
+
 func CreateLocation(ctx context.Context, db *sql.DB, in contract.AssetLocation, actor, requestID string) (contract.AssetLocation, error) {
+	if err := validateNewLocation(in); err != nil {
+		return in, err
+	}
+	in.Name = strings.TrimSpace(in.Name)
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return in, err
@@ -527,8 +597,35 @@ func CreateLocation(ctx context.Context, db *sql.DB, in contract.AssetLocation, 
 	if in.CoordinateSource == "" {
 		in.CoordinateSource = "MANUAL"
 	}
+	if in.ParentId != nil {
+		// The parent must be an ACTIVE location of the same project (the composite FK alone would
+		// accept a disabled parent and report a foreign one as a database error).
+		var parentStatus string
+		err := tx.QueryRowContext(ctx, `SELECT status FROM asset_locations WHERE id=$1 AND project_id=$2 FOR SHARE`, *in.ParentId, in.ProjectId).Scan(&parentStatus)
+		if errors.Is(err, sql.ErrNoRows) {
+			return in, invalid("parent location not found in this project")
+		}
+		if err != nil {
+			return in, err
+		}
+		if parentStatus != "ACTIVE" {
+			return in, invalid("parent location is disabled")
+		}
+	}
+	if code != nil {
+		var exists bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM asset_locations WHERE project_id=$1 AND code=$2)`, in.ProjectId, code).Scan(&exists); err != nil {
+			return in, err
+		}
+		if exists {
+			return in, ErrDuplicateLocation
+		}
+	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO asset_locations(id,project_id,parent_id,kind,code,name,address,province,city,county,longitude,latitude,coordinate_system,coordinate_source,status,version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
 		in.Id, in.ProjectId, in.ParentId, in.Kind, code, in.Name, in.Address, in.Province, in.City, in.County, in.Longitude, in.Latitude, in.CoordinateSystem, in.CoordinateSource, in.Status, in.Version)
+	if isUniqueViolation(err, "asset_locations_project_id_code_key") {
+		return in, ErrDuplicateLocation // concurrent create of the same code
+	}
 	if err != nil {
 		return in, err
 	}
