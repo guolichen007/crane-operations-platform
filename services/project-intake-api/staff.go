@@ -225,6 +225,9 @@ type staffMember struct {
 	MustChangePassword bool   `json:"mustChangePassword"`
 	// LoginName: the 11 digits the member signs in with (detail only).
 	LoginName string `json:"loginName,omitempty"`
+	// AccountOperation: the latest account operation if it is still running,
+	// waiting for review or failed (cause shown with a safe retry).
+	AccountOperation *accountOpView `json:"accountOperation,omitempty"`
 }
 type staffProject struct {
 	ID      string `json:"id"`
@@ -255,7 +258,9 @@ const staffColumns = `u.staff_id::text,u.subject,u.display_name,coalesce(u.work_
  (u.active AND u.staff_managed AND EXISTS(SELECT 1 FROM staff_audit a WHERE a.target_id=u.staff_id AND a.action='staff.activate')),
  EXISTS(SELECT 1 FROM staff_audit a WHERE a.target_id=u.staff_id AND a.action='staff.role-change'),
  EXISTS(SELECT 1 FROM staff_audit a WHERE a.target_id=u.staff_id AND a.action='staff.provision.review' AND a.version=u.staff_version),
- u.account_state,u.account_must_change_password`
+ u.account_state,u.account_must_change_password,
+ coalesce((SELECT row_to_json(x)::text FROM (SELECT o.id,o.operation,o.state,o.step,o.detail,coalesce(o.finished_at,o.updated_at) AS at
+   FROM account_operations o WHERE o.staff_id=u.staff_id ORDER BY o.created_at DESC LIMIT 1) x),'')`
 const staffFrom = ` FROM app_users u LEFT JOIN teams t ON t.id=u.team_id `
 const staffScope = ` ($1 IN ('baobei_admin','baobei_director') OR ($1='baobei_manager' AND u.role='baobei_sales' AND u.team_id::text=$2)) `
 const openProjects = `intake_status NOT IN ('REJECTED','CANCELLED','CONVERTED') AND sales_stage NOT IN ('WON','LOST')`
@@ -263,7 +268,9 @@ const openProjects = `intake_status NOT IN ('REJECTED','CANCELLED','CONVERTED') 
 func scanStaff(row interface{ Scan(...any) error }) (staffMember, error) {
 	var m staffMember
 	var mask int
-	err := row.Scan(&m.ID, &m.Subject, &m.Name, &m.Email, &m.Phone, &m.TeamID, &m.Team, &m.Role, &m.Status, &m.Version, &m.Note, &mask, &m.Projects, &m.LastLogin, &m.SyncStatus, &m.IdentityVerified, &m.RoleChanged, &m.ProvisionReviewed, &m.AccountState, &m.MustChangePassword)
+	var op string
+	err := row.Scan(&m.ID, &m.Subject, &m.Name, &m.Email, &m.Phone, &m.TeamID, &m.Team, &m.Role, &m.Status, &m.Version, &m.Note, &mask, &m.Projects, &m.LastLogin, &m.SyncStatus, &m.IdentityVerified, &m.RoleChanged, &m.ProvisionReviewed, &m.AccountState, &m.MustChangePassword, &op)
+	m.AccountOperation = parseAccountOp([]byte(op))
 	m.Permissions = capabilityList(mask)
 	m.IdentityLinked = validIdentityUUID(m.Subject)
 	// Without an email, the exact Keycloak subject bound by the provisioning receipt
@@ -522,6 +529,15 @@ func editStaff(ctx context.Context, tx pgx.Tx, actor User, at *time.Time, m staf
 	// once a phone exists it cannot be removed.
 	if err := validateProfile(ctx, tx, actor, &in, m.Phone == ""); err != nil {
 		return nil, err
+	}
+	// A login account's name is the work phone: once an account exists (or an
+	// account operation is unresolved) the phone changes only through
+	// "更换登录手机号", which changes Keycloak and Baobei together.
+	if in.Phone != m.Phone && m.AccountState != accountNone {
+		return nil, staffProblem{409, "STAFF_PHONE_ACCOUNT_BOUND", "该成员已有登录账号，请使用“更换登录手机号”修改手机号"}
+	}
+	if m.AccountOperation != nil && (m.AccountOperation.State == "STARTED" || m.AccountOperation.State == "REVIEW") {
+		return nil, staffProblem{409, "ACCOUNT_OPERATION_IN_PROGRESS", "该成员的账号操作尚未处理完成，请先完成或核对后再编辑"}
 	}
 	roleChanged := m.Role != in.Role
 	sensitive := roleChanged || in.VerifyIdentity || in.Email != m.Email && staffRole(m.Role) ||

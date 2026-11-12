@@ -10,7 +10,7 @@ import { clearStaffDraft, readStaffDraft, saveStaffDraft, type StaffDraftAction 
 import { fieldLabels, fieldOrder, serverFieldErrors, validateStaff, type StaffErrors, type StaffField } from './staff-form';
 import { when } from './model';
 import { can } from './navigation';
-import { newIdempotencyKey, accountActions, accountStateLabel, type AccountAction } from './staff-account';
+import { newIdempotencyKey, accountActions, accountCause, accountDisplayLabel, accountDisplayState, accountOperationLabel, type AccountAction } from './staff-account';
 import {
   capabilities, nextStep, roles, staffEvents, statusLabel, syncStatuses,
   type StaffEvent, type StaffMember, type StaffProject, type StaffTeam,
@@ -251,7 +251,12 @@ async function saveAccount(kind: AccountAction) {
   }).catch(() => null);
   if (!r) throw new ApiError('网络连接失败，请检查网络后重试；再次提交不会重复操作', 0, 'NETWORK');
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new ApiError(data.message || '操作未完成，请重试', r.status, data.code || '');
+  if (!r.ok) {
+    // Show the server's current state (处理中 / 待核对 / 开通失败) behind the dialog;
+    // the dialog and everything typed stay as they are.
+    await load().catch(() => undefined);
+    throw new ApiError(data.message || '操作未完成，请重试', r.status, data.code || '');
+  }
   member.value = data.member;
   dialog.value = null;
   if (data.credential) credential.value = { ...data.credential, name: data.member.name, action: kind === 'account-create' ? '登录账号已开通' : '密码已重置' };
@@ -260,7 +265,25 @@ async function saveAccount(kind: AccountAction) {
 }
 
 function closeCredential() {
+  const wasShown = !!credential.value;
   credential.value = null;
+  if (wasShown) app.toast('初始密码已关闭，无法再次查看；如成员未收到，可在成员详情中“重置密码”生成新的初始密码');
+}
+
+// "核对账号状态": the server reads the real login state and completes, undoes or
+// keeps the operation for review. No request body, nothing is repeated.
+async function reconcileAccount() {
+  if (!member.value) return;
+  const r = await fetch('/api/v1/staff/' + member.value.id + '/account/reconcile', {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': app.user?.csrfToken || '' },
+    body: '{}',
+  }).catch(() => null);
+  if (!r) throw new ApiError('网络连接失败，请检查网络后重试', 0, 'NETWORK');
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new ApiError(data.message || '核对未完成，请稍后重试', r.status, data.code || '');
+  await load();
+  app.toast(accountDisplayState(member.value!) === 'REVIEW' ? '仍无法确认账号状态，登录保持暂停；请稍后再次核对' : '账号状态已核对');
 }
 
 async function copyCredential() {
@@ -489,13 +512,13 @@ onMounted(async () => {
           <div><dt>工作邮箱</dt><dd>{{ member.email || '未填写（选填）' }}</dd></div>
           <div><dt>{{ member.roleChanged && member.status !== 'ACTIVE' ? '团队与目标角色' : '团队与角色' }}</dt><dd>{{ member.team || '全局' }} · {{ roles[member.role] }}</dd></div>
           <div><dt>最近登录</dt><dd>{{ when(member.lastLogin) }}</dd></div>
-          <div v-if="administrator && accountService"><dt>登录账号</dt><dd>{{ member.loginName || '未开通' }} · {{ accountStateLabel[member.accountState] ?? member.accountState }}<template v-if="member.mustChangePassword">（待首次修改密码）</template></dd></div>
+          <div v-if="administrator && accountService"><dt>登录账号</dt><dd data-testid="account-state">{{ member.loginName || '未开通' }} · {{ accountDisplayLabel[accountDisplayState(member)] ?? member.accountState }}<template v-if="member.mustChangePassword && accountDisplayState(member) === 'READY'">（待首次修改密码）</template></dd></div>
           <div v-else-if="administrator"><dt>企业账号</dt><dd>{{ member.identityVerified ? '已绑定并核验' : member.identityLinked ? '已绑定，待核验' : '尚未绑定' }}</dd></div>
           <div><dt>备注</dt><dd>{{ member.note || '—' }}</dd></div>
         </dl>
         <ol v-if="accountService && member.status !== 'ACTIVE' && member.status !== 'ARCHIVED' && member.status !== 'SUSPENDED'" class="staff-progress" aria-label="开通进度">
           <li :data-done="true">已添加成员</li>
-          <li :data-done="member.accountState === 'READY' || member.accountState === 'DISABLED'" :data-current="['NONE','CREATING'].includes(member.accountState)" :data-failed="member.accountState === 'FAILED'">开通登录账号</li>
+          <li :data-done="['READY','DISABLED'].includes(accountDisplayState(member))" :data-current="['NONE','CREATING','PROCESSING'].includes(accountDisplayState(member))" :data-failed="['FAILED','REVIEW'].includes(accountDisplayState(member))">开通登录账号</li>
           <li :data-current="member.status === 'PENDING_ACTIVATION'">成员首次登录并修改密码</li>
         </ol>
         <ol v-else-if="member.status !== 'ACTIVE' && member.status !== 'ARCHIVED'" class="staff-progress" aria-label="开通进度">
@@ -506,11 +529,23 @@ onMounted(async () => {
         </ol>
         <p v-if="nextStep(member, administrator, accountService)" class="staff-hint" role="status">{{ nextStep(member, administrator, accountService) }}</p>
         <p v-if="failureReason" class="staff-hint" data-tone="risk" role="status">失败原因：{{ failureReason }}</p>
+        <p
+          v-if="administrator && accountService && member.accountOperation" class="staff-hint" data-testid="account-operation"
+          :data-tone="member.accountOperation.state === 'STARTED' ? undefined : 'risk'" role="status"
+        >
+          {{ accountOperationLabel[member.accountOperation.operation] ?? '账号操作' }}{{
+            member.accountOperation.state === 'STARTED' ? '处理中，系统会自动核对结果，请稍后刷新。' :
+            member.accountOperation.state === 'REVIEW' ? '待核对：' + accountCause(member.accountOperation.detail) + '。核对完成前该成员不能登录。' :
+            '未完成：' + accountCause(member.accountOperation.detail) + '。可重新发起。' }}
+        </p>
         <p v-if="showRoleAction && !member.identityVerified" class="muted">
           {{ member.identityLinked ? '变更角色前需先重新核验企业身份。' : '请联系身份运维核对企业账号标识。' }}
         </p>
         <div v-if="canManage" class="actions">
-          <template v-if="administrator && accountService">
+          <template v-if="administrator && accountService && ['REVIEW','PROCESSING'].includes(accountDisplayState(member))">
+            <ActionButton action-id="staff.account-reconcile" primary :run="reconcileAccount">核对账号状态</ActionButton>
+          </template>
+          <template v-else-if="administrator && accountService">
             <ActionButton
               v-if="['PENDING_PROVISION','PROVISION_FAILED'].includes(member.status) && member.accountState !== 'READY' || member.accountState === 'NONE' && member.status !== 'SUSPENDED'"
               action-id="staff.account-create" primary :disabled="!member.phone" reason="请先编辑资料填写工作手机" :run="() => open('account-create')"
@@ -606,8 +641,9 @@ onMounted(async () => {
             <small v-if="errors.name" id="staff-name-error" class="field-error">{{ errors.name }}</small>
           </label>
           <label :class="{ invalid: errors.phone }">工作手机 <span v-if="dialog === 'invite' || member?.phone" class="req" aria-hidden="true">*</span>
-            <input id="staff-phone" v-model="form.phone" data-field="phone" type="tel" inputmode="tel" maxlength="32" placeholder="如 138 0000 0000" autocomplete="off" :aria-invalid="!!errors.phone" :aria-required="dialog === 'invite' || !!member?.phone" aria-describedby="staff-phone-error" />
+            <input id="staff-phone" v-model="form.phone" data-field="phone" type="tel" inputmode="tel" maxlength="32" placeholder="如 138 0000 0000" autocomplete="off" :aria-invalid="!!errors.phone" :aria-required="dialog === 'invite' || !!member?.phone" :readonly="dialog === 'edit' && accountService && member?.accountState !== 'NONE'" aria-describedby="staff-phone-error" />
             <small v-if="errors.phone" id="staff-phone-error" class="field-error">{{ errors.phone }}</small>
+            <small v-else-if="dialog === 'edit' && accountService && member?.accountState !== 'NONE'" class="muted">手机号即登录账号，请使用“更换登录手机号”修改。</small>
             <small v-else-if="dialog === 'edit' && !member?.phone" class="muted">历史成员可暂不填写，建议补全。</small>
           </label>
           <label v-if="administrator">角色 <span class="req" aria-hidden="true">*</span><select v-model="form.role" data-field="role">
@@ -635,7 +671,7 @@ onMounted(async () => {
             <div><dt>成员</dt><dd>{{ member.name }}</dd></div>
             <div><dt>角色</dt><dd>{{ member.team || '全局' }} · {{ roles[member.role] }}</dd></div>
             <div><dt>登录手机号</dt><dd>{{ member.loginName || (member.phone ? member.phone.replace(/^\+86/, '') : '未填写') }}</dd></div>
-            <div><dt>账号状态</dt><dd>{{ accountStateLabel[member.accountState] ?? member.accountState }}</dd></div>
+            <div><dt>账号状态</dt><dd>{{ accountDisplayLabel[accountDisplayState(member)] ?? member.accountState }}</dd></div>
           </dl>
           <label v-if="dialog === 'account-phone'" :class="{ invalid: errors.phone }">新登录手机号 <span class="req" aria-hidden="true">*</span>
             <input id="staff-phone" v-model="accountPhone" data-field="phone" type="tel" inputmode="tel" maxlength="32" placeholder="11 位手机号" autocomplete="off" aria-required="true" :aria-invalid="!!errors.phone" />
@@ -696,6 +732,7 @@ onMounted(async () => {
     <Modal :open="!!credential" :title="credential?.action ?? ''" description="初始密码只显示这一次，关闭后无法再次查看；如遗失请重置密码。" @update:open="(v) => { if (!v) closeCredential(); }">
       <div v-if="credential" class="credential-card" role="group" aria-label="登录信息">
         <p><strong>{{ credential.name }}</strong> 现在可以用下面的手机号和初始密码登录，首次登录必须设置新密码。</p>
+        <p class="muted" data-testid="credential-once">关闭后无法再次查看此密码。如成员未收到或遗失，请在成员详情中点击“重置密码”生成新的初始密码。</p>
         <dl class="credential">
           <div><dt>登录手机号</dt><dd data-testid="credential-login">{{ credential.login }}</dd></div>
           <div><dt>初始密码</dt><dd data-testid="credential-password" class="mono">{{ credential.temporaryPassword }}</dd></div>

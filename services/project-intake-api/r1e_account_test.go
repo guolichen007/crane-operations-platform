@@ -287,20 +287,22 @@ func TestDatabaseR1EAccountResetDisableEnable(t *testing.T) {
 	if _, s = f.signIn("13950000031"); s != 200 {
 		t.Fatal("enabled account cannot sign in", s)
 	}
-	// Provider failure while disabling: the member is still suspended in Baobei
-	// (fail closed) and the account is marked failed for retry.
-	f.dev.failNext = "update"
+	// Provider failure while disabling (G4-S5-R1-F): the member is suspended in
+	// Baobei at once (fail closed); Keycloak could not confirm, so the account is
+	// 待核对 until the administrator reconciles.
+	f.dev.down = true
 	s, _, _ = f.account(f.admin, m.ID, "disable", "disable-key-00000000002", map[string]string{"reason": "再次停用"})
-	if s != 503 {
-		t.Fatal("expected provider failure", s)
+	if s != 409 {
+		t.Fatal("expected review", s)
 	}
 	s, b = f.admin.call("GET", "/api/v1/staff/"+m.ID, nil)
 	var d struct{ Member staffMember }
 	_ = json.Unmarshal(b, &d)
-	if d.Member.Status != staffSuspended || d.Member.AccountState != accountFailed {
+	if d.Member.Status != staffSuspended || d.Member.AccountState != accountReview {
 		t.Fatalf("fail-closed disable: %+v", d.Member)
 	}
-	s, _, b = f.account(f.admin, m.ID, "disable", "disable-key-00000000003", map[string]string{"reason": "重试停用"})
+	f.dev.down = false
+	s, _, b = f.account(f.admin, m.ID, "reconcile", "", map[string]string{})
 	expect(t, s, 200, b)
 }
 

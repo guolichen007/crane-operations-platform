@@ -201,12 +201,18 @@ func main() {
 	go func() {
 		ticker := time.NewTicker(time.Minute)
 		defer ticker.Stop()
+		// Account operations left by a previous process are reconciled with
+		// Keycloak as soon as their claims expire (checked at start and each minute).
+		_, _ = a.recoverAccountOps(ctx)
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
 				_ = a.cleanupAuth(ctx)
+				if _, err := a.recoverAccountOps(ctx); err != nil {
+					log.Print("account recovery: database unavailable, will retry")
+				}
 			}
 		}
 	}()

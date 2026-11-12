@@ -1,3 +1,4 @@
+import type { AccountOperation } from './staff-account';
 export const roles: Record<string, string> = {
   baobei_sales: '销售',
   baobei_manager: '主管',
@@ -16,16 +17,20 @@ export const statuses: Record<string, string> = {
 
 // Status shown in lists: "待开通" splits into "awaiting review" and "in progress"
 // once an administrator approved this exact version.
-export function statusLabel(m: Pick<StaffMember, 'status' | 'provisionReviewed'> & Partial<Pick<StaffMember, 'accountState'>>) {
+export function statusLabel(m: Pick<StaffMember, 'status' | 'provisionReviewed'> & Partial<Pick<StaffMember, 'accountState' | 'accountOperation'>>) {
+  if (m.accountState === 'REVIEW' || m.accountOperation?.state === 'REVIEW') return '待核对';
+  if (m.accountOperation?.state === 'STARTED') return '处理中';
   if (m.accountState === 'FAILED' && m.status !== 'SUSPENDED') return '开通失败';
   if (m.accountState === 'NONE' && m.status === 'PENDING_PROVISION') return '待开通';
   return m.status === 'PENDING_PROVISION' && m.provisionReviewed ? '待身份核验' : statuses[m.status] ?? m.status;
 }
 
 // The next step for each state, in the words of the person who must act.
-export function nextStep(m: Pick<StaffMember, 'status' | 'provisionReviewed' | 'syncStatus'> & Partial<Pick<StaffMember, 'accountState' | 'mustChangePassword'>>,
+export function nextStep(m: Pick<StaffMember, 'status' | 'provisionReviewed' | 'syncStatus'> & Partial<Pick<StaffMember, 'accountState' | 'mustChangePassword' | 'accountOperation'>>,
   admin: boolean, accountService = false): string {
   if (accountService) {
+    if (m.accountState === 'REVIEW' || m.accountOperation?.state === 'REVIEW') return admin ? '账号状态待核对，登录已暂停：请核对账号状态' : '等待管理员核对账号状态';
+    if (m.accountOperation?.state === 'STARTED') return admin ? '账号操作处理中，系统会自动核对；稍后刷新' : '等待管理员处理';
     if (m.status === 'SUSPENDED') return admin ? '可恢复登录或归档' : '';
     if (m.accountState === 'FAILED') return admin ? '开通未完成，可重新开通' : '等待管理员处理';
     if (m.accountState === 'NONE' || m.accountState === 'CREATING') return admin ? '请开通登录账号' : '等待管理员开通登录账号';
@@ -79,6 +84,8 @@ export const staffEvents: Record<string, string> = {
   'staff.account.disable': '停用登录',
   'staff.account.enable': '恢复登录',
   'staff.account.sync-role': '同步登录角色',
+  'staff.account.failed': '账号操作未完成',
+  'staff.account.review': '账号状态待核对',
 };
 
 export interface StaffMember {
@@ -104,6 +111,7 @@ export interface StaffMember {
   accountState: string;
   mustChangePassword: boolean;
   loginName?: string;
+  accountOperation?: AccountOperation | null;
 }
 
 export interface StaffProject {

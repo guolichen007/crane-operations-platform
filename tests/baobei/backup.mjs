@@ -88,7 +88,8 @@ const productTables = [
   'project_submissions',
   'project_participations',
   'project_create_requests',
-  // G4-S5-R1-E (00006): identity epoch, issuer-scoped identity links, account operations.
+  // G4-S5-R1-E (00006): identity epoch, issuer-scoped identity links, account operations
+  // (00007 adds recovery columns to account_operations, no new table).
   'identity_epoch',
   'identity_links',
   'account_operations',

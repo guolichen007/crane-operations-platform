@@ -96,3 +96,51 @@ func randDigits(n int) string {
 	}
 	return string(out)
 }
+
+// TestR1FKeycloakCrashRecovery: the recovery path against a real Keycloak 26.8.1.
+// A crash after Keycloak enabled the login (result not stored) and a crash right
+// after the user was created are reconciled from the real Keycloak state: the
+// login is removed, nothing is replayed, the member can be opened again.
+func TestR1FKeycloakCrashRecovery(t *testing.T) {
+	base, secret := os.Getenv("BAOBEI_KEYCLOAK_URL"), os.Getenv("BAOBEI_KEYCLOAK_SERVICE_SECRET")
+	if base == "" || secret == "" {
+		t.Skip("NOT_RUN: real Keycloak fixture required")
+	}
+	kc, err := newKeycloakAdmin(base+"/realms/baobei", "baobei-web", "baobei-account-service", secret, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := b2Database(t)
+	app := &App{db: db, cfg: Config{Env: "development", Dev: true}, accounts: kc}
+	server := httptest.NewServer(app.handler())
+	defer server.Close()
+	app.cfg.Origin = server.URL
+	f := &accountFixture{t: t, app: app, server: server, admin: login(t, server, "synthetic-admin")}
+	ctx := context.Background()
+	for _, point := range []string{"crash:after-enable", "crash:after-create"} {
+		phone := "139" + randDigits(8)
+		m := f.invite("真实崩溃"+point, phone, salesRole)
+		f.crashAt(point)
+		if s, res, _ := f.account(f.admin, m.ID, "create", "kc-crash-"+randDigits(12), map[string]string{}); s == 200 || res.Credential != nil {
+			t.Fatal(point, "crash reported success")
+		}
+		if u, _ := kc.findByUsername(ctx, phone); u == nil {
+			t.Fatal(point, "fixture: the crash happened after Keycloak acted")
+		}
+		f.restart()
+		if u, _ := kc.findByUsername(ctx, phone); u != nil {
+			t.Fatalf("%s: recovery must remove the unfinished login, found %+v", point, u)
+		}
+		got := f.member(m.ID)
+		if got.AccountState != accountFailed || got.IdentityLinked || got.AccountOperation == nil {
+			t.Fatalf("%s: %+v", point, got)
+		}
+		s, res, b := f.account(f.admin, m.ID, "create", "kc-crash-retry-"+randDigits(10), map[string]string{})
+		expect(t, s, 200, b)
+		u, _ := kc.findByUsername(ctx, phone)
+		if res.Credential == nil || u == nil || !enabled(u) {
+			t.Fatal(point, "retry must open the account")
+		}
+	}
+	t.Log("REAL_KEYCLOAK_CRASH_RECOVERY=PASS")
+}

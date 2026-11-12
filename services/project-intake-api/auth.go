@@ -38,6 +38,8 @@ type App struct {
 	// linkedOnly: under the dedicated realm a Keycloak sub signs in only through an
 	// identity_links row; under the shared realm sub is the business subject itself.
 	linkedOnly bool
+	// fault: test-only fault injection for account operations (nil in production).
+	fault func(point string) error
 }
 
 // businessSubject maps a verified token subject to the Baobei identity.

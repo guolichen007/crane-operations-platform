@@ -24,6 +24,12 @@ def main():
     adm = admin_token()
     old_pw = secrets.token_urlsafe(18)  # per-run synthetic shared-realm password
     crane_web = client_uuid(adm, 'crane', 'crane-web')
+    # Disposable loopback Keycloak only: start the dedicated realm empty (the probe
+    # leaves its own users there), so verify can demand "no extra accounts".
+    s, left, _ = call('GET', '/admin/realms/baobei/users?max=500', token=adm)
+    for u in left or []:
+        if not u.get('username', '').startswith('service-account-'):
+            call('DELETE', f"/admin/realms/baobei/users/{u['id']}", token=adm)
     # Shared realm: a baobei-web client with the four roles, and the historical users.
     call('POST', '/admin/realms/crane/clients', {'clientId': 'baobei-web', 'publicClient': False, 'secret': secrets.token_urlsafe(24),
          'standardFlowEnabled': True, 'redirectUris': ['http://127.0.0.1/cb']}, adm)
@@ -58,10 +64,31 @@ def main():
     tmp = tempfile.mkdtemp()
     def dump(name, obj):
         p = os.path.join(tmp, name)
-        with open(p, 'w', encoding='utf-8') as fh:
+        if os.path.exists(p):
+            os.remove(p)
+        fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, 'w', encoding='utf-8') as fh:
             json.dump(obj, fh, ensure_ascii=False)
         return p
-    code, out, err = run_tool('roster', '--app-users', dump('app_users.json', rows), '--keycloak-users', dump('kc.json', kc_export))
+
+    def realm_export():
+        s, users, _ = call('GET', '/admin/realms/baobei/users?max=500&briefRepresentation=false', token=adm)
+        out = []
+        for u in users:
+            if u.get('username', '').startswith('service-account-'):
+                out.append({'id': u['id'], 'serviceAccount': True})
+                continue
+            s, creds, _ = call('GET', f"/admin/realms/baobei/users/{u['id']}/credentials", token=adm)
+            s, cr, _ = call('GET', f"/admin/realms/baobei/users/{u['id']}/role-mappings", token=adm)
+            cm = cr.get('clientMappings') or {}
+            s, groups, _ = call('GET', f"/admin/realms/baobei/users/{u['id']}/groups", token=adm)
+            out.append({'id': u['id'], 'username': u['username'], 'enabled': u['enabled'], 'attributes': u.get('attributes') or {},
+                        'baobeiRoles': [r['name'] for r in cm.get('baobei-web', {}).get('mappings', [])],
+                        'otherRoles': [k for k in cm if k != 'baobei-web'] + [r['name'] for r in cr.get('realmMappings') or [] if r['name'] != 'default-roles-baobei'],
+                        'groups': [g['path'] for g in groups or []], 'credentials': [{'type': c.get('type')} for c in creds or []]})
+        return out
+    app_users = dump('app_users.json', rows)
+    code, out, err = run_tool('roster', '--app-users', app_users, '--keycloak-users', dump('kc.json', kc_export))
     check('roster runs on the synthetic export', code == 0, err)
     plan = json.loads(out)
     acts = plan['actions']
@@ -73,13 +100,17 @@ def main():
     for p in plan['plan']:
         p['approved'] = p['action'].startswith('IMPORT') and p['action'] != 'IMPORT_BLOCKED'
     plan_path = dump('plan.json', plan)
-    code, imp, err = run_tool('import', '--plan', plan_path, '--phones', dump('phones.json', phones))
-    check('import file built', code == 0, err)
-    imp = json.loads(imp)
-    check('import file: 6 users, SKIP, disabled, no credentials/groups/realm roles/email',
-          imp['ifResourceExists'] == 'SKIP' and len(imp['users']) == 6 and all(
+    pre = [u for u in realm_export() if not u.get('serviceAccount')]
+    imp_path = os.path.join(tmp, 'import.json')
+    code, out, err = run_tool('import', '--plan', plan_path, '--app-users', app_users, '--realm-users', dump('pre.json', pre), '--out', imp_path)
+    check('import file built after checking the current realm', code == 0, out + err)
+    with open(imp_path, encoding='utf-8') as fh:
+        imp = json.load(fh)
+    check('import file is private (0600)', (os.stat(imp_path).st_mode & 0o777) == 0o600)
+    check('import file: 6 users, FAIL on conflicts, disabled, no credentials/groups/realm roles/email; archived has no role',
+          imp['ifResourceExists'] == 'FAIL' and len(imp['users']) == 6 and all(
               not u['enabled'] and 'credentials' not in u and 'groups' not in u and 'realmRoles' not in u and 'email' not in u
-              and list(u['clientRoles']) == ['baobei-web'] for u in imp['users']), imp)
+              for u in imp['users']) and sum(1 for u in imp['users'] if 'clientRoles' not in u) == 1, imp)
     # partialImport into the dedicated realm.
     s, res, _ = call('POST', '/admin/realms/baobei/partialImport', imp, adm)
     check('partialImport accepted', s == 200, res)
@@ -107,32 +138,48 @@ def main():
         b_roles = [r['name'] for r in client_maps.get('baobei-web', {}).get('mappings', [])]
         other = [k for k in client_maps if k != 'baobei-web']
         realm_roles = [r['name'] for r in cr.get('realmMappings') or [] if r['name'] != 'default-roles-baobei']
-        roles_ok &= len(b_roles) == 1 and not other and not realm_roles
+        roles_ok &= len(b_roles) <= 1 and not other and not realm_roles
         export.append({'id': uid, 'username': u['username'], 'enabled': u['enabled'], 'baobeiRoles': b_roles,
                        'otherRoles': other + realm_roles, 'credentials': creds, 'attributes': u.get('attributes')})
     check('no password credentials carried over', nocred)
-    check('only one baobei-web role each; no Crane or realm roles', roles_ok)
-    sa = [u for u in users if u.get('username', '').startswith('service-account-')]
-    for u in sa:
-        export.append({'id': u['id'], 'serviceAccount': True})
-    code, out, err = run_tool('verify', '--plan', plan_path, '--realm-users', dump('realm.json', export))
-    check('verify: realm matches the approved plan', code == 0, out + err)
-    # Re-import with a changed username must SKIP, never overwrite.
+    check('at most one baobei-web role each (archived none); no Crane or realm roles', roles_ok)
+    realm_now = realm_export()
+    code, out, err = run_tool('verify', '--plan', plan_path, '--app-users', app_users, '--realm-users', dump('realm.json', realm_now))
+    check('verify: realm matches the approved plan field by field', code == 0, out + err)
+    check('verify output masks every phone', not any(p in out + err or p[3:] in out + err for p in phones.values()))
+    # Tamper on the real realm: change one approved user's login, verify and links must refuse.
+    victim = next(u for u in imp['users'] if 'clientRoles' in u)
+    call('PUT', f"/admin/realms/baobei/users/{victim['id']}", {'username': '13000000009'}, adm)
+    code, out, err = run_tool('verify', '--plan', plan_path, '--app-users', app_users, '--realm-users', dump('realm.json', realm_export()))
+    check('verify refuses a real user whose login differs from the approved phone', code != 0 and '登录名与批准的手机号不一致' in out, out + err)
+    code, out, err = run_tool('links', '--plan', plan_path, '--app-users', app_users, '--realm-users', dump('realm.json', realm_export()),
+                              '--issuer', 'https://crane.youdaozd.com/realms/baobei')
+    check('links refuses and prints no link SQL after a failed check', code != 0 and 'INSERT INTO identity_links' not in out, out + err)
+    code, out, err = run_tool('import', '--plan', plan_path, '--app-users', app_users, '--realm-users', dump('cur.json', realm_export()),
+                              '--out', os.path.join(tmp, 'import-again.json'))
+    check('import refuses: same UUID with a different login (never SKIP)', code == 2 and not os.path.exists(os.path.join(tmp, 'import-again.json')), out + err)
+    call('PUT', f"/admin/realms/baobei/users/{victim['id']}", {'username': victim['username']}, adm)
+    # A conflicting re-import (changed login for an existing id) is refused; the user is never overwritten.
     clash = json.loads(json.dumps(imp))
     clash['users'][0]['username'] = '13000000000'
     s, res, _ = call('POST', '/admin/realms/baobei/partialImport', clash, adm)
     s2, u0, _ = call('GET', f"/admin/realms/baobei/users/{clash['users'][0]['id']}", token=adm)
-    # Keycloak 26.8.1 answers 409 for a conflicting re-import even with SKIP; either way
+    # ifResourceExists=FAIL: Keycloak answers 409; either way
     # (refused or skipped) the existing user must be unchanged — never overwritten.
-    check('re-import refused or skipped, existing user never overwritten', s in (200, 409) and u0['username'] == imp['users'][0]['username'], (s, res, u0.get('username')))
+    check('conflicting re-import refused, existing user never overwritten', s == 409 and u0['username'] == imp['users'][0]['username'], (s, res, u0.get('username')))
     s, res, _ = call('POST', '/admin/realms/baobei/partialImport', imp, adm)
-    check('identical re-import is idempotent (SKIP)', s == 200 and res.get('skipped') == len(imp['users']), res)
+    check('identical re-import with FAIL is refused by Keycloak (no silent acceptance)', s == 409, (s, res))
+    code, out, err = run_tool('import', '--plan', plan_path, '--app-users', app_users, '--realm-users', dump('cur.json', realm_export()),
+                              '--out', os.path.join(tmp, 'import-identical.json'))
+    check('identical users are reported as present; nothing left to import', code == 0 and len(json.loads(out)['alreadyPresentIdentical']) == 6, out + err)
     # Old credentials do not work in the new realm.
-    first = next(u for u in imp['users'] if u['clientRoles']['baobei-web'] == ['baobei_sales'])
+    first = next(u for u in imp['users'] if u.get('clientRoles', {}).get('baobei-web') == ['baobei_sales'])
     loc, _ = browser_login('baobei', 'baobei-web', 'http://127.0.0.1/cb', first['username'], old_pw)
     check('old shared-realm password does not sign in to the new realm', 'code=' not in loc, loc)
-    code, out, err = run_tool('links', '--plan', plan_path, '--issuer', 'https://crane.youdaozd.com/realms/baobei')
-    check('links: one row per imported user', code == 0 and len(out.strip().splitlines()) == 6, err)
+    code, out, err = run_tool('links', '--plan', plan_path, '--app-users', app_users, '--realm-users', dump('realm.json', realm_export()),
+                              '--issuer', 'https://crane.youdaozd.com/realms/baobei')
+    check('links: verified first, one guarded insert per imported user in one transaction',
+          code == 0 and out.count('INSERT INTO identity_links') == 6 and out.startswith('BEGIN;'), out + err)
     with open(os.path.expanduser('~/kc/import.json'), 'w') as fh:
         json.dump({'first': first, 'tmp': tmp}, fh)
     failed = [n for n, ok in probe.results if not ok]

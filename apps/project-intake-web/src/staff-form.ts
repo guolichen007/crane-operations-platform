@@ -60,6 +60,7 @@ export const serverFieldErrors: Record<string, StaffField> = {
   STAFF_PHONE_REQUIRED: 'phone',
   STAFF_PHONE_INVALID: 'phone',
   STAFF_PHONE_DUPLICATE: 'phone',
+  STAFF_PHONE_ACCOUNT_BOUND: 'phone',
   STAFF_EMAIL_INVALID: 'email',
   STAFF_EMAIL_DUPLICATE: 'email',
   STAFF_TEAM_REQUIRED: 'teamId',

@@ -164,14 +164,20 @@ func authorizeOIDCSession(ctx context.Context, tx pgx.Tx, subject string, email 
 	var target, role, status, expected string
 	var version int
 	var active, managed, roleChanged bool
+	var accountState string
 	err := tx.QueryRow(ctx, `SELECT staff_id::text,role,staff_status,coalesce(work_email,''),staff_version,active,staff_managed,
- EXISTS(SELECT 1 FROM staff_audit a WHERE a.target_id=u.staff_id AND a.action='staff.role-change')
- FROM app_users u WHERE subject=$1`, subject).Scan(&target, &role, &status, &expected, &version, &active, &managed, &roleChanged)
+ EXISTS(SELECT 1 FROM staff_audit a WHERE a.target_id=u.staff_id AND a.action='staff.role-change'),account_state
+ FROM app_users u WHERE subject=$1`, subject).Scan(&target, &role, &status, &expected, &version, &active, &managed, &roleChanged, &accountState)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", loginNotProvisioned
 	}
 	if err != nil {
 		return "", err
+	}
+	// An account being created, or waiting for review after an inconsistent
+	// result, cannot sign in until the account service has settled it.
+	if accountState == accountCreating || accountState == accountReview {
+		return "", loginNotProvisioned
 	}
 	if status == staffSuspended || status == staffArchived {
 		return "", loginDisabled

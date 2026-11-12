@@ -58,6 +58,9 @@ GRANT SELECT (issuer,external_subject,subject) ON identity_links TO baobei_runti
 GRANT SELECT, INSERT, UPDATE ON identity_epoch TO baobei_maintenance;
 GRANT SELECT (issuer,identity_epoch) ON app_sessions TO baobei_staff_api;
 GRANT SELECT, UPDATE (state,keycloak_user_id,detail,finished_at), INSERT ON account_operations TO baobei_staff_api;
+-- G4-S5-R1-F: recoverable account operations (step, claim, retry bookkeeping only;
+-- the request fields are insert-only). baobei_runtime gains nothing.
+GRANT UPDATE (step,lease_token,lease_expires_at,attempts,created_user,updated_at) ON account_operations TO baobei_staff_api;
 GRANT UPDATE (account_state,account_must_change_password,subject) ON app_users TO baobei_staff_api;
 GRANT SELECT ON account_operations TO baobei_maintenance;
 GRANT SELECT, INSERT, DELETE ON identity_links TO baobei_staff_api;

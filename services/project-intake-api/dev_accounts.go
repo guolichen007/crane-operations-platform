@@ -15,8 +15,15 @@ import (
 type devAccounts struct {
 	mu    sync.Mutex
 	users map[string]*devAccount
-	// failNext makes the next call to the named step fail (test hook).
+	// failNext makes the next call to the named step fail without acting (test hook).
 	failNext string
+	// lostNext makes the next call to the named step act, then report a transport
+	// error (a timeout after Keycloak succeeded; test hook).
+	lostNext string
+	// down makes every call fail until cleared (provider outage; test hook).
+	down bool
+	// calls counts provider calls per step (test evidence: nothing is replayed).
+	calls map[string]int
 }
 
 type devAccount struct {
@@ -28,8 +35,24 @@ type devAccount struct {
 func newDevAccounts() *devAccounts { return &devAccounts{users: map[string]*devAccount{}} }
 
 func (d *devAccounts) fail(step string) error {
+	if d.calls == nil {
+		d.calls = map[string]int{}
+	}
+	d.calls[step]++
+	if d.down {
+		return errAccountProvider
+	}
 	if d.failNext == step {
 		d.failNext = ""
+		return errAccountProvider
+	}
+	return nil
+}
+
+// lost: the step acted; report a transport error anyway.
+func (d *devAccounts) lost(step string) error {
+	if d.lostNext == step {
+		d.lostNext = ""
 		return errAccountProvider
 	}
 	return nil
@@ -38,6 +61,9 @@ func (d *devAccounts) fail(step string) error {
 func (d *devAccounts) findByUsername(_ context.Context, username string) (*kcUser, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if err := d.fail("find"); err != nil {
+		return nil, err
+	}
 	for _, a := range d.users {
 		if a.user.Username == username {
 			u := a.user
@@ -50,6 +76,9 @@ func (d *devAccounts) findByUsername(_ context.Context, username string) (*kcUse
 func (d *devAccounts) getUser(_ context.Context, id string) (*kcUser, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if err := d.fail("get"); err != nil {
+		return nil, err
+	}
 	if a, ok := d.users[id]; ok {
 		u := a.user
 		return &u, nil
@@ -70,6 +99,9 @@ func (d *devAccounts) createDisabled(_ context.Context, username, staffID string
 	}
 	id := newUUID()
 	d.users[id] = &devAccount{user: kcUser{ID: id, Username: username, Enabled: boolp(false), Attributes: map[string][]string{"baobei_staff_id": {staffID}}}}
+	if err := d.lost("create"); err != nil {
+		return "", err
+	}
 	return id, nil
 }
 
@@ -94,7 +126,7 @@ func (d *devAccounts) update(_ context.Context, id string, u kcUser) error {
 	if u.Enabled != nil {
 		a.user.Enabled = boolp(*u.Enabled)
 	}
-	return nil
+	return d.lost("update")
 }
 
 func (d *devAccounts) setTemporaryPassword(_ context.Context, id, _ string) error {
@@ -109,7 +141,7 @@ func (d *devAccounts) setTemporaryPassword(_ context.Context, id, _ string) erro
 	}
 	a.password = true
 	a.user.RequiredActions = []string{"UPDATE_PASSWORD"}
-	return nil
+	return d.lost("password")
 }
 
 func (d *devAccounts) setExactRole(_ context.Context, id, role string) error {
@@ -123,12 +155,15 @@ func (d *devAccounts) setExactRole(_ context.Context, id, role string) error {
 		return accountProblem{404}
 	}
 	a.role = role
-	return nil
+	return d.lost("role")
 }
 
 func (d *devAccounts) roles(_ context.Context, id string) ([]string, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if err := d.fail("roles"); err != nil {
+		return nil, err
+	}
 	if a, ok := d.users[id]; ok && a.role != "" {
 		return []string{a.role}, nil
 	}
@@ -140,8 +175,36 @@ func (d *devAccounts) logout(context.Context, string) error { return nil }
 func (d *devAccounts) delete(_ context.Context, id string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if err := d.fail("delete"); err != nil {
+		return err
+	}
 	delete(d.users, id)
 	return nil
+}
+
+// enabledCount: enabled logins for a username (test helper).
+func (d *devAccounts) enabledFor(username string) int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	n := 0
+	for _, a := range d.users {
+		if a.user.Username == username && a.user.Enabled != nil && *a.user.Enabled {
+			n++
+		}
+	}
+	return n
+}
+
+func (d *devAccounts) callCount(step string) int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.calls[step]
+}
+
+func (d *devAccounts) count() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return len(d.users)
 }
 
 // signIn models the dedicated realm's login for development: a READY account

@@ -23,6 +23,7 @@ jobs:
       - run: node tools/task.mjs baobei contract
       - run: python3 -m unittest discover -s tests/baobei/publish -v
       - run: python3 -B -m unittest discover -s tests/baobei/direct -v
+      - run: python3 -B -m unittest discover -s tests/baobei/identity -v
   baobei-web-quality:
     if: startsWith(github.ref, 'refs/heads/product/baobei-')
     runs-on: ubuntu-latest

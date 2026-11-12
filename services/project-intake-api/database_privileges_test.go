@@ -138,6 +138,9 @@ func TestDatabaseProductionPrivileges(t *testing.T) {
 		"DELETE FROM audit_events",
 		"SELECT * FROM account_operations", "INSERT INTO identity_links VALUES('i','aaaaaaaa-0000-4000-8000-000000000001','synthetic-a')",
 		"UPDATE identity_epoch SET issuer='forged'", "UPDATE app_users SET account_state='READY'",
+		// G4-S5-R1-F: the runtime role gains nothing on account operations.
+		"UPDATE account_operations SET state='DONE'", "UPDATE account_operations SET lease_expires_at=now()",
+		"UPDATE account_operations SET step='FINAL'",
 	} {
 		deny(runtime, sql)
 	}
@@ -163,7 +166,11 @@ func TestDatabaseProductionPrivileges(t *testing.T) {
 		}
 	}
 	for _, sql := range []string{
-		"DELETE FROM identity_epoch", "UPDATE identity_epoch SET epoch=epoch+1", "DELETE FROM account_operations", "UPDATE intake_projects SET document='{}'", "UPDATE intake_projects SET created_by_subject='forbidden'", "CREATE TABLE forbidden(id int)", "UPDATE project_submissions SET evidence_state='COMPLETE'", "SELECT document FROM project_submissions"} {
+		"DELETE FROM identity_epoch", "UPDATE identity_epoch SET epoch=epoch+1", "DELETE FROM account_operations",
+		// G4-S5-R1-F: request fields are insert-only for the staff role.
+		"UPDATE account_operations SET request_hash=repeat('a',64)", "UPDATE account_operations SET target_login='13900000000'",
+		"UPDATE account_operations SET staff_id=gen_random_uuid()", "UPDATE account_operations SET idempotency_key='forged-key-000000000'",
+		"UPDATE account_operations SET operation='DISABLE'", "UPDATE account_operations SET reason='x'", "UPDATE intake_projects SET document='{}'", "UPDATE intake_projects SET created_by_subject='forbidden'", "CREATE TABLE forbidden(id int)", "UPDATE project_submissions SET evidence_state='COMPLETE'", "SELECT document FROM project_submissions"} {
 		deny(staff, sql)
 	}
 	// The identity epoch is set by the maintenance role (production identity-switch

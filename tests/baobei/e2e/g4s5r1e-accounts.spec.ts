@@ -52,8 +52,11 @@ test('管理员网页开户：一次性初始密码、重置、换手机号、�
   await expect(cred.getByTestId('credential-login')).toHaveText(phone);
   const temp = (await cred.getByTestId('credential-password').innerText()).trim();
   expect(temp).toMatch(/^[A-Za-z0-9]{12}$/);
+  await expect(cred.getByTestId('credential-once')).toContainText('重置密码');
   await action(page, 'staff.credential-done').click();
   await expect(cred).toHaveCount(0);
+  // R1-F: after closing, the page says how to get a new password.
+  await expect(page.getByText('可在成员详情中“重置密码”生成新的初始密码', { exact: false })).toBeVisible();
   // After closing, the password is nowhere on the page, and a reload does not bring it back.
   await expect(page.getByText(temp)).toHaveCount(0);
   await page.reload();
@@ -131,4 +134,55 @@ test('员工不能使用账号管理入口；个人菜单提供修改密码', as
   expect(r).toBe(403);
   await action(page, 'auth.account').click();
   await expect(page.getByRole('dialog', { name: '个人账号' }).locator('[data-action-id="auth.change-password"]')).toBeVisible();
+});
+
+// G4-S5-R1-F: unfinished / unconfirmed account operations. The server state is
+// produced by the Go fault-injection suite; here the page is checked with the
+// member payload the server returns in those states.
+test('账号待核对与处理中：不显示已开通，只能核对；失败显示原因并可重试', async ({ page }, info) => {
+  test.skip(info.project.name !== 'desktop', 'state rendering is layout independent');
+  await login(page, 'synthetic-admin');
+  await page.goto('/settings/users');
+  const unique = uniq('R1F');
+  await action(page, 'staff.invite').click();
+  const dialog = page.getByRole('dialog', { name: '添加成员' });
+  await dialog.getByLabel(/^姓名/).fill('合成核对' + unique.slice(-4));
+  await dialog.getByLabel(/^工作手机/).fill(phoneFor(unique, 3));
+  await dialog.getByLabel(/^团队/).selectOption({ index: 1 });
+  await dialog.getByRole('button', { name: '添加成员' }).click();
+  await expect(page.locator('.staff-title')).toContainText('待开通');
+  const id = new URL(page.url()).pathname.split('/').pop()!;
+  let state: 'REVIEW' | 'STARTED' | 'COMPENSATED' = 'REVIEW';
+  let reconciled = 0;
+  await page.route('**/api/v1/staff/' + id, async (route) => {
+    const res = await route.fetch();
+    const body = await res.json();
+    body.member.accountState = state === 'REVIEW' ? 'REVIEW' : state === 'STARTED' ? 'CREATING' : 'FAILED';
+    body.member.status = state === 'COMPENSATED' ? 'PROVISION_FAILED' : body.member.status;
+    body.member.accountOperation = { id: 'op', operation: 'CREATE', state, step: 'ENABLE',
+      detail: state === 'REVIEW' ? 'COMPENSATION_FAILED' : state === 'COMPENSATED' ? 'PHONE_TAKEN' : '', at: new Date().toISOString() };
+    await route.fulfill({ response: res, json: body });
+  });
+  await page.route('**/account/reconcile', async (route) => {
+    reconciled++;
+    state = 'COMPENSATED';
+    await route.fulfill({ json: { member: {} } });
+  });
+  await page.reload();
+  await expect(page.locator('.staff-title')).toContainText('待核对');
+  await expect(page.getByTestId('account-state')).toContainText('待核对');
+  await expect(page.getByTestId('account-state')).not.toContainText('可登录');
+  await expect(page.getByTestId('account-operation')).toContainText('撤销未完成的账号失败');
+  await expect(action(page, 'staff.account-create')).toHaveCount(0);
+  await expect(action(page, 'staff.account-reset')).toHaveCount(0);
+  await action(page, 'staff.account-reconcile').click();
+  expect(reconciled).toBe(1);
+  // After reconcile: failed with the cause and a retry button; list and detail agree.
+  await expect(page.locator('.staff-title')).toContainText('开通失败');
+  await expect(page.getByTestId('account-operation')).toContainText('该手机号已被其他登录账号使用');
+  await expect(action(page, 'staff.account-create')).toBeVisible();
+  state = 'STARTED';
+  await page.reload();
+  await expect(page.locator('.staff-title')).toContainText('处理中');
+  await expect(page.getByTestId('account-operation')).toContainText('系统会自动核对');
 });
