@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query';
-import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
+import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router';
 import { Pencil, Move, Archive, ArrowLeft, Plus } from 'lucide-vue-next';
 import {
   getAsset,
@@ -65,6 +65,13 @@ const moveTargets = computed(() => (locationsQuery.data.value ?? []) as AssetLoc
 // Each write action pins the version (and a snapshot) at the moment its dialog
 // opens. Submits always send that pinned version as If-Match — never the latest
 // cached version, which a background refetch may have advanced under an old draft.
+// Q4-QA-R1a: this component is reused when only :id changes (/assets/A → /assets/B). Every write
+// therefore pins the asset id at the moment its dialog opens and submits to THAT id — never to the
+// live route param — and a params update is guarded like leaving the page (see onBeforeRouteUpdate).
+const editTarget = ref('');
+const moveTarget = ref('');
+const retireTarget = ref('');
+const equipmentAddTarget = ref('');
 const edit = useDraftSession<AssetMasterData>();
 const editError = ref('');
 const editConflict = ref(false);
@@ -102,13 +109,16 @@ function openEdit() {
   const current = assetQuery.data.value;
   if (!current) return;
   edit.start(current, current.version);
+  editTarget.value = current.id;
   editError.value = '';
   editConflict.value = false;
   discardedDraft.value = '';
 }
 async function refreshForConflict() {
   // Fetch the latest server copy for side-by-side comparison; the draft is kept.
-  const fresh = await queryClient.fetchQuery({ queryKey: ['asset', id], queryFn: () => getAsset(id.value), staleTime: 0 });
+  const target = editTarget.value;
+  if (!target) return;
+  const fresh = await queryClient.fetchQuery({ queryKey: ['asset', target], queryFn: () => getAsset(target), staleTime: 0 });
   edit.latest.value = fresh;
 }
 function rebaseOnLatest() {
@@ -135,7 +145,7 @@ async function refreshAfterWrite() {
 
 const updateMutation = useMutation({
   // PATCH carries only the fields the user changed, against the pinned version.
-  mutationFn: () => updateAsset(id.value, assetChanges(edit.base.value!, edit.draft.value!), edit.baseVersion.value!),
+  mutationFn: () => updateAsset(editTarget.value, assetChanges(edit.base.value!, edit.draft.value!), edit.baseVersion.value!),
   onSuccess: async () => {
     edit.close();
     await refreshAfterWrite();
@@ -156,13 +166,14 @@ function openMove() {
   const current = assetQuery.data.value;
   if (!current) return;
   move.start({ locationId: '' }, current.version);
+  moveTarget.value = current.id;
   moveError.value = '';
   // Locations may have been created elsewhere (位置中心) since the list was cached.
   void locationsQuery.refetch();
 }
 const moved = ref('');
 const moveMutation = useMutation({
-  mutationFn: () => moveAsset(id.value, move.draft.value!.locationId, move.baseVersion.value!),
+  mutationFn: () => moveAsset(moveTarget.value, move.draft.value!.locationId, move.baseVersion.value!),
   onSuccess: async () => {
     const target = moveTargets.value.find((l) => l.id === move.draft.value?.locationId);
     move.close();
@@ -182,10 +193,11 @@ function openRetire() {
   const current = assetQuery.data.value;
   if (!current) return;
   retire.start({ confirm: true }, current.version);
+  retireTarget.value = current.id;
   retireError.value = '';
 }
 const retireMutation = useMutation({
-  mutationFn: () => retireAsset(id.value, retire.baseVersion.value!),
+  mutationFn: () => retireAsset(retireTarget.value, retire.baseVersion.value!),
   onSuccess: async () => {
     retire.close();
     await refreshAfterWrite();
@@ -252,6 +264,34 @@ onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', onBeforeUnload);
 });
 onBeforeRouteLeave(() => allowClose(anyDirty.value, anyPending.value));
+// Same component, another asset: an in-flight submit refuses the switch; a dirty draft needs an
+// explicit discard; then every dialog of the previous asset is closed (none may act on the next one).
+onBeforeRouteUpdate((to, from) => {
+  if (to.params.id === from.params.id) return true;
+  if (!allowClose(anyDirty.value, anyPending.value)) return false;
+  closeAllDialogs();
+  return true;
+});
+function closeAllDialogs() {
+  edit.close();
+  discardedDraft.value = '';
+  editConflict.value = false;
+  editError.value = '';
+  move.close();
+  moveError.value = '';
+  moved.value = '';
+  retire.close();
+  retireError.value = '';
+  equipmentAdding.value = false;
+  equipmentAddError.value = '';
+  equipmentEditing.value = null;
+  equipmentEditBase.value = null;
+  equipmentEditError.value = '';
+  removeTarget.value = null;
+  removeError.value = '';
+  editTarget.value = moveTarget.value = retireTarget.value = equipmentAddTarget.value = '';
+  tab.value = 'overview';
+}
 
 // ---- Equipment install / remove (asset-scoped, never a second master data
 // set). Removal closes the validity interval; an active runtime binding is
@@ -295,6 +335,7 @@ function openEquipmentAdd() {
   equipmentSpec.value = {};
   equipmentAddError.value = '';
   equipmentIdemKey = crypto.randomUUID();
+  equipmentAddTarget.value = id.value;
   equipmentAdding.value = true;
 }
 function closeEquipmentAdd() {
@@ -305,7 +346,7 @@ function closeEquipmentAdd() {
 const createEquipmentMutation = useMutation({
   mutationFn: () =>
     createEquipment(
-      { ...equipmentDraft.value, assetId: id.value, spec: equipmentSpec.value },
+      { ...equipmentDraft.value, assetId: equipmentAddTarget.value, spec: equipmentSpec.value },
       equipmentIdemKey
     ),
   onSuccess: async () => {
