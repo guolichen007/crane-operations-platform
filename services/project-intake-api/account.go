@@ -383,6 +383,10 @@ func (a *App) openAccountOp(ctx context.Context, pool *pgxpool.Pool, actor User,
 		if !m.IdentityLinked {
 			return nil, staffMember{}, nil, staffProblem{409, "STAFF_REVOKE_NO_ACCOUNT", "该成员尚无登录账号，请直接撤销开户"}
 		}
+		// The login name this revocation must prove free (recovery re-checks it).
+		if o.targetLogin, err = loginName(m.Phone); err != nil {
+			return nil, staffMember{}, nil, staffConflict
+		}
 	}
 	err = tx.QueryRow(ctx, `INSERT INTO account_operations(idempotency_key,staff_id,operation,actor_subject,lease_token,lease_expires_at,
  request_hash,reason,target_login,previous_login) VALUES($1,$2,$3,$4,$5,now()+$6::interval,$7,$8,NULLIF($9,''),NULLIF($10,'')) RETURNING id::text`,
@@ -1056,36 +1060,71 @@ func (a *App) accountRevoke(ctx context.Context, pool *pgxpool.Pool, o *accountO
 	if err = a.advance(ctx, pool, o, "KC_DELETE"); err != nil {
 		return stored(o, err, nil)
 	}
-	if err = a.removeLogin(ctx, o.kcID, m.ID); err != nil {
-		return a.review(ctx, pool, o, "REVOKE_UNCONFIRMED")
+	return a.completeRevoke(ctx, pool, o)
+}
+
+// completeRevoke is shared by the request and by recovery/reconcile, so every
+// pass re-reads Keycloak and re-checks ownership: the business revocation (and
+// the release of the phone) commits only when the login name is proven free.
+func (a *App) completeRevoke(ctx context.Context, pool *pgxpool.Pool, o *accountOp) error {
+	if detail := a.removeLogin(ctx, o); detail != "" {
+		return a.review(ctx, pool, o, detail)
 	}
-	if err = a.inject("crash:after-revoke"); err != nil {
+	if err := a.inject("crash:after-revoke"); err != nil {
 		return err
 	}
 	return a.finishRevoke(ctx, pool, o)
 }
 
-// removeLogin makes the member's Keycloak user unusable: deleted when it carries
-// this member's staff id, otherwise (or if deletion fails) disabled and confirmed.
-func (a *App) removeLogin(ctx context.Context, id, staffID string) error {
-	u, err := a.accounts.getUser(ctx, id)
+// removeLogin deletes the member's own, never-used Keycloak user and proves the
+// login name is free. It returns "" on success or the REVIEW cause:
+//
+//   - a user that does not carry this member's staff id is never deleted,
+//     disabled, renamed or re-roled (OWNER_MISMATCH);
+//   - a failed or unknown deletion is re-read; a user still present is only
+//     disabled when it is this member's own, and the revocation is NOT completed
+//     (REVOKE_DELETE_FAILED), because a disabled user still holds the username;
+//   - any other user still holding the login name blocks completion
+//     (LOGIN_STILL_OCCUPIED); every read failure is PROVIDER_UNAVAILABLE.
+func (a *App) removeLogin(ctx context.Context, o *accountOp) string {
+	if o.kcID == "" || o.targetLogin == "" {
+		return "REVOKE_UNCONFIRMED"
+	}
+	u, err := a.accounts.getUser(ctx, o.kcID)
 	if err != nil {
-		return err
+		return "PROVIDER_UNAVAILABLE"
 	}
-	if u == nil {
-		return nil
+	if u != nil {
+		if !ownedBy(u, o.staffID) {
+			return "OWNER_MISMATCH"
+		}
+		if derr := a.accounts.delete(ctx, o.kcID); derr != nil {
+			// Outcome unknown (timeout) or refused: look again before deciding.
+			again, gerr := a.accounts.getUser(ctx, o.kcID)
+			switch {
+			case gerr != nil:
+				return "PROVIDER_UNAVAILABLE"
+			case again != nil:
+				if ownedBy(again, o.staffID) {
+					// Keep the unused login unusable; the member stays in REVIEW
+					// (login gate refuses it) and the phone stays reserved.
+					_ = a.accounts.update(ctx, o.kcID, kcUser{Enabled: boolp(false)})
+					_ = a.accounts.logout(ctx, o.kcID)
+				}
+				return "REVOKE_DELETE_FAILED"
+			}
+		}
 	}
-	if ownedBy(u, staffID) && a.accounts.delete(ctx, id) == nil {
-		return nil
+	// The member's user is gone. The login name must be free before the phone is
+	// released for a new account.
+	holder, err := a.accounts.findByUsername(ctx, o.targetLogin)
+	if err != nil {
+		return "PROVIDER_UNAVAILABLE"
 	}
-	if err = a.accounts.update(ctx, id, kcUser{Enabled: boolp(false)}); err != nil {
-		return err
+	if holder != nil {
+		return "LOGIN_STILL_OCCUPIED"
 	}
-	if u, err = a.accounts.getUser(ctx, id); err != nil || enabled(u) {
-		return errAccountProvider
-	}
-	_ = a.accounts.logout(ctx, id)
-	return nil
+	return ""
 }
 
 func (a *App) finishRevoke(ctx context.Context, pool *pgxpool.Pool, o *accountOp) error {

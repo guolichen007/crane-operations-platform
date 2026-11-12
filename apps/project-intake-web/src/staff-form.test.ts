@@ -76,3 +76,15 @@ describe('撤销开户入口（R2-P1）', () => {
     expect(revocable({ ...base, accountOperation: { id: 'x', operation: 'CREATE', state: 'STARTED', step: 'ROLE', detail: '', at: '' } })).toBe(false);
   });
 });
+
+import { accountCause } from './staff-account';
+describe('撤销开户待核对原因（R2-P1-F1）', () => {
+  it('每种待核对原因都有可操作的说明，不显示为成功', () => {
+    for (const code of ['OWNER_MISMATCH', 'REVOKE_DELETE_FAILED', 'LOGIN_STILL_OCCUPIED', 'PROVIDER_UNAVAILABLE', 'REVOKE_UNCONFIRMED']) {
+      const text = accountCause(code);
+      expect(text).not.toBe('操作未完成');
+      expect(text).not.toMatch(/已释放|已撤销/);
+    }
+    expect(accountCause('REVOKE_DELETE_FAILED')).toContain('手机号暂不释放');
+  });
+});

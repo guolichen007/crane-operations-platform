@@ -179,7 +179,7 @@ func (d *devAccounts) delete(_ context.Context, id string) error {
 		return err
 	}
 	delete(d.users, id)
-	return nil
+	return d.lost("delete")
 }
 
 // enabledCount: enabled logins for a username (test helper).

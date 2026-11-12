@@ -55,11 +55,13 @@ const causes: Record<string, string> = {
   DISABLE_UNCONFIRMED: '无法确认登录已停用（报备中心已停止该成员访问）',
   ENABLE_UNCONFIRMED: '无法确认登录状态',
   ROLE_UNCONFIRMED: '无法确认登录角色',
-  OWNER_MISMATCH: '账号归属与成员不一致',
+  OWNER_MISMATCH: '登录账号归属与该成员不一致，系统未修改该账号；请联系身份管理员核实后再核对',
   LOGIN_MISSING: '找不到登录账号',
   ACCOUNT_IDENTITY_CONFLICT: '该登录身份已对应其他成员，本次开通已撤销',
   SUBJECT_HAS_HISTORY: '该成员已有业务记录，登录身份保留不回退，登录已暂停',
   REVOKE_UNCONFIRMED: '无法确认登录账号已删除（报备中心已停止该成员访问）',
+  REVOKE_DELETE_FAILED: '登录账号删除未成功，已停用但仍占用该手机号；手机号暂不释放，请稍后核对账号状态重试删除',
+  LOGIN_STILL_OCCUPIED: '该手机号在登录系统中仍被其他账号占用，手机号暂不释放；请联系身份管理员核实后再核对',
 };
 
 export function accountCause(detail: string) {

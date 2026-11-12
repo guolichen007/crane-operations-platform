@@ -281,3 +281,33 @@ test('草稿废弃与恢复：回收站、列表/管道/搜索不出现、恢复
   const cur = (await api(page, '/api/v1/projects/' + p.id)).body as { version: number };
   expect((await api(page, `/api/v1/projects/${p.id}/discard`, 'POST', { version: cur.version, reason: '测试结束' })).status).toBe(200);
 });
+
+test('撤销待核对在管理员页面显示原因与核对入口（模拟服务端 REVIEW 响应）', async ({ page }, info) => {
+  test.skip(info.project.name !== 'desktop', 'UI rendering check');
+  const unique = uniq('R2F1');
+  await login(page, 'synthetic-admin');
+  await page.goto('/settings/users');
+  await action(page, 'staff.invite').click();
+  const add = page.getByRole('dialog', { name: '添加成员' });
+  await add.getByLabel(/^姓名/).fill('合成待核对' + unique.slice(-5));
+  await add.getByLabel(/^工作手机/).fill(phoneFor(unique, 3));
+  await add.getByLabel(/^团队/).selectOption({ index: 1 });
+  await add.getByRole('button', { name: '添加成员' }).click();
+  await expect(page.locator('.staff-title')).toContainText('待开通');
+  // Real member, with the detail response rewritten to the REVIEW state the
+  // server produces when the Keycloak delete fails (Go tests cover the real path).
+  await page.route(/\/api\/v1\/staff\/[0-9a-f-]{36}$/, async (route) => {
+    const res = await route.fetch();
+    const body = await res.json();
+    body.member.accountState = 'REVIEW';
+    body.member.identityLinked = true;
+    body.member.accountOperation = { id: 'x', operation: 'REVOKE', state: 'REVIEW', step: 'KC_DELETE', detail: 'REVOKE_DELETE_FAILED', at: new Date().toISOString() };
+    await route.fulfill({ response: res, json: body });
+  });
+  await page.reload();
+  await expect(page.getByTestId('account-operation')).toContainText('撤销开户待核对');
+  await expect(page.getByTestId('account-operation')).toContainText('手机号暂不释放');
+  await expect(action(page, 'staff.account-reconcile')).toBeVisible();
+  await expect(action(page, 'staff.revoke')).toHaveCount(0);
+  await shot(page, '13-revoke-review');
+});
