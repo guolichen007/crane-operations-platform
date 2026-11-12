@@ -16,7 +16,7 @@ import {
   blankIntakeForm, formDirty, validateIntakeForm, toIntakeInput, intakeErrorMessage, listState, intakeStages,
   PRIORITIES, RISK_LEVELS, PRIORITY_TEXT, RISK_TEXT, PROJECT_TYPE_SUGGESTIONS, type IntakeForm,
 } from '../cloud/intake';
-import type { ProjectIntake } from '../../../../contracts/typescript/types.gen';
+import type { ProjectIntake, ScheduleConflict } from '../../../../contracts/typescript/types.gen';
 
 const queryClient = useQueryClient();
 const tab = ref<'intake' | 'formal' | 'resource' | 'schedule' | 'conflict'>('intake');
@@ -179,6 +179,17 @@ function advance(intake: ProjectIntake, status: string) {
   if (status === 'APPROVED') approveMutation.mutate(intake.id);
   else transitionMutation.mutate({ id: intake.id, status });
 }
+// Conflict override (Q4-QA-R1 §5): the server requires schedule_override on the conflict's owning
+// portfolio scope (portfolio_manager only) and refuses a hard conflict on a resource without
+// overrideAllowed. The conflict contract carries no scope id, so the button is offered only when the
+// caller manages EVERY portfolio it belongs to (then each listed conflict is in a managed scope); a
+// mixed planner/manager caller gets no executable button. The server still decides.
+const managesAllScopes = computed(() => {
+  const mine = (scopesQuery.data.value ?? []).filter((s) => s.myRole !== null);
+  return mine.length > 0 && mine.every((s) => s.myRole === 'portfolio_manager');
+});
+const hardConflict = (c: ScheduleConflict) =>
+  !!c.resourceId && resourcesQuery.data.value?.find((r) => r.id === c.resourceId)?.overrideAllowed === false;
 function override(id: number) {
   const reason = window.prompt('覆盖原因（至少 8 字）');
   if (reason) overrideMutation.mutate({ id, reason });
@@ -383,7 +394,9 @@ const fmtDate = (v: string | null) => (v ? new Date(v).toLocaleDateString('zh-CN
               <td>{{ c.resourceId ?? '—' }}</td>
               <td>{{ c.status }}</td>
               <td>
-                <button class="ghost-action" @click="override(c.id)">覆盖</button>
+                <span v-if="hardConflict(c)" class="muted small" data-testid="override-hard">硬冲突，不可覆盖</span>
+                <button v-else-if="managesAllScopes" class="ghost-action" data-testid="conflict-override" :disabled="overrideMutation.isPending.value" @click="override(c.id)">覆盖</button>
+                <span v-else class="muted small" data-testid="override-not-allowed">需项目组合经理覆盖</span>
               </td>
             </tr>
           </tbody>
