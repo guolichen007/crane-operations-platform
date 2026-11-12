@@ -5,6 +5,7 @@ import { listProjects, listAssets, listDevices, listAlarms } from '../cloud/api'
 import { mapApiDevice } from './device-status';
 import { formatCloudTime } from '../cloud/format';
 import { loadGeoManifest } from './geo-manifest';
+import { scopeGeneration } from '../cloud/session';
 import type { InventoryProject } from '../../../../contracts/typescript/types.gen';
 
 export type SceneEvent = { time: string; kind: string; text: string; color: string };
@@ -100,8 +101,16 @@ function apiProvider(): SceneDataProvider {
   const alarmRecordCount = shallowRef<number | null>(null);
   let loaded = false;
   let inFlight: Promise<void> | null = null;
+  // Data scope (login identity × grants, cloud/session.ts) the current contents belong to. A load
+  // started under another scope never writes its result (Q4-QA-R1: late responses of the previous
+  // identity must not reappear).
+  let scope = scopeGeneration;
+  let seq = 0;
 
   async function load() {
+    const mine = ++seq;
+    const startedIn = scopeGeneration;
+    const current = () => mine === seq && startedIn === scopeGeneration;
     loading.value = true;
     try {
       // Data-source boundary: the flagship sandbox is driven by the INVENTORY
@@ -117,6 +126,7 @@ function apiProvider(): SceneDataProvider {
         listAlarms(),
         loadAdminParents(),
       ]);
+      if (!current()) return;
       const mappedProjects: Project[] = rawProjects.map((p) => ({
         id: p.id,
         projectName: p.name,
@@ -161,13 +171,34 @@ function apiProvider(): SceneDataProvider {
       fetchedAt.value = new Date().toISOString();
       alarmRecordCount.value = rawAlarms.length;
       loaded = true;
+      scope = startedIn;
     } catch (e) {
+      if (!current()) return;
       error.value = (e as Error).message;
       throw e;
     } finally {
-      loading.value = false;
+      if (mine === seq) loading.value = false;
     }
   }
+
+  /** Identity / grants changed: drop everything of the previous scope at once, reload if logged in. */
+  function resetScope(authenticated: boolean) {
+    if (scope === scopeGeneration) return;
+    scope = scopeGeneration;
+    seq++; // any in-flight load of the previous scope is now stale
+    inFlight = null;
+    loaded = false;
+    projects.value = [];
+    devices.value = [];
+    events.value = [];
+    fetchedAt.value = '';
+    alarmRecordCount.value = null;
+    error.value = '';
+    loading.value = authenticated;
+    if (authenticated) void load().catch(() => undefined);
+  }
+  if (typeof window !== 'undefined')
+    window.addEventListener('cloud-identity-changed', (e) => resetScope(!!(e as CustomEvent<{ authenticated: boolean }>).detail?.authenticated));
 
   return {
     mode: 'api',

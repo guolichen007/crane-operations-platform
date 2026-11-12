@@ -6,9 +6,32 @@ export const webSession = shallowRef<WebSession | null>(null);
 let pending: Promise<WebSession | null> | undefined;
 let generation = 0;
 
+/**
+ * Data-scope identity of a session: the user AND the exact project grants (project:role). Any change —
+ * another account, a revoked/added grant, a role change, logout — is a new data scope: everything
+ * loaded for the previous one (scene provider, query cache, page-local polls) must be dropped
+ * (Q4-QA-R1). null = no session.
+ */
+export function sessionScopeKey(session: WebSession | null): string | null {
+  if (!session) return null;
+  return `${session.userId}|${session.projects.map((p) => `${p.projectId}:${p.role}`).sort().join(',')}`;
+}
+let scopeKey: string | null | undefined; // undefined = no session seen yet in this SPA lifetime
+/** Monotonic counter of data scopes; loaders compare it before writing a late response. */
+export let scopeGeneration = 0;
+function setSession(value: WebSession | null) {
+  const next = sessionScopeKey(value);
+  const changed = scopeKey !== undefined && next !== scopeKey;
+  scopeKey = next;
+  if (changed) scopeGeneration++;
+  webSession.value = value;
+  // Dispatched after the new session is visible, so listeners reload under the new identity.
+  if (changed) window.dispatchEvent(new CustomEvent('cloud-identity-changed', { detail: { authenticated: value !== null } }));
+}
+
 export function clearWebSession() {
   generation++;
-  webSession.value = null;
+  setSession(null);
   pending = undefined;
   window.dispatchEvent(new Event('cloud-session-expired'));
 }
@@ -31,7 +54,7 @@ export function queryWebSession(): Promise<WebSession | null> {
       if (!response.ok) throw Error('登录会话暂不可用');
       const value = await response.json() as WebSession;
       if (currentGeneration !== generation) return null;
-      webSession.value = value;
+      setSession(value);
       return webSession.value;
     } finally {
       if (currentGeneration === generation) pending = undefined;

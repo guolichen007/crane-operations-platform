@@ -64,6 +64,11 @@ function sessionExpired() {
   current.value = undefined;
   devices.value = [];
 }
+function identityChanged(e: Event) {
+  sessionExpired();
+  void live.stop();
+  if ((e as CustomEvent<{ authenticated: boolean }>).detail?.authenticated) void refresh();
+}
 watch(detail, () => {
   ++revision;
   current.value = undefined;
@@ -81,6 +86,7 @@ onMounted(async () => {
   poll = setInterval(() => void refresh(), 15000);
   window.addEventListener('cloud-authenticated', refresh);
   window.addEventListener('cloud-session-expired', sessionExpired);
+  window.addEventListener('cloud-identity-changed', identityChanged);
 });
 onUnmounted(() => {
   disposed = true;
@@ -88,6 +94,7 @@ onUnmounted(() => {
   clearInterval(poll);
   window.removeEventListener('cloud-authenticated', refresh);
   window.removeEventListener('cloud-session-expired', sessionExpired);
+  window.removeEventListener('cloud-identity-changed', identityChanged);
   void live.dispose();
 });
 const asset = computed(() =>

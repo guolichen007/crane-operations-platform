@@ -20,6 +20,16 @@ export function useCloudQuery<T>(load: () => Promise<T>) {
       if (!disposed && request === version) loading.value = false;
     }
   }
+  // Login identity / grants changed (cloud/session.ts): drop the previous scope's data at once and
+  // reload as the new identity; the version bump discards a late response of the old one.
+  function identityChanged(e: Event) {
+    ++version;
+    data.value = undefined;
+    error.value = '';
+    loading.value = true;
+    // Logout / expiry: 'cloud-session-expired' follows and sets the signed-out state.
+    if (!disposed && (e as CustomEvent<{ authenticated: boolean }>).detail?.authenticated) void refresh();
+  }
   function invalidate() {
     ++version;
     data.value = undefined;
@@ -31,6 +41,7 @@ export function useCloudQuery<T>(load: () => Promise<T>) {
     timer = setInterval(() => void refresh(), 15000);
     window.addEventListener('cloud-authenticated', refresh);
     window.addEventListener('cloud-session-expired', invalidate);
+    window.addEventListener('cloud-identity-changed', identityChanged);
   });
   onUnmounted(() => {
     disposed = true;
@@ -38,6 +49,7 @@ export function useCloudQuery<T>(load: () => Promise<T>) {
     clearInterval(timer);
     window.removeEventListener('cloud-authenticated', refresh);
     window.removeEventListener('cloud-session-expired', invalidate);
+    window.removeEventListener('cloud-identity-changed', identityChanged);
   });
   return { data, error, loading, refresh };
 }

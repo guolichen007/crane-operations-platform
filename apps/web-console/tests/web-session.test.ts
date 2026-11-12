@@ -67,3 +67,23 @@ it('an in-flight session query cannot restore identity after logout or expiry', 
   expect(await query).toBeNull();
   expect(session.webSession.value).toBeNull();
 });
+
+it('Q4-QA-R1: a different account or changed grants is a new data scope (one event per change, none for the same scope)', async () => {
+  let reply: unknown = sample;
+  vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockImplementation(async () => Response.json(reply)));
+  const session = await import('../src/cloud/session');
+  const events: boolean[] = [];
+  window.addEventListener('cloud-identity-changed', (e) => events.push((e as CustomEvent<{ authenticated: boolean }>).detail.authenticated));
+  await session.queryWebSession(); // first login in this SPA lifetime: nothing to drop
+  await session.queryWebSession(); // same user, same grants (idle re-check): nothing to drop
+  expect(events).toEqual([]);
+  const g0 = session.scopeGeneration;
+  reply = { ...sample, projects: [{ ...sample.projects[0], role: 'operator' }] }; // role change
+  await session.queryWebSession();
+  reply = { ...sample, userId: 'other-user' }; // another account
+  await session.queryWebSession();
+  session.clearWebSession(); // logout
+  expect(events).toEqual([true, true, false]);
+  expect(session.scopeGeneration).toBe(g0 + 3);
+  expect(session.sessionScopeKey({ ...sample, projects: [...sample.projects].reverse() })).toBe(session.sessionScopeKey(sample));
+});
