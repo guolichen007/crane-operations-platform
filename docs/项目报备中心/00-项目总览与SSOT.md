@@ -5,9 +5,9 @@ BAOBEI_MAIN_MERGE=FORBIDDEN
 BAOBEI_R2_MERGE=FORBIDDEN
 BASE_SHA=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18
 BRANCH=product/baobei-v1
-CURRENT_BATCH=G4_S5_R0_NAVIGATION_FEEDBACK_BRAND
+CURRENT_BATCH=G4_S5_R1E_IDENTITY_REALM_ACCOUNTS
 DEPLOYED_SHA=7b9558084d73f5210cdd08e8240883ecc1659de8
-SCHEMA_VERSION=00005
+SCHEMA_VERSION=00006
 RELEASE_SHA=572c6aa609e06419b832f7652e73bf29e8c65c37
 CODE_SHA=ca41c3ba090a7dc17120f6565d0a54a2f8d644fd
 SERVER_PRECHECK=NOT_RUN
@@ -19,7 +19,11 @@ PRODUCTION_DEPLOYED=YES (7b95580; G4-S4 未部署)
 
 目标：快速报项目、识别重复、明确归属并跟进。独立产品，永不合并 main/R2。
 
-## 当前实施：G4-S5-R0 视图切换、导航、弹窗反馈与 U·DAO 品牌
+## 当前实施：G4-S5-R1-E 身份迁移与管理员账号闭环
+
+基线 `7dbbf63`。独立 `baobei` Realm（受控白名单选择）、身份纪元与会话隔离（迁移 00006）、业务 subject 不变 + identity_links 映射、受限账号服务（开户/重置/换手机号/停用/恢复，一次性临时密码不入库）、11 位手机号登录与首次强制改密、只读名单工具与切换/回切演练。仅代码与隔离验证，生产未改。见 [41-G4-S5-R1-E身份迁移与管理员账号闭环验收](41-G4-S5-R1-E身份迁移与管理员账号闭环验收.md)。
+
+## 历史：G4-S5-R0 视图切换、导航、弹窗反馈与 U·DAO 品牌
 
 基线 `59fc14e`。阶段 A 完整功能动作审计与 R0 交付见 [40-G4-S5阶段A完整功能动作审计](40-G4-S5阶段A完整功能动作审计.md)。R1（手机号+密码登录、真实开户与密码生命周期、受限身份服务）与 R2（团队/人员/项目生命周期与全业务 E2E）需另行审查后开工。
 

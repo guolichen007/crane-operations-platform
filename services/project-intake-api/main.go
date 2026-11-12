@@ -18,10 +18,17 @@ import (
 type Config struct {
 	Env, Addr, Origin, Issuer, ClientID, Secret string
 	Dev                                         bool
+	// Realm: the approved realm name selected for a deployed environment.
+	Realm string
+	// Account service (dedicated realm only): client credentials for the Baobei
+	// realm's admin API. Never set for the shared realm.
+	AccountClientID, AccountSecret string
 }
 
 func config() (Config, error) {
-	c := Config{os.Getenv("APP_ENV"), os.Getenv("LISTEN_ADDR"), os.Getenv("PUBLIC_ORIGIN"), os.Getenv("OIDC_ISSUER"), os.Getenv("OIDC_CLIENT_ID"), envSecret("OIDC_CLIENT_SECRET"), os.Getenv("DEV_AUTH") == "1"}
+	c := Config{Env: os.Getenv("APP_ENV"), Addr: os.Getenv("LISTEN_ADDR"), Origin: os.Getenv("PUBLIC_ORIGIN"), Issuer: os.Getenv("OIDC_ISSUER"),
+		ClientID: os.Getenv("OIDC_CLIENT_ID"), Secret: envSecret("OIDC_CLIENT_SECRET"), Dev: os.Getenv("DEV_AUTH") == "1",
+		Realm: os.Getenv("BAOBEI_IDENTITY_REALM"), AccountClientID: os.Getenv("BAOBEI_ACCOUNT_CLIENT_ID"), AccountSecret: envSecret("BAOBEI_ACCOUNT_CLIENT_SECRET")}
 	if c.Addr == "" {
 		c.Addr = "127.0.0.1:8088"
 	}
@@ -37,13 +44,27 @@ func config() (Config, error) {
 			return c, fmt.Errorf("dev auth requires development and loopback listen")
 		}
 	}
-	// Each deployed environment accepts exactly its own origin, issuer and
-	// client; a production value in preview (or the reverse) is rejected.
-	if p, ok := deployedProfiles[c.Env]; ok && (c.Origin != p.Origin || c.Issuer != p.Issuer || c.ClientID != p.ClientID || c.Secret == "") {
-		return c, fmt.Errorf("%s OIDC configuration required", c.Env)
+	// Each deployed environment accepts exactly its own origin and one approved
+	// realm (issuer + client) chosen by BAOBEI_IDENTITY_REALM. OIDC_ISSUER and
+	// OIDC_CLIENT_ID must repeat that realm's exact values, so changing only the
+	// Compose issuer (or only the realm name) refuses to start.
+	if p, ok := deployedProfiles[c.Env]; ok {
+		r, err := selectRealm(c.Env, c.Realm)
+		if err != nil {
+			return c, err
+		}
+		if c.Origin != p.Origin || c.Issuer != r.Issuer || c.ClientID != r.ClientID || c.Secret == "" {
+			return c, fmt.Errorf("%s OIDC configuration required", c.Env)
+		}
+		if r.AccountService != (c.AccountClientID != "") || r.AccountService && (c.AccountClientID != accountServiceClientID || c.AccountSecret == "") {
+			return c, fmt.Errorf("%s account service configuration does not match realm %q", c.Env, c.Realm)
+		}
 	}
 	return c, nil
 }
+
+const accountServiceClientID = "baobei-account-service"
+
 func main() {
 	command := ""
 	if len(os.Args) > 1 {
@@ -52,6 +73,8 @@ func main() {
 			command = "identity-apply"
 		case len(os.Args) >= 3 && os.Args[1] == "maintenance" && os.Args[2] == "staff-provision":
 			command = "staff-provision"
+		case len(os.Args) >= 3 && os.Args[1] == "maintenance" && os.Args[2] == "identity-switch":
+			command = "identity-switch"
 		case len(os.Args) == 3 && os.Args[1] == "maintenance" && (os.Args[2] == "migrate" || os.Args[2] == "protection-sweep"):
 			command = os.Args[2]
 		default:
@@ -115,6 +138,11 @@ func main() {
 			log.Fatal(e)
 		}
 		return
+	case "identity-switch":
+		if e = identitySwitchCommand(ctx, pool, c.Env, os.Args[3:], os.Stdout); e != nil {
+			log.Fatal(e)
+		}
+		return
 	case "protection-sweep":
 		n, e := (&App{db: pool, cfg: c}).protectionSweep(ctx, time.Now().UTC())
 		if e != nil {
@@ -123,9 +151,27 @@ func main() {
 		fmt.Printf("protection sweep updated=%d\n", n)
 		return
 	}
+	// Fail closed: the database must trust exactly this API's issuer (set by the
+	// controlled identity-switch command); otherwise refuse to serve.
+	issuer := c.Issuer
+	if issuer == "" {
+		issuer = devIssuer
+	}
+	verifyEpoch, cancelEpoch := context.WithTimeout(ctx, 10*time.Second)
+	e = verifyIdentityEpoch(verifyEpoch, pool, c.Env, issuer)
+	cancelEpoch()
+	if e != nil {
+		log.Fatal("identity epoch rejected: the database trusts another issuer")
+	}
 	a, e := newApp(ctx, pool, c)
 	if e != nil {
 		log.Fatal("authentication initialization failed")
+	}
+	if r, err := selectRealm(c.Env, c.Realm); err == nil && r.AccountService {
+		if a.accounts, e = newKeycloakAdmin(c.Issuer, c.ClientID, c.AccountClientID, c.AccountSecret, nil); e != nil {
+			log.Fatal("account service configuration rejected")
+		}
+		a.linkedOnly = true
 	}
 	if deployed(c.Env) {
 		var err error
@@ -147,6 +193,7 @@ func main() {
 		}
 	}
 	if c.Dev {
+		a.accounts = newDevAccounts()
 		if e = seed(ctx, pool); e != nil {
 			log.Fatal("synthetic identity seed failed")
 		}

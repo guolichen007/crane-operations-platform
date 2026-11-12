@@ -136,6 +136,8 @@ func TestDatabaseProductionPrivileges(t *testing.T) {
 		"UPDATE project_create_requests SET request_hash=repeat('a',64)",
 		"UPDATE intake_projects SET created_by_subject='synthetic-a'",
 		"DELETE FROM audit_events",
+		"SELECT * FROM account_operations", "INSERT INTO identity_links VALUES('i','aaaaaaaa-0000-4000-8000-000000000001','synthetic-a')",
+		"UPDATE identity_epoch SET issuer='forged'", "UPDATE app_users SET account_state='READY'",
 	} {
 		deny(runtime, sql)
 	}
@@ -150,9 +152,29 @@ func TestDatabaseProductionPrivileges(t *testing.T) {
 	}
 
 	// Drive the real HTTP handlers against a restricted login using synthetic actors.
-	for _, sql := range []string{"UPDATE app_users SET subject='forbidden'", "UPDATE intake_projects SET document='{}'", "UPDATE intake_projects SET created_by_subject='forbidden'", "CREATE TABLE forbidden(id int)", "UPDATE project_submissions SET evidence_state='COMPLETE'", "SELECT document FROM project_submissions"} {
+	// G4-S5-R1-E: the staff role may bind a placeholder subject to a Keycloak UUID,
+	// but a bound subject is immutable (trigger BB002), for any target value.
+	for _, sql := range []string{"UPDATE app_users SET subject='forbidden'",
+		"UPDATE app_users SET subject='aaaaaaaa-0000-4000-8000-0000000000aa' WHERE subject='synthetic-manager'"} {
+		_, err := staff.Exec(ctx, sql)
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || pgErr.Code != "BB002" && pgErr.Code != "42501" {
+			t.Fatalf("bound subject changed by %q: %v", sql, err)
+		}
+	}
+	for _, sql := range []string{
+		"DELETE FROM identity_epoch", "UPDATE identity_epoch SET epoch=epoch+1", "DELETE FROM account_operations", "UPDATE intake_projects SET document='{}'", "UPDATE intake_projects SET created_by_subject='forbidden'", "CREATE TABLE forbidden(id int)", "UPDATE project_submissions SET evidence_state='COMPLETE'", "SELECT document FROM project_submissions"} {
 		deny(staff, sql)
 	}
+	// The identity epoch is set by the maintenance role (production identity-switch
+	// path); the runtime role can read it but cannot change it.
+	if _, _, _, err := switchIdentity(ctx, maintenance, devIssuer, "privilege-test", "测试：设定信任的签发方"); err != nil {
+		t.Fatal("maintenance identity-switch:", err)
+	}
+	if err := verifyIdentityEpoch(ctx, runtime, "production", devIssuer); err != nil {
+		t.Fatal("runtime cannot read the identity epoch:", err)
+	}
+	deny(runtime, "UPDATE identity_epoch SET epoch=epoch+1")
 	app := &App{db: runtime, staffDB: staff, cfg: Config{Env: "development", Dev: true}}
 	server := httptest.NewServer(app.handler())
 	defer server.Close()
@@ -168,7 +190,8 @@ func TestDatabaseProductionPrivileges(t *testing.T) {
 	if outcome, err := applyProvisionReceipt(ctx, maintenance, mustJSON(receipt), "synthetic-operator", false); err != nil || outcome != staffActivation {
 		t.Fatal(outcome, err)
 	}
-	mustExec(runtime, `INSERT INTO app_sessions VALUES($1,'synthetic-manager','synthetic',now()+interval '1 hour')`, hash("synthetic-forged-session"))
+	mustExec(runtime, `INSERT INTO app_sessions(token_hash,subject,csrf,expires_at,issuer,identity_epoch)
+ SELECT $1,'synthetic-manager','synthetic',now()+interval '1 hour',issuer,epoch FROM identity_epoch`, hash("synthetic-forged-session"))
 	request := httptest.NewRequest("GET", server.URL+"/api/v1/staff", nil)
 	request.AddCookie(&http.Cookie{Name: app.cookieName(), Value: "synthetic-forged-session"})
 	recorded := httptest.NewRecorder()

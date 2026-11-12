@@ -122,7 +122,7 @@ func prepareDatabase(ctx context.Context, pool *pgxpool.Pool, environment, comma
 	switch command {
 	case "migrate":
 		role = "baobei_migrator"
-	case "identity-apply", "staff-provision":
+	case "identity-apply", "staff-provision", "identity-switch":
 		role = "baobei_maintenance"
 	}
 	if err := verifyDatabaseRole(ctx, pool, role, command == "migrate"); err != nil {

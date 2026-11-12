@@ -33,6 +33,28 @@ type App struct {
 	verifier *oidc.IDTokenVerifier
 	// Keycloak RP-initiated logout endpoint (discovery end_session_endpoint).
 	endSession string
+	// accounts: Baobei account service for the dedicated realm (nil otherwise).
+	accounts accountProvider
+	// linkedOnly: under the dedicated realm a Keycloak sub signs in only through an
+	// identity_links row; under the shared realm sub is the business subject itself.
+	linkedOnly bool
+}
+
+// businessSubject maps a verified token subject to the Baobei identity.
+func (a *App) businessSubject(ctx context.Context, sub string) (string, error) {
+	pool := a.staffPool()
+	if pool == nil {
+		pool = a.db
+	}
+	var subject string
+	err := pool.QueryRow(ctx, `SELECT subject FROM identity_links WHERE issuer=$1 AND external_subject=$2`, a.sessionIssuer(), sub).Scan(&subject)
+	if errors.Is(err, pgx.ErrNoRows) {
+		if a.linkedOnly {
+			return "", loginNotProvisioned
+		}
+		return sub, nil
+	}
+	return subject, err
 }
 
 func newApp(ctx context.Context, db *pgxpool.Pool, c Config) (*App, error) {
@@ -63,6 +85,18 @@ func randomToken() string {
 	return base64.RawURLEncoding.EncodeToString(b[:])
 }
 func hash(s string) string { h := sha256.Sum256([]byte(s)); return hex.EncodeToString(h[:]) }
+
+// sessionIssuer: the issuer sessions of this API are stamped with. Development
+// without OIDC uses a fixed local marker.
+func (a *App) sessionIssuer() string {
+	if a.cfg.Issuer != "" {
+		return a.cfg.Issuer
+	}
+	return devIssuer
+}
+
+const devIssuer = "http://127.0.0.1/dev-identity"
+
 func (a *App) cookieName() string {
 	if deployed(a.cfg.Env) {
 		return "__Host-baobei_session"
@@ -80,7 +114,12 @@ func (a *App) user(r *http.Request) (User, error) {
 	}
 	u.sessionHash = hash(c.Value)
 	var mask int
-	e = a.db.QueryRow(r.Context(), `SELECT u.subject,u.display_name,u.role,coalesce(u.team_id::text,''),s.csrf,u.staff_permissions FROM app_sessions s JOIN app_users u ON u.subject=s.subject WHERE s.token_hash=$1 AND s.expires_at>now() AND u.active`, u.sessionHash).Scan(&u.Subject, &u.Name, &u.Role, &u.TeamID, &u.CSRF, &mask)
+	// A session is valid only under the issuer and epoch this database trusts now
+	// (identity_epoch): a session from another realm or an earlier epoch is dead
+	// even if its row was somehow not deleted at the switch.
+	e = a.db.QueryRow(r.Context(), `SELECT u.subject,u.display_name,u.role,coalesce(u.team_id::text,''),s.csrf,u.staff_permissions
+ FROM app_sessions s JOIN app_users u ON u.subject=s.subject JOIN identity_epoch i ON i.issuer=s.issuer AND i.epoch=s.identity_epoch
+ WHERE s.token_hash=$1 AND s.expires_at>now() AND u.active`, u.sessionHash).Scan(&u.Subject, &u.Name, &u.Role, &u.TeamID, &u.CSRF, &mask)
 	u.Permissions = capabilityList(mask)
 	return u, e
 }
@@ -162,9 +201,15 @@ func (a *App) sessionAt(w http.ResponseWriter, r *http.Request, subject string, 
 	if _, e = tx.Exec(r.Context(), `DELETE FROM app_sessions WHERE expires_at<now()`); e != nil {
 		return e
 	}
-	if _, e = tx.Exec(r.Context(), `INSERT INTO app_sessions(token_hash,subject,csrf,expires_at)
-    VALUES($1,$2,$3,now()+interval '8 hours')`, hash(token), subject, csrf); e != nil {
+	// The session is stamped with the current trusted issuer and epoch; if this
+	// API's issuer is not the one the database trusts, no session is created.
+	tag, e := tx.Exec(r.Context(), `INSERT INTO app_sessions(token_hash,subject,csrf,expires_at,issuer,identity_epoch)
+    SELECT $1,$2,$3,now()+interval '8 hours',i.issuer,i.epoch FROM identity_epoch i WHERE i.issuer=$4`, hash(token), subject, csrf, a.sessionIssuer())
+	if e != nil {
 		return e
+	}
+	if tag.RowsAffected() != 1 {
+		return loginSessionUnavailable
 	}
 	if staffRole(currentRole) {
 		if _, e = tx.Exec(r.Context(), `INSERT INTO staff_sessions(token_hash,subject,reauthenticated_at) VALUES($1,$2,$3)`, hash(token), subject, at); e != nil {
@@ -207,6 +252,44 @@ func (a *App) auth(w http.ResponseWriter, r *http.Request) {
 		if e := a.sessionAt(w, r, b.Subject, &at, nil); e != nil {
 			if errors.Is(e, errIdentityDenied) {
 				fail(w, 403, "FORBIDDEN", "测试身份未启用")
+				return
+			}
+			fail(w, 503, "SESSION_UNAVAILABLE", "登录暂时不可用")
+			return
+		}
+		respond(w, 200, map[string]bool{"ok": true})
+	case "/auth/dev-phone":
+		// Development only: sign in as an account created by the in-memory account
+		// service (same rules as the realm: enabled, exact single role, UUID bound).
+		dev, ok := a.accounts.(*devAccounts)
+		if r.Method != "POST" || !a.cfg.Dev || !ok {
+			fail(w, 404, "NOT_FOUND", "入口不存在")
+			return
+		}
+		if r.Header.Get("Origin") != a.cfg.Origin {
+			fail(w, 403, "CSRF_INVALID", "请求来源不允许")
+			return
+		}
+		var b struct {
+			Phone string `json:"phone"`
+		}
+		if !decode(w, r, &b) {
+			return
+		}
+		id, ok := dev.signIn(b.Phone)
+		if !ok {
+			fail(w, 403, string(loginNotProvisioned), "账号或密码不正确")
+			return
+		}
+		roles, _ := dev.roles(r.Context(), id)
+		subject, e := a.businessSubject(r.Context(), id)
+		if e == nil {
+			e = a.sessionAt(w, r, subject, nil, &loginEmail{}, roles...)
+		}
+		if e != nil {
+			var reason loginFailure
+			if errors.As(e, &reason) {
+				fail(w, 403, string(reason), "登录未完成")
 				return
 			}
 			fail(w, 503, "SESSION_UNAVAILABLE", "登录暂时不可用")
@@ -270,6 +353,15 @@ func (a *App) logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.cookie(w, a.cookieName(), "", -1)
+	// Dedicated realm: Baobei is its only application, so the member's Keycloak
+	// sessions end too and the next sign-in starts from an empty phone/password
+	// form (another person can sign in). Never done for the shared realm.
+	if a.accounts != nil && a.linkedOnly {
+		var ext string
+		if a.db.QueryRow(r.Context(), `SELECT external_subject FROM identity_links WHERE issuer=$1 AND subject=$2`, a.sessionIssuer(), u.Subject).Scan(&ext) == nil {
+			_ = a.accounts.logout(context.WithoutCancel(r.Context()), ext)
+		}
+	}
 	respond(w, 200, result)
 }
 func (a *App) csrf(w http.ResponseWriter, r *http.Request, u User) bool {

@@ -53,13 +53,27 @@ export function validateProduction(c) {
   assert.equal(String(env.DEV_AUTH), '0');
   assert.equal(env.PUBLIC_ORIGIN, 'https://baobei.youdaozd.com');
   assert.equal(env.OIDC_CLIENT_ID, 'baobei-web');
-  assert.equal(env.OIDC_ISSUER, 'https://crane.youdaozd.com/realms/crane');
+  // Approved realm selection: the shared realm by default; the dedicated realm
+  // only through compose.realm-baobei.yaml (checked below), never an arbitrary issuer.
+  const realms = {
+    crane: { issuer: 'https://crane.youdaozd.com/realms/crane', account: false },
+    baobei: { issuer: 'https://crane.youdaozd.com/realms/baobei', account: true },
+  };
+  const realm = realms[env.BAOBEI_IDENTITY_REALM];
+  assert(realm, 'BAOBEI_IDENTITY_REALM must be an approved realm');
+  assert.equal(env.OIDC_ISSUER, realm.issuer);
+  assert.equal(Boolean(env.BAOBEI_ACCOUNT_CLIENT_ID), realm.account, 'account service only for the dedicated realm');
+  if (realm.account) {
+    assert.equal(env.BAOBEI_ACCOUNT_CLIENT_ID, 'baobei-account-service');
+    assert.equal(env.BAOBEI_ACCOUNT_CLIENT_SECRET_FILE, '/run/secrets/account_client_secret');
+    assert(!env.BAOBEI_ACCOUNT_CLIENT_SECRET);
+  }
   assert(env.OIDC_CLIENT_SECRET_FILE && !env.OIDC_CLIENT_SECRET);
   assert(!env.DATABASE_URL);
   assert.equal(env.STAFF_DATABASE_URL_FILE, '/run/secrets/staff_database_url');
   assert.equal(env.DATABASE_URL_FILE, '/run/secrets/runtime_database_url');
   assert.deepEqual(s['baobei-api'].secrets.map(secret => secret.source).sort(),
-    ['oidc_client_secret', 'runtime_database_url', 'staff_database_url']);
+    (realm.account ? ['account_client_secret'] : []).concat(['oidc_client_secret', 'runtime_database_url', 'staff_database_url']).sort());
   assert.equal(s['baobei-postgres'].environment.POSTGRES_USER, 'baobei_bootstrap');
   assert(s['baobei-postgres'].volumes.some(volume =>
     volume.target === '/docker-entrypoint-initdb.d/10-baobei-roles.sql' && volume.read_only));

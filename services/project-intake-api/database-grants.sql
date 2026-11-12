@@ -51,3 +51,14 @@ GRANT UPDATE (project_name,normalized_project_name,owner_subject,team_id,intake_
  protection_status,information_source,confidence_level,project_type,estimated_amount,expected_purchase_date,
  last_activity_at,next_followup_at,version,updated_at,document,protected_until,next_review_at,
  submitted_by_subject,submission_revision,protection_started_at,next_action) ON intake_projects TO baobei_runtime;
+
+-- G4-S5-R1-E: identity epoch and account service.
+GRANT SELECT ON identity_epoch TO baobei_runtime, baobei_staff_api;
+GRANT SELECT (issuer,external_subject,subject) ON identity_links TO baobei_runtime;
+GRANT SELECT, INSERT, UPDATE ON identity_epoch TO baobei_maintenance;
+GRANT SELECT (issuer,identity_epoch) ON app_sessions TO baobei_staff_api;
+GRANT SELECT, UPDATE (state,keycloak_user_id,detail,finished_at), INSERT ON account_operations TO baobei_staff_api;
+GRANT UPDATE (account_state,account_must_change_password,subject) ON app_users TO baobei_staff_api;
+GRANT SELECT ON account_operations TO baobei_maintenance;
+GRANT SELECT, INSERT, DELETE ON identity_links TO baobei_staff_api;
+GRANT SELECT ON identity_links TO baobei_maintenance;

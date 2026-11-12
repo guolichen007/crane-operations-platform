@@ -16,12 +16,22 @@ export const statuses: Record<string, string> = {
 
 // Status shown in lists: "待开通" splits into "awaiting review" and "in progress"
 // once an administrator approved this exact version.
-export function statusLabel(m: Pick<StaffMember, 'status' | 'provisionReviewed'>) {
+export function statusLabel(m: Pick<StaffMember, 'status' | 'provisionReviewed'> & Partial<Pick<StaffMember, 'accountState'>>) {
+  if (m.accountState === 'FAILED' && m.status !== 'SUSPENDED') return '开通失败';
+  if (m.accountState === 'NONE' && m.status === 'PENDING_PROVISION') return '待开通';
   return m.status === 'PENDING_PROVISION' && m.provisionReviewed ? '待身份核验' : statuses[m.status] ?? m.status;
 }
 
 // The next step for each state, in the words of the person who must act.
-export function nextStep(m: Pick<StaffMember, 'status' | 'provisionReviewed' | 'syncStatus'>, admin: boolean): string {
+export function nextStep(m: Pick<StaffMember, 'status' | 'provisionReviewed' | 'syncStatus'> & Partial<Pick<StaffMember, 'accountState' | 'mustChangePassword'>>,
+  admin: boolean, accountService = false): string {
+  if (accountService) {
+    if (m.status === 'SUSPENDED') return admin ? '可恢复登录或归档' : '';
+    if (m.accountState === 'FAILED') return admin ? '开通未完成，可重新开通' : '等待管理员处理';
+    if (m.accountState === 'NONE' || m.accountState === 'CREATING') return admin ? '请开通登录账号' : '等待管理员开通登录账号';
+    if (m.status === 'PENDING_ACTIVATION' || m.mustChangePassword) return '等待成员用手机号和初始密码首次登录并修改密码';
+    return '';
+  }
   switch (m.status) {
     case 'PENDING_PROVISION':
       if (!admin) return '等待管理员审核开通';
@@ -63,6 +73,12 @@ export const staffEvents: Record<string, string> = {
   'staff.provision.ack-suspend': '核对停用回执',
   'staff.provision.fail': '登记处理失败',
   'staff.provision.review': '审核开通（业务批准）',
+  'staff.account.create': '开通登录账号',
+  'staff.account.reset-password': '重置登录密码',
+  'staff.account.change-phone': '更换登录手机号',
+  'staff.account.disable': '停用登录',
+  'staff.account.enable': '恢复登录',
+  'staff.account.sync-role': '同步登录角色',
 };
 
 export interface StaffMember {
@@ -85,6 +101,9 @@ export interface StaffMember {
   identityVerified: boolean;
   roleChanged: boolean;
   provisionReviewed: boolean;
+  accountState: string;
+  mustChangePassword: boolean;
+  loginName?: string;
 }
 
 export interface StaffProject {

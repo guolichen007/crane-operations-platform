@@ -1,0 +1,13 @@
+/* U·DAO 友道智造 — Baobei realm login. Light, quiet, one accent (brand amber dot). */
+:root { --udao-ink: #1b2430; --udao-blue: #173f74; --udao-amber: #e2a20e; --udao-steel: #f2f4f7; }
+.login-pf body, .pf-v5-c-login { background: var(--udao-steel) !important; }
+.pf-v5-c-login__header, #kc-header, #kc-header-wrapper { color: var(--udao-ink) !important; text-transform: none !important; letter-spacing: 0 !important; }
+.udao-brand { display: inline-flex; align-items: center; gap: 12px; text-align: left; }
+.udao-brand b { color: var(--udao-blue); font-size: 22px; letter-spacing: 0.04em; }
+.udao-brand small { display: block; font-size: 14px; letter-spacing: 0.12em; color: #3c4757; margin-top: 4px; font-weight: 600; }
+.pf-v5-c-login__main { border-top: 3px solid var(--udao-blue) !important; border-radius: 10px; }
+.pf-v5-c-button.pf-m-primary { background: var(--udao-blue) !important; }
+#username { letter-spacing: 0.06em; }
+.udao-mark { display: inline-block; width: 40px; height: 40px; background: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3QgeD0iMSIgeT0iMSIgd2lkdGg9IjQ2IiBoZWlnaHQ9IjQ2IiByeD0iMTAiIGZpbGw9IiMxNzNmNzQiLz48cGF0aCBkPSJNMTQgMTF2MTVhMTAgMTAgMCAwIDAgMjAgMFYxMU0xMCAxMWg4TTMwIDExaDgiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz48Y2lyY2xlIGN4PSIyNCIgY3k9IjI2IiByPSI0IiBmaWxsPSIjZTJhMjBlIi8+PC9zdmc+Cg==") center / contain no-repeat; }
+/* Single language for this realm: no locale picker. */
+#kc-locale, .pf-v5-c-login__main-header-utilities { display: none !important; }

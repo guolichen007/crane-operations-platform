@@ -14,12 +14,45 @@ import (
 // only its OIDC identity and database marker differ. Each deployed
 // environment has its own exact allow-list and the lists never overlap.
 type deployedProfile struct {
-	Origin, Issuer, ClientID string
+	Origin string
+	// Realms the environment may be switched between. Exactly one is active at a
+	// time (BAOBEI_IDENTITY_REALM), chosen from this fixed list: an arbitrary
+	// issuer URL is never accepted. Each realm has its own issuer and client.
+	Realms map[string]realmProfile
+}
+
+type realmProfile struct {
+	Issuer, ClientID string
+	// AccountService: the dedicated realm has a Baobei account service client;
+	// the shared realm does not (no admin API access there, ever).
+	AccountService bool
 }
 
 var deployedProfiles = map[string]deployedProfile{
-	"production": {"https://baobei.youdaozd.com", "https://crane.youdaozd.com/realms/crane", "baobei-web"},
-	"preview":    {"https://baobei-preview.youdaozd.com", "https://crane.youdaozd.com/realms/baobei-preview", "baobei-preview-web"},
+	"production": {Origin: "https://baobei.youdaozd.com", Realms: map[string]realmProfile{
+		// G4-S5-R1-E: dedicated Baobei realm (target) and the shared crane realm
+		// (current, and the fallback for a controlled switch back).
+		"baobei": {Issuer: "https://crane.youdaozd.com/realms/baobei", ClientID: "baobei-web", AccountService: true},
+		"crane":  {Issuer: "https://crane.youdaozd.com/realms/crane", ClientID: "baobei-web"},
+	}},
+	"preview": {Origin: "https://baobei-preview.youdaozd.com", Realms: map[string]realmProfile{
+		// Preview keeps its isolated realm without the account service until an
+		// approved preview deployment provides one.
+		"baobei-preview": {Issuer: "https://crane.youdaozd.com/realms/baobei-preview", ClientID: "baobei-preview-web"},
+	}},
+}
+
+// selectRealm returns the single realm profile an environment trusts.
+func selectRealm(env, realm string) (realmProfile, error) {
+	p, ok := deployedProfiles[env]
+	if !ok {
+		return realmProfile{}, fmt.Errorf("unknown deployed environment")
+	}
+	r, ok := p.Realms[realm]
+	if !ok {
+		return realmProfile{}, fmt.Errorf("%s: BAOBEI_IDENTITY_REALM must be one of the approved realms", env)
+	}
+	return r, nil
 }
 
 // deployed reports whether env must use the hardened (production-equivalent) path.

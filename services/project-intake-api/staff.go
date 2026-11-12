@@ -220,6 +220,11 @@ type staffMember struct {
 	RoleChanged      bool       `json:"roleChanged"`
 	// An administrator approved this exact staff version for controlled provisioning.
 	ProvisionReviewed bool `json:"provisionReviewed"`
+	// Login account (dedicated realm): NONE, CREATING, READY, DISABLED or FAILED.
+	AccountState       string `json:"accountState"`
+	MustChangePassword bool   `json:"mustChangePassword"`
+	// LoginName: the 11 digits the member signs in with (detail only).
+	LoginName string `json:"loginName,omitempty"`
 }
 type staffProject struct {
 	ID      string `json:"id"`
@@ -249,7 +254,8 @@ const staffColumns = `u.staff_id::text,u.subject,u.display_name,coalesce(u.work_
  coalesce((SELECT status FROM staff_outbox o WHERE o.staff_id=u.staff_id ORDER BY o.staff_version DESC,o.created_at DESC LIMIT 1),'NONE'),
  (u.active AND u.staff_managed AND EXISTS(SELECT 1 FROM staff_audit a WHERE a.target_id=u.staff_id AND a.action='staff.activate')),
  EXISTS(SELECT 1 FROM staff_audit a WHERE a.target_id=u.staff_id AND a.action='staff.role-change'),
- EXISTS(SELECT 1 FROM staff_audit a WHERE a.target_id=u.staff_id AND a.action='staff.provision.review' AND a.version=u.staff_version)`
+ EXISTS(SELECT 1 FROM staff_audit a WHERE a.target_id=u.staff_id AND a.action='staff.provision.review' AND a.version=u.staff_version),
+ u.account_state,u.account_must_change_password`
 const staffFrom = ` FROM app_users u LEFT JOIN teams t ON t.id=u.team_id `
 const staffScope = ` ($1 IN ('baobei_admin','baobei_director') OR ($1='baobei_manager' AND u.role='baobei_sales' AND u.team_id::text=$2)) `
 const openProjects = `intake_status NOT IN ('REJECTED','CANCELLED','CONVERTED') AND sales_stage NOT IN ('WON','LOST')`
@@ -257,7 +263,7 @@ const openProjects = `intake_status NOT IN ('REJECTED','CANCELLED','CONVERTED') 
 func scanStaff(row interface{ Scan(...any) error }) (staffMember, error) {
 	var m staffMember
 	var mask int
-	err := row.Scan(&m.ID, &m.Subject, &m.Name, &m.Email, &m.Phone, &m.TeamID, &m.Team, &m.Role, &m.Status, &m.Version, &m.Note, &mask, &m.Projects, &m.LastLogin, &m.SyncStatus, &m.IdentityVerified, &m.RoleChanged, &m.ProvisionReviewed)
+	err := row.Scan(&m.ID, &m.Subject, &m.Name, &m.Email, &m.Phone, &m.TeamID, &m.Team, &m.Role, &m.Status, &m.Version, &m.Note, &mask, &m.Projects, &m.LastLogin, &m.SyncStatus, &m.IdentityVerified, &m.RoleChanged, &m.ProvisionReviewed, &m.AccountState, &m.MustChangePassword)
 	m.Permissions = capabilityList(mask)
 	m.IdentityLinked = validIdentityUUID(m.Subject)
 	// Without an email, the exact Keycloak subject bound by the provisioning receipt
@@ -280,6 +286,9 @@ func readStaff(ctx context.Context, tx pgx.Tx, actor User, id string) (staffMemb
 		return m, staffMissing
 	}
 	m.CanManage = staffWritable(actor, m.Subject, m.Role, m.TeamID) && m.Status != staffArchived
+	if m.AccountState != accountNone {
+		m.LoginName, _ = loginName(m.Phone)
+	}
 	return m, err
 }
 
@@ -840,6 +849,11 @@ func (a *App) staffPool() *pgxpool.Pool {
 func (a *App) staff(w http.ResponseWriter, r *http.Request, actor User) error {
 	if !staffRole(actor.Role) {
 		return staffDenied
+	}
+	// Account operations call the identity provider outside the staff transaction.
+	if parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/v1/staff/"), "/"); r.Method == "POST" &&
+		strings.HasPrefix(r.URL.Path, "/api/v1/staff/") && len(parts) == 3 && parts[1] == "account" {
+		return a.accountAction(w, r, actor, parts[0], parts[2])
 	}
 	pool := a.staffPool()
 	if pool == nil {

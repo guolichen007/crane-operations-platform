@@ -1,0 +1,17 @@
+# G4-S5-R1-E: dedicated Baobei realm. Load after compose.production.yaml only for an
+# authorized identity switch, after `maintenance identity-switch --realm baobei`.
+# The API refuses to start unless BAOBEI_IDENTITY_REALM, OIDC_ISSUER, OIDC_CLIENT_ID
+# and the account service client all match the approved profile, and unless the
+# database identity epoch already trusts this issuer.
+services:
+  baobei-api:
+    environment:
+      BAOBEI_IDENTITY_REALM: baobei
+      OIDC_ISSUER: https://crane.youdaozd.com/realms/baobei
+      OIDC_CLIENT_ID: baobei-web
+      BAOBEI_ACCOUNT_CLIENT_ID: baobei-account-service
+      BAOBEI_ACCOUNT_CLIENT_SECRET_FILE: /run/secrets/account_client_secret
+    secrets: [oidc_client_secret, runtime_database_url, staff_database_url, account_client_secret]
+secrets:
+  account_client_secret:
+    file: ${BAOBEI_SECRETS_DIR:?External secret directory}/account_client_secret

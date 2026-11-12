@@ -32,6 +32,9 @@ services:
       DEV_AUTH: '0'
       LISTEN_ADDR: 0.0.0.0:8088
       PUBLIC_ORIGIN: https://baobei.youdaozd.com
+      # Approved realm selection (see environment.go). This file keeps the shared
+      # realm; compose.realm-baobei.yaml switches to the dedicated Baobei realm.
+      BAOBEI_IDENTITY_REALM: crane
       OIDC_ISSUER: https://crane.youdaozd.com/realms/crane
       OIDC_CLIENT_ID: baobei-web
       OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret

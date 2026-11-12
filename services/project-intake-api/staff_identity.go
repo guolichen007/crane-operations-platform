@@ -195,6 +195,11 @@ func authorizeOIDCSession(ctx context.Context, tx pgx.Tx, subject string, email 
 		// receipt and on exactly one Baobei client role matching the record.
 		return "", loginRoleMissing
 	}
+	// The identity provider has enforced any temporary-password change before
+	// issuing this token; record that the member now has their own password.
+	if _, err = tx.Exec(ctx, `UPDATE app_users SET account_must_change_password=false WHERE staff_id=$1 AND account_must_change_password`, target); err != nil {
+		return "", err
+	}
 	if active {
 		return role, nil
 	}

@@ -88,6 +88,10 @@ const productTables = [
   'project_submissions',
   'project_participations',
   'project_create_requests',
+  // G4-S5-R1-E (00006): identity epoch, issuer-scoped identity links, account operations.
+  'identity_epoch',
+  'identity_links',
+  'account_operations',
 ].sort();
 const tables = (environment === 'preview' ? [...productTables, 'baobei_environment'] : productTables).sort();
 const markerSQL = `(SELECT jsonb_agg(name) FROM baobei_environment)`;

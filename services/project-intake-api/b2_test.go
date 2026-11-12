@@ -54,7 +54,20 @@ func b2Database(t *testing.T) *pgxpool.Pool {
 	if e = seed(ctx, db); e != nil {
 		t.Fatal(e)
 	}
+	// Development API instances trust the local dev issuer (as main() does at start).
+	if e = verifyIdentityEpoch(ctx, db, "development", devIssuer); e != nil {
+		t.Fatal(e)
+	}
 	return db
+}
+
+// trustIssuer switches the test database to a test identity provider's issuer,
+// exactly like the production identity-switch command.
+func trustIssuer(t *testing.T, db *pgxpool.Pool, issuer string) {
+	t.Helper()
+	if _, _, _, err := switchIdentity(context.Background(), db, issuer, "synthetic-operator", "测试身份提供方"); err != nil {
+		t.Fatal(err)
+	}
 }
 func TestDatabaseB2(t *testing.T) {
 	db := b2Database(t)
@@ -275,7 +288,7 @@ func TestDatabaseB2(t *testing.T) {
 		if e = a.storePending(ctx, hash("new"), pendingLogin{"n", "p", "b", time.Now().Add(time.Minute)}); e != errAuthCapacity {
 			t.Fatal(e)
 		}
-		_, e = db.Exec(ctx, `UPDATE oidc_pending_logins SET expires_at=now()-interval '1 second';INSERT INTO app_sessions VALUES('synthetic-expired','synthetic-a','synthetic',now()-interval '1 second')`)
+		_, e = db.Exec(ctx, `UPDATE oidc_pending_logins SET expires_at=now()-interval '1 second';INSERT INTO app_sessions VALUES('synthetic-expired','synthetic-a','synthetic',now()-interval '1 second','http://127.0.0.1/dev-identity',1)`)
 		if e != nil {
 			t.Fatal(e)
 		}

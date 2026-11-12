@@ -9,13 +9,15 @@ import { ApiError } from './api-client';
 import { clearStaffDraft, readStaffDraft, saveStaffDraft, type StaffDraftAction } from './staff-role-draft';
 import { fieldLabels, fieldOrder, serverFieldErrors, validateStaff, type StaffErrors, type StaffField } from './staff-form';
 import { when } from './model';
+import { can } from './navigation';
+import { newIdempotencyKey, accountActions, accountStateLabel, type AccountAction } from './staff-account';
 import {
   capabilities, nextStep, roles, staffEvents, statusLabel, syncStatuses,
   type StaffEvent, type StaffMember, type StaffProject, type StaffTeam,
 } from './staff-model';
 
 type Dialog = 'invite' | 'edit' | 'verify' | 'permissions' | 'suspend' | 'reactivate' | 'retry' | 'archive' | 'transfer' |
-  'promote' | 'demote' | 'review';
+  'promote' | 'demote' | 'review' | AccountAction;
 const app = useApp();
 const route = useRoute();
 const router = useRouter();
@@ -51,12 +53,20 @@ const reauthUntil = ref<number>(0);
 const now = ref(Date.now());
 setInterval(() => (now.value = Date.now()), 15_000);
 const formVersion = ref(0);
+// Account service (dedicated realm): one-time credential shown after create/reset.
+const accountService = computed(() => can(app.user, 'staff.account'));
+const credential = ref<{ login: string; temporaryPassword: string; name: string; action: string } | null>(null);
+const accountPhone = ref('');
+// One idempotency key per opened dialog: a retry after a timeout replays the same request.
+const accountKey = ref('');
 
 const titles: Record<Dialog, string> = {
   invite: '添加成员', edit: '编辑成员资料', permissions: '设置业务权限',
   verify: '重新核验企业身份', promote: '设为销售主管', demote: '恢复为普通销售',
   suspend: '停用账号', reactivate: '恢复账号', retry: '重试开通',
   archive: '归档账号', transfer: '批量移交项目', review: '审核开通',
+  'account-create': '开通登录账号', 'account-reset': '重置登录密码', 'account-phone': '更换登录手机号',
+  'account-disable': '停用登录', 'account-enable': '恢复登录',
 };
 const descriptions: Partial<Record<Dialog, string>> = {
   invite: '保存后成员进入“待开通”，由管理员审核并开通企业账号。',
@@ -70,6 +80,11 @@ const descriptions: Partial<Record<Dialog, string>> = {
   archive: '归档保留人员历史记录，不能再登录。',
   retry: '把失败的开通任务重新排队。',
   review: '确认此人可以加入报备中心及其角色。审核只记录业务批准，不代表企业身份已核验；身份运维核验后才会开通。',
+  'account-create': '以工作手机号为登录账号，生成一次性初始密码。成员首次登录必须修改密码。',
+  'account-reset': '生成新的一次性初始密码，成员当前登录全部失效，下次登录必须修改密码。',
+  'account-phone': '登录手机号随工作手机一起更换。旧手机号立即不能登录，成员当前登录全部失效。',
+  'account-disable': '立即停止该成员使用报备中心，未结束项目进入待移交清单。',
+  'account-enable': '恢复登录账号和角色，成员重新登录后可用。',
 };
 const canManage = computed(() => member.value?.canManage ?? false);
 const showRoleAction = computed(() => administrator.value && canManage.value && member.value?.status === 'ACTIVE' &&
@@ -86,6 +101,8 @@ const sensitive = computed(() => {
   const kind = dialog.value, m = member.value;
   if (!administrator.value || !kind) return false;
   if (kind === 'promote' || kind === 'demote' || kind === 'verify') return true;
+  // Server rule: account actions on advanced roles (not disabling) need a fresh password check.
+  if (kind.startsWith('account-')) return !!m && m.role !== 'baobei_sales' && kind !== 'account-disable';
   if (kind === 'invite') return form.value.role !== 'baobei_sales';
   if (kind === 'reactivate') return m?.role !== 'baobei_sales';
   if (kind === 'edit' && m) return form.value.role !== m.role ||
@@ -96,7 +113,7 @@ const sensitive = computed(() => {
 const needsReauth = computed(() => sensitive.value && !reauthActive.value);
 const reasonRequired = computed(() => {
   const kind = dialog.value;
-  if (!kind || kind === 'invite') return false;
+  if (!kind || kind === 'invite' || kind === 'account-create' || kind === 'account-enable') return false;
   if (kind === 'edit') return !!member.value && (form.value.role !== member.value.role || form.value.teamId !== member.value.teamId);
   return true;
 });
@@ -159,6 +176,8 @@ async function findTargets() {
 }
 
 async function open(kind: Dialog) {
+  accountKey.value = newIdempotencyKey();
+  accountPhone.value = '';
   const existing = kind === 'invite' ? null : member.value;
   formVersion.value = existing?.version ?? 0;
   errors.value = {};
@@ -211,10 +230,73 @@ function focusField(field: StaffField) {
   document.querySelector<HTMLElement>(`[data-field="${field}"]`)?.focus();
 }
 
+// Account actions: Keycloak is called by the server; the one-time password, if any,
+// is shown once in its own dialog and kept only in memory until that dialog closes.
+async function saveAccount(kind: AccountAction) {
+  if (!member.value) return;
+  const body: Record<string, string> = { reason: form.value.reason.trim() };
+  if (kind === 'account-phone') {
+    errors.value = validateStaff({ ...form.value, name: member.value.name, phone: accountPhone.value, role: 'baobei_director' },
+      { phoneRequired: true, reasonRequired: true });
+    if (errors.value.phone || errors.value.reason) return void focusFirstError();
+    body.phone = accountPhone.value.trim();
+  } else if (reasonRequired.value && !body.reason) {
+    errors.value = { reason: '请填写操作原因' };
+    return void focusFirstError();
+  }
+  const r = await fetch('/api/v1/staff/' + member.value.id + '/account/' + accountActions[kind], {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': app.user?.csrfToken || '', 'Idempotency-Key': accountKey.value },
+    body: JSON.stringify(body),
+  }).catch(() => null);
+  if (!r) throw new ApiError('网络连接失败，请检查网络后重试；再次提交不会重复操作', 0, 'NETWORK');
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new ApiError(data.message || '操作未完成，请重试', r.status, data.code || '');
+  member.value = data.member;
+  dialog.value = null;
+  if (data.credential) credential.value = { ...data.credential, name: data.member.name, action: kind === 'account-create' ? '登录账号已开通' : '密码已重置' };
+  else app.toast(data.replayed ? '该操作已完成（重复提交未再次执行）' : { 'account-phone': '登录手机号已更换', 'account-disable': '登录已停用', 'account-enable': '登录已恢复' }[kind as string] ?? '已保存');
+  await load();
+}
+
+function closeCredential() {
+  credential.value = null;
+}
+
+async function copyCredential() {
+  if (!credential.value) return;
+  await navigator.clipboard.writeText(`登录手机号：${credential.value.login}\n初始密码：${credential.value.temporaryPassword}\n首次登录后请立即修改密码。`);
+  app.toast('账号和初始密码已复制');
+}
+
 async function save() {
   const kind = dialog.value;
   if (!kind || working.value) return;
   formIssue.value = '';
+  if (kind.startsWith('account-')) {
+    if (needsReauth.value) {
+      formIssue.value = '此操作需要先再次输入你的登录密码。';
+      return;
+    }
+    working.value = true;
+    try {
+      await saveAccount(kind as AccountAction);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        if (error.code === 'STAFF_REAUTH_REQUIRED') reauthUntil.value = 0;
+        const field = serverFieldErrors[error.code] ?? (error.code.startsWith('ACCOUNT_PHONE') ? 'phone' : undefined);
+        if (field) {
+          errors.value = { [field]: error.message };
+          void focusFirstError();
+        } else formIssue.value = error.message;
+        return;
+      }
+      throw error;
+    } finally {
+      working.value = false;
+    }
+    return;
+  }
   if (!checkForm()) return;
   if (needsReauth.value) {
     formIssue.value = '此操作需要先再次输入你的登录密码。';
@@ -384,7 +466,7 @@ onMounted(async () => {
           </div>
           <span role="cell">{{ item.team || '全局' }} · {{ roles[item.role] }}</span>
           <span role="cell"><span class="staff-status" :data-state="item.status">{{ statusLabel(item) }}</span></span>
-          <span role="cell" class="staff-next">{{ nextStep(item, administrator) || '—' }}</span>
+          <span role="cell" class="staff-next">{{ nextStep(item, administrator, accountService) || '—' }}</span>
           <span role="cell" class="muted">{{ item.projectCount }} 项 · {{ when(item.lastLogin) }}</span>
           <span role="cell"><ActionButton action-id="staff.detail" :run="() => router.push('/team/members/' + item.id)" :aria-label="'查看' + item.name">
             {{ administrator && item.status === 'PENDING_PROVISION' && !item.provisionReviewed ? '审核开通' :
@@ -407,23 +489,41 @@ onMounted(async () => {
           <div><dt>工作邮箱</dt><dd>{{ member.email || '未填写（选填）' }}</dd></div>
           <div><dt>{{ member.roleChanged && member.status !== 'ACTIVE' ? '团队与目标角色' : '团队与角色' }}</dt><dd>{{ member.team || '全局' }} · {{ roles[member.role] }}</dd></div>
           <div><dt>最近登录</dt><dd>{{ when(member.lastLogin) }}</dd></div>
-          <div v-if="administrator"><dt>企业账号</dt><dd>{{ member.identityVerified ? '已绑定并核验' : member.identityLinked ? '已绑定，待核验' : '尚未绑定' }}</dd></div>
+          <div v-if="administrator && accountService"><dt>登录账号</dt><dd>{{ member.loginName || '未开通' }} · {{ accountStateLabel[member.accountState] ?? member.accountState }}<template v-if="member.mustChangePassword">（待首次修改密码）</template></dd></div>
+          <div v-else-if="administrator"><dt>企业账号</dt><dd>{{ member.identityVerified ? '已绑定并核验' : member.identityLinked ? '已绑定，待核验' : '尚未绑定' }}</dd></div>
           <div><dt>备注</dt><dd>{{ member.note || '—' }}</dd></div>
         </dl>
-        <ol v-if="member.status !== 'ACTIVE' && member.status !== 'ARCHIVED'" class="staff-progress" aria-label="开通进度">
+        <ol v-if="accountService && member.status !== 'ACTIVE' && member.status !== 'ARCHIVED' && member.status !== 'SUSPENDED'" class="staff-progress" aria-label="开通进度">
+          <li :data-done="true">已添加成员</li>
+          <li :data-done="member.accountState === 'READY' || member.accountState === 'DISABLED'" :data-current="['NONE','CREATING'].includes(member.accountState)" :data-failed="member.accountState === 'FAILED'">开通登录账号</li>
+          <li :data-current="member.status === 'PENDING_ACTIVATION'">成员首次登录并修改密码</li>
+        </ol>
+        <ol v-else-if="member.status !== 'ACTIVE' && member.status !== 'ARCHIVED'" class="staff-progress" aria-label="开通进度">
           <li :data-done="true">已添加成员</li>
           <li :data-done="member.provisionReviewed || ['PENDING_ACTIVATION','ACTIVE'].includes(member.status)" :data-current="member.status === 'PENDING_PROVISION' && !member.provisionReviewed">管理员审核开通</li>
           <li :data-done="['PENDING_ACTIVATION','ACTIVE'].includes(member.status)" :data-current="member.status === 'PENDING_PROVISION' && member.provisionReviewed" :data-failed="member.status === 'PROVISION_FAILED'">企业身份核验并绑定</li>
           <li :data-current="member.status === 'PENDING_ACTIVATION'">成员首次登录激活</li>
         </ol>
-        <p v-if="nextStep(member, administrator)" class="staff-hint" role="status">{{ nextStep(member, administrator) }}</p>
+        <p v-if="nextStep(member, administrator, accountService)" class="staff-hint" role="status">{{ nextStep(member, administrator, accountService) }}</p>
         <p v-if="failureReason" class="staff-hint" data-tone="risk" role="status">失败原因：{{ failureReason }}</p>
         <p v-if="showRoleAction && !member.identityVerified" class="muted">
           {{ member.identityLinked ? '变更角色前需先重新核验企业身份。' : '请联系身份运维核对企业账号标识。' }}
         </p>
         <div v-if="canManage" class="actions">
+          <template v-if="administrator && accountService">
+            <ActionButton
+              v-if="['PENDING_PROVISION','PROVISION_FAILED'].includes(member.status) && member.accountState !== 'READY' || member.accountState === 'NONE' && member.status !== 'SUSPENDED'"
+              action-id="staff.account-create" primary :disabled="!member.phone" reason="请先编辑资料填写工作手机" :run="() => open('account-create')"
+            >
+              开通登录账号
+            </ActionButton>
+            <ActionButton v-if="['READY','FAILED'].includes(member.accountState) && member.identityLinked && member.status !== 'SUSPENDED'" action-id="staff.account-reset" :run="() => open('account-reset')">重置密码</ActionButton>
+            <ActionButton v-if="member.accountState !== 'NONE' && member.identityLinked && member.status !== 'SUSPENDED'" action-id="staff.account-phone" :run="() => open('account-phone')">更换登录手机号</ActionButton>
+            <ActionButton v-if="member.status === 'SUSPENDED' && member.identityLinked" action-id="staff.account-enable" primary :run="() => open('account-enable')">恢复登录</ActionButton>
+            <ActionButton v-if="member.status !== 'SUSPENDED' && member.identityLinked && member.accountState !== 'NONE'" action-id="staff.account-disable" :run="() => open('account-disable')">停用登录</ActionButton>
+          </template>
           <ActionButton
-            v-if="administrator && member.status === 'PENDING_PROVISION' && member.syncStatus === 'PENDING'"
+            v-if="administrator && !accountService && member.status === 'PENDING_PROVISION' && member.syncStatus === 'PENDING'"
             action-id="staff.provision-review" primary :run="() => open('review')"
           >
             {{ member.provisionReviewed ? '重新生成待核验草稿' : '审核开通' }}
@@ -447,10 +547,10 @@ onMounted(async () => {
             重新核验企业身份
           </ActionButton>
           <ActionButton action-id="staff.edit" :run="() => open('edit')">编辑资料</ActionButton>
-          <ActionButton v-if="member.status === 'PROVISION_FAILED' || member.status === 'SUSPENDED' && member.syncStatus === 'FAILED'" action-id="staff.retry" :run="() => open('retry')">重试开通</ActionButton>
-          <ActionButton v-if="member.status === 'SUSPENDED'" action-id="staff.reactivate" :run="() => open('reactivate')">恢复账号</ActionButton>
+          <ActionButton v-if="!accountService && (member.status === 'PROVISION_FAILED' || member.status === 'SUSPENDED' && member.syncStatus === 'FAILED')" action-id="staff.retry" :run="() => open('retry')">重试开通</ActionButton>
+          <ActionButton v-if="member.status === 'SUSPENDED' && !(administrator && accountService && member.identityLinked)" action-id="staff.reactivate" :run="() => open('reactivate')">恢复账号</ActionButton>
           <ActionButton v-if="administrator && member.status === 'SUSPENDED'" action-id="staff.archive" :run="() => open('archive')">归档账号</ActionButton>
-          <ActionButton v-if="member.status !== 'SUSPENDED'" action-id="staff.suspend" :run="() => open('suspend')">停用账号</ActionButton>
+          <ActionButton v-if="member.status !== 'SUSPENDED' && !(administrator && accountService && member.identityLinked && member.accountState !== 'NONE')" action-id="staff.suspend" :run="() => open('suspend')">停用账号</ActionButton>
         </div>
       </div>
       <div v-if="member.role === 'baobei_sales'" class="staff-card panel">
@@ -530,6 +630,18 @@ onMounted(async () => {
           <input id="staff-email" v-model="form.email" data-field="email" type="email" maxlength="254" :aria-invalid="!!errors.email" />
           <small v-if="errors.email" class="field-error">{{ errors.email }}</small>
         </label>
+        <template v-if="dialog?.startsWith('account-') && member">
+          <dl class="staff-facts compact">
+            <div><dt>成员</dt><dd>{{ member.name }}</dd></div>
+            <div><dt>角色</dt><dd>{{ member.team || '全局' }} · {{ roles[member.role] }}</dd></div>
+            <div><dt>登录手机号</dt><dd>{{ member.loginName || (member.phone ? member.phone.replace(/^\+86/, '') : '未填写') }}</dd></div>
+            <div><dt>账号状态</dt><dd>{{ accountStateLabel[member.accountState] ?? member.accountState }}</dd></div>
+          </dl>
+          <label v-if="dialog === 'account-phone'" :class="{ invalid: errors.phone }">新登录手机号 <span class="req" aria-hidden="true">*</span>
+            <input id="staff-phone" v-model="accountPhone" data-field="phone" type="tel" inputmode="tel" maxlength="32" placeholder="11 位手机号" autocomplete="off" aria-required="true" :aria-invalid="!!errors.phone" />
+            <small v-if="errors.phone" class="field-error">{{ errors.phone }}</small>
+          </label>
+        </template>
         <template v-if="dialog === 'review' && member">
           <dl class="staff-facts compact">
             <div><dt>姓名</dt><dd>{{ member.name }}</dd></div>
@@ -573,11 +685,28 @@ onMounted(async () => {
           <template v-if="!receipt">
             <ActionButton v-if="needsReauth" action-id="staff.role-reauth" primary :run="reauthenticateAndResume">验证密码并继续</ActionButton>
             <ActionButton v-else action-id="staff.confirm" primary :disabled="working" :run="save">
-              {{ dialog === 'invite' ? '添加成员' : dialog === 'review' ? '批准开通' : dialog === 'suspend' ? '确认停用' : dialog === 'archive' ? '确认归档' : '保存' }}
+              {{ ({ invite: '添加成员', review: '批准开通', suspend: '确认停用', archive: '确认归档', 'account-create': '开通账号', 'account-reset': '重置密码',
+                    'account-phone': '更换手机号', 'account-disable': '停用登录', 'account-enable': '恢复登录' } as Record<string, string>)[dialog ?? ''] ?? '保存' }}
             </ActionButton>
           </template>
         </div>
       </form>
+    </Modal>
+
+    <Modal :open="!!credential" :title="credential?.action ?? ''" description="初始密码只显示这一次，关闭后无法再次查看；如遗失请重置密码。" @update:open="(v) => { if (!v) closeCredential(); }">
+      <div v-if="credential" class="credential-card" role="group" aria-label="登录信息">
+        <p><strong>{{ credential.name }}</strong> 现在可以用下面的手机号和初始密码登录，首次登录必须设置新密码。</p>
+        <dl class="credential">
+          <div><dt>登录手机号</dt><dd data-testid="credential-login">{{ credential.login }}</dd></div>
+          <div><dt>初始密码</dt><dd data-testid="credential-password" class="mono">{{ credential.temporaryPassword }}</dd></div>
+        </dl>
+        <div class="actions">
+          <ActionButton action-id="staff.credential-copy" :run="copyCredential">复制账号和密码</ActionButton>
+          <ActionButton action-id="staff.credential-done" primary :run="closeCredential">已交给成员，关闭</ActionButton>
+          <ActionButton v-if="!memberId" action-id="staff.invite-next" :run="() => { closeCredential(); return open('invite'); }">继续添加下一位</ActionButton>
+          <ActionButton v-else action-id="staff.back-list" :run="() => { closeCredential(); return router.push(administrator ? '/settings/users' : '/team/members'); }">返回人员列表</ActionButton>
+        </div>
+      </div>
     </Modal>
   </section>
 </template>

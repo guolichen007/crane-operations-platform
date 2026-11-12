@@ -136,6 +136,9 @@ func TestDatabase(t *testing.T) {
 	if e = db.QueryRow(ctx, `SELECT similarity('synthetic','synthetic')`).Scan(&trgm); e != nil || trgm != 1 {
 		t.Fatal("pg_trgm", e)
 	}
+	if e = verifyIdentityEpoch(ctx, db, "development", devIssuer); e != nil {
+		t.Fatal(e)
+	}
 	a, e := newApp(ctx, db, Config{Env: "development", Dev: true})
 	if e != nil {
 		t.Fatal(e)
@@ -396,6 +399,7 @@ func testOIDC(t *testing.T, db *pgxpool.Pool) {
 	}))
 	defer idp.Close()
 	issuer = idp.URL
+	trustIssuer(t, db, issuer)
 	app, e := newApp(context.Background(), db, Config{Env: "development", Issuer: issuer, ClientID: "baobei-web"})
 	if e != nil {
 		t.Fatal(e)

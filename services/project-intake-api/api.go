@@ -81,6 +81,16 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 		if staffRole(u.Role) {
 			u.BusinessActions["staff.manage"] = hint("")
 		}
+		// Login accounts can be managed in the page only with the dedicated realm's
+		// account service; every account endpoint re-checks on the server.
+		u.BusinessActions["account.password"] = hint("ACCOUNT_SERVICE_NOT_ENABLED")
+		if a.accounts != nil {
+			u.BusinessActions["account.password"] = hint("")
+		}
+		u.BusinessActions["staff.account"] = hint("ACCOUNT_SERVICE_NOT_ENABLED")
+		if u.Role == adminRole && a.accounts != nil {
+			u.BusinessActions["staff.account"] = hint("")
+		}
 		respond(w, 200, u)
 		return nil
 	}

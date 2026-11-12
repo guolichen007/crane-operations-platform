@@ -20,6 +20,7 @@ export const PREVIEW_ENV = {
   DEV_AUTH: '0',
   LISTEN_ADDR: '0.0.0.0:8088',
   PUBLIC_ORIGIN: 'https://baobei-preview.youdaozd.com',
+  BAOBEI_IDENTITY_REALM: 'baobei-preview',
   OIDC_ISSUER: 'https://crane.youdaozd.com/realms/baobei-preview',
   OIDC_CLIENT_ID: 'baobei-preview-web',
   OIDC_CLIENT_SECRET_FILE: '/run/secrets/preview_oidc_client_secret',

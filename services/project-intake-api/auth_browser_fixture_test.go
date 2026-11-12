@@ -215,6 +215,7 @@ func TestAuthBrowserFixture(t *testing.T) {
 	client := idp.Client()
 	client.Transport.(*http.Transport).TLSClientConfig.ServerName = "127.0.0.1"
 
+	trustIssuer(t, db, issuer)
 	app, err := newApp(oidc.ClientContext(ctx, client), db, Config{Env: "production", Issuer: issuer, ClientID: "baobei-web"})
 	if err != nil {
 		t.Fatal(err)

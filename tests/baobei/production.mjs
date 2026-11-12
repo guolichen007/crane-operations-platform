@@ -63,6 +63,33 @@ for (const service of Object.values(raw.services)) {
   for (const key of ['POSTGRES_PASSWORD', 'OIDC_CLIENT_SECRET', 'DATABASE_URL'])
     assert(!(key in (service.environment || {})), 'plaintext environment secret');
 }
+// G4-S5-R1-E: the dedicated-realm overlay renders a valid production config, and
+// mixed configurations (issuer without realm, account service on the shared realm,
+// arbitrary issuer) are refused.
+const realmRender = spawnSync('docker', [
+  ...(process.env.BAOBEI_DOCKER_CONTEXT ? ['--context', process.env.BAOBEI_DOCKER_CONTEXT] : []),
+  'compose', '-f', 'deploy/baobei/compose.production.yaml', '-f', 'deploy/baobei/compose.realm-baobei.yaml', 'config', '--format', 'json',
+], { encoding: 'utf8', env: { ...process.env,
+  BAOBEI_WEB_IMAGE: 'ghcr.io/guolichen007/baobei-web@sha256:' + 'a'.repeat(64),
+  BAOBEI_API_IMAGE: 'ghcr.io/guolichen007/baobei-api@sha256:' + 'b'.repeat(64),
+  BAOBEI_SECRETS_DIR: process.cwd() + '/local-private/baobei/config-test-only' } });
+if (realmRender.status) throw Error(realmRender.stderr);
+const dedicated = JSON.parse(realmRender.stdout);
+validateProduction(dedicated);
+for (const mutate of [
+  (x) => (x.services['baobei-api'].environment.BAOBEI_IDENTITY_REALM = 'crane'),
+  (x) => (x.services['baobei-api'].environment.OIDC_ISSUER = 'https://crane.youdaozd.com/realms/crane'),
+  (x) => (x.services['baobei-api'].environment.OIDC_ISSUER = 'https://evil.example/realms/baobei'),
+  (x) => (x.services['baobei-api'].environment.BAOBEI_IDENTITY_REALM = 'master'),
+  (x) => { delete x.services['baobei-api'].environment.BAOBEI_ACCOUNT_CLIENT_ID; },
+  (x) => (x.services['baobei-api'].environment.BAOBEI_ACCOUNT_CLIENT_SECRET = 'plaintext'),
+]) {
+  const x = structuredClone(dedicated);
+  mutate(x);
+  assert.throws(() => validateProduction(x));
+}
+{ const x = structuredClone(c); x.services['baobei-api'].environment.BAOBEI_ACCOUNT_CLIENT_ID = 'baobei-account-service'; assert.throws(() => validateProduction(x)); }
+console.log('BAOBEI_REALM_SELECTION=APPROVED_ONLY ACCOUNT_SERVICE_DEDICATED_REALM_ONLY=YES');
 for(const name of ['baobei-web','baobei-api']){
  for(const image of [name+':latest',name+'@sha256:'+'a'.repeat(64),'sha256:'+'a'.repeat(64),'ghcr.io/other/'+name+'@sha256:'+'a'.repeat(64)]){
   const bad=structuredClone(c);bad.services[name].image=image;assert.throws(()=>validateProduction(bad));

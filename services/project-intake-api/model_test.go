@@ -108,6 +108,8 @@ func TestProductionConfigGate(t *testing.T) {
 	t.Setenv("OIDC_CLIENT_ID", "baobei-web")
 	t.Setenv("OIDC_CLIENT_SECRET", "synthetic-unit-only")
 	t.Setenv("OIDC_CLIENT_SECRET_FILE", "")
+	t.Setenv("BAOBEI_IDENTITY_REALM", "crane")
+	t.Setenv("BAOBEI_ACCOUNT_CLIENT_ID", "")
 	if _, e := config(); e != nil {
 		t.Fatal(e)
 	}

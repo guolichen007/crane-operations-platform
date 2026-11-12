@@ -82,6 +82,7 @@ func TestDatabaseG4S4SessionLogoutSwitch(t *testing.T) {
 	if _, err = db.Exec(ctx, `UPDATE app_users SET active=true,staff_status='ACTIVE' WHERE subject IN ('synthetic-a','synthetic-b')`); err != nil {
 		t.Fatal(err)
 	}
+	trustIssuer(t, db, issuer)
 	app, err := newApp(ctx, db, Config{Env: "development", Issuer: issuer, ClientID: "baobei-web"})
 	if err != nil {
 		t.Fatal(err)

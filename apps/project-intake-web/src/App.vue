@@ -60,6 +60,11 @@ async function logout() {
   app.toast('已退出登录');
   await router.push('/login');
 }
+// Keycloak's own "update password" page (current password, then new); returns here.
+function changePassword() {
+  accountOpen.value = false;
+  window.location.assign('/auth/login?action=password');
+}
 watch(() => app.user, (user, previous) => {
   if (previous && !user && app.sessionIssue && route.path !== '/login')
     void router.replace('/login');
@@ -149,7 +154,11 @@ window.addEventListener('error', showError);
       </section>
       <section aria-label="修改密码">
         <h3>修改密码</h3>
-        <p class="muted">手机号登录上线后可在这里修改密码。目前如需修改，请联系管理员。</p>
+        <template v-if="can(app.user, 'account.password')">
+          <p class="muted">需要输入当前密码，再设置新密码。登录手机号只能由管理员更换。</p>
+          <ActionButton action-id="auth.change-password" :run="changePassword">修改密码</ActionButton>
+        </template>
+        <p v-else class="muted">当前登录方式下请联系管理员修改密码。</p>
       </section>
       <section>
         <ActionButton action-id="auth.logout" primary :run="logout"><LogOut :size="16" aria-hidden="true" />退出登录</ActionButton>

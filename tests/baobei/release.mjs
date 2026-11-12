@@ -70,7 +70,7 @@ const manifest = {
   api_image_digest: api.Id,
   digest_kind: 'local_image_id',
   registry_published: false,
-  schema_version: '00005',
+  schema_version: '00006',
   openapi_hash: hash('contracts/project-intake/openapi.yaml'),
   transfer_contract_hash: hash('contracts/project-intake/ProjectIntakeTransferV1.schema.json'),
   web_sbom_hash: hash(join(out, 'web.cdx.json')),

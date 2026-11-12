@@ -90,6 +90,9 @@ func TestDatabaseG1Upgrade(t *testing.T) {
 		t.Fatal(complete, incomplete)
 	}
 	t.Logf("LEGACY_COMPLETE=%d LEGACY_INCOMPLETE=%d MIGRATION_ATOMIC_ROLLBACK=PASS", complete, incomplete)
+	if err := verifyIdentityEpoch(ctx, db, "development", devIssuer); err != nil {
+		t.Fatal(err)
+	}
 	a := &App{db: db, cfg: Config{Env: "development", Dev: true}}
 	server := httptest.NewServer(a.handler())
 	defer server.Close()
