@@ -314,3 +314,53 @@ test('Equipment 安装表单 DirtyGuard：干净关闭不提示，有输入需�
   expect(prompts).toBe(4);
   await expect(form).toHaveCount(0);
 });
+
+// Q4-QA-R1 §3: the removal confirmation pins the Equipment version shown when it opened. Another
+// client edits the Equipment, this page's list refreshes to the new version, and confirming the
+// already-open dialog must send the OLD If-Match → 409; PostgreSQL keeps the Equipment installed.
+test('Equipment 拆卸固定打开时版本：他人修改并刷新列表后确认拆卸 → 409，记录未拆卸', async ({ page }) => {
+  await login(page, 'b4-admin');
+  await assertWriteTarget(page);
+  const csrf = await sessionCsrf(page);
+  const created = await createViaApi(page, 'EQPIN');
+  const eqCode = code('EQ', 'PIN');
+  const eq = await page.evaluate(async ({ id, csrf, eqCode }) => {
+    const res = await fetch(`/api/v1/assets/${id}/equipment`, {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrf, 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
+      body: JSON.stringify({ equipmentCode: eqCode, typeCode: 'MOTOR', criticality: 'MEDIUM', administrativeState: 'IN_SERVICE', spec: {} }),
+    });
+    return { status: res.status, body: (await res.json()) as { id: string; version: number } };
+  }, { id: created.id, csrf, eqCode });
+  expect(eq.status).toBe(201);
+  await page.goto(`/#/assets/${created.id}`);
+  await page.locator('.tabs').getByRole('button', { name: '设备', exact: true }).click();
+  await page.locator('table.data-table').getByRole('button', { name: '拆卸' }).click();
+  const dialog = page.getByTestId('equipment-remove-dialog');
+  await expect(dialog.getByTestId('equipment-remove-target')).toContainText(`v${eq.body.version}`);
+
+  // Another client changes the Equipment (version +1).
+  const other = await page.evaluate(async ({ id, csrf, version }) => {
+    const res = await fetch(`/api/v1/equipment/${id}`, {
+      method: 'PATCH',
+      headers: { 'X-CSRF-Token': csrf, 'Content-Type': 'application/json', 'If-Match': `"${version}"` },
+      body: JSON.stringify({ criticality: 'HIGH' }),
+    });
+    return res.status;
+  }, { id: eq.body.id, csrf, version: eq.body.version });
+  expect(other).toBe(200);
+  // This page's list refreshes in the background (the open dialog keeps its pinned version).
+  // (staleTime 30 s, then a network reconnect → vue-query refetches the mounted Equipment list).
+  await page.waitForTimeout(31_000);
+  await page.context().setOffline(true);
+  await page.context().setOffline(false);
+  await expect(page.locator('table.data-table')).toContainText(`v${eq.body.version + 1}`);
+
+  const remove = page.waitForRequest((r) => r.method() === 'POST' && r.url().includes(`/api/v1/equipment/${eq.body.id}/remove`));
+  await dialog.getByRole('button', { name: '确认拆卸' }).click();
+  expect((await remove).headers()['if-match']).toBe(`"${eq.body.version}"`);
+  await expect(dialog.getByRole('alert')).toContainText('已被他人修改');
+  await expect(dialog).toBeVisible();
+  const stored = await page.evaluate(async (id) => (await (await fetch(`/api/v1/equipment/${id}`)).json()) as { removedAt: string | null; version: number; criticality: string }, eq.body.id);
+  expect(stored).toMatchObject({ removedAt: null, version: eq.body.version + 1, criticality: 'HIGH' });
+});

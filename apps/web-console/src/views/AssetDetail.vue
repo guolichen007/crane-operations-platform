@@ -214,7 +214,7 @@ function closeRetire() {
 }
 function closeRemove() {
   if (!allowClose(false, removeEquipmentMutation.isPending.value)) return;
-  removeConfirm.value = false;
+  removeTarget.value = null;
   removeError.value = '';
 }
 function onKeydown(event: KeyboardEvent) {
@@ -305,21 +305,28 @@ const createEquipmentMutation = useMutation({
   // The form stays open with every input kept; the error is shown inside it.
   onError: (e) => (equipmentAddError.value = errorText(e, '安装失败')),
 });
-const removingId = ref('');
-const removeConfirm = ref(false);
+// The confirmation pins id, code and version when it opens (Q4-QA-R1): the submit sends exactly that
+// version as If-Match, so a background refetch can never make it remove a newer record the user has
+// not seen — the server answers 409 instead. Reopening the dialog picks up the current version.
+type RemoveTarget = { id: string; code: string; version: number };
+const removeTarget = ref<RemoveTarget | null>(null);
+const removeConfirm = computed(() => removeTarget.value !== null);
 const removeError = ref('');
+function openRemove(e: EquipmentInstallation) {
+  if (removeEquipmentMutation.isPending.value) return;
+  removeTarget.value = { id: e.id, code: e.equipmentCode, version: e.version };
+  removeError.value = '';
+}
 const removeEquipmentMutation = useMutation({
-  mutationFn: (equipmentId: string) =>
-    removeEquipment(equipmentId, equipmentQuery.data.value!.find((x) => x.id === equipmentId)!.version),
+  mutationFn: (t: RemoveTarget) => removeEquipment(t.id, t.version),
   onSuccess: async () => {
-    removeConfirm.value = false;
-    removingId.value = '';
+    removeTarget.value = null;
     removeError.value = '';
     await queryClient.invalidateQueries({ queryKey: ['equipment', id] });
   },
   onError: (e) => {
     removeError.value = e instanceof ApiError && e.status === 409
-      ? '该 Equipment 已被他人修改或存在活动 Runtime Binding，未拆卸。'
+      ? '该 Equipment 已被他人修改或存在活动 Runtime Binding，未拆卸。请取消后重新打开，核对最新版本再操作。'
       : errorText(e, '拆卸失败');
   },
 });
@@ -453,7 +460,7 @@ const statusText: Record<string, string> = {
                   <button
                     class="danger-action"
                     :disabled="removeEquipmentMutation.isPending.value"
-                    @click="removingId = e.id; removeConfirm = true"
+                    @click="openRemove(e)"
                   >
                     拆卸
                   </button>
@@ -595,6 +602,7 @@ const statusText: Record<string, string> = {
     <div v-if="removeConfirm" class="modal-backdrop" @click.self="closeRemove">
       <div class="workspace-modal" data-testid="equipment-remove-dialog">
         <h2>确认拆卸 Equipment</h2>
+        <p data-testid="equipment-remove-target">{{ removeTarget?.code }}（基于 v{{ removeTarget?.version }}）</p>
         <p>拆卸将关闭安装有效期并保留历史记录，不会硬删除。存在活动 Runtime Binding 时后端将拒绝。</p>
         <p v-if="removeError" class="form-error" role="alert">{{ removeError }}</p>
         <div class="modal-actions">
@@ -602,7 +610,7 @@ const statusText: Record<string, string> = {
           <button
             class="danger-action"
             :disabled="removeEquipmentMutation.isPending.value"
-            @click="removeEquipmentMutation.mutate(removingId)"
+            @click="removeTarget && !removeEquipmentMutation.isPending.value && removeEquipmentMutation.mutate(removeTarget)"
           >
             {{ removeEquipmentMutation.isPending.value ? '拆卸中…' : '确认拆卸' }}
           </button>
