@@ -56,7 +56,11 @@ const locationsQuery = useQuery({
   enabled: computed(() => !!assetProjectId.value),
 });
 
-const tab = ref<'overview' | 'equipment' | 'location'>('overview');
+// No API returns an asset's current location yet (moves are recorded in asset_installations, which is
+// not exposed): the former "位置" tab was a dead button and is removed rather than showing an invented
+// location (Q4-QA-R1 §4, recorded as DEFERRED).
+const tab = ref<'overview' | 'equipment'>('overview');
+const moveTargets = computed(() => (locationsQuery.data.value ?? []) as AssetLocation[]);
 
 // Each write action pins the version (and a snapshot) at the moment its dialog
 // opens. Submits always send that pinned version as If-Match — never the latest
@@ -153,17 +157,24 @@ function openMove() {
   if (!current) return;
   move.start({ locationId: '' }, current.version);
   moveError.value = '';
+  // Locations may have been created elsewhere (位置中心) since the list was cached.
+  void locationsQuery.refetch();
 }
+const moved = ref('');
 const moveMutation = useMutation({
   mutationFn: () => moveAsset(id.value, move.draft.value!.locationId, move.baseVersion.value!),
   onSuccess: async () => {
+    const target = moveTargets.value.find((l) => l.id === move.draft.value?.locationId);
     move.close();
+    moved.value = target ? `已移动到「${target.name}」。` : '已移动。';
     await refreshAfterWrite();
   },
   onError: (e) => {
     moveError.value = e instanceof ApiError && e.status === 409
       ? '资产已被其他用户修改，请关闭后重新打开再移动。'
-      : errorText(e, '移动失败');
+      : e instanceof ApiError && e.status === 404
+        ? '目标位置不存在、已停用或不属于该项目，未移动。'
+        : errorText(e, '移动失败');
   },
 });
 
@@ -407,10 +418,10 @@ const statusText: Record<string, string> = {
       <button type="button" class="ghost-action" @click="assetQuery.refetch()">重试</button>
     </p>
     <template v-else-if="asset">
+      <p v-if="moved" class="form-note" role="status" data-testid="asset-moved">{{ moved }}</p>
       <div class="tabs" role="tablist">
         <button :class="{ active: tab === 'overview' }" @click="tab = 'overview'">概览</button>
         <button :class="{ active: tab === 'equipment' }" @click="tab = 'equipment'">设备</button>
-        <button :class="{ active: tab === 'location' }" @click="tab = 'location'">位置</button>
       </div>
 
       <div v-if="tab === 'overview'" class="detail-grid">
@@ -425,7 +436,7 @@ const statusText: Record<string, string> = {
         <div class="detail-cell"><span>使用登记证号</span><b>{{ asset.useRegistrationNo ?? '—' }}</b></div>
       </div>
 
-      <div v-else-if="tab === 'equipment'">
+      <div v-else>
         <div class="equipment-toolbar">
           <button v-if="canWrite" class="primary-action" @click="openEquipmentAdd">
             <Plus :size="14" />安装 Equipment
@@ -471,9 +482,6 @@ const statusText: Record<string, string> = {
         </table>
       </div>
 
-      <div v-else class="workspace-empty">
-        当前位置查询待接入。
-      </div>
     </template>
 
 
@@ -515,10 +523,19 @@ const statusText: Record<string, string> = {
     <div v-if="move.open.value && move.draft.value" class="modal-backdrop" @click.self="closeMove">
       <form class="workspace-modal" data-testid="asset-move-form" @submit.prevent="moveMutation.mutate()">
         <h2>移动资产（基于 v{{ move.baseVersion.value }}）</h2>
-        <label>目标位置
-          <select v-model="move.draft.value.locationId" required>
+        <p v-if="locationsQuery.isLoading.value" class="skeleton" aria-busy="true" data-testid="move-locations-loading" style="height: 32px"></p>
+        <p v-else-if="locationsQuery.isError.value" class="form-error" role="alert" data-testid="move-locations-error">
+          {{ errorText(locationsQuery.error.value, '可选位置加载失败') }}（不是“没有位置”）
+          <button type="button" class="ghost-action" @click="locationsQuery.refetch()">重试</button>
+        </p>
+        <div v-else-if="!moveTargets.length" class="workspace-empty" data-testid="move-no-locations">
+          <p>该项目还没有可用（在用）的位置，无法移动。</p>
+          <p>请先到 <RouterLink :to="{ path: '/locations', query: { project: asset?.projectId } }" data-testid="move-create-location-link">位置中心</RouterLink> 为项目 {{ asset?.projectId }} 新建位置（如场地 / 车间），再回到这里移动。</p>
+        </div>
+        <label v-else>目标位置
+          <select v-model="move.draft.value.locationId" required aria-label="目标位置">
             <option value="" disabled>选择位置</option>
-            <option v-for="l in (locationsQuery.data.value as AssetLocation[])" :key="l.id" :value="l.id">
+            <option v-for="l in moveTargets" :key="l.id" :value="l.id">
               {{ l.name }}（{{ l.kind }}）
             </option>
           </select>
@@ -526,7 +543,7 @@ const statusText: Record<string, string> = {
         <p v-if="moveError" class="form-error" role="alert">{{ moveError }}</p>
         <div class="modal-actions">
           <button type="button" class="ghost-action" :disabled="moveMutation.isPending.value" @click="closeMove">取消</button>
-          <button type="submit" class="primary-action" :disabled="moveMutation.isPending.value">{{ moveMutation.isPending.value ? '移动中…' : '移动' }}</button>
+          <button type="submit" class="primary-action" :disabled="moveMutation.isPending.value || !move.draft.value.locationId">{{ moveMutation.isPending.value ? '移动中…' : '移动' }}</button>
         </div>
       </form>
     </div>

@@ -35,12 +35,55 @@ test('真实 Keycloak 浏览器：资产与 Equipment 完整业务 CRUD（新建
   await expect(page.getByTestId('asset-detail')).toContainText('GANTRY');
   await expect(page.getByTestId('asset-detail')).toContainText('v2');
 
-  // 5-7. 选择合法位置并移动（P001 已由 fixture 种入 ACTIVE 位置）。
+  // 5-7. 位置闭环（Q4-QA-R1）：fixture 不再种入任何位置。资产详情 → 移动提示无可用位置 → 位置中心
+  //      新建场地与车间（真实 BFF + PostgreSQL，坐标未知）→ 回到资产详情移动到新车间 → 刷新后保持。
   await page.getByRole('button', { name: '移动', exact: true }).click();
-  const moveForm = page.locator('.workspace-modal');
-  await moveForm.locator('select').selectOption({ index: 1 });
+  const moveForm = page.getByTestId('asset-move-form');
+  const noLoc = moveForm.getByTestId('move-no-locations');
+  const siteName = code('LOC', 'SITE'), workshopName = code('LOC', 'WS');
+  if (await noLoc.isVisible().catch(() => false)) {
+    await expect(moveForm.getByRole('button', { name: '移动', exact: true })).toBeDisabled();
+    await moveForm.getByTestId('move-create-location-link').click();
+  } else {
+    // A persistent environment may already hold locations from earlier runs; still create our own.
+    await moveForm.getByRole('button', { name: '取消' }).click();
+    await page.goto('/#/locations?project=P001');
+  }
+  await expect(page).toHaveURL(/#\/locations\?project=P001/);
+  for (const [kind, name, parent] of [['SITE', siteName, ''], ['WORKSHOP', workshopName, siteName]] as const) {
+    await page.getByTestId('location-create').click();
+    const locForm = page.getByTestId('location-create-form');
+    await locForm.getByLabel('位置类型').selectOption(kind);
+    await locForm.getByLabel('位置名称').fill(name);
+    await locForm.getByLabel('位置编号').fill(name);
+    if (parent) await locForm.getByLabel('上级位置').selectOption({ label: `${parent}（场地）` });
+    await locForm.getByTestId('location-create-submit').click();
+    await expect(locForm).toBeHidden();
+    await expect(page.getByTestId('location-created')).toContainText('坐标未知');
+  }
+  const locRow = page.getByTestId('location-table').locator('tr', { hasText: workshopName });
+  await expect(locRow).toContainText('车间');
+  await expect(locRow).toContainText('未知');
+  // Duplicate code → 409 in the dialog, nothing created.
+  await page.getByTestId('location-create').click();
+  const dupForm = page.getByTestId('location-create-form');
+  await dupForm.getByLabel('位置类型').selectOption('SITE');
+  await dupForm.getByLabel('位置名称').fill('重复编号');
+  await dupForm.getByLabel('位置编号').fill(siteName);
+  await dupForm.getByTestId('location-create-submit').click();
+  await expect(dupForm.getByTestId('location-create-error')).toContainText('已存在');
+  page.once('dialog', (d) => void d.accept()); // dirty form: confirm discarding
+  await dupForm.getByRole('button', { name: '取消' }).click();
+  await expect(dupForm).toBeHidden();
+
+  await page.goto(`/#/assets/${assetId}`);
+  await page.getByRole('button', { name: '移动', exact: true }).click();
+  await moveForm.getByLabel('目标位置').selectOption({ label: `${workshopName}（WORKSHOP）` });
   await moveForm.getByRole('button', { name: '移动', exact: true }).click();
-  await expect(page.getByTestId('asset-detail')).toBeVisible();
+  await expect(moveForm).toBeHidden();
+  await expect(page.getByTestId('asset-moved')).toContainText(workshopName);
+  await page.reload();
+  await expect(page.getByTestId('asset-detail')).toContainText('v3');
 
   // 8. 安装 MOTOR Equipment。
   await page.locator('.tabs').getByRole('button', { name: '设备', exact: true }).click();

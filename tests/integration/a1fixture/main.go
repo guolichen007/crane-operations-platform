@@ -29,7 +29,6 @@ import (
 
 	"github.com/eclipse/paho.golang/paho"
 	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
-	"github.com/guolichen007/crane-operations-platform/internal/asset"
 	"github.com/guolichen007/crane-operations-platform/internal/auditlog"
 	"github.com/guolichen007/crane-operations-platform/internal/fleet"
 	"github.com/guolichen007/crane-operations-platform/internal/identity"
@@ -44,8 +43,6 @@ func write(path string, data []byte) error {
 	}
 	return os.WriteFile(path, data, 0600)
 }
-
-func strp(s string) *string { return &s }
 
 func prepare(out string) error {
 	if !strings.Contains(filepath.ToSlash(out), "/runtime/") {
@@ -252,15 +249,9 @@ func seed(ctx context.Context) error {
 	if _, err = db.ExecContext(ctx, `INSERT INTO equipment_types(type_code,display_name,domain,spec_schema_version,status) VALUES ('MOTOR','Motor','MECHANICAL','1','ACTIVE'),('PLC','PLC','CONTROL','1','ACTIVE') ON CONFLICT (type_code) DO NOTHING`); err != nil {
 		return err
 	}
-	fixtureActor, fixtureReq := "b4-fixture", platform.ID()
-	for _, loc := range []contract.AssetLocation{
-		{Id: platform.ID(), ProjectId: "P001", Kind: "SITE", Code: strp("B4-S1"), Name: "B4 Site 1"},
-		{Id: platform.ID(), ProjectId: "P001", Kind: "WORKSHOP", Code: strp("B4-W1"), Name: "B4 Workshop 1"},
-	} {
-		if _, err = asset.CreateLocation(ctx, db, loc, fixtureActor, fixtureReq); err != nil {
-			return err
-		}
-	}
+	// Q4-QA-R1: no location is seeded. The B4 browser flow creates its own location through the
+	// 位置中心 UI before moving an asset (tests/e2e/b4/asset-crud.spec.ts), so the business loop is
+	// proven from an empty location table.
 	// A fixed-id P002 asset is the cross-project read counter-proof target: a P001
 	// principal must get 404 (never a leak) when reading it directly.
 	if _, err = db.ExecContext(ctx, `INSERT INTO asset_devices(id,project_id,display_name,lifecycle,asset_code,asset_type,asset_status,version) VALUES('b4-p002-asset','P002','CRN-P002-01','PLANNED','CRN-P002-01','CRANE','ACTIVE',1) ON CONFLICT (id) DO NOTHING`); err != nil {
@@ -345,6 +336,22 @@ func verifyB4State(ctx context.Context, runID string) error {
 	if status != "RETIRED" {
 		return fmt.Errorf("b4 asset status = %s, want RETIRED", status)
 	}
+	// Q4-QA-R1: the asset was moved to a workshop created through the 位置中心 UI in the same run (no
+	// seeded location): child of the UI-created site, ACTIVE, coordinates UNKNOWN and never invented.
+	var locKind, locSystem, parentCode string
+	var lng, lat sql.NullFloat64
+	if err := db.QueryRowContext(ctx, `SELECT l.kind, l.coordinate_system, l.longitude, l.latitude, p.code
+		FROM asset_installations i JOIN asset_locations l ON l.id=i.location_id JOIN asset_locations p ON p.id=l.parent_id
+		WHERE i.asset_id=$1 AND l.project_id='P001' AND l.code=$2 AND l.status='ACTIVE'`, assetID, "LOC-B4-"+runID+"-WS").Scan(&locKind, &locSystem, &lng, &lat, &parentCode); err != nil {
+		return errors.New("b4 asset was not moved to the UI-created location: " + err.Error())
+	}
+	if locKind != "WORKSHOP" || locSystem != "UNKNOWN" || lng.Valid || lat.Valid || parentCode != "LOC-B4-"+runID+"-SITE" {
+		return fmt.Errorf("b4 UI-created location = %s/%s lng=%v lat=%v parent=%s, want WORKSHOP/UNKNOWN without coordinates under the UI-created site", locKind, locSystem, lng.Valid, lat.Valid, parentCode)
+	}
+	var dupLocations int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM asset_locations WHERE project_id='P001' AND name='重复编号'`).Scan(&dupLocations); err != nil || dupLocations != 0 {
+		return fmt.Errorf("b4 duplicate-code location rows = %d, want 0", dupLocations)
+	}
 	var eqID string
 	var validTo sql.NullTime
 	if err := db.QueryRowContext(ctx, `SELECT id, valid_to, version FROM asset_equipment_installations WHERE asset_id=$1 AND equipment_code=$2`, assetID, equipmentCode).Scan(&eqID, &validTo, &version); err != nil {
@@ -374,7 +381,7 @@ func verifyB4State(ctx context.Context, runID string) error {
 	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM entity_revisions r WHERE r.entity_type='equipment' AND r.entity_id=$1 AND r.request_id<>'' AND NOT EXISTS (SELECT 1 FROM audit_logs a WHERE a.request_id=r.request_id)`, eqID).Scan(&orphanRevisions); err != nil || orphanRevisions != 0 {
 		return fmt.Errorf("b4 equipment revisions without matching audit = %d, want 0", orphanRevisions)
 	}
-	fmt.Println("B4_BUSINESS_DB_STATE=PASS ASSET=RETIRED EQUIPMENT=REMOVED REVISIONS_AND_AUDIT_CORRELATED")
+	fmt.Println("B4_BUSINESS_DB_STATE=PASS ASSET=RETIRED EQUIPMENT=REMOVED LOCATION=UI_CREATED_MOVED REVISIONS_AND_AUDIT_CORRELATED")
 	return nil
 }
 
