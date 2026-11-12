@@ -60,6 +60,31 @@ def test():
         assert len(volumes) == 3
         assert all(v["type"] == "bind" and v["read_only"] for v in volumes)
         print("DIRECT_LOCAL_BUILD=PASS DIRECT_MANIFEST=PASS NO_GHCR=PASS")
+        # G5-RC0: same commit prepared explicitly for the dedicated realm. Real
+        # Compose must render the baobei issuer, client and the account-service
+        # secret mount; the images are reused, the release id and hash differ.
+        assert manifest["identity_realm"] == "crane"
+        (secrets_dir / "account_client_secret").write_text("synthetic-outside-build")
+        with direct.deployment_lock(state):
+            direct.prepare(docker, state, secrets_dir, source, "baobei")
+        rid = direct.release_id(source, "baobei")
+        brelease, bmanifest = direct.verify_release(docker, state, secrets_dir, rid)
+        assert bmanifest["identity_realm"] == "baobei" and bmanifest["images"] == manifest["images"]
+        assert bmanifest["compose_sha256"] != manifest["compose_sha256"]
+        brendered = json.loads(docker.compose(brelease, secrets_dir, bmanifest["images"], *config_args, realm="baobei"))
+        api = brendered["services"]["baobei-api"]
+        assert api["environment"]["OIDC_ISSUER"] == "https://crane.youdaozd.com/realms/baobei"
+        assert api["environment"]["BAOBEI_ACCOUNT_CLIENT_ID"] == "baobei-account-service"
+        assert any((s["source"] if isinstance(s, dict) else s) == "account_client_secret" for s in api["secrets"])
+        assert brendered["secrets"]["account_client_secret"]["file"] == str(secrets_dir / "account_client_secret")
+        assert "BAOBEI_ACCOUNT_CLIENT_ID" not in rendered["services"]["baobei-api"]["environment"]
+        try:
+            direct.verify_release(docker, state, secrets_dir, source + "+crane")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("unknown release id accepted")
+        print("DIRECT_REALM_CRANE_DEFAULT=PASS DIRECT_REALM_BAOBEI_WIRED=PASS")
         if sys.platform != "linux":
             print("BIND_ENGINE_MISSING_DENIED=NOT_RUN_NON_LINUX")
             return
@@ -145,7 +170,7 @@ class FixtureDocker:
     def call(self, *args, **kwargs):
         return self.docker.call(*args, **kwargs)
 
-    def compose(self, release, secrets_dir, images, *args, capture=True):
+    def compose(self, release, secrets_dir, images, *args, capture=True, realm="crane"):
         env = {"COMPOSE_DISABLE_ENV_FILE": "1",
                "FIX_API_IMAGE": images["baobei-api"]["ref"], "FIX_WEB_IMAGE": images["baobei-web"]["ref"]}
         return self.docker.call("compose", "--project-name", self.project, "-f", str(release / "compose.yaml"),

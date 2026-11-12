@@ -1,10 +1,25 @@
 // G4-S5-R1-E real-browser check against a real Keycloak 26.8.1 (loopback fixture).
 // Started by tests/baobei/keycloak-browser.sh; never runs in CI without a fixture.
 import { test, expect } from '../../../apps/project-intake-web/node_modules/@playwright/test/index.mjs';
+import { readFileSync, rmSync, statSync } from 'node:fs';
 
 const KC = process.env.BAOBEI_KEYCLOAK_URL!;
-const phone = process.env.BAOBEI_KC_PHONE!;
-const temp = process.env.BAOBEI_KC_TEMP!;
+// G5-RC0: the fixture hands the one-time credential over in a private 0600
+// file (BAOBEI_KC_CREDENTIAL_FILE), never on stdout or in the environment. It
+// is read once and deleted at once; the values are never logged.
+function takeCredential(): { phone: string; temporaryPassword: string } | null {
+  const file = process.env.BAOBEI_KC_CREDENTIAL_FILE;
+  if (!file) return null;
+  try {
+    if ((statSync(file).mode & 0o077) !== 0) throw new Error('credential handoff file is not private');
+    return JSON.parse(readFileSync(file, 'utf8'));
+  } finally {
+    rmSync(file, { force: true });
+  }
+}
+const cred = takeCredential();
+const phone = cred?.phone ?? '';
+const temp = cred?.temporaryPassword ?? '';
 const newPw = 'Real-' + Math.random().toString(36).slice(2, 10) + 'A1';
 const newerPw = 'Real-' + Math.random().toString(36).slice(2, 10) + 'B2';
 

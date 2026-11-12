@@ -5,7 +5,7 @@ BAOBEI_MAIN_MERGE=FORBIDDEN
 BAOBEI_R2_MERGE=FORBIDDEN
 BASE_SHA=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18
 BRANCH=product/baobei-v1
-CURRENT_BATCH=G5_D1_RELIABILITY
+CURRENT_BATCH=G5_RC0_RELEASE_CHAIN
 DEPLOYED_SHA=7b9558084d73f5210cdd08e8240883ecc1659de8
 SCHEMA_VERSION=00008
 RELEASE_SHA=572c6aa609e06419b832f7652e73bf29e8c65c37
@@ -19,7 +19,11 @@ PRODUCTION_DEPLOYED=YES (7b95580; G4-S4 未部署)
 
 目标：快速报项目、识别重复、明确归属并跟进。独立产品，永不合并 main/R2。
 
-## 当前实施：G5-D1 业务可靠性极小收口
+## 当前实施：G5-RC0 发布链路、身份切换与回退安全收口
+
+基线 `0fe2c43`。direct-deploy 显式 `--identity-realm`（默认 crane），Realm 绑定不可变清单与配置哈希、overlay 进入快照、账号服务密钥失败关闭；不兼容迁移的维护窗口阶段门禁；identity-switch 预检失败关闭与接管管理员；回退路径 A/B；测试凭据私有交接。仅研发与隔离验证，生产未改。见 [45-G5-RC0发布链路身份切换与回退安全收口](45-G5-RC0发布链路身份切换与回退安全收口.md)。
+
+## 历史：G5-D1 业务可靠性极小收口
 
 基线 `03d11bc`。草稿废弃原因服务端必填、团队归档并发反证（现有锁已保证）、集合尾斜杠与字段错误结构化、移动端触控区/对比度/空分页。无 schema 变更。见 [44-G5-D1业务可靠性极小收口验收](44-G5-D1业务可靠性极小收口验收.md)。
 

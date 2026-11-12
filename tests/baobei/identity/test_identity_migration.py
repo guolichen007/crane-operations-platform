@@ -109,9 +109,19 @@ class Fixture:
                         '--realm-users', self.write('realm.json', realm if realm is not None else self.realm))
 
     def links(self, realm=None, plan=None, users=None):
+        """Returns (code, stdout, stderr, sql) — the SQL only exists in the private --out file."""
         a = self.write('a.json', users if users is not None else self.users, private=True)
-        return self.run('links', '--plan', self.write('plan.json', plan or self.plan), '--app-users', a,
-                        '--realm-users', self.write('realm.json', realm if realm is not None else self.realm), '--issuer', ISSUER)
+        out = os.path.join(self.dir, 'links-%d.sql' % len(os.listdir(self.dir)))
+        code, so, se = self.run('links', '--plan', self.write('plan.json', plan or self.plan), '--app-users', a,
+                                '--realm-users', self.write('realm.json', realm if realm is not None else self.realm),
+                                '--issuer', ISSUER, '--out', out)
+        sql = ''
+        if os.path.exists(out):
+            if os.name == 'posix':
+                assert (os.stat(out).st_mode & 0o077) == 0, 'link SQL file is not private'
+            with open(out, encoding='utf-8') as fh:
+                sql = fh.read()
+        return code, so, se, sql
 
     def build(self, realm, plan=None, users=None):
         out = os.path.join(self.dir, 'import-%d.json' % len(os.listdir(self.dir)))
@@ -143,9 +153,9 @@ class IdentityMigrationTest(unittest.TestCase):
         self.assertNotEqual(code, 0, 'verify accepted a tampered field')
         if problem:
             self.assertIn(problem, out + err)
-        code, out, err = self.f.links(realm, plan, users)
+        code, out, err, sql = self.f.links(realm, plan, users)
         self.assertNotEqual(code, 0, 'links accepted a tampered field')
-        self.assertNotIn('INSERT INTO identity_links', out, 'a failed check produced link SQL')
+        self.assertNotIn('INSERT INTO identity_links', out + sql, 'a failed check produced link SQL')
         for p in self.f.all_phones():
             self.assertNotIn(p, out + err)
             self.assertNotIn(p[3:], out + err)
@@ -155,11 +165,18 @@ class IdentityMigrationTest(unittest.TestCase):
         code, out, err = self.f.verify()
         self.assertEqual(code, 0, out + err)
         self.assertEqual(json.loads(out)['checked'], 5)  # admin, director, sales, suspended, archived with history
-        code, out, err = self.f.links()
+        code, out, err, sql = self.f.links()
         self.assertEqual(code, 0, err)
-        self.assertEqual(out.count('INSERT INTO identity_links'), 5)
-        self.assertTrue(out.startswith('BEGIN;') and out.rstrip().endswith('COMMIT;'))
-        self.assertIn('staff/subject/role mismatch', out)
+        self.assertEqual(sql.count('INSERT INTO identity_links'), 5)
+        self.assertTrue(sql.startswith('BEGIN;') and sql.rstrip().endswith('COMMIT;'))
+        self.assertIn('roster is stale', sql)
+        # G5-RC0: the live re-check covers status and work phone, and the terminal
+        # never shows the phones the SQL carries.
+        self.assertIn("staff_status='ACTIVE'", sql)
+        self.assertIn("work_phone='%s'" % phone(1), sql)
+        for p in self.f.all_phones():
+            self.assertNotIn(p, out + err)
+            self.assertNotIn(p[3:], out + err)
 
     def test_expected_states_per_category(self):
         acts = {p['staffId']: p['action'] for p in self.f.plan['plan']}

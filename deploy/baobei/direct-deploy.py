@@ -25,10 +25,52 @@ IMAGE_ID = re.compile(r"sha256:[0-9a-f]{64}")
 SERVICES = ("baobei-web", "baobei-api")
 WEBROOT = Path("/srv/u-dao/platform/ingress/acme-webroot")
 SNAPSHOT = (
-    "compose.production.yaml", "compose.direct.yaml", "nginx.production.conf",
+    "compose.production.yaml", "compose.direct.yaml", "compose.realm-baobei.yaml", "nginx.production.conf",
     "nginx.proxy.production.conf", "db/initialize.sql", "db/staff-role.sql",
 )
 SECRET_NAMES = ("db_password", "runtime_database_url", "staff_database_url", "oidc_client_secret")
+# G5-RC0: the identity realm is an explicit, approved part of every release. It
+# is chosen once at `prepare` (--identity-realm), written into the immutable
+# manifest and bound to the Compose config hash; later commands read it from the
+# verified manifest only. No environment variable can change it.
+#   crane  : shared realm (current production default, no account service)
+#   baobei : dedicated realm; loads compose.realm-baobei.yaml and requires the
+#            account-service client secret.
+REALMS = {
+    "crane": {"overlay": None, "issuer": "https://crane.youdaozd.com/realms/crane",
+              "client_id": "baobei-web", "account_client_id": None, "secrets": ()},
+    "baobei": {"overlay": "compose.realm-baobei.yaml", "issuer": "https://crane.youdaozd.com/realms/baobei",
+               "client_id": "baobei-web", "account_client_id": "baobei-account-service",
+               "secrets": ("account_client_secret",)},
+}
+DEFAULT_REALM = "crane"
+
+
+def realm_profile(realm):
+    if realm not in REALMS:
+        raise ValueError("身份 Realm 必须是批准的 crane 或 baobei")
+    return REALMS[realm]
+
+
+def realm_secrets(realm):
+    return SECRET_NAMES + realm_profile(realm)["secrets"]
+
+
+# A release is (source commit, identity realm). The crane release keeps the plain
+# SHA as its id (existing state stays valid); other realms append "+<realm>".
+RELEASE = re.compile(r"([0-9a-f]{40})(?:\+(baobei))?")
+
+
+def release_id(source, realm):
+    realm_profile(realm)
+    return source if realm == DEFAULT_REALM else f"{source}+{realm}"
+
+
+def parse_release(rid):
+    match = RELEASE.fullmatch(rid or "")
+    if not match:
+        raise ValueError("无效的发布标识")
+    return match.group(1), match.group(2) or DEFAULT_REALM
 # Upgrades and rollbacks must never reconcile PostgreSQL: a new release directory changes
 # the bind-mount source paths and therefore the database service config hash.
 APP_UP = ("up", "-d", "--no-build", "--pull", "never", "--no-deps",
@@ -196,15 +238,16 @@ class Docker:
         context = ["--context", self.context] if hasattr(self, "context") else []
         return run(["docker", *context, *args], cwd=cwd, env={**self.env, **(env or {})}, capture=capture)
 
-    def compose(self, release, secrets, images, *args, capture=True):
+    def compose(self, release, secrets, images, *args, capture=True, realm=DEFAULT_REALM):
+        overlay = realm_profile(realm)["overlay"]
+        files = ["-f", "compose.production.yaml", "-f", "compose.direct.yaml"] + (["-f", overlay] if overlay else [])
         env = {
             "COMPOSE_DISABLE_ENV_FILE": "1",
             "BAOBEI_SECRETS_DIR": str(secrets),
             "BAOBEI_WEB_IMAGE": images["baobei-web"]["ref"],
             "BAOBEI_API_IMAGE": images["baobei-api"]["ref"],
         }
-        return self.call("compose", "--project-name", "u-dao-baobei",
-                         "-f", "compose.production.yaml", "-f", "compose.direct.yaml",
+        return self.call("compose", "--project-name", "u-dao-baobei", *files,
                          *args, env=env, cwd=release, capture=capture)
 
     def inspect(self, ref, source):
@@ -218,9 +261,31 @@ class Docker:
         return {"ref": ref, "id": image["Id"], "created_at": image["Created"]}
 
 
-def config_hash(docker, release, secrets, images):
+def check_identity(config, realm):
+    """The rendered API service must carry exactly the approved realm wiring."""
+    profile = realm_profile(realm)
+    api = config["services"]["baobei-api"]
+    env = api.get("environment") or {}
+    secrets = {s["source"] if isinstance(s, dict) else s for s in api.get("secrets") or []}
+    expected = {"BAOBEI_IDENTITY_REALM": realm, "OIDC_ISSUER": profile["issuer"], "OIDC_CLIENT_ID": profile["client_id"]}
+    if any(env.get(k) != v for k, v in expected.items()):
+        raise ValueError("渲染后的 API 身份配置与批准的 Realm 不一致")
+    if profile["account_client_id"]:
+        if (env.get("BAOBEI_ACCOUNT_CLIENT_ID") != profile["account_client_id"] or
+                env.get("BAOBEI_ACCOUNT_CLIENT_SECRET_FILE") != "/run/secrets/account_client_secret" or
+                "account_client_secret" not in secrets):
+            raise ValueError("独立 Realm 缺少账号服务客户端或密钥挂载")
+        source = (config.get("secrets") or {}).get("account_client_secret", {}).get("file", "")
+        if not source.endswith("/account_client_secret"):
+            raise ValueError("账号服务密钥必须来自外部密钥目录")
+    elif "BAOBEI_ACCOUNT_CLIENT_ID" in env or "BAOBEI_ACCOUNT_CLIENT_SECRET_FILE" in env or "account_client_secret" in secrets:
+        raise ValueError("共享 Realm 不得启用账号服务")
+
+
+def config_hash(docker, release, secrets, images, realm=DEFAULT_REALM):
     config = json.loads(docker.compose(release, secrets, images, "config", "--no-path-resolution",
-                                      "--format", "json"))
+                                      "--format", "json", realm=realm))
+    check_identity(config, realm)
     services = config["services"]
     if set(services) != {*SERVICES, "baobei-postgres"}:
         raise ValueError("直接部署服务集合有误")
@@ -264,32 +329,42 @@ def pointer(state, name):
     if not path.exists():
         return None
     source = read_json(path)["source_sha"]
-    if not SHA.fullmatch(source):
+    if not RELEASE.fullmatch(source):
         raise ValueError("部署状态指针损坏")
     return source
 
 
-def verify_release(docker, state, secrets, source):
-    if not SHA.fullmatch(source):
-        raise ValueError("无效的部署提交 SHA")
-    release = state / "releases" / source
+def verify_release(docker, state, secrets, rid):
+    source, realm = parse_release(rid)
+    release = state / "releases" / rid
     require_directory(release)
     manifest = read_json(release / "manifest.json")
+    # Releases prepared before G5-RC0 have no realm field: they are crane releases.
+    if manifest.get("identity_realm", DEFAULT_REALM) != realm:
+        raise ValueError("发布清单的身份 Realm 与发布标识不一致")
+    if manifest.get("identity_issuer", REALMS[realm]["issuer"]) != REALMS[realm]["issuer"]:
+        raise ValueError("发布清单的 Issuer 与批准的 Realm 不一致")
     if (manifest["mode"] != "direct-local" or manifest["source_sha"] != source or
             manifest["source"] != SOURCE or manifest["platform"] != docker.platform or
-            manifest["snapshot_sha256"] != hash_files(release, SNAPSHOT)):
+            manifest["snapshot_sha256"] != hash_files(release, snapshot_names(manifest))):
         raise ValueError("部署清单与当前 Docker 或 Compose 配置不一致")
     if set(manifest["images"]) != set(SERVICES):
         raise ValueError("清单必须包含 Web 和 API 镜像")
     for service, image in manifest["images"].items():
         if docker.inspect(local_ref(service, source), source) != image:
             raise ValueError("本地镜像已更改，请停止部署")
-    if manifest["compose_sha256"] != config_hash(docker, release, secrets, manifest["images"]):
+    if manifest["compose_sha256"] != config_hash(docker, release, secrets, manifest["images"], realm):
         raise ValueError("Compose 配置哈希不匹配")
     return release, manifest
 
 
-def prepare(docker, state, secrets, source):
+def snapshot_names(manifest):
+    """Pre-RC0 releases were snapshotted without the realm overlay."""
+    return SNAPSHOT if "identity_realm" in manifest else tuple(n for n in SNAPSHOT if n != "compose.realm-baobei.yaml")
+
+
+def prepare(docker, state, secrets, source, realm=DEFAULT_REALM):
+    rid = release_id(source, realm)
     verify_source(source)
     go_proxy = os.environ.get("BAOBEI_GOPROXY", PUBLIC_GO_PROXIES[0])
     if go_proxy not in PUBLIC_GO_PROXIES:
@@ -297,10 +372,17 @@ def prepare(docker, state, secrets, source):
     releases = state / "releases"
     releases.mkdir(exist_ok=True)
     require_directory(releases)
-    release = releases / source
+    release = releases / rid
     if release.exists():
-        verify_release(docker, state, secrets, source)
+        verify_release(docker, state, secrets, rid)
         return release
+    # The same commit prepared for the other realm: reuse its verified images
+    # (never rebuild a tag that another release already pins).
+    sibling = None
+    for other in REALMS:
+        other_id = release_id(source, other)
+        if other != realm and (releases / other_id).exists():
+            sibling = verify_release(docker, state, secrets, other_id)[1]["images"]
     with tempfile.TemporaryDirectory(dir=state, prefix="build-") as tmp:
         staged = Path(tmp)
         export_source(source, staged)
@@ -311,11 +393,12 @@ def prepare(docker, state, secrets, source):
             dest.parent.mkdir(exist_ok=True)
             shutil.copyfile(staged / "deploy/baobei" / name, dest)
         db_contract = database_contract(staged)
-        images = build_images(docker, source, staged, go_proxy)
+        images = sibling or build_images(docker, source, staged, go_proxy)
         manifest = {
             "mode": "direct-local", "source_sha": source, "source": SOURCE, "platform": docker.platform,
             "built_at": datetime.now(timezone.utc).isoformat(), "images": images, "go_proxy": go_proxy,
-            "compose_sha256": config_hash(docker, snapshot, secrets, images),
+            "identity_realm": realm, "identity_issuer": realm_profile(realm)["issuer"],
+            "compose_sha256": config_hash(docker, snapshot, secrets, images, realm),
             "snapshot_sha256": hash_files(snapshot, SNAPSHOT), "database_contract_sha256": db_contract,
             "rollback_target": pointer(state, "active"),
         }
@@ -324,9 +407,9 @@ def prepare(docker, state, secrets, source):
     return release
 
 
-def check_mounts(secrets, command, migrator_dsn):
+def check_mounts(secrets, command, migrator_dsn, realm=DEFAULT_REALM):
     require_directory(secrets)
-    names = ("db_password",) if command == "db" else SECRET_NAMES if command in ("up", "rollback") else ()
+    names = ("db_password",) if command == "db" else realm_secrets(realm) if command in ("up", "rollback") else ()
     for name in names:
         require_file(secrets / name)
     if command in ("up", "rollback"):
@@ -337,9 +420,9 @@ def check_mounts(secrets, command, migrator_dsn):
         require_file(migrator_dsn)
 
 
-def database_identity(docker, release, secrets, images):
+def database_identity(docker, release, secrets, images, realm=DEFAULT_REALM):
     """Return the running PostgreSQL container identity; refuse if absent or unhealthy."""
-    container = docker.compose(release, secrets, images, "ps", "-q", "baobei-postgres").decode().strip()
+    container = docker.compose(release, secrets, images, "ps", "-q", "baobei-postgres", realm=realm).decode().strip()
     if not container or len(container.split()) != 1:
         raise ValueError("PostgreSQL 未运行，拒绝切换应用；首次安装须先执行 db 步骤")
     state = docker.call("inspect", "--format",
@@ -350,44 +433,123 @@ def database_identity(docker, release, secrets, images):
     return state[0], state[1]
 
 
-def start(docker, release, secrets, manifest):
+def start(docker, release, secrets, manifest, realm=DEFAULT_REALM):
     """Reconcile only Web/API. PostgreSQL is created solely by the explicit db command."""
     images = manifest["images"]
-    database = database_identity(docker, release, secrets, images)
-    docker.compose(release, secrets, images, *APP_UP, capture=False)
-    if database_identity(docker, release, secrets, images) != database:
+    database = database_identity(docker, release, secrets, images, realm)
+    docker.compose(release, secrets, images, *APP_UP, capture=False, realm=realm)
+    if database_identity(docker, release, secrets, images, realm) != database:
         raise ValueError("PostgreSQL 容器在应用切换期间被改变，停止并人工核查")
     for service, image in images.items():
-        container = docker.compose(release, secrets, images, "ps", "-q", service).decode().strip()
+        container = docker.compose(release, secrets, images, "ps", "-q", service, realm=realm).decode().strip()
         if not container or docker.call("inspect", "--format", "{{.Image}}", container).decode().strip() != image["id"]:
             raise ValueError("运行容器的镜像 ID 与部署清单不匹配")
 
 
-def apply(docker, state, secrets, source, command, migrator_dsn):
+# G5-RC0 upgrade-order gate. A release whose database contract differs from the
+# active one (an incompatible migration) may only be migrated and started inside
+# a recorded maintenance window, phase by phase; each phase needs the evidence
+# of the previous one. The tool records phases and refuses out-of-order steps;
+# it never stops services, takes backups or switches realms by itself.
+PHASES = ("MAINTENANCE_ENTER", "FRESH_BACKUP_VERIFIED", "OLD_API_DRAINED", "SCHEMA_UPGRADE",
+          "IDENTITY_PRECHECK", "IDENTITY_SWITCH", "NEW_API_START", "WEB_START", "SMOKE_TEST",
+          "RELEASE_COMPLETE")
+EVIDENCE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:@/+-]{2,199}")
+# Phases recorded by the operator with a reference to their evidence (backup
+# id + checksum, drain proof, precheck report, smoke result); the rest are
+# recorded by this tool when its own step succeeds.
+OPERATOR_PHASES = {"MAINTENANCE_ENTER", "FRESH_BACKUP_VERIFIED", "OLD_API_DRAINED", "IDENTITY_PRECHECK",
+                   "IDENTITY_SWITCH", "SMOKE_TEST", "RELEASE_COMPLETE"}
+
+
+def window_path(state):
+    return state / "maintenance.json"
+
+
+def read_window(state):
+    path = window_path(state)
+    return read_json(path) if path.exists() else None
+
+
+def window_done(window, phase):
+    return any(entry["phase"] == phase for entry in window["phases"])
+
+
+def record_phase(state, rid, phase, evidence):
+    """Append one phase with its evidence; refuses skipping or repeating a phase."""
+    if phase not in PHASES or not EVIDENCE.fullmatch(evidence or ""):
+        raise ValueError("阶段名或证据编号无效")
+    window = read_window(state)
+    if phase == "MAINTENANCE_ENTER":
+        if window and not window_done(window, "RELEASE_COMPLETE"):
+            raise ValueError("已有未完成的维护窗口")
+        window = {"release": rid, "phases": []}
+    elif not window or window["release"] != rid:
+        raise ValueError("没有本发布的维护窗口，先执行 MAINTENANCE_ENTER")
+    done = [entry["phase"] for entry in window["phases"]]
+    expected = PHASES[len(done)]
+    if phase != expected:
+        raise ValueError(f"阶段顺序错误：下一步必须是 {expected}")
+    window["phases"].append({"phase": phase, "evidence": evidence,
+                             "at": datetime.now(timezone.utc).isoformat()})
+    atomic_json(window_path(state), window)
+    return window
+
+
+def require_phase(state, rid, phase):
+    window = read_window(state)
+    if not window or window["release"] != rid:
+        raise ValueError(f"不兼容升级必须在维护窗口内进行：缺少 {phase}")
+    done = [entry["phase"] for entry in window["phases"]]
+    if PHASES.index(phase) != len(done):
+        raise ValueError(f"阶段顺序错误：当前可执行 {PHASES[len(done)] if len(done) < len(PHASES) else '无'}，不能执行 {phase}")
+
+
+def incompatible(docker, state, secrets, manifest, active):
+    """True when the candidate changes the database contract of the active release."""
+    if not active:
+        return False
+    return verify_release(docker, state, secrets, active)[1]["database_contract_sha256"] != manifest["database_contract_sha256"]
+
+
+def apply(docker, state, secrets, rid, command, migrator_dsn, confirm_realm=None):
     if not sys.platform.startswith("linux"):
         raise ValueError("启动、迁移和回滚仅支持 Linux 部署宿主")
-    check_mounts(secrets, command, migrator_dsn)
-    release, manifest = verify_release(docker, state, secrets, source)
+    source, realm = parse_release(rid)
+    check_mounts(secrets, command, migrator_dsn, realm)
+    release, manifest = verify_release(docker, state, secrets, rid)
     active, pending = pointer(state, "active"), pointer(state, "pending")
-    if pending not in (None, source):
+    if pending not in (None, rid):
         raise ValueError("另一提交有未完成部署，先恢复该提交")
     images = manifest["images"]
     if command == "rollback":
         target = manifest["rollback_target"]
-        if not target or source not in (active, pending):
+        if not target or rid not in (active, pending):
             raise ValueError("没有本次部署的可用回滚目标")
         release, previous = verify_release(docker, state, secrets, target)
         if manifest["database_contract_sha256"] != previous["database_contract_sha256"]:
             raise ValueError("数据库契约不同，需要经审查的数据库恢复流程")
-        atomic_json(state / "pending.json", {"source_sha": source})
-        start(docker, release, secrets, previous)
+        target_realm = parse_release(target)[1]
+        if target_realm != realm and confirm_realm != target_realm:
+            raise ValueError("回滚目标使用另一身份 Realm：需先完成 identity-switch 并以 --confirm-realm 明确确认")
+        check_mounts(secrets, command, migrator_dsn, target_realm)
+        atomic_json(state / "pending.json", {"source_sha": rid})
+        start(docker, release, secrets, previous, target_realm)
         atomic_json(state / "active.json", {"source_sha": target})
     else:
-        if active not in (source, manifest["rollback_target"]):
+        if active not in (rid, manifest["rollback_target"]):
             raise ValueError("清单的回滚基线已过期")
-        atomic_json(state / "pending.json", {"source_sha": source})
+        active_realm = parse_release(active)[1] if active else DEFAULT_REALM
+        if command == "up" and active and active_realm != realm and confirm_realm != realm:
+            raise ValueError("本发布改变身份 Realm：需先完成 identity-switch 并以 --confirm-realm 明确确认")
+        gated = incompatible(docker, state, secrets, manifest, active)
+        if command == "migrate" and gated:
+            require_phase(state, rid, "SCHEMA_UPGRADE")
+        if command == "up" and gated:
+            require_phase(state, rid, "NEW_API_START")
+        atomic_json(state / "pending.json", {"source_sha": rid})
         if command == "db":
-            docker.compose(release, secrets, images, *DB_UP, capture=False)
+            docker.compose(release, secrets, images, *DB_UP, capture=False, realm=realm)
             return
         if command == "migrate":
             docker.call("run", "--rm", "--pull", "never", "--read-only", "--network", "u-dao-baobei-internal",
@@ -395,33 +557,55 @@ def apply(docker, state, secrets, source, command, migrator_dsn):
                         "--env", "DATABASE_URL_FILE=/run/secrets/db_url",
                         "--mount", f"type=bind,src={migrator_dsn},dst=/run/secrets/db_url,readonly",
                         images["baobei-api"]["id"], "maintenance", "migrate", capture=False)
+            if gated:
+                record_phase(state, rid, "SCHEMA_UPGRADE", "migrate:" + manifest["database_contract_sha256"][:16])
             return
-        start(docker, release, secrets, manifest)
-        atomic_json(state / "active.json", {"source_sha": source})
+        start(docker, release, secrets, manifest, realm)
+        if gated:
+            record_phase(state, rid, "NEW_API_START", "image:" + images["baobei-api"]["id"][7:23])
+            record_phase(state, rid, "WEB_START", "image:" + images["baobei-web"]["id"][7:23])
+        atomic_json(state / "active.json", {"source_sha": rid})
     (state / "pending.json").unlink(missing_ok=True)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("prepare", "db", "migrate", "up", "rollback"))
+    parser.add_argument("command", choices=("prepare", "db", "migrate", "up", "rollback", "phase", "status"))
     parser.add_argument("--source-sha", required=True)
+    parser.add_argument("--identity-realm", choices=tuple(REALMS), default=DEFAULT_REALM,
+                        help="批准的身份 Realm；默认 crane（现状）。写入不可变发布清单")
+    parser.add_argument("--confirm-realm", choices=tuple(REALMS),
+                        help="切换身份 Realm 的发布或回滚时，明确确认目标 Realm（须已完成 identity-switch）")
     parser.add_argument("--state-dir", type=Path, required=True)
     parser.add_argument("--secrets-dir", type=Path, required=True)
     parser.add_argument("--migrator-dsn", type=Path)
+    parser.add_argument("--phase", choices=PHASES)
+    parser.add_argument("--evidence")
     args = parser.parse_args()
     state, secrets = args.state_dir.absolute(), args.secrets_dir.absolute()
     if (state.is_relative_to(ROOT) or secrets.is_relative_to(ROOT) or secrets.is_relative_to(state) or
             state.is_relative_to(secrets)):
         raise ValueError("状态与密钥目录必须彼此独立并位于源码工作树之外")
     private_directory(state)
+    rid = release_id(args.source_sha, args.identity_realm)
     with deployment_lock(state):
+        if args.command == "phase":
+            if args.phase not in OPERATOR_PHASES:
+                raise ValueError("该阶段由部署工具在对应步骤成功后自动记录")
+            window = record_phase(state, rid, args.phase, args.evidence)
+            print("BAOBEI_PHASE_" + args.phase + "=RECORDED " + str(len(window["phases"])) + "/" + str(len(PHASES)))
+            return
+        if args.command == "status":
+            print(json.dumps({"active": pointer(state, "active"), "pending": pointer(state, "pending"),
+                              "maintenance": read_window(state)}, ensure_ascii=False, sort_keys=True))
+            return
         docker = Docker()
         if args.command == "prepare":
-            path = prepare(docker, state, secrets, args.source_sha)
+            path = prepare(docker, state, secrets, args.source_sha, args.identity_realm)
             print(path / "manifest.json")
         else:
-            apply(docker, state, secrets, args.source_sha, args.command,
-                  args.migrator_dsn.absolute() if args.migrator_dsn else None)
+            apply(docker, state, secrets, rid, args.command,
+                  args.migrator_dsn.absolute() if args.migrator_dsn else None, args.confirm_realm)
             print("BAOBEI_DIRECT_" + args.command.upper() + "=PASS")
 
 

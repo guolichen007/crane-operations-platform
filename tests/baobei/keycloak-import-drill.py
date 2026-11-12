@@ -152,9 +152,11 @@ def main():
     call('PUT', f"/admin/realms/baobei/users/{victim['id']}", {'username': '13000000009'}, adm)
     code, out, err = run_tool('verify', '--plan', plan_path, '--app-users', app_users, '--realm-users', dump('realm.json', realm_export()))
     check('verify refuses a real user whose login differs from the approved phone', code != 0 and '登录名与批准的手机号不一致' in out, out + err)
+    refused_sql = os.path.join(tmp, 'links-refused.sql')
     code, out, err = run_tool('links', '--plan', plan_path, '--app-users', app_users, '--realm-users', dump('realm.json', realm_export()),
-                              '--issuer', 'https://crane.youdaozd.com/realms/baobei')
-    check('links refuses and prints no link SQL after a failed check', code != 0 and 'INSERT INTO identity_links' not in out, out + err)
+                              '--issuer', 'https://crane.youdaozd.com/realms/baobei', '--out', refused_sql)
+    check('links refuses and writes no link SQL after a failed check',
+          code != 0 and 'INSERT INTO identity_links' not in out and not os.path.exists(refused_sql), out + err)
     code, out, err = run_tool('import', '--plan', plan_path, '--app-users', app_users, '--realm-users', dump('cur.json', realm_export()),
                               '--out', os.path.join(tmp, 'import-again.json'))
     check('import refuses: same UUID with a different login (never SKIP)', code == 2 and not os.path.exists(os.path.join(tmp, 'import-again.json')), out + err)
@@ -176,10 +178,14 @@ def main():
     first = next(u for u in imp['users'] if u.get('clientRoles', {}).get('baobei-web') == ['baobei_sales'])
     loc, _ = browser_login('baobei', 'baobei-web', 'http://127.0.0.1/cb', first['username'], old_pw)
     check('old shared-realm password does not sign in to the new realm', 'code=' not in loc, loc)
+    links_sql = os.path.join(tmp, 'links.sql')
     code, out, err = run_tool('links', '--plan', plan_path, '--app-users', app_users, '--realm-users', dump('realm.json', realm_export()),
-                              '--issuer', 'https://crane.youdaozd.com/realms/baobei')
-    check('links: verified first, one guarded insert per imported user in one transaction',
-          code == 0 and out.count('INSERT INTO identity_links') == 6 and out.startswith('BEGIN;'), out + err)
+                              '--issuer', 'https://crane.youdaozd.com/realms/baobei', '--out', links_sql)
+    sql = open(links_sql, encoding='utf-8').read() if os.path.exists(links_sql) else ''
+    check('links: verified first, one guarded insert per imported user in one private SQL file (stale-roster re-check)',
+          code == 0 and sql.count('INSERT INTO identity_links') == 6 and sql.startswith('BEGIN;')
+          and 'roster is stale' in sql and 'INSERT INTO identity_links' not in out
+          and (os.stat(links_sql).st_mode & 0o077) == 0, out + err)
     with open(os.path.expanduser('~/kc/import.json'), 'w') as fh:
         json.dump({'first': first, 'tmp': tmp}, fh)
     failed = [n for n, ok in probe.results if not ok]

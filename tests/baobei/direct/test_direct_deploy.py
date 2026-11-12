@@ -41,7 +41,7 @@ class FakeDocker:
         self.ups = []
         self.inspected = []
 
-    def compose(self, release, secrets, images, *args, capture=True):
+    def compose(self, release, secrets, images, *args, capture=True, realm="crane"):
         if args[0] == "up":
             self.ups.append(args)
             targets = MANAGED.intersection(args)
@@ -192,6 +192,12 @@ class DirectDeployTests(unittest.TestCase):
             with patch.object(direct.sys, "platform", "linux"), patch.object(direct, "check_mounts"), \
                  patch.object(direct, "verify_release", side_effect=lambda d, s, k, sha: releases[sha]), \
                  patch.object(direct, "start", side_effect=[ValueError("health failed"), None]) as start:
+                # G5-RC0: the candidate changes the database contract, so `up` runs
+                # only inside a recorded maintenance window, after SCHEMA_UPGRADE.
+                with self.assertRaisesRegex(ValueError, "维护窗口"):
+                    direct.apply(docker, state, state, CURRENT, "up", None)
+                for phase in direct.PHASES[:direct.PHASES.index("NEW_API_START")]:
+                    direct.record_phase(state, CURRENT, phase, "evidence-" + phase.lower())
                 with self.assertRaisesRegex(ValueError, "health failed"):
                     direct.apply(docker, state, state, CURRENT, "up", None)
                 self.assertEqual(direct.pointer(state, "active"), PREVIOUS)
@@ -200,7 +206,7 @@ class DirectDeployTests(unittest.TestCase):
                     direct.apply(docker, state, state, CURRENT, "rollback", None)
                 old["database_contract_sha256"] = "same"
                 direct.apply(docker, state, state, CURRENT, "rollback", None)
-                start.assert_called_with(docker, state / PREVIOUS, state, old)
+                start.assert_called_with(docker, state / PREVIOUS, state, old, "crane")
             self.assertEqual(direct.pointer(state, "active"), PREVIOUS)
             self.assertIsNone(direct.pointer(state, "pending"))
 
@@ -213,7 +219,7 @@ class DirectDeployTests(unittest.TestCase):
         docker.compose = Mock(wraps=docker.compose)
         original = FakeDocker.compose
 
-        def drift(release, secrets, images, *args, capture=True):
+        def drift(release, secrets, images, *args, capture=True, realm="crane"):
             result = original(docker, release, secrets, images, *args, capture=capture)
             if args[0] == "up":
                 docker.images["baobei-web"] = image_id("9")
@@ -254,7 +260,7 @@ class DirectDeployTests(unittest.TestCase):
         docker = FakeDocker()
         original = FakeDocker.compose
 
-        def recreate(release, secrets, images, *args, capture=True):
+        def recreate(release, secrets, images, *args, capture=True, realm="crane"):
             result = original(docker, release, secrets, images, *args, capture=capture)
             if args[0] == "up":
                 docker.pg_generation += 1
@@ -292,7 +298,7 @@ class DirectDeployTests(unittest.TestCase):
             docker = FakeDocker()
             original = FakeDocker.compose
 
-            def unhealthy(release, secrets, images, *args, capture=True):
+            def unhealthy(release, secrets, images, *args, capture=True, realm="crane"):
                 if args[0] == "up":
                     raise ValueError("docker compose 失败（退出码 1）")
                 return original(docker, release, secrets, images, *args, capture=capture)

@@ -28,9 +28,10 @@ Commands:
           approved phone), role, enabled state, no credentials; no extra users,
           no duplicates; rows that must not exist (not bound, synthetic, blocked,
           unapproved) are absent. Exit 1 on any failure.
-  links   Runs verify first; on success prints one SQL transaction that inserts
-          identity_links and re-checks staff_id/subject in the database. On
-          failure prints nothing and exits 1: a failed check never writes links.
+  links   Runs verify first; on success writes (--out, new 0600 file) one SQL
+          transaction that re-checks staff id, subject, role, status and work
+          phone of every row in the live database (a stale roster aborts it) and
+          inserts identity_links. On failure writes nothing and exits 1.
 
 Keycloak user ids are unique per server, so a new-realm user cannot reuse the
 shared-realm UUID while that account exists. New users get UUIDv5(subject) and
@@ -385,12 +386,23 @@ def links(args):
     lines = ['BEGIN;', 'SET LOCAL lock_timeout = \'5s\';']
     for p, b in approved:
         nid = new_realm_id(b['subject'])
+        # G5-RC0: re-check the live row against the approved export right before
+        # inserting (a stale roster aborts the whole transaction): staff id,
+        # business subject, role, status and work phone must all still match, and
+        # the subject must not already be linked under this issuer.
         lines.append(
-            "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM app_users WHERE staff_id=%s AND subject=%s AND role=%s) THEN "
-            "RAISE EXCEPTION 'staff/subject/role mismatch'; END IF; END $$;" % (q(b['staff_id']), q(b['subject']), q(b['role'])))
+            "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM app_users WHERE staff_id=%s AND subject=%s AND role=%s "
+            "AND staff_status=%s AND work_phone=%s) "
+            "OR EXISTS (SELECT 1 FROM identity_links WHERE issuer=%s AND subject=%s) THEN "
+            "RAISE EXCEPTION 'roster is stale: staff/subject/role/status/phone changed or already linked'; END IF; END $$;"
+            % (q(b['staff_id']), q(b['subject']), q(b['role']), q(b['staff_status']), q(b['work_phone']),
+               q(args.issuer), q(b['subject'])))
         lines.append('INSERT INTO identity_links(issuer,external_subject,subject) VALUES(%s,%s,%s);' % (q(args.issuer), q(nid), q(b['subject'])))
     lines.append('COMMIT;')
-    print('\n'.join(lines))
+    # The SQL carries the approved work phones (stale-roster check): it goes only
+    # to a new private file, never to the terminal.
+    write_private(args.out, '\n'.join(lines) + '\n')
+    out.emit({'result': 'WRITTEN', 'file': os.path.basename(args.out), 'links': len(approved), 'transaction': 'single'})
 
 
 def main():
@@ -414,6 +426,7 @@ def main():
     lk.add_argument('--app-users', required=True)
     lk.add_argument('--realm-users', required=True)
     lk.add_argument('--issuer', required=True)
+    lk.add_argument('--out', required=True, help='new private file (0600) for the guarded link SQL')
     args = ap.parse_args()
     try:
         {'roster': roster, 'import': build_import, 'verify': verify, 'links': links}[args.cmd](args)
