@@ -41,7 +41,9 @@ test('真实 Keycloak 浏览器：资产与 Equipment 完整业务 CRUD（新建
   const moveForm = page.getByTestId('asset-move-form');
   const noLoc = moveForm.getByTestId('move-no-locations');
   const siteName = code('LOC', 'SITE'), workshopName = code('LOC', 'WS');
-  if (await noLoc.isVisible().catch(() => false)) {
+  // Wait for the location list to settle: either the "no location" guidance or a target picker.
+  await expect(noLoc.or(moveForm.getByLabel('目标位置'))).toBeVisible();
+  if (await noLoc.isVisible()) {
     await expect(moveForm.getByRole('button', { name: '移动', exact: true })).toBeDisabled();
     await moveForm.getByTestId('move-create-location-link').click();
   } else {
@@ -383,11 +385,13 @@ test('Equipment 拆卸固定打开时版本：他人修改并刷新列表后确�
   await expect(dialog.getByTestId('equipment-remove-target')).toContainText(`v${eq.body.version}`);
 
   // Another client changes the Equipment (version +1).
+  // (The Equipment PATCH replaces the business fields: send the current record with one change.)
   const other = await page.evaluate(async ({ id, csrf, version }) => {
+    const current = await (await fetch(`/api/v1/equipment/${id}`)).json();
     const res = await fetch(`/api/v1/equipment/${id}`, {
       method: 'PATCH',
       headers: { 'X-CSRF-Token': csrf, 'Content-Type': 'application/json', 'If-Match': `"${version}"` },
-      body: JSON.stringify({ criticality: 'HIGH' }),
+      body: JSON.stringify({ ...current, criticality: 'HIGH' }),
     });
     return res.status;
   }, { id: eq.body.id, csrf, version: eq.body.version });
