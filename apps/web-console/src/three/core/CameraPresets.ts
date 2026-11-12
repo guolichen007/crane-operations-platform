@@ -16,11 +16,16 @@ export type CameraPreset = {
   fov: number;
   yaw: number;
 };
+// R5: width/height are the fallback frame fractions used only when the stage
+// cannot report its safe frame (no DOM); region presets are normally fitted to
+// the measured safe frame (CameraRig.safeArea). Province/city operations views
+// look down more steeply so the internal prefecture/county borders read clearly
+// and the extruded walls foreshorten.
 export const CameraPresets: Record<CameraPresetName, CameraPreset> = {
   COUNTRY_OVERVIEW: { width: 0.62, height: 0.88, elevation: 0.72, fov: 38, yaw: 0.1 },
   COUNTRY_CINEMATIC: { width: 0.62, height: 0.88, elevation: 0.65, fov: 40, yaw: 0.13 },
-  PROVINCE_CONTEXT: { width: 0.52, height: 0.92, elevation: 0.82, fov: 38, yaw: 0.1 },
-  CITY_CONTEXT: { width: 0.46, height: 0.82, elevation: 0.88, fov: 38, yaw: 0.08 },
+  PROVINCE_CONTEXT: { width: 0.52, height: 0.92, elevation: 1.0, fov: 38, yaw: 0.06 },
+  CITY_CONTEXT: { width: 0.46, height: 0.82, elevation: 1.06, fov: 38, yaw: 0.05 },
   PROJECT_FOCUS: { width: 0.52, height: 0.82, elevation: 0.68, fov: 38, yaw: 0.1 },
   DEVICE_FOCUS: { width: 0.44, height: 0.24, elevation: 0.72, fov: 38, yaw: 0.1 },
   PROVINCE_CINEMATIC: { width: 0.52, height: 0.86, elevation: 0.72, fov: 40, yaw: 0.13 },

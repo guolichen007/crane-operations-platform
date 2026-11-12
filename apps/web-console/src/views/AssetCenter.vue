@@ -5,6 +5,7 @@ import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router';
 import { Search, Plus, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-vue-next';
 import { listAssets, createAsset } from '../cloud/asset';
 import { ApiError } from '../cloud/client';
+import { assetCodeDisplay } from '../cloud/format';
 import { allowClose } from '../cloud/draft';
 import { webSession, productionAuth } from '../cloud/session';
 import { writableProjects } from '../cloud/auth-state';
@@ -206,7 +207,12 @@ const statusText: Record<string, string> = {
         </thead>
         <tbody>
           <tr v-for="a in assetsQuery.data.value" :key="a.id" class="data-row" :data-asset-id="a.id" @click="router.push(`/assets/${a.id}`)">
-            <td data-col="assetCode">{{ a.assetCode ?? '—' }}</td>
+            <td data-col="assetCode">
+              <template v-if="assetCodeDisplay(a).code">{{ assetCodeDisplay(a).code }}</template>
+              <span v-else class="code-missing" data-testid="asset-code-missing" :title="'系统内部资产 ID：' + a.id"
+                >编号待补全<small>内部 ID {{ a.id }}</small></span
+              >
+            </td>
             <td data-col="displayName">{{ a.displayName || a.assetCode || '—' }}</td>
             <td>{{ projectLabel(a.projectId, grants) }}</td>
             <td>{{ a.assetType }}</td>

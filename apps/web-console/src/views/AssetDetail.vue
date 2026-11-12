@@ -18,6 +18,7 @@ import {
   equipmentTypeLabel,
 } from '../cloud/asset';
 import { ApiError } from '../cloud/client';
+import { assetCodeDisplay } from '../cloud/format';
 import { webSession } from '../cloud/session';
 import { canWriteProject } from '../cloud/auth-state';
 import { useDraftSession, allowClose, allowRebase, draftText, fieldDiff, sameData } from '../cloud/draft';
@@ -467,7 +468,8 @@ const statusText: Record<string, string> = {
 
       <div v-if="tab === 'overview'" class="detail-grid">
         <div class="detail-cell"><span>资产名称</span><b>{{ asset.displayName || '—' }}</b></div>
-        <div class="detail-cell"><span>资产编号</span><b>{{ asset.assetCode ?? '—' }}</b></div>
+        <div class="detail-cell"><span>资产编号</span><b v-if="assetCodeDisplay(asset).code">{{ assetCodeDisplay(asset).code }}</b
+          ><b v-else class="code-missing" data-testid="asset-code-missing">编号待补全<small>内部 ID {{ asset.id }} · 项目 {{ asset.projectId }}</small></b></div>
         <div class="detail-cell"><span>类型</span><b>{{ asset.assetType }}</b></div>
         <div class="detail-cell"><span>制造商</span><b>{{ asset.manufacturerSnapshot || '—' }}</b></div>
         <div class="detail-cell"><span>品牌</span><b>{{ asset.brandSnapshot || '—' }}</b></div>

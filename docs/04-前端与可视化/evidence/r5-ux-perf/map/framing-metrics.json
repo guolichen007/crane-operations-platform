@@ -1,0 +1,986 @@
+[
+ {
+  "build": "before",
+  "size": "1366x768",
+  "scope": 100000,
+  "preset": "COUNTRY_OVERVIEW",
+  "canvas": {
+   "left": 307,
+   "top": 226.890625,
+   "width": 1044,
+   "height": 540
+  },
+  "usable": {
+   "width": 1044,
+   "height": 540
+  },
+  "region": {
+   "minX": 208.7892823539942,
+   "maxX": 856.0692913626199,
+   "minY": 100.92059228577212,
+   "maxY": 439.0795222110187,
+   "widthRatio": 0.6200000086289519
+  },
+  "fillW": 0.62,
+  "fillH": 0.626,
+  "margins": {
+   "left": 209,
+   "right": 188,
+   "top": 101,
+   "bottom": 101
+  },
+  "walls": {
+   "count": 1,
+   "effectivelyVisible": 1,
+   "inScene": 1
+  },
+  "gpu": {
+   "geometries": 82,
+   "textures": 11,
+   "drawCalls": 120
+  }
+ },
+ {
+  "build": "before",
+  "size": "1366x768",
+  "scope": 110000,
+  "preset": "PROVINCE_CONTEXT",
+  "canvas": {
+   "left": 307,
+   "top": 226.890625,
+   "width": 1044,
+   "height": 540
+  },
+  "usable": {
+   "width": 1044,
+   "height": 540
+  },
+  "region": {
+   "minX": 225.61052810947587,
+   "maxX": 768.4596886395955,
+   "minY": 91.23936096368917,
+   "maxY": 448.74899297045556,
+   "widthRatio": 0.5199704602778924
+  },
+  "fillW": 0.52,
+  "fillH": 0.662,
+  "margins": {
+   "left": 226,
+   "right": 276,
+   "top": 91,
+   "bottom": 91
+  },
+  "walls": {
+   "count": 1,
+   "effectivelyVisible": 1,
+   "inScene": 1
+  },
+  "gpu": {
+   "geometries": 130,
+   "textures": 11,
+   "drawCalls": 100
+  }
+ },
+ {
+  "build": "before",
+  "size": "1653x1186",
+  "scope": 100000,
+  "preset": "COUNTRY_OVERVIEW",
+  "canvas": {
+   "left": 481,
+   "top": 217.1875,
+   "width": 851,
+   "height": 958
+  },
+  "usable": {
+   "width": 851,
+   "height": 958
+  },
+  "region": {
+   "minX": 173.13772732612964,
+   "maxX": 700.7577273242534,
+   "minY": 348.68781019740965,
+   "maxY": 609.3121898123708,
+   "widthRatio": 0.6199999999977953
+  },
+  "fillW": 0.62,
+  "fillH": 0.272,
+  "margins": {
+   "left": 173,
+   "right": 150,
+   "top": 349,
+   "bottom": 349
+  },
+  "walls": {
+   "count": 1,
+   "effectivelyVisible": 1,
+   "inScene": 1
+  },
+  "gpu": {
+   "geometries": 82,
+   "textures": 11,
+   "drawCalls": 120
+  }
+ },
+ {
+  "build": "before",
+  "size": "1653x1186",
+  "scope": 110000,
+  "preset": "PROVINCE_CONTEXT",
+  "canvas": {
+   "left": 481,
+   "top": 217.1875,
+   "width": 851,
+   "height": 958
+  },
+  "usable": {
+   "width": 851,
+   "height": 958
+  },
+  "region": {
+   "minX": 193.82515449233873,
+   "maxX": 636.3436030143147,
+   "minY": 330.78872158186994,
+   "maxY": 627.2108884992754,
+   "widthRatio": 0.5199981768765876
+  },
+  "fillW": 0.52,
+  "fillH": 0.309,
+  "margins": {
+   "left": 194,
+   "right": 215,
+   "top": 331,
+   "bottom": 331
+  },
+  "walls": {
+   "count": 1,
+   "effectivelyVisible": 1,
+   "inScene": 1
+  },
+  "gpu": {
+   "geometries": 130,
+   "textures": 11,
+   "drawCalls": 97
+  }
+ },
+ {
+  "build": "before",
+  "size": "1920x1080",
+  "scope": 100000,
+  "preset": "COUNTRY_OVERVIEW",
+  "canvas": {
+   "left": 509,
+   "top": 217.1875,
+   "width": 1058,
+   "height": 852
+  },
+  "usable": {
+   "width": 1058,
+   "height": 852
+  },
+  "region": {
+   "minX": 214.3882077889844,
+   "maxX": 870.3482077899137,
+   "minY": 260.72464271344893,
+   "maxY": 591.2753572907011,
+   "widthRatio": 0.6200000000008784
+  },
+  "fillW": 0.62,
+  "fillH": 0.388,
+  "margins": {
+   "left": 214,
+   "right": 188,
+   "top": 261,
+   "bottom": 261
+  },
+  "walls": {
+   "count": 1,
+   "effectivelyVisible": 1,
+   "inScene": 1
+  },
+  "gpu": {
+   "geometries": 82,
+   "textures": 11,
+   "drawCalls": 120
+  }
+ },
+ {
+  "build": "before",
+  "size": "1920x1080",
+  "scope": 110000,
+  "preset": "PROVINCE_CONTEXT",
+  "canvas": {
+   "left": 509,
+   "top": 217.1875,
+   "width": 1058,
+   "height": 852
+  },
+  "usable": {
+   "width": 1058,
+   "height": 852
+  },
+  "region": {
+   "minX": 237.2859357579931,
+   "maxX": 787.4454820426263,
+   "minY": 242.31997558574668,
+   "maxY": 609.6798934548891,
+   "widthRatio": 0.5199995711574983
+  },
+  "fillW": 0.52,
+  "fillH": 0.431,
+  "margins": {
+   "left": 237,
+   "right": 271,
+   "top": 242,
+   "bottom": 242
+  },
+  "walls": {
+   "count": 1,
+   "effectivelyVisible": 1,
+   "inScene": 1
+  },
+  "gpu": {
+   "geometries": 130,
+   "textures": 11,
+   "drawCalls": 97
+  }
+ },
+ {
+  "build": "before",
+  "size": "1920x1080",
+  "scope": 330000,
+  "preset": "PROVINCE_CONTEXT",
+  "canvas": {
+   "left": 509,
+   "top": 217.1875,
+   "width": 1058,
+   "height": 852
+  },
+  "usable": {
+   "width": 1058,
+   "height": 852
+  },
+  "region": {
+   "minX": 260.1749121111389,
+   "maxX": 810.3349128312552,
+   "minY": 229.64718211452322,
+   "maxY": 622.3528220227853,
+   "widthRatio": 0.5200000006806393
+  },
+  "fillW": 0.52,
+  "fillH": 0.461,
+  "margins": {
+   "left": 260,
+   "right": 248,
+   "top": 230,
+   "bottom": 230
+  },
+  "walls": {
+   "count": 1,
+   "effectivelyVisible": 1,
+   "inScene": 1
+  },
+  "gpu": {
+   "geometries": 116,
+   "textures": 11,
+   "drawCalls": 107
+  }
+ },
+ {
+  "build": "before",
+  "size": "1920x1080",
+  "scope": 440000,
+  "preset": "PROVINCE_CONTEXT",
+  "canvas": {
+   "left": 509,
+   "top": 217.1875,
+   "width": 1058,
+   "height": 852
+  },
+  "usable": {
+   "width": 1058,
+   "height": 852
+  },
+  "region": {
+   "minX": 238.4959650990016,
+   "maxX": 788.6552385128813,
+   "minY": 281.579509546352,
+   "maxY": 570.4208166701278,
+   "widthRatio": 0.519999313245633
+  },
+  "fillW": 0.52,
+  "fillH": 0.339,
+  "margins": {
+   "left": 238,
+   "right": 269,
+   "top": 282,
+   "bottom": 282
+  },
+  "walls": {
+   "count": 1,
+   "effectivelyVisible": 1,
+   "inScene": 1
+  },
+  "gpu": {
+   "geometries": 147,
+   "textures": 11,
+   "drawCalls": 189
+  }
+ },
+ {
+  "build": "before",
+  "size": "1920x1080",
+  "scope": 460000,
+  "preset": "PROVINCE_CONTEXT",
+  "canvas": {
+   "left": 509,
+   "top": 217.1875,
+   "width": 1058,
+   "height": 852
+  },
+  "usable": {
+   "width": 1058,
+   "height": 852
+  },
+  "region": {
+   "minX": 250.73800451421832,
+   "maxX": 800.8953396873744,
+   "minY": 84.64599780636654,
+   "maxY": 767.3577714337134,
+   "widthRatio": 0.519997481260072
+  },
+  "fillW": 0.52,
+  "fillH": 0.801,
+  "margins": {
+   "left": 251,
+   "right": 257,
+   "top": 85,
+   "bottom": 85
+  },
+  "walls": {
+   "count": 1,
+   "effectivelyVisible": 1,
+   "inScene": 1
+  },
+  "gpu": {
+   "geometries": 142,
+   "textures": 11,
+   "drawCalls": 142
+  }
+ },
+ {
+  "build": "before",
+  "size": "2560x1440",
+  "scope": 100000,
+  "preset": "COUNTRY_OVERVIEW",
+  "canvas": {
+   "left": 509,
+   "top": 217.1875,
+   "width": 1698,
+   "height": 978
+  },
+  "usable": {
+   "width": 1698,
+   "height": 978
+  },
+  "region": {
+   "minX": 340.9688163031458,
+   "maxX": 1393.7288196842617,
+   "minY": 216.77676637304688,
+   "maxY": 761.2232655363855,
+   "widthRatio": 0.6200000019912343
+  },
+  "fillW": 0.62,
+  "fillH": 0.557,
+  "margins": {
+   "left": 341,
+   "right": 304,
+   "top": 217,
+   "bottom": 217
+  },
+  "walls": {
+   "count": 1,
+   "effectivelyVisible": 1,
+   "inScene": 1
+  },
+  "gpu": {
+   "geometries": 82,
+   "textures": 11,
+   "drawCalls": 120
+  }
+ },
+ {
+  "build": "before",
+  "size": "2560x1440",
+  "scope": 110000,
+  "preset": "PROVINCE_CONTEXT",
+  "canvas": {
+   "left": 509,
+   "top": 217.1875,
+   "width": 1698,
+   "height": 978
+  },
+  "usable": {
+   "width": 1698,
+   "height": 978
+  },
+  "region": {
+   "minX": 370.9953724636207,
+   "maxX": 1253.955345677597,
+   "minY": 196.93214720772744,
+   "maxY": 781.0682599633324,
+   "widthRatio": 0.5199999842249566
+  },
+  "fillW": 0.52,
+  "fillH": 0.597,
+  "margins": {
+   "left": 371,
+   "right": 444,
+   "top": 197,
+   "bottom": 197
+  },
+  "walls": {
+   "count": 1,
+   "effectivelyVisible": 1,
+   "inScene": 1
+  },
+  "gpu": {
+   "geometries": 130,
+   "textures": 11,
+   "drawCalls": 97
+  }
+ },
+ {
+  "build": "after",
+  "size": "1366x768",
+  "scope": 100000,
+  "preset": "COUNTRY_OVERVIEW",
+  "canvas": {
+   "left": 307,
+   "top": 226.890625,
+   "width": 1044,
+   "height": 540
+  },
+  "usable": {
+   "width": 1044,
+   "height": 540
+  },
+  "region": {
+   "minX": 175.78130100518965,
+   "maxX": 868.2295941469598,
+   "minY": 98.00058088766109,
+   "maxY": 468.9991914405839,
+   "widthRatio": 0.6632646486032281
+  },
+  "fillW": 0.663,
+  "fillH": 0.687,
+  "margins": {
+   "left": 176,
+   "right": 176,
+   "top": 98,
+   "bottom": 71
+  },
+  "walls": {
+   "count": 1,
+   "effectivelyVisible": 1,
+   "inScene": 1
+  },
+  "gpu": {
+   "geometries": 82,
+   "textures": 11,
+   "drawCalls": 120
+  }
+ },
+ {
+  "build": "after",
+  "size": "1366x768",
+  "scope": 110000,
+  "preset": "PROVINCE_CONTEXT",
+  "canvas": {
+   "left": 307,
+   "top": 226.890625,
+   "width": 1044,
+   "height": 540
+  },
+  "usable": {
+   "width": 1044,
+   "height": 540
+  },
+  "region": {
+   "minX": 289.68902717292565,
+   "maxX": 754.3274907336709,
+   "minY": 98.0035175422288,
+   "maxY": 468.98394324056216,
+   "widthRatio": 0.44505599957925784
+  },
+  "fillW": 0.445,
+  "fillH": 0.687,
+  "margins": {
+   "left": 290,
+   "right": 290,
+   "top": 98,
+   "bottom": 71
+  },
+  "walls": {
+   "count": 1,
+   "effectivelyVisible": 0,
+   "inScene": 1
+  },
+  "gpu": {
+   "geometries": 130,
+   "textures": 11,
+   "drawCalls": 99
+  }
+ },
+ {
+  "build": "after",
+  "size": "1653x1186",
+  "scope": 100000,
+  "preset": "COUNTRY_OVERVIEW",
+  "canvas": {
+   "left": 481,
+   "top": 217.1875,
+   "width": 851,
+   "height": 958
+  },
+  "usable": {
+   "width": 851,
+   "height": 958
+  },
+  "region": {
+   "minX": 55.000547951453626,
+   "maxX": 796.000831804392,
+   "minY": 303.79919658466207,
+   "maxY": 681.2008049986047,
+   "widthRatio": 0.8707406390751331
+  },
+  "fillW": 0.871,
+  "fillH": 0.394,
+  "margins": {
+   "left": 55,
+   "right": 55,
+   "top": 304,
+   "bottom": 277
+  },
+  "walls": {
+   "count": 1,
+   "effectivelyVisible": 1,
+   "inScene": 1
+  },
+  "gpu": {
+   "geometries": 82,
+   "textures": 11,
+   "drawCalls": 120
+  }
+ },
+ {
+  "build": "after",
+  "size": "1653x1186",
+  "scope": 110000,
+  "preset": "PROVINCE_CONTEXT",
+  "canvas": {
+   "left": 481,
+   "top": 217.1875,
+   "width": 851,
+   "height": 958
+  },
+  "usable": {
+   "width": 851,
+   "height": 958
+  },
+  "region": {
+   "minX": 55.005062522976814,
+   "maxX": 795.9981383019673,
+   "minY": 197.91646801007965,
+   "maxY": 787.081382102769,
+   "widthRatio": 0.8707321689529853
+  },
+  "fillW": 0.871,
+  "fillH": 0.615,
+  "margins": {
+   "left": 55,
+   "right": 55,
+   "top": 198,
+   "bottom": 171
+  },
+  "walls": {
+   "count": 1,
+   "effectivelyVisible": 0,
+   "inScene": 1
+  },
+  "gpu": {
+   "geometries": 130,
+   "textures": 11,
+   "drawCalls": 93
+  }
+ },
+ {
+  "build": "after",
+  "size": "1920x1080",
+  "scope": 100000,
+  "preset": "COUNTRY_OVERVIEW",
+  "canvas": {
+   "left": 509,
+   "top": 217.1875,
+   "width": 1058,
+   "height": 852
+  },
+  "usable": {
+   "width": 1058,
+   "height": 852
+  },
+  "region": {
+   "minX": 69.0019360643781,
+   "maxX": 989.0036966919382,
+   "minY": 198.86157620901957,
+   "maxY": 680.1384952254278,
+   "widthRatio": 0.8695668815005294
+  },
+  "fillW": 0.87,
+  "fillH": 0.565,
+  "margins": {
+   "left": 69,
+   "right": 69,
+   "top": 199,
+   "bottom": 172
+  },
+  "walls": {
+   "count": 1,
+   "effectivelyVisible": 1,
+   "inScene": 1
+  },
+  "gpu": {
+   "geometries": 82,
+   "textures": 11,
+   "drawCalls": 120
+  }
+ },
+ {
+  "build": "after",
+  "size": "1920x1080",
+  "scope": 110000,
+  "preset": "PROVINCE_CONTEXT",
+  "canvas": {
+   "left": 509,
+   "top": 217.1875,
+   "width": 1058,
+   "height": 852
+  },
+  "usable": {
+   "width": 1058,
+   "height": 852
+  },
+  "region": {
+   "minX": 105.44147234952104,
+   "maxX": 952.5645508177513,
+   "minY": 103.00242108680564,
+   "maxY": 775.9928789076127,
+   "widthRatio": 0.8006834390058887
+  },
+  "fillW": 0.801,
+  "fillH": 0.79,
+  "margins": {
+   "left": 105,
+   "right": 105,
+   "top": 103,
+   "bottom": 76
+  },
+  "walls": {
+   "count": 1,
+   "effectivelyVisible": 0,
+   "inScene": 1
+  },
+  "gpu": {
+   "geometries": 130,
+   "textures": 11,
+   "drawCalls": 93
+  }
+ },
+ {
+  "build": "after",
+  "size": "1920x1080",
+  "scope": 330000,
+  "preset": "PROVINCE_CONTEXT",
+  "canvas": {
+   "left": 509,
+   "top": 217.1875,
+   "width": 1058,
+   "height": 852
+  },
+  "usable": {
+   "width": 1058,
+   "height": 852
+  },
+  "region": {
+   "minX": 130.03067264823702,
+   "maxX": 927.9709264260504,
+   "minY": 103.0000206845074,
+   "maxY": 775.9999731859142,
+   "widthRatio": 0.7541968372191052
+  },
+  "fillW": 0.754,
+  "fillH": 0.79,
+  "margins": {
+   "left": 130,
+   "right": 130,
+   "top": 103,
+   "bottom": 76
+  },
+  "walls": {
+   "count": 1,
+   "effectivelyVisible": 0,
+   "inScene": 1
+  },
+  "gpu": {
+   "geometries": 116,
+   "textures": 11,
+   "drawCalls": 91
+  }
+ },
+ {
+  "build": "after",
+  "size": "1920x1080",
+  "scope": 330400,
+  "preset": "CITY_CONTEXT",
+  "canvas": {
+   "left": 509,
+   "top": 217.1875,
+   "width": 1058,
+   "height": 852
+  },
+  "usable": {
+   "width": 1058,
+   "height": 852
+  },
+  "region": {
+   "minX": 68.99732681230631,
+   "maxX": 988.9975513176104,
+   "minY": 131.45360066371947,
+   "maxY": 761.5463974293434,
+   "widthRatio": 0.8695654295891342
+  },
+  "fillW": 0.87,
+  "fillH": 0.74,
+  "margins": {
+   "left": 69,
+   "right": 69,
+   "top": 131,
+   "bottom": 90
+  },
+  "walls": {
+   "count": 1,
+   "effectivelyVisible": 0,
+   "inScene": 1
+  },
+  "gpu": {
+   "geometries": 109,
+   "textures": 11,
+   "drawCalls": 40
+  }
+ },
+ {
+  "build": "after",
+  "size": "1920x1080",
+  "scope": 330481,
+  "preset": "CITY_CONTEXT",
+  "canvas": {
+   "left": 509,
+   "top": 217.1875,
+   "width": 1058,
+   "height": 852
+  },
+  "usable": {
+   "width": 1058,
+   "height": 852
+  },
+  "region": {
+   "minX": 68.99966699589997,
+   "maxX": 988.9966135725782,
+   "minY": 168.16152118366992,
+   "maxY": 724.8385937468757,
+   "widthRatio": 0.8695623313579189
+  },
+  "fillW": 0.87,
+  "fillH": 0.653,
+  "margins": {
+   "left": 69,
+   "right": 69,
+   "top": 168,
+   "bottom": 127
+  },
+  "walls": {
+   "count": 1,
+   "effectivelyVisible": 0,
+   "inScene": 1
+  },
+  "gpu": {
+   "geometries": 91,
+   "textures": 11,
+   "drawCalls": 16
+  }
+ },
+ {
+  "build": "after",
+  "size": "1920x1080",
+  "scope": 440000,
+  "preset": "PROVINCE_CONTEXT",
+  "canvas": {
+   "left": 509,
+   "top": 217.1875,
+   "width": 1058,
+   "height": 852
+  },
+  "usable": {
+   "width": 1058,
+   "height": 852
+  },
+  "region": {
+   "minX": 68.99285259001284,
+   "maxX": 988.9825468036717,
+   "minY": 165.2866711149385,
+   "maxY": 713.715539920283,
+   "widthRatio": 0.8695554765724564
+  },
+  "fillW": 0.87,
+  "fillH": 0.644,
+  "margins": {
+   "left": 69,
+   "right": 69,
+   "top": 165,
+   "bottom": 138
+  },
+  "walls": {
+   "count": 1,
+   "effectivelyVisible": 0,
+   "inScene": 1
+  },
+  "gpu": {
+   "geometries": 149,
+   "textures": 11,
+   "drawCalls": 149
+  }
+ },
+ {
+  "build": "after",
+  "size": "1920x1080",
+  "scope": 460000,
+  "preset": "PROVINCE_CONTEXT",
+  "canvas": {
+   "left": 509,
+   "top": 217.1875,
+   "width": 1058,
+   "height": 852
+  },
+  "usable": {
+   "width": 1058,
+   "height": 852
+  },
+  "region": {
+   "minX": 69.00571201653466,
+   "maxX": 988.996419358493,
+   "minY": 136.983483910111,
+   "maxY": 742.0207874548145,
+   "widthRatio": 0.8695564341606411
+  },
+  "fillW": 0.87,
+  "fillH": 0.71,
+  "margins": {
+   "left": 69,
+   "right": 69,
+   "top": 137,
+   "bottom": 110
+  },
+  "walls": {
+   "count": 1,
+   "effectivelyVisible": 0,
+   "inScene": 1
+  },
+  "gpu": {
+   "geometries": 144,
+   "textures": 11,
+   "drawCalls": 99
+  }
+ },
+ {
+  "build": "after",
+  "size": "2560x1440",
+  "scope": 100000,
+  "preset": "COUNTRY_OVERVIEW",
+  "canvas": {
+   "left": 509,
+   "top": 217.1875,
+   "width": 1698,
+   "height": 978
+  },
+  "usable": {
+   "width": 1698,
+   "height": 978
+  },
+  "region": {
+   "minX": 116.01179586847601,
+   "maxX": 1582.0314557577594,
+   "minY": 106.00172217831806,
+   "maxY": 898.9972929118298,
+   "widthRatio": 0.8633802472846193
+  },
+  "fillW": 0.863,
+  "fillH": 0.811,
+  "margins": {
+   "left": 116,
+   "right": 116,
+   "top": 106,
+   "bottom": 79
+  },
+  "walls": {
+   "count": 1,
+   "effectivelyVisible": 1,
+   "inScene": 1
+  },
+  "gpu": {
+   "geometries": 82,
+   "textures": 11,
+   "drawCalls": 120
+  }
+ },
+ {
+  "build": "after",
+  "size": "2560x1440",
+  "scope": 110000,
+  "preset": "PROVINCE_CONTEXT",
+  "canvas": {
+   "left": 509,
+   "top": 217.1875,
+   "width": 1698,
+   "height": 978
+  },
+  "usable": {
+   "width": 1698,
+   "height": 978
+  },
+  "region": {
+   "minX": 349.3582326971147,
+   "maxX": 1348.641768133187,
+   "minY": 106.00007201216773,
+   "maxY": 898.9998906174362,
+   "widthRatio": 0.5885062046148836
+  },
+  "fillW": 0.589,
+  "fillH": 0.811,
+  "margins": {
+   "left": 349,
+   "right": 349,
+   "top": 106,
+   "bottom": 79
+  },
+  "walls": {
+   "count": 1,
+   "effectivelyVisible": 0,
+   "inScene": 1
+  },
+  "gpu": {
+   "geometries": 130,
+   "textures": 11,
+   "drawCalls": 96
+  }
+ }
+]

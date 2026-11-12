@@ -1,0 +1,167 @@
+[
+ {
+  "path": "/overview",
+  "vw": 390,
+  "scrollWidth": 390,
+  "offenders": [],
+  "hidden": [
+   "html:visible",
+   "body:visible",
+   "#app:visible",
+   ""
+  ],
+  "railOverlap": 0,
+  "railLabels": 0,
+  "hudOverlaps": []
+ },
+ {
+  "path": "/overview?view=2d",
+  "vw": 390,
+  "scrollWidth": 390,
+  "offenders": [],
+  "hidden": [
+   "html:visible",
+   "body:visible",
+   "#app:visible",
+   ""
+  ],
+  "railOverlap": 0,
+  "railLabels": 0,
+  "hudOverlaps": []
+ },
+ {
+  "path": "/portfolio",
+  "vw": 390,
+  "scrollWidth": 390,
+  "offenders": [],
+  "hidden": [
+   "html:visible",
+   "body:visible",
+   "#app:visible",
+   ""
+  ],
+  "railOverlap": 0,
+  "railLabels": 0,
+  "hudOverlaps": []
+ },
+ {
+  "path": "/projects",
+  "vw": 390,
+  "scrollWidth": 390,
+  "offenders": [],
+  "hidden": [
+   "html:visible",
+   "body:visible",
+   "#app:visible",
+   ""
+  ],
+  "railOverlap": 0,
+  "railLabels": 0,
+  "hudOverlaps": []
+ },
+ {
+  "path": "/devices",
+  "vw": 390,
+  "scrollWidth": 390,
+  "offenders": [],
+  "hidden": [
+   "html:visible",
+   "body:visible",
+   "#app:visible",
+   ""
+  ],
+  "railOverlap": 0,
+  "railLabels": 0,
+  "hudOverlaps": []
+ },
+ {
+  "path": "/assets",
+  "vw": 390,
+  "scrollWidth": 390,
+  "offenders": [],
+  "hidden": [
+   "html:visible",
+   "body:visible",
+   "#app:visible",
+   ""
+  ],
+  "railOverlap": 0,
+  "railLabels": 0,
+  "hudOverlaps": []
+ },
+ {
+  "path": "/assets/A2",
+  "vw": 390,
+  "scrollWidth": 390,
+  "offenders": [],
+  "hidden": [
+   "html:visible",
+   "body:visible",
+   "#app:visible",
+   ""
+  ],
+  "railOverlap": 0,
+  "railLabels": 0,
+  "hudOverlaps": []
+ },
+ {
+  "path": "/locations?project=P001",
+  "vw": 390,
+  "scrollWidth": 390,
+  "offenders": [],
+  "hidden": [
+   "html:visible",
+   "body:visible",
+   "#app:visible",
+   ""
+  ],
+  "railOverlap": 0,
+  "railLabels": 0,
+  "hudOverlaps": []
+ },
+ {
+  "path": "/catalog",
+  "vw": 390,
+  "scrollWidth": 390,
+  "offenders": [],
+  "hidden": [
+   "html:visible",
+   "body:visible",
+   "#app:visible",
+   ""
+  ],
+  "railOverlap": 0,
+  "railLabels": 0,
+  "hudOverlaps": []
+ },
+ {
+  "path": "/runtime",
+  "vw": 390,
+  "scrollWidth": 390,
+  "offenders": [],
+  "hidden": [
+   "html:visible",
+   "body:visible",
+   "#app:visible",
+   ""
+  ],
+  "railOverlap": 0,
+  "railLabels": 0,
+  "hudOverlaps": []
+ },
+ {
+  "path": "/alarms",
+  "vw": 390,
+  "scrollWidth": 390,
+  "offenders": [],
+  "hidden": [
+   "html:visible",
+   "body:visible",
+   "#app:visible",
+   ""
+  ],
+  "railOverlap": 0,
+  "railLabels": 0,
+  "hudOverlaps": []
+ }
+]

@@ -13,7 +13,7 @@ import {
 } from 'three';
 import { createRenderer } from '../core/Renderer';
 import { QualityManager, rendererQuality } from '../core/QualityManager';
-import { CameraRig } from '../core/CameraRig';
+import { CameraRig, type SafeInsets } from '../core/CameraRig';
 import { SceneLoop } from '../core/SceneLoop';
 import { RenderScheduler, type RenderMode } from '../core/RenderScheduler';
 import { PerfRecorder } from '../core/PerfRecorder';
@@ -42,6 +42,7 @@ import { NetworkLayer } from '../network/NetworkLayer';
 import { project } from './GeoProjection';
 import { disposeObject } from '../utils/dispose';
 import type { Project, Device } from '../../data/types';
+import type { Feature, Polygon, MultiPolygon } from 'geojson';
 import type { InventoryProject } from '../../../../../contracts/typescript/types.gen';
 
 type SceneCallbacks = {
@@ -51,6 +52,50 @@ type SceneCallbacks = {
   error: (message: string) => void;
   stats: (stats: Record<string, string | number>) => void;
 };
+/** HUD controls that overlay the stage; the camera keeps region geometry clear of them. */
+const FRAME_HUD =
+  '.map-topline > *, .map-view-switch, .observation-switch, .scene-mode-dock, .map-tools, .south-sea-inset-note, .map-attribution';
+/** Breathing space (CSS px) between the framed region and the canvas edge / HUD. */
+const SAFE_PAD = 24;
+/**
+ * Detail levels keep their pre-R5 top surface height (province 1.32 stays above the
+ * lifted, semi-transparent national province at ≈1.27; markers keep their planes)
+ * but the extruded wall is shorter, so it no longer dominates the view: the base
+ * moves up instead of the top moving down.
+ */
+const DETAIL_TOP = { province: 1.32, prefecture: 1.17, county: 1.08 } as const;
+const DETAIL_DEPTH = { province: 0.24, prefecture: 0.16, county: 0.11 } as const;
+/** Max gap (× main landmass size) for an island to count as part of the framed region. */
+const FRAME_CLUSTER_GAP = 0.25;
+/** Minimum share of a region's land area for a polygon to extend the framed cluster. */
+const FRAME_MIN_SHARE = 0.02;
+/** Wall height relative to the drilled region's projected extent (a county is ~1 unit wide). */
+const DETAIL_DEPTH_RATIO = 0.04;
+/**
+ * The level's wall depth, capped proportionally to the region's real size so a
+ * small county does not get a wall as tall as a province's (R5-UX-R1 C).
+ */
+function detailDepth(level: keyof typeof DETAIL_TOP, features: Feature[]) {
+  let x0 = Infinity,
+    x1 = -Infinity,
+    z0 = Infinity,
+    z1 = -Infinity;
+  const visit = (c: unknown): void => {
+    if (!Array.isArray(c)) return;
+    if (typeof c[0] === 'number') {
+      const [x, z] = project(c[0] as number, c[1] as number);
+      x0 = Math.min(x0, x);
+      x1 = Math.max(x1, x);
+      z0 = Math.min(z0, z);
+      z1 = Math.max(z1, z);
+    } else for (const part of c) visit(part);
+  };
+  for (const f of features) visit((f.geometry as { coordinates?: unknown } | null)?.coordinates);
+  const extent = Math.max(x1 - x0, z1 - z0);
+  return Number.isFinite(extent)
+    ? Math.max(0.03, Math.min(DETAIL_DEPTH[level], extent * DETAIL_DEPTH_RATIO))
+    : DETAIL_DEPTH[level];
+}
 export class MapSceneManager {
   scene = new Scene();
   renderer: WebGLRenderer;
@@ -63,6 +108,13 @@ export class MapSceneManager {
   private interaction: InteractionRouter;
   private pickTargets: PickTarget[] = [];
   private country = new Group();
+  /**
+   * The 34 province side walls merged into one mesh (draw-call budget). It lives
+   * directly in the scene — not under `country`, whose children are assumed to be
+   * region groups by picking, sampling and dimming — so its visibility is owned
+   * explicitly here: shown only at the national level (syncCountryWalls).
+   */
+  private countryWalls: Mesh | null = null;
   private detail = new Group();
   private markers = new Group();
   private network: NetworkLayer;
@@ -120,6 +172,7 @@ export class MapSceneManager {
     this.renderer.info.autoReset = false;
     host.append(this.renderer.domElement);
     this.rig = new CameraRig(this.renderer.domElement);
+    this.rig.safeArea = () => this.safeInsets();
     this.labels = new MapLabelLayer(host, (event) => {
       const hit = this.interaction?.picker.pick(event.clientX, event.clientY);
       if (!hit) return false;
@@ -163,14 +216,20 @@ export class MapSceneManager {
       await this.loader.init();
       const data = await this.loader.children(100000);
       if (!this.alive) return false;
+      // A retry after a partial failure starts from an empty country (no duplicated regions).
+      for (const stale of [...this.country.children]) disposeObject(stale);
+      if (this.outer) disposeObject(this.outer.group);
       for (const f of data.features) {
         if (!this.loader.manifest[Number(f.properties?.adcode)]) continue;
         const region = buildRegion(f);
         this.country.add(region);
       }
       // Collapse the 34 decorative side walls into one shared mesh (draw-call win).
-      const mergedWalls = mergeSideWalls(this.country);
-      if (mergedWalls) this.scene.add(mergedWalls);
+      // A retried init must never stack a second merged wall in the scene.
+      if (this.countryWalls) disposeObject(this.countryWalls);
+      this.countryWalls = mergeSideWalls(this.country);
+      if (this.countryWalls) this.scene.add(this.countryWalls);
+      this.syncCountryWalls();
       this.outer = new CountryOuterGlow(this.country);
       this.outer.resize(this.width, this.height);
       this.scene.add(this.outer.group);
@@ -202,6 +261,44 @@ export class MapSceneManager {
   /** Request a frame after an external change (e.g. a restored WebGL context). */
   redraw() {
     this.scheduler.invalidate();
+  }
+  /** 「适配当前区域」: re-fit the camera to the current level; navigation and URL are unchanged. */
+  async fitCurrentRegion() {
+    this.intro?.finish();
+    await this.reframeCurrentView(!this.reduced);
+  }
+  /** The national side wall belongs to the national view only (R5-UX-R1 A). */
+  private syncCountryWalls() {
+    if (!this.countryWalls) return;
+    this.countryWalls.visible =
+      this.country.visible && this.drill.current.level === 'country' && !this.focusedProjectId;
+    this.scheduler.invalidate();
+  }
+  /**
+   * The stage's safe frame in canvas CSS px: every HUD control overlaying the
+   * stage becomes a top or bottom band (by which half it sits in), plus a
+   * proportional breathing margin. Measured live from the DOM, so each viewport
+   * size, aspect ratio and HUD layout is handled without per-size constants.
+   */
+  private safeInsets(): SafeInsets | undefined {
+    const canvas = this.renderer.domElement.getBoundingClientRect();
+    const root = this.host.parentElement;
+    if (!root || canvas.width < 2 || canvas.height < 2) return undefined;
+    // Side margin keeps edge-province labels (新疆, 黑龙江) on canvas and leaves the
+    // 设备聚焦 1.13× zoom room inside the stage (1 / 1.13 ≈ 0.885 of the width).
+    const padX = Math.max(SAFE_PAD, Math.round(canvas.width * 0.065)),
+      padY = Math.max(SAFE_PAD / 2, Math.round(canvas.height * 0.02));
+    const out: SafeInsets = { top: padY, right: padX, bottom: padY, left: padX };
+    root.querySelectorAll<HTMLElement>(FRAME_HUD).forEach((el) => {
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      const y0 = r.top - canvas.top,
+        y1 = r.bottom - canvas.top;
+      if (r.right <= canvas.left || r.left >= canvas.right || y1 <= 0 || y0 >= canvas.height) return;
+      if ((y0 + y1) / 2 < canvas.height / 2) out.top = Math.max(out.top, y1 + padY);
+      else out.bottom = Math.max(out.bottom, canvas.height - y0 + padY);
+    });
+    return out;
   }
   private activateLabel(target: InteractionPick) {
     this.interaction.lastPick = target;
@@ -266,16 +363,16 @@ export class MapSceneManager {
           center,
           this.countrySamples
         );
-      } else
+      } else {
+        const samples = this.regionFrameSamples();
         await this.rig.frame(
-          this.drill.current.level === 'county'
-            ? this.projectContextBox()
-            : new Box3().setFromObject(this.detail),
+          new Box3().setFromPoints(samples),
           this.drill.current.level === 'province' ? 'PROVINCE_CONTEXT' : 'CITY_CONTEXT',
           transition,
           undefined,
-          this.drill.current.level === 'county' ? undefined : this.geometrySamples(this.detail)
+          samples
         );
+      }
     } finally {
       this.transitioning = false;
     }
@@ -327,6 +424,9 @@ export class MapSceneManager {
       this.outline(this.hovered, 'hover', 0);
     }
     this.hovered = g;
+    // The hovered province's label switches to its full「名称 · N台」text in update();
+    // an idle (paused) render loop must run one frame for that.
+    this.scheduler.invalidate();
     if (g) {
       g.userData.lift = 0.04;
       this.outline(g, 'hover', 0.7);
@@ -377,11 +477,13 @@ export class MapSceneManager {
       disposeObject(this.detail);
       this.detail = new Group();
       this.scene.add(this.detail);
-      const depth = entry.level === 'province' ? 0.42 : entry.level === 'prefecture' ? 0.27 : 0.18;
+      const level = entry.level === 'province' || entry.level === 'prefecture' ? entry.level : 'county';
+      const depth = detailDepth(level, data.features),
+        base = DETAIL_TOP[level] - depth;
       for (const f of data.features) {
         const r = buildRegion(f, depth);
-        r.position.y = 0.9;
-        r.userData.base = 0.9;
+        r.position.y = base;
+        r.userData.base = base;
         r.userData.lift = 0;
         this.detail.add(r);
       }
@@ -392,17 +494,19 @@ export class MapSceneManager {
         ...(this.detail.children as Group[]),
       ];
       this.drill.push(entry);
+      this.syncCountryWalls();
       this.network.group.visible = false;
       if (this.outer) this.outer.group.visible = false;
       this.refreshLabelsAndMarkers();
-      const county = entry.level === 'county';
-      const box = county ? this.projectContextBox() : new Box3().setFromObject(this.detail);
+      // The fit box is built from the same samples it must contain (an outlying
+      // archipelago is not in the samples, so it must not shift the start centre).
+      const samples = this.regionFrameSamples();
       await this.rig.frame(
-        box,
+        new Box3().setFromPoints(samples),
         entry.level === 'province' ? 'PROVINCE_CONTEXT' : 'CITY_CONTEXT',
         !this.reduced,
         undefined,
-        county ? undefined : this.geometrySamples(this.detail)
+        samples
       );
       if (!this.alive) return;
       this.detail.visible = true;
@@ -430,6 +534,7 @@ export class MapSceneManager {
       if (ghost) ghost.visible = true;
       this.drill.back(0);
       this.country.visible = true;
+      this.syncCountryWalls();
       disposeObject(this.detail);
       this.detail = new Group();
       this.scene.add(this.detail);
@@ -525,13 +630,14 @@ export class MapSceneManager {
       ? 80
       : new Box3().setFromObject(this.detail).getSize(new Vector3()).length();
     const scale = Math.max(0.045, Math.min(country ? 0.7 : 0.6, extent / 25));
+    // Marker plane sits just above the extruded region tops (unchanged by R5).
     const top = country
       ? 0.81
       : current.level === 'province'
-        ? 1.39
+        ? DETAIL_TOP.province + 0.07
         : current.level === 'prefecture'
-          ? 1.22
-          : 1.13;
+          ? DETAIL_TOP.prefecture + 0.05
+          : DETAIL_TOP.county + 0.05;
     const place = (p: Project, device?: Device, index = 0, label?: string) => {
       const g = projectMarker(p, device, index, top, scale);
       this.markers.add(g);
@@ -736,10 +842,15 @@ export class MapSceneManager {
           });
         }
       }
+      // R5: a province without devices shows its name only — 34 repeated「· 0台」
+      // labels are noise. The count stays in data-device-count and the label
+      // shows「名称 · 0台」on hover (update loop); the server summary is untouched.
+      const full = `${shortName} · ${count}台`;
+      const text = country ? (this.inventoryOnly || count === 0 ? shortName : full) : e.name;
       const regionLabel = this.labels.add(
         anchor,
-        country ? (this.inventoryOnly ? shortName : `${shortName} · ${count}台`) : e.name,
-        country ? 'map-region province-summary' : 'map-region',
+        text,
+        country ? 'map-region province-summary' + (count === 0 ? ' empty' : '') : 'map-region',
         country ? 0.38 : 0,
         country ? 0 : 3,
         country
@@ -752,6 +863,11 @@ export class MapSceneManager {
         regionLabel.userData.countryRegion = g.userData.adcode;
         regionLabel.element.dataset.provinceCode = String(e.adcode);
         regionLabel.element.dataset.deviceCount = String(count);
+        regionLabel.element.title = this.inventoryOnly ? e.name : `${e.name} · ${count}台`;
+        if (!this.inventoryOnly && count === 0) {
+          regionLabel.userData.idleText = shortName;
+          regionLabel.userData.hoverText = full;
+        }
       }
     }
     // All province fleet rings share one vertex-colored mesh (single draw call).
@@ -842,15 +958,17 @@ export class MapSceneManager {
       this.focusedProjectId = p.id;
       this.focusedDeviceId = null;
       this.country.visible = false;
+      this.syncCountryWalls();
       const ghost = this.scene.getObjectByName('China contour ghost silhouette');
       if (ghost) ghost.visible = false;
       disposeObject(this.detail);
       this.detail = new Group();
       this.scene.add(this.detail);
+      const focusDepth = detailDepth('county', data.features);
       for (const f of data.features) {
-        const r = buildRegion(f, 0.18);
-        r.position.y = 0.9;
-        r.userData.base = 0.9;
+        const r = buildRegion(f, focusDepth);
+        r.position.y = DETAIL_TOP.county - focusDepth;
+        r.userData.base = DETAIL_TOP.county - focusDepth;
         this.detail.add(r);
       }
       this.active = [];
@@ -931,6 +1049,77 @@ export class MapSceneManager {
     await this.reframeCurrentView(!this.reduced);
     this.notify();
   }
+  /**
+   * What a region level must keep in view (R5). Starting from the largest
+   * landmass, polygons are added while their bounding box lies within
+   * FRAME_CLUSTER_GAP × the cluster's size — coastal islands (舟山, 南澳) join,
+   * remote ones (三沙 for 海南, 东沙 for 广东) are still drawn and pickable but no
+   * longer shrink the main landmass to a corner. At county level every project
+   * marker and its label anchor is added (replaces the fixed 40 % enlargement).
+   */
+  private regionFrameSamples() {
+    type Poly = { area: number; points: Vector3[]; x0: number; x1: number; z0: number; z1: number };
+    const polys: Poly[] = [];
+    for (const g of this.detail.children) {
+      const geo = g.userData.feature?.geometry as Polygon | MultiPolygon | undefined;
+      if (!geo || !('coordinates' in geo)) continue;
+      const top = (g.userData.base ?? g.position.y) + (g.userData.depth ?? 0) + (g.userData.bevel ?? 0);
+      for (const polygon of geo.type === 'Polygon' ? [geo.coordinates] : geo.coordinates) {
+        const ring = polygon[0];
+        if (!ring?.length) continue;
+        const pts = ring.map(([lng, lat]) => project(lng!, lat!));
+        let area = 0;
+        for (let i = 0, j = pts.length - 1; i < pts.length; j = i++)
+          area += pts[j]![0] * pts[i]![1] - pts[i]![0] * pts[j]![1];
+        const xs = pts.map((p) => p[0]),
+          zs = pts.map((p) => p[1]);
+        polys.push({
+          area: Math.abs(area) / 2,
+          points: pts.map(([x, z]) => new Vector3(x, top, z)),
+          x0: Math.min(...xs),
+          x1: Math.max(...xs),
+          z0: Math.min(...zs),
+          z1: Math.max(...zs),
+        });
+      }
+    }
+    if (!polys.length) return this.geometrySamples(this.detail);
+    polys.sort((a, b) => b.area - a.area);
+    const total = polys.reduce((sum, p) => sum + p.area, 0);
+    const box = { ...polys[0]! };
+    const inCluster = new Set<Poly>([polys[0]!]);
+    const gapTo = (p: Poly) => Math.max(box.x0 - p.x1, p.x0 - box.x1, box.z0 - p.z1, p.z0 - box.z1, 0);
+    const reach = () => Math.max(box.x1 - box.x0, box.z1 - box.z0) * FRAME_CLUSTER_GAP;
+    const join = (p: Poly) => {
+      inCluster.add(p);
+      box.x0 = Math.min(box.x0, p.x0);
+      box.x1 = Math.max(box.x1, p.x1);
+      box.z0 = Math.min(box.z0, p.z0);
+      box.z1 = Math.max(box.z1, p.z1);
+    };
+    // 1) Only substantial land (≥ FRAME_MIN_SHARE of the area) may grow the cluster,
+    //    so a chain of tiny reefs cannot walk it out to a remote archipelago.
+    for (let grown = true; grown; ) {
+      grown = false;
+      for (const p of polys)
+        if (!inCluster.has(p) && p.area >= total * FRAME_MIN_SHARE && gapTo(p) <= reach()) {
+          join(p);
+          grown = true;
+        }
+    }
+    // 2) Small coastal islands within reach of that land are framed too (single pass, no chaining).
+    const limit = reach();
+    for (const p of polys) if (!inCluster.has(p) && gapTo(p) <= limit) inCluster.add(p);
+    const samples: Vector3[] = [];
+    for (const p of inCluster) samples.push(...p.points);
+    if (this.drill.current.level === 'county')
+      for (const g of this.markers.children)
+        if (g.userData.project) {
+          samples.push(g.position.clone());
+          samples.push(g.position.clone().add(new Vector3(0, g.userData.labelHeight ?? 0, 0)));
+        }
+    return samples;
+  }
   private projectContextBox() {
     const box = new Box3().setFromObject(this.detail);
     for (const g of this.markers.children)
@@ -942,9 +1131,14 @@ export class MapSceneManager {
     return box;
   }
   private projectedRegionBounds() {
-    const group =
-      this.drill.current.level === 'country' && !this.focusedProjectId ? this.country : this.detail;
-    const points = this.geometrySamples(group);
+    const country = this.drill.current.level === 'country' && !this.focusedProjectId;
+    // Region levels report the framed landmass (the same samples the camera fits);
+    // points behind the camera (remote islets) are excluded from the screen bounds.
+    const points = country
+      ? this.geometrySamples(this.country)
+      : this.focusedProjectId
+        ? this.geometrySamples(this.detail)
+        : this.regionFrameSamples();
     let minX = 1e9,
       maxX = -1e9,
       minY = 1e9,
@@ -1135,6 +1329,12 @@ export class MapSceneManager {
       lastPick: this.interaction.lastPick,
       hoverLift: this.hovered?.userData.lift ?? 0,
       region: this.projectedRegionBounds(),
+      countryWalls: {
+        present: !!this.countryWalls,
+        visible: !!this.countryWalls?.visible && !!this.countryWalls.parent,
+        merged: this.scene.children.filter((o) => o.name === 'merged-side-flow').length,
+      },
+      safeFrame: this.rig.lastSafe,
       preset: this.rig.preset,
       view: this.rig.countryMode,
       stage: { width: this.width, height: this.height },
@@ -1214,7 +1414,10 @@ export class MapSceneManager {
       const code = l.object.userData.countryRegion;
       if (code) {
         l.object.visible = true;
-        l.object.userData.forceVisible = this.hovered?.userData.adcode === code;
+        const hovered = this.hovered?.userData.adcode === code;
+        l.object.userData.forceVisible = hovered;
+        const want = hovered ? l.object.userData.hoverText : l.object.userData.idleText;
+        if (want && l.object.element.textContent !== want) l.object.element.textContent = want;
       }
       if (l.object.userData.hoverCard) l.object.visible = !!l.object.parent?.userData.hovered;
       if (l.object.userData.assetId)

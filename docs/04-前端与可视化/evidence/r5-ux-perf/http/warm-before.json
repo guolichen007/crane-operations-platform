@@ -1,0 +1,55 @@
+{
+ "label": "base",
+ "cold": {
+  "ms": 10052,
+  "bytes": 2520560,
+  "requests": 20,
+  "cached": 0,
+  "notModified": 0,
+  "hashedRefetched": [
+   "/assets/index-B84NG-zH.css",
+   "/assets/index-B-VJEi1b.js",
+   "/assets/CoverScene-BAkuMSf6.js",
+   "/assets/CraneTwinFactory-DqwlF4UD.js",
+   "/assets/QualityManager-CJ_3w_EU.js",
+   "/assets/Overview-DQDeZc6R.css",
+   "/assets/useCloudQuery-D3fouj0R.js",
+   "/assets/x-DlzMGdTa.js",
+   "/assets/chevron-right-CZTD_C0L.js",
+   "/assets/DevicePanel.vue_vue_type_script_setup_true_lang-J6UnffIy.js",
+   "/assets/box-Bzwd4kOg.js",
+   "/assets/CraneTwin.vue_vue_type_script_setup_true_lang-BpD0hMpo.js",
+   "/assets/arrow-left-ab6mYm37.js",
+   "/assets/region-path-CGuM6Zd5.js",
+   "/assets/refresh-cw-DFQqAx_E.js",
+   "/assets/Overview-D4xgCVmh.js",
+   "/assets/three-DGRkhwCV.js"
+  ]
+ },
+ "warm": {
+  "ms": 469,
+  "bytes": 0,
+  "requests": 20,
+  "cached": 3,
+  "notModified": 0,
+  "hashedRefetched": [
+   "/assets/index-B-VJEi1b.js",
+   "/assets/index-B84NG-zH.css",
+   "/assets/CoverScene-BAkuMSf6.js",
+   "/assets/three-DGRkhwCV.js",
+   "/assets/QualityManager-CJ_3w_EU.js",
+   "/assets/CraneTwinFactory-DqwlF4UD.js",
+   "/assets/Overview-D4xgCVmh.js",
+   "/assets/useCloudQuery-D3fouj0R.js",
+   "/assets/DevicePanel.vue_vue_type_script_setup_true_lang-J6UnffIy.js",
+   "/assets/x-DlzMGdTa.js",
+   "/assets/chevron-right-CZTD_C0L.js",
+   "/assets/CraneTwin.vue_vue_type_script_setup_true_lang-BpD0hMpo.js",
+   "/assets/box-Bzwd4kOg.js",
+   "/assets/arrow-left-ab6mYm37.js",
+   "/assets/region-path-CGuM6Zd5.js",
+   "/assets/refresh-cw-DFQqAx_E.js",
+   "/assets/Overview-DQDeZc6R.css"
+  ]
+ }
+}

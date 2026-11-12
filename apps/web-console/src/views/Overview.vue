@@ -98,6 +98,11 @@ const mapError = computed(() => !demo && mapState.value !== 'refreshing' && !!sc
 const noProjects = computed(() =>
   demo ? dataState.value === 'ready' && sceneProvider.projects.value.length === 0 : dataState.value === 'ready' && summary.value?.scope.authorizedProjects === 0
 );
+// R5: every loaded project lacks an administrative location — say so instead of an
+// empty-looking map. The map draws no marker for them (no fabricated coordinates).
+const allUnlocated = computed(
+  () => !noProjects.value && sceneProvider.projects.value.length > 0 && !sceneProvider.projects.value.some(hasLocation)
+);
 function reload() {
   if (!demo) void summaryController().refresh();
   sceneProvider.refresh().catch(() => undefined);
@@ -227,6 +232,9 @@ watch(drawerOpen, (open) => (store.inspectorInset = open ? 320 : 0), { immediate
       </div>
       <div class="sandbox-stage home-stage" data-testid="spatial-stage">
         <p v-if="noProjects" class="home-empty" data-testid="home-empty">当前账号没有已授权的项目，统计为 0。</p>
+        <p v-else-if="allUnlocated" class="home-unlocated" data-testid="home-unlocated" role="status">
+          已授权项目均尚未定位（未设置行政区），地图不显示其资产；统计数字不受影响。
+        </p>
         <SpatialStage3D v-if="view === '3d' && !webglUnavailable" />
         <SpatialStage2D v-else />
         <div class="map-attribution">开发边界：DataV.GeoAtlas · 仅限内部原型，未经审图<br />公开展示前须替换合规地图并标注来源 / 审图号</div>

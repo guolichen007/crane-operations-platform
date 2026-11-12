@@ -1,0 +1,169 @@
+{
+ "label": "before-nginx",
+ "network": {
+  "offline": false,
+  "latency": 150,
+  "downloadThroughput": 209715.2,
+  "uploadThroughput": 96000
+ },
+ "results": [
+  {
+   "path": "/#/overview",
+   "view": "3d",
+   "loadMs": 5037,
+   "readyMs": 17034,
+   "totalBytes": 3197358,
+   "byKind": {
+    "HTML": {
+     "requests": 1,
+     "bytes": 1581,
+     "gzip": 0
+    },
+    "GeoJSON": {
+     "requests": 3,
+     "bytes": 1666888,
+     "gzip": 0
+    },
+    "CSS": {
+     "requests": 2,
+     "bytes": 105577,
+     "gzip": 0
+    },
+    "JS": {
+     "requests": 18,
+     "bytes": 1422549,
+     "gzip": 0
+    },
+    "API": {
+     "requests": 8,
+     "bytes": 763,
+     "gzip": 0
+    },
+    "Other": {
+     "requests": 2,
+     "bytes": 0,
+     "gzip": 0
+    }
+   },
+   "threeLoaded": true,
+   "chartsLoaded": false,
+   "gpuMemory": null
+  },
+  {
+   "path": "/#/overview?view=2d",
+   "view": "2d",
+   "loadMs": 5037,
+   "readyMs": 9343,
+   "totalBytes": 1550356,
+   "byKind": {
+    "HTML": {
+     "requests": 1,
+     "bytes": 1581,
+     "gzip": 0
+    },
+    "GeoJSON": {
+     "requests": 2,
+     "bytes": 1099135,
+     "gzip": 0
+    },
+    "CSS": {
+     "requests": 2,
+     "bytes": 105577,
+     "gzip": 0
+    },
+    "JS": {
+     "requests": 14,
+     "bytes": 343300,
+     "gzip": 0
+    },
+    "API": {
+     "requests": 8,
+     "bytes": 763,
+     "gzip": 0
+    }
+   },
+   "threeLoaded": false,
+   "chartsLoaded": false,
+   "gpuMemory": null
+  },
+  {
+   "path": "/#/overview",
+   "view": "3d",
+   "loadMs": 5030,
+   "readyMs": 17032,
+   "totalBytes": 3197358,
+   "byKind": {
+    "HTML": {
+     "requests": 1,
+     "bytes": 1581,
+     "gzip": 0
+    },
+    "GeoJSON": {
+     "requests": 3,
+     "bytes": 1666888,
+     "gzip": 0
+    },
+    "CSS": {
+     "requests": 2,
+     "bytes": 105577,
+     "gzip": 0
+    },
+    "JS": {
+     "requests": 18,
+     "bytes": 1422549,
+     "gzip": 0
+    },
+    "API": {
+     "requests": 8,
+     "bytes": 763,
+     "gzip": 0
+    },
+    "Other": {
+     "requests": 2,
+     "bytes": 0,
+     "gzip": 0
+    }
+   },
+   "threeLoaded": true,
+   "chartsLoaded": false,
+   "gpuMemory": null
+  },
+  {
+   "path": "/#/overview?view=2d",
+   "view": "2d",
+   "loadMs": 5030,
+   "readyMs": 9334,
+   "totalBytes": 1550356,
+   "byKind": {
+    "HTML": {
+     "requests": 1,
+     "bytes": 1581,
+     "gzip": 0
+    },
+    "GeoJSON": {
+     "requests": 2,
+     "bytes": 1099135,
+     "gzip": 0
+    },
+    "CSS": {
+     "requests": 2,
+     "bytes": 105577,
+     "gzip": 0
+    },
+    "JS": {
+     "requests": 14,
+     "bytes": 343300,
+     "gzip": 0
+    },
+    "API": {
+     "requests": 8,
+     "bytes": 763,
+     "gzip": 0
+    }
+   },
+   "threeLoaded": false,
+   "chartsLoaded": false,
+   "gpuMemory": null
+  }
+ ]
+}

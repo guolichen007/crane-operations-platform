@@ -36,9 +36,14 @@ for (const viewport of [
       // merged off-tree). H1: the canvas is the centre column of the Operations
       // Center grid, no longer full page width, so the framing invariant is
       // measured against the stage the camera frames (same bounds as before).
+      // R5-UX-R1: the country is fitted to the stage's measured safe frame (was a
+      // fixed 0.62 of the stage width, reported as "全国默认地图过小"). It must now
+      // fill clearly more than the old fixed fraction while staying inside the
+      // stage (min/max bounds asserted above), with side margins of at least 4 %.
       const stageRatio = normal.country.width / normal.stage.width;
-      expect(stageRatio).toBeGreaterThanOrEqual(0.52);
-      expect(stageRatio).toBeLessThanOrEqual(0.68);
+      expect(stageRatio).toBeGreaterThan(0.68);
+      expect(normal.country.minX / normal.stage.width).toBeGreaterThanOrEqual(0.04);
+      expect((normal.stage.width - normal.country.maxX) / normal.stage.width).toBeGreaterThanOrEqual(0.04);
     }
     await page.screenshot({ path: `test-results-v033/regression/country-${viewport.width}.png` });
     await page.getByRole('button', { name: '设备聚焦', exact: true }).click();
@@ -95,8 +100,11 @@ test('抬升克制及浙江广东省级镜头', async ({ page }) => {
     await settled(page);
     const d = await read(page);
     expect(d.preset).toBe('PROVINCE_CONTEXT');
+    // R5-UX-R1: province framing fills the safe frame (was capped at a fixed 0.52);
+    // it stays inside the stage with ≥ 4 % side margins.
     expect(d.region.widthRatio).toBeGreaterThanOrEqual(0.45);
-    expect(d.region.widthRatio).toBeLessThanOrEqual(0.58);
+    expect(d.region.minX / d.stage.width).toBeGreaterThanOrEqual(0.04);
+    expect((d.stage.width - d.region.maxX) / d.stage.width).toBeGreaterThanOrEqual(0.04);
     expect(d.selectedLiftMax).toBeGreaterThanOrEqual(0.3);
     expect(d.selectedLiftMax).toBeLessThanOrEqual(0.7);
     await page.screenshot({ path: `test-results-v033/regression/province-${code}.png` });

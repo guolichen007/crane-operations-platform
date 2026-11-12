@@ -1,0 +1,218 @@
+### GET / (Accept-Encoding: gzip)
+HTTP/1.1 200 OK
+Server: nginx
+Date: Thu, 12 Nov 2026 14:18:58 GMT
+Content-Type: text/html
+Content-Length: 928
+Last-Modified: Mon, 09 Nov 2026 07:33:54 GMT
+Connection: keep-alive
+ETag: "6af17762-3a0"
+X-Content-Type-Options: nosniff
+Referrer-Policy: no-referrer
+X-Frame-Options: DENY
+Permissions-Policy: camera=(), microphone=(), geolocation=()
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+Cache-Control: no-cache
+Accept-Ranges: bytes
+
+### GET /index.html (Accept-Encoding: gzip)
+HTTP/1.1 200 OK
+Server: nginx
+Date: Thu, 12 Nov 2026 14:18:58 GMT
+Content-Type: text/html
+Content-Length: 928
+Last-Modified: Mon, 09 Nov 2026 07:33:54 GMT
+Connection: keep-alive
+ETag: "6af17762-3a0"
+X-Content-Type-Options: nosniff
+Referrer-Policy: no-referrer
+X-Frame-Options: DENY
+Permissions-Policy: camera=(), microphone=(), geolocation=()
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+Cache-Control: no-cache
+Accept-Ranges: bytes
+
+### GET /assets/index-Bf-x-aiC.js (Accept-Encoding: gzip)
+HTTP/1.1 200 OK
+Server: nginx
+Date: Thu, 12 Nov 2026 14:18:58 GMT
+Content-Type: application/javascript
+Last-Modified: Mon, 09 Nov 2026 07:33:54 GMT
+Transfer-Encoding: chunked
+Connection: keep-alive
+Vary: Accept-Encoding
+ETag: W/"6af17762-39cbe"
+X-Content-Type-Options: nosniff
+Referrer-Policy: no-referrer
+X-Frame-Options: DENY
+Permissions-Policy: camera=(), microphone=(), geolocation=()
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+Cache-Control: public, max-age=31536000, immutable
+Content-Encoding: gzip
+
+### GET /assets/index-CWSQwUDw.css (Accept-Encoding: gzip)
+HTTP/1.1 200 OK
+Server: nginx
+Date: Thu, 12 Nov 2026 14:18:58 GMT
+Content-Type: text/css
+Last-Modified: Mon, 09 Nov 2026 07:33:54 GMT
+Transfer-Encoding: chunked
+Connection: keep-alive
+Vary: Accept-Encoding
+ETag: W/"6af17762-15eb5"
+X-Content-Type-Options: nosniff
+Referrer-Policy: no-referrer
+X-Frame-Options: DENY
+Permissions-Policy: camera=(), microphone=(), geolocation=()
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+Cache-Control: public, max-age=31536000, immutable
+Content-Encoding: gzip
+
+### GET /assets/three-DGRkhwCV.js (Accept-Encoding: gzip)
+HTTP/1.1 200 OK
+Server: nginx
+Date: Thu, 12 Nov 2026 14:18:58 GMT
+Content-Type: application/javascript
+Last-Modified: Mon, 09 Nov 2026 07:33:54 GMT
+Transfer-Encoding: chunked
+Connection: keep-alive
+Vary: Accept-Encoding
+ETag: W/"6af17762-ece38"
+X-Content-Type-Options: nosniff
+Referrer-Policy: no-referrer
+X-Frame-Options: DENY
+Permissions-Policy: camera=(), microphone=(), geolocation=()
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+Cache-Control: public, max-age=31536000, immutable
+Content-Encoding: gzip
+
+### GET /geo/geo-manifest.json (Accept-Encoding: gzip)
+HTTP/1.1 200 OK
+Server: nginx
+Date: Thu, 12 Nov 2026 14:18:58 GMT
+Content-Type: application/json
+Last-Modified: Mon, 09 Nov 2026 07:33:48 GMT
+Transfer-Encoding: chunked
+Connection: keep-alive
+Vary: Accept-Encoding
+ETag: W/"6af1775c-8a730"
+X-Content-Type-Options: nosniff
+Referrer-Policy: no-referrer
+X-Frame-Options: DENY
+Permissions-Policy: camera=(), microphone=(), geolocation=()
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+Cache-Control: no-cache
+Content-Encoding: gzip
+
+### GET /geo/china/100000.json (Accept-Encoding: gzip)
+HTTP/1.1 200 OK
+Server: nginx
+Date: Thu, 12 Nov 2026 14:18:58 GMT
+Content-Type: application/json
+Last-Modified: Mon, 09 Nov 2026 07:33:48 GMT
+Transfer-Encoding: chunked
+Connection: keep-alive
+Vary: Accept-Encoding
+ETag: W/"6af1775c-8191d"
+X-Content-Type-Options: nosniff
+Referrer-Policy: no-referrer
+X-Frame-Options: DENY
+Permissions-Policy: camera=(), microphone=(), geolocation=()
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+Cache-Control: no-cache
+Content-Encoding: gzip
+
+### GET /geo/provinces/330000.json (Accept-Encoding: gzip)
+HTTP/1.1 200 OK
+Server: nginx
+Date: Thu, 12 Nov 2026 14:18:58 GMT
+Content-Type: application/json
+Last-Modified: Mon, 09 Nov 2026 07:33:53 GMT
+Transfer-Encoding: chunked
+Connection: keep-alive
+Vary: Accept-Encoding
+ETag: W/"6af17761-1ae25"
+X-Content-Type-Options: nosniff
+Referrer-Policy: no-referrer
+X-Frame-Options: DENY
+Permissions-Policy: camera=(), microphone=(), geolocation=()
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+Cache-Control: no-cache
+Content-Encoding: gzip
+
+### GET /api/v1/projects (Accept-Encoding: gzip)
+HTTP/1.1 200 OK
+Server: nginx
+Date: Thu, 12 Nov 2026 14:18:58 GMT
+Content-Type: application/json
+Content-Length: 1960
+Connection: keep-alive
+Cache-Control: no-store
+X-Content-Type-Options: nosniff
+Referrer-Policy: no-referrer
+X-Frame-Options: DENY
+Permissions-Policy: camera=(), microphone=(), geolocation=()
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+
+### GET /auth/session (Accept-Encoding: gzip)
+HTTP/1.1 200 OK
+Server: nginx
+Date: Thu, 12 Nov 2026 14:18:58 GMT
+Content-Type: application/json
+Content-Length: 1840
+Connection: keep-alive
+Cache-Control: no-store
+X-Content-Type-Options: nosniff
+Referrer-Policy: no-referrer
+X-Frame-Options: DENY
+Permissions-Policy: camera=(), microphone=(), geolocation=()
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+
+### GET /devices/x (Accept-Encoding: gzip)
+HTTP/1.1 200 OK
+Server: nginx
+Date: Thu, 12 Nov 2026 14:18:58 GMT
+Content-Type: text/html
+Content-Length: 928
+Last-Modified: Mon, 09 Nov 2026 07:33:54 GMT
+Connection: keep-alive
+ETag: "6af17762-3a0"
+X-Content-Type-Options: nosniff
+Referrer-Policy: no-referrer
+X-Frame-Options: DENY
+Permissions-Policy: camera=(), microphone=(), geolocation=()
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+Cache-Control: no-cache
+Accept-Ranges: bytes
+
+### GET /favicon.svg (Accept-Encoding: gzip)
+HTTP/1.1 200 OK
+Server: nginx
+Date: Thu, 12 Nov 2026 14:18:58 GMT
+Content-Type: text/html
+Content-Length: 928
+Last-Modified: Mon, 09 Nov 2026 07:33:54 GMT
+Connection: keep-alive
+ETag: "6af17762-3a0"
+X-Content-Type-Options: nosniff
+Referrer-Policy: no-referrer
+X-Frame-Options: DENY
+Permissions-Policy: camera=(), microphone=(), geolocation=()
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+Cache-Control: no-cache
+Accept-Ranges: bytes
+
+### GET /index.html If-None-Match: "6af17762-3a0"
+HTTP/1.1 304 Not Modified
+Server: nginx
+Date: Thu, 12 Nov 2026 14:18:58 GMT
+Last-Modified: Mon, 09 Nov 2026 07:33:54 GMT
+Connection: keep-alive
+ETag: "6af17762-3a0"
+X-Content-Type-Options: nosniff
+Referrer-Policy: no-referrer
+X-Frame-Options: DENY
+Permissions-Policy: camera=(), microphone=(), geolocation=()
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+Cache-Control: no-cache
+

@@ -394,7 +394,8 @@ button.attention-row:hover {
   bottom: 14px;
 }
 .home-stage .south-sea-inset-note {
-  right: calc(var(--drawer-inset, 0px) + 92px);
+  /* R5: three map tools (reset / fit region / locate) to the right of the note. */
+  right: calc(var(--drawer-inset, 0px) + 130px);
   bottom: 18px;
   font-size: 10px;
 }
@@ -431,6 +432,27 @@ button.attention-row:hover {
   background: #06152dd9;
   border: 1px solid var(--line-soft);
   border-radius: 8px;
+}
+/* R5: all projects lack a location — a top notice, the map stays usable. */
+.home-unlocated {
+  position: absolute;
+  z-index: 5;
+  top: 84px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(520px, calc(100% - 40px - var(--drawer-inset, 0px)));
+  margin: 0;
+  padding: 8px 14px;
+  font-size: var(--fs-s);
+  color: var(--text-2);
+  background: #06152dd9;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  pointer-events: none;
+}
+/* R5: provinces without devices show the name only, slightly receded. */
+.home-stage .province-summary.empty[data-hovered='false'] {
+  opacity: 0.72;
 }
 
 /* Inspector column (legacy .right-context/.overview-summary set fixed widths). */
@@ -751,4 +773,30 @@ button.attention-row:hover {
 }
 .review-alarm {
   color: var(--critical);
+}
+
+/* R5-UX-PERF B: the homepage header row wraps on phones (scope, time window and
+   2D/3D switch were pushed to x = 646 px at 375 px). */
+@media (max-width: 700px) {
+  .home-oc .home-head {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .home-scope {
+    white-space: normal;
+    min-width: 0;
+  }
+  /* The two map switches collided at 375 px: the observation switch moves below
+     (same specificity as .home-stage rules plus the stage id, beats max-height rules). */
+  .home-oc .home-stage .map-view-switch {
+    top: 48px;
+  }
+  .home-oc .home-stage .observation-switch {
+    top: 92px;
+    right: 14px;
+  }
+  /* The scene-mode dock sat on top of the map tools: it moves above them. */
+  .home-oc .home-stage .scene-mode-dock {
+    bottom: 56px;
+  }
 }

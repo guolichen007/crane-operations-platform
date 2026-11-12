@@ -7,7 +7,7 @@
 // Three.js.
 import { onMounted, onUnmounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
-import { ChevronRight, ArrowLeft, Play, Pause, Square, RotateCcw, LocateFixed } from 'lucide-vue-next';
+import { ChevronRight, ArrowLeft, Play, Pause, Square, RotateCcw, LocateFixed, Scan } from 'lucide-vue-next';
 import type { MapSceneManager } from '../../three/map/MapSceneManager';
 import { useOperations } from '../../stores/operations';
 import { sceneProvider } from '../../scene/provider';
@@ -164,6 +164,11 @@ async function switchSceneMode(mode: 'region' | 'fleet' | 'alarm') {
 function focusFirstLocated() {
   const p = sceneProvider.realProjects.value.find(hasLocation);
   if (p) store.requestFocus('project', p.id);
+}
+/** R5: re-fit the camera to the current level after a drag/zoom; URL and drill level stay unchanged. */
+async function fitRegion() {
+  stopTour();
+  await scene?.fitCurrentRegion();
 }
 const canFocusProject = () => sceneProvider.realProjects.value.some(hasLocation);
 function playTour() {
@@ -368,6 +373,7 @@ defineExpose({ playTour });
   <div v-if="cameraPreset.startsWith('COUNTRY_')" class="south-sea-inset-note">南海诸岛 · 附图</div>
   <div class="map-tools">
     <button title="重置全国视角" aria-label="重置全国视角" @click="resetCountry()"><RotateCcw :size="15" /></button
+    ><button title="适配当前区域（不改变层级与链接）" aria-label="适配当前区域" @click="fitRegion()"><Scan :size="15" /></button
     ><button
       title="聚焦首个有空间位置的登记项目"
       aria-label="聚焦首个登记项目"

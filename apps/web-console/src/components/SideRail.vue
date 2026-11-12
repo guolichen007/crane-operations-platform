@@ -39,8 +39,19 @@ const after: NavItem[] = [
 ];
 
 const STORAGE_KEY = 'crane.rail.collapsed';
-const collapsed = ref(localStorage.getItem(STORAGE_KEY) === '1');
-watch(collapsed, (v) => localStorage.setItem(STORAGE_KEY, v ? '1' : '0'));
+const collapsedPref = ref(localStorage.getItem(STORAGE_KEY) === '1');
+watch(collapsedPref, (v) => localStorage.setItem(STORAGE_KEY, v ? '1' : '0'));
+// R5-UX-PERF B: on phones the rail is a fixed 56 px icon strip (CSS). The
+// expanded group button and its text were drawn over the page content at
+// 375 px, so phone widths always render the collapsed (icon) structure; the
+// saved desktop preference is untouched.
+const phoneQuery = typeof matchMedia === 'function' ? matchMedia('(max-width: 700px)') : null;
+const phone = ref(!!phoneQuery?.matches);
+phoneQuery?.addEventListener('change', (e) => (phone.value = e.matches));
+const collapsed = computed({
+  get: () => phone.value || collapsedPref.value,
+  set: (v: boolean) => (collapsedPref.value = v),
+});
 
 // The group is active whenever one of its pages (or an asset detail) is open,
 // and is expanded by default.
@@ -60,6 +71,7 @@ const showChildren = computed(() => collapsed.value || assetsOpen.value);
       <span v-if="!collapsed" class="rail-brand">OPS 工作台</span>
       <span v-else class="rail-index">OPS</span>
       <button
+        v-if="!phone"
         class="rail-toggle"
         :aria-label="collapsed ? '展开侧栏' : '折叠侧栏'"
         :title="collapsed ? '展开侧栏' : '折叠侧栏'"

@@ -8,6 +8,7 @@ import { useCloudQuery } from '../cloud/useCloudQuery';
 import { loadGeoManifest } from '../scene/geo-manifest';
 import { parseRegionParam, regionPathOf } from '../scene/region-path';
 import { assetSource, lifecycleName } from '../cloud/inventory';
+import { RUNTIME_LINK_LABEL } from '../cloud/format';
 import StatusPill from '../components/StatusPill.vue';
 import MiniTrend from '../components/MiniTrend.vue';
 import RightInspector from '../components/RightInspector.vue';
@@ -150,7 +151,7 @@ const kpiNote = computed(() => (typeof route.query.kpi === 'string' ? kpiNotes[r
             ><RouterLink
               v-if="a.runtimeDeviceId"
               :to="'/devices/' + encodeURIComponent(a.runtimeDeviceId)"
-              >最近状态 / LIVE <ArrowUpRight :size="12"
+              >{{ RUNTIME_LINK_LABEL }} <ArrowUpRight :size="12"
             /></RouterLink>
           </div>
         </section>

@@ -1,0 +1,253 @@
+[
+ {
+  "path": "/overview",
+  "vw": 375,
+  "scrollWidth": 462,
+  "offenders": [],
+  "hidden": [
+   "html:visible",
+   "body:visible",
+   "#app:visible",
+   ""
+  ],
+  "railOverlap": 0,
+  "railLabels": 9,
+  "hudOverlaps": [
+   "map-view-switch × observation-switch",
+   "scene-mode-dock × map-tools"
+  ]
+ },
+ {
+  "path": "/overview?view=2d",
+  "vw": 375,
+  "scrollWidth": 462,
+  "offenders": [],
+  "hidden": [
+   "html:visible",
+   "body:visible",
+   "#app:visible",
+   ""
+  ],
+  "railOverlap": 0,
+  "railLabels": 9,
+  "hudOverlaps": []
+ },
+ {
+  "path": "/portfolio",
+  "vw": 375,
+  "scrollWidth": 375,
+  "offenders": [],
+  "hidden": [
+   "html:visible",
+   "body:visible",
+   "#app:visible",
+   ""
+  ],
+  "railOverlap": 0,
+  "railLabels": 9,
+  "hudOverlaps": []
+ },
+ {
+  "path": "/projects",
+  "vw": 375,
+  "scrollWidth": 375,
+  "offenders": [],
+  "hidden": [
+   "html:visible",
+   "body:visible",
+   "#app:visible",
+   ""
+  ],
+  "railOverlap": 0,
+  "railLabels": 9,
+  "hudOverlaps": []
+ },
+ {
+  "path": "/devices",
+  "vw": 375,
+  "scrollWidth": 375,
+  "offenders": [],
+  "hidden": [
+   "html:visible",
+   "body:visible",
+   "#app:visible",
+   ""
+  ],
+  "railOverlap": 0,
+  "railLabels": 9,
+  "hudOverlaps": []
+ },
+ {
+  "path": "/assets",
+  "vw": 375,
+  "scrollWidth": 664,
+  "offenders": [
+   {
+    "sel": "select",
+    "right": 452,
+    "width": 94
+   },
+   {
+    "sel": "select",
+    "right": 557,
+    "width": 95
+   },
+   {
+    "sel": "button.ghost-action",
+    "right": 610,
+    "width": 43
+   },
+   {
+    "sel": "button.ghost-action",
+    "right": 664,
+    "width": 44
+   },
+   {
+    "sel": "svg.lucide.lucide-refresh-cw-icon",
+    "right": 649,
+    "width": 14
+   },
+   {
+    "sel": "path",
+    "right": 647,
+    "width": 11
+   },
+   {
+    "sel": "path",
+    "right": 647,
+    "width": 3
+   },
+   {
+    "sel": "path",
+    "right": 647,
+    "width": 11
+   },
+   {
+    "sel": "path",
+    "right": 640,
+    "width": 3
+   }
+  ],
+  "hidden": [
+   "html:visible",
+   "body:visible",
+   "#app:visible",
+   ""
+  ],
+  "railOverlap": 0,
+  "railLabels": 9,
+  "hudOverlaps": []
+ },
+ {
+  "path": "/assets/A2",
+  "vw": 375,
+  "scrollWidth": 443,
+  "offenders": [
+   {
+    "sel": "div.detail-actions",
+    "right": 443,
+    "width": 205
+   },
+   {
+    "sel": "button.danger-action",
+    "right": 443,
+    "width": 63
+   },
+   {
+    "sel": "svg.lucide.lucide-archive-icon",
+    "right": 409,
+    "width": 14
+   },
+   {
+    "sel": "rect",
+    "right": 408,
+    "width": 12
+   },
+   {
+    "sel": "path",
+    "right": 407,
+    "width": 9
+   }
+  ],
+  "hidden": [
+   "html:visible",
+   "body:visible",
+   "#app:visible",
+   ""
+  ],
+  "railOverlap": 0,
+  "railLabels": 9,
+  "hudOverlaps": []
+ },
+ {
+  "path": "/locations?project=P001",
+  "vw": 375,
+  "scrollWidth": 556,
+  "offenders": [
+   {
+    "sel": "select",
+    "right": 452,
+    "width": 94
+   },
+   {
+    "sel": "select",
+    "right": 556,
+    "width": 94
+   }
+  ],
+  "hidden": [
+   "html:visible",
+   "body:visible",
+   "#app:visible",
+   ""
+  ],
+  "railOverlap": 0,
+  "railLabels": 9,
+  "hudOverlaps": []
+ },
+ {
+  "path": "/catalog",
+  "vw": 375,
+  "scrollWidth": 375,
+  "offenders": [],
+  "hidden": [
+   "html:visible",
+   "body:visible",
+   "#app:visible",
+   ""
+  ],
+  "railOverlap": 0,
+  "railLabels": 9,
+  "hudOverlaps": []
+ },
+ {
+  "path": "/runtime",
+  "vw": 375,
+  "scrollWidth": 375,
+  "offenders": [],
+  "hidden": [
+   "html:visible",
+   "body:visible",
+   "#app:visible",
+   ""
+  ],
+  "railOverlap": 0,
+  "railLabels": 9,
+  "hudOverlaps": []
+ },
+ {
+  "path": "/alarms",
+  "vw": 375,
+  "scrollWidth": 375,
+  "offenders": [],
+  "hidden": [
+   "html:visible",
+   "body:visible",
+   "#app:visible",
+   ""
+  ],
+  "railOverlap": 0,
+  "railLabels": 9,
+  "hudOverlaps": []
+ }
+]

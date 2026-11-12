@@ -40,3 +40,15 @@ export function summarizeDevices(devices: Shadow[]) {
     live: devices.filter((d) => d.upstreamStatus === 'LIVE').length,
   };
 }
+
+/**
+ * R5-UX-PERF D: how an asset is identified in lists. A missing business number is
+ * never invented: it shows「编号待补全」 and the system's internal asset ID, which
+ * is explicitly labelled as internal so it cannot be read as a business number.
+ */
+export function assetCodeDisplay(a: { id: string; assetCode?: string | null }): { code: string | null; missing: boolean; internalId: string } {
+  const code = a.assetCode?.trim() ? a.assetCode.trim() : null;
+  return { code, missing: code === null, internalId: a.id };
+}
+/** Entry into a runtime identity's detail page: a navigation label that does not claim the device is live now. */
+export const RUNTIME_LINK_LABEL = '查看运行状态';

@@ -1846,3 +1846,25 @@
   border: 1px solid var(--warning);
   border-radius: 6px;
 }
+
+/* R5-UX-PERF B: phone widths. Each rule fixes one measured offender at 375 px
+   (baseline scrollWidth 462–664 px); nothing hides page-level overflow. */
+/* Wide tables scroll inside their own frame instead of being clipped. */
+.data-table-wrap { overflow-x: auto; }
+@media (max-width: 700px) {
+  .workspace-page { padding: 18px 14px; }
+  .workspace-page-head { flex-wrap: wrap; }
+  /* Asset / location filter rows: search takes the full line, filters wrap below. */
+  .asset-filters { flex-wrap: wrap; }
+  .asset-filters .search-field { flex: 1 1 100%; min-width: 0; }
+  .asset-filters select { flex: 1 1 120px; min-width: 0; }
+  /* Asset detail header: actions wrap under the title. */
+  .detail-head { flex-wrap: wrap; }
+  .detail-title { flex: 1 1 calc(100% - 100px); min-width: 0; }
+  .detail-title h1 { overflow-wrap: anywhere; }
+  .detail-actions { flex-wrap: wrap; }
+  .detail-grid { grid-template-columns: 1fr; }
+}
+/* R5-UX-PERF D: a missing business number is labelled, never invented. */
+.code-missing { color: var(--warning, #e8b75d); font-weight: 500; }
+.code-missing small { display: block; margin-top: 2px; color: var(--text-3); font-size: 11px; font-weight: 400; overflow-wrap: anywhere; }
