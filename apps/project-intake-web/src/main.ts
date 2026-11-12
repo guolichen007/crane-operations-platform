@@ -31,6 +31,7 @@ const router = createRouter({
     { path: '/', component: Dashboard },
     { path: '/projects', component: Projects },
     { path: '/unassigned', component: Projects },
+    { path: '/recycle-bin', component: Projects },
     { path: '/followups', component: Projects },
     { path: '/pipeline', component: Pipeline },
     { path: '/statistics', component: Statistics },

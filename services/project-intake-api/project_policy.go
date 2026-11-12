@@ -56,7 +56,7 @@ func (s ProjectPolicy) Action(p Project, action string) string {
 	if !s.Read(p) {
 		return "NOT_FOUND"
 	}
-	if p.OwnerSubject == "" && p.IntakeStatus != "DRAFT" {
+	if p.OwnerSubject == "" && p.IntakeStatus != "DRAFT" && p.DiscardedAt == nil {
 		return "INVALID_STATE"
 	}
 	own := u.Role == salesRole && p.OwnerSubject == u.Subject
@@ -98,6 +98,22 @@ func (s ProjectPolicy) Action(p Project, action string) string {
 			return "BUSINESS_PERMISSION_DENIED"
 		}
 		if !editable(p.IntakeStatus) && !contains([]string{"SUBMITTED", "UNDER_REVIEW", "APPROVED"}, p.IntakeStatus) {
+			return "INVALID_STATE"
+		}
+	case "discard":
+		// Only a draft that was never submitted: submitted, reviewed and evidence
+		// records are never removed.
+		if !writer {
+			return "BUSINESS_PERMISSION_DENIED"
+		}
+		if p.IntakeStatus != "DRAFT" || p.SubmissionRevision > 0 || p.DiscardedAt != nil {
+			return "INVALID_STATE"
+		}
+	case "restore":
+		if !writer {
+			return "BUSINESS_PERMISSION_DENIED"
+		}
+		if p.IntakeStatus != "CANCELLED" || p.DiscardedAt == nil {
 			return "INVALID_STATE"
 		}
 	case "approve", "return", "reject", "duplicate-decisions":

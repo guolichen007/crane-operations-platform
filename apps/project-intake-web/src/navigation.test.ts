@@ -14,7 +14,7 @@ const paths = (u: User) => navigation(u).map((i) => i.path);
 describe('服务端能力驱动导航', () => {
   it('管理员有业务工作台、待分配与组织入口', () => {
     const admin = user('baobei_admin', { 'project.create': true, 'project.review': true, 'project.unassigned': true, 'staff.manage': true, 'team.manage': true });
-    expect(paths(admin)).toEqual(['/', '/followups', '/projects', '/unassigned', '/pipeline', '/reviews', '/duplicates', '/statistics', '/settings/users', '/settings/teams']);
+    expect(paths(admin)).toEqual(['/', '/followups', '/projects', '/unassigned', '/pipeline', '/recycle-bin', '/reviews', '/duplicates', '/statistics', '/settings/users', '/settings/teams']);
     expect(routeAllowed(admin, '/new')).toBe(true);
   });
   it('销售没有审核与组织入口', () => {
@@ -23,6 +23,12 @@ describe('服务端能力驱动导航', () => {
     expect(paths(sales)).not.toContain('/unassigned');
     expect(routeAllowed(sales, '/reviews')).toBe(false);
     expect(routeAllowed(sales, '/settings/users')).toBe(false);
+    expect(paths(sales)).toContain('/recycle-bin');
+  });
+  it('没有新建权限的角色看不到草稿回收站', () => {
+    const manager = user('baobei_manager', { 'project.create': false, 'project.review': true, 'staff.manage': true });
+    expect(paths(manager)).not.toContain('/recycle-bin');
+    expect(routeAllowed(manager, '/recycle-bin')).toBe(false);
   });
   it('角色名本身不授予入口：缺少能力提示即隐藏', () => {
     const admin = user('baobei_admin', {});

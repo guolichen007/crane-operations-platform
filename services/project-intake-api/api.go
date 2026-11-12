@@ -245,7 +245,7 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 		}
 		return nil
 	}
-	if !(method == "PATCH" && action == "" || method == "POST" && contains([]string{"submit", "activities"}, action)) {
+	if !(method == "PATCH" && action == "" || method == "POST" && contains([]string{"submit", "activities", "discard", "restore"}, action)) {
 		fail(w, 405, "METHOD_NOT_ALLOWED", "操作不支持")
 		return nil
 	}
@@ -280,6 +280,9 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 	}
 	if e = enforceProject(u, p, policyAction); e != nil {
 		return e
+	}
+	if action == "discard" || action == "restore" {
+		return a.discardOrRestore(w, r, tx, u, p, action)
 	}
 	var in Input
 	var activity Activity
@@ -458,4 +461,57 @@ func (UnconnectedAdapter) Validate(context.Context, []byte) (TransferPreview, er
 }
 func (UnconnectedAdapter) Commit(context.Context, []byte) (string, error) {
 	return "", errors.New("Crane adapter not connected")
+}
+
+// discardOrRestore moves a never-submitted draft into the recycle bin
+// (CANCELLED, discardedAt) or back to DRAFT. Content, equipment, customer data,
+// owner, team and custodian are untouched; only the status, the bin marker and
+// the version change, with an audit row. The policy check already ran.
+func (a *App) discardOrRestore(w http.ResponseWriter, r *http.Request, tx pgx.Tx, u User, p Project, action string) error {
+	ctx := r.Context()
+	var b struct {
+		Version int    `json:"version"`
+		Reason  string `json:"reason"`
+	}
+	if !decode(w, r, &b) {
+		return nil
+	}
+	if len(b.Reason) > 1000 {
+		fail(w, 400, "INVALID_INPUT", "原因过长")
+		return nil
+	}
+	if b.Version != p.Version {
+		fail(w, 409, "VERSION_CONFLICT", "项目已更新，请重新加载后重试")
+		return nil
+	}
+	sql := `UPDATE intake_projects SET intake_status='CANCELLED',discarded_at=now(),discarded_by_subject=$2,version=version+1,updated_at=now()
+ WHERE id=$1 AND intake_status='DRAFT' AND submission_revision=0 AND discarded_at IS NULL`
+	if action == "restore" {
+		sql = `UPDATE intake_projects SET intake_status='DRAFT',discarded_at=NULL,discarded_by_subject=NULL,version=version+1,updated_at=now()
+ WHERE id=$1 AND intake_status='CANCELLED' AND discarded_at IS NOT NULL AND $2<>''`
+	}
+	tag, e := tx.Exec(ctx, sql, p.ID, u.Subject)
+	if e != nil {
+		return e
+	}
+	if tag.RowsAffected() != 1 {
+		return problem(409, "INVALID_STATE")
+	}
+	updated, e := get(ctx, tx, p.ID, false)
+	if e != nil {
+		return e
+	}
+	reason := strings.TrimSpace(b.Reason)
+	if _, e = tx.Exec(ctx, `INSERT INTO audit_events(project_id,subject,action,revision,details) VALUES($1,$2,$3,$4,$5::jsonb)`,
+		p.ID, u.Subject, "project."+action, updated.Version, string(mustJSON(map[string]string{"reason": reason}))); e != nil {
+		return e
+	}
+	if e = tx.Commit(ctx); e != nil {
+		return e
+	}
+	if e = a.projectHints(ctx, a.db, u, &updated); e != nil {
+		return e
+	}
+	respond(w, 200, updated)
+	return nil
 }

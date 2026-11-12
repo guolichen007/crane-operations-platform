@@ -63,6 +63,16 @@ func projectFilters(u User, params map[string]string, asOf time.Time) (string, [
 	default:
 		return "", nil, listError("归属筛选不正确")
 	}
+	// Discarded drafts live in the recycle bin only: every list, search, pipeline
+	// column and count excludes them unless the bin itself is asked for.
+	switch params["bin"] {
+	case "":
+		where += ` AND p.discarded_at IS NULL`
+	case "discarded":
+		where += ` AND p.discarded_at IS NOT NULL`
+	default:
+		return "", nil, listError("回收站筛选不正确")
+	}
 	if params["due"] == "true" {
 		add(` AND p.next_followup_at<?::timestamptz`, asOf.Add(7*24*time.Hour))
 	}

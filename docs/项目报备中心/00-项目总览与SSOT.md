@@ -5,9 +5,9 @@ BAOBEI_MAIN_MERGE=FORBIDDEN
 BAOBEI_R2_MERGE=FORBIDDEN
 BASE_SHA=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18
 BRANCH=product/baobei-v1
-CURRENT_BATCH=G4_S5_R1F_ACCOUNT_CONSISTENCY
+CURRENT_BATCH=G4_S5_R1F2_R2P1_LIFECYCLE
 DEPLOYED_SHA=7b9558084d73f5210cdd08e8240883ecc1659de8
-SCHEMA_VERSION=00007
+SCHEMA_VERSION=00008
 RELEASE_SHA=572c6aa609e06419b832f7652e73bf29e8c65c37
 CODE_SHA=ca41c3ba090a7dc17120f6565d0a54a2f8d644fd
 SERVER_PRECHECK=NOT_RUN
@@ -19,7 +19,11 @@ PRODUCTION_DEPLOYED=YES (7b95580; G4-S4 未部署)
 
 目标：快速报项目、识别重复、明确归属并跟进。独立产品，永不合并 main/R2。
 
-## 当前实施：G4-S5-R1-F 身份与账号一致性修复
+## 当前实施：G4-S5-R1-F2 身份安全极小修复 + R2-P1 三条业务生命周期
+
+基线 `069c7c2`（Run 43173379684 8/8）。R1-F2：身份映射只接受“新写入或逐字段一致”，冲突即撤销本次开户、不覆盖不删除他人映射；业务 subject 一旦被项目/审批/跟进/参与/证据/审计引用即不可回退（迁移 00008 `staff_subject_referenced` + 守卫），补偿遇到历史身份进入待核对。R2-P1：撤销未完成开户（REVOKED，释放手机/邮箱，保留历史）、团队归档与恢复、草稿废弃到回收站与恢复。仅代码与隔离验证，生产未改。见 [43-G4-S5-R1-F2与R2-P1业务生命周期验收](43-G4-S5-R1-F2与R2-P1业务生命周期验收.md)。
+
+## 历史：G4-S5-R1-F 身份与账号一致性修复
 
 基线 `e5186eb`（Run 43154286068）。迁移名单工具逐字段核对（员工编号、业务 subject、新 UUID、手机号登录名、角色、启用、凭据），任何冲突拒绝且不生成 identity_links，所有输出遮蔽手机号；账号操作可恢复（迁移 00007：步进、租约、请求指纹、待核对 REVIEW），进程崩溃、超时、数据库失败、补偿失败均先读 Keycloak 再完成、撤销或待核对，不盲目重放；页面显示处理中/待核对/失败原因与核对入口。仅代码与隔离验证，生产未改。见 [42-G4-S5-R1-F身份与账号一致性修复验收](42-G4-S5-R1-F身份与账号一致性修复验收.md)。
 

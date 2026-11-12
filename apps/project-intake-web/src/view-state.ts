@@ -52,7 +52,7 @@ export function toList(f: ViewFilters): LocationQueryRaw {
 
 // A detail page remembers where it was opened from (path + query), as a local
 // path only. Anything else falls back to the list.
-const sources = ['/projects', '/pipeline', '/followups', '/unassigned', '/reviews', '/duplicates', '/statistics', '/'];
+const sources = ['/projects', '/pipeline', '/followups', '/unassigned', '/recycle-bin', '/reviews', '/duplicates', '/statistics', '/'];
 export function safeReturn(raw: unknown): string {
   if (typeof raw !== 'string' || !raw.startsWith('/') || raw.startsWith('//') || raw.length > 600) return '/projects';
   const path = raw.split('?')[0].split('#')[0];
@@ -61,7 +61,7 @@ export function safeReturn(raw: unknown): string {
 export function returnLabel(target: string, listLabel: string) {
   const path = target.split('?')[0];
   return ({
-    '/pipeline': '返回项目管道', '/followups': '返回待跟进', '/unassigned': '返回待分配草稿', '/reviews': '返回报备审核',
+    '/pipeline': '返回项目管道', '/followups': '返回待跟进', '/unassigned': '返回待分配草稿', '/recycle-bin': '返回草稿回收站', '/reviews': '返回报备审核',
     '/duplicates': '返回重复处理', '/statistics': '返回统计', '/': '返回工作台',
   } as Record<string, string>)[path] ?? '返回' + listLabel;
 }

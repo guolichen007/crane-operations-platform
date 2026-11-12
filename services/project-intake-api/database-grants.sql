@@ -65,3 +65,8 @@ GRANT UPDATE (account_state,account_must_change_password,subject) ON app_users T
 GRANT SELECT ON account_operations TO baobei_maintenance;
 GRANT SELECT, INSERT, DELETE ON identity_links TO baobei_staff_api;
 GRANT SELECT ON identity_links TO baobei_maintenance;
+-- G4-S5-R1-F2 / R2-P1: history check (read-only, definer), team archive state,
+-- draft recycle bin. Immutable evidence stays insert-only.
+GRANT EXECUTE ON FUNCTION staff_subject_referenced(text) TO baobei_staff_api;
+GRANT UPDATE (status,archived_at) ON teams TO baobei_staff_api;
+GRANT UPDATE (discarded_at,discarded_by_subject) ON intake_projects TO baobei_runtime;

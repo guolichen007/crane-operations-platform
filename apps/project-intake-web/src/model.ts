@@ -104,6 +104,8 @@ export interface Project extends Input {
   ownerSubject: string | null;
   createdBySubject: string;
   intakeStatus: string;
+  // Set while the draft is in the recycle bin (status CANCELLED).
+  discardedAt?: string | null;
   protectionStatus: string;
   createdAt: string;
   updatedAt: string;

@@ -34,7 +34,7 @@ const app = useApp(),
   followup = ref<'overdue' | 'upcoming'>(route.query.window === 'upcoming' ? 'upcoming' : 'overdue');
 let generation = 0;
 const view = computed(() =>
-  route.path === '/followups' ? 'followups' : route.path === '/unassigned' ? 'unassigned' : 'projects'
+  route.path === '/followups' ? 'followups' : route.path === '/unassigned' ? 'unassigned' : route.path === '/recycle-bin' ? 'bin' : 'projects'
 );
 const scopeName = computed(() => projectScopeLabel(app.user));
 const scopeNote = computed(
@@ -48,7 +48,7 @@ const scopeNote = computed(
 );
 const title = computed(
   () =>
-    ({ followups: '待跟进', unassigned: '待分配草稿', projects: scopeName.value })[view.value]
+    ({ followups: '待跟进', unassigned: '待分配草稿', bin: '草稿回收站', projects: scopeName.value })[view.value]
 );
 async function load() {
   const n = ++generation;
@@ -68,6 +68,7 @@ async function load() {
       params.set('sort', 'followup');
     }
     if (view.value === 'unassigned') params.set('assignment', 'unassigned');
+    if (view.value === 'bin') params.set('bin', 'discarded');
     const b = await app.api<{ items: Project[]; total: number; asOf: string }>('/api/v1/projects?' + params);
     if (n === generation) {
       items.value = b.items;
@@ -143,7 +144,7 @@ const asOfText = computed(() => (asOf.value ? new Date(asOf.value).toLocaleStrin
         {{ title }} <small>{{ total }}</small>
       </h1>
       <p class="muted">
-        {{ scopeNote }}<template v-if="asOfText"> · 统计时间 {{ asOfText }}</template>
+        {{ view === 'bin' ? '已废弃、从未提交的草稿。打开后可恢复为草稿继续编辑；回收站里的草稿不出现在列表、管道和首页。' : scopeNote }}<template v-if="asOfText"> · 统计时间 {{ asOfText }}</template>
       </p>
     </div>
     <div class="actions">
@@ -237,7 +238,7 @@ const asOfText = computed(() => (asOf.value ? new Date(asOf.value).toLocaleStrin
             <td v-if="showLocation">{{ p.location.province }} {{ p.location.city }}</td>
             <td>{{ stages[p.salesStage] }}</td>
             <td>
-              <span :class="['badge', p.intakeStatus.toLowerCase()]">{{ statuses[p.intakeStatus] }}</span>
+              <span :class="['badge', p.intakeStatus.toLowerCase()]">{{ p.discardedAt ? '已废弃' : statuses[p.intakeStatus] }}</span>
             </td>
             <td v-if="showOwner" :class="{ unassigned: !p.ownerSubject }">{{ owner(p) }}</td>
             <td>
@@ -261,11 +262,11 @@ const asOfText = computed(() => (asOf.value ? new Date(asOf.value).toLocaleStrin
         class="project-card"
         :run="() => open(p)"
       >
-        <span class="mono">{{ p.registrationNo }}</span><strong>{{ p.projectName || '未命名草稿' }}</strong><span>{{ p.customer }}</span><span class="card-meta"><span class="badge">{{ statuses[p.intakeStatus] }}</span>{{ stages[p.salesStage] }} · {{ owner(p) }}</span><small>下一步：{{ p.nextAction || '尚未记录' }}</small>
+        <span class="mono">{{ p.registrationNo }}</span><strong>{{ p.projectName || '未命名草稿' }}</strong><span>{{ p.customer }}</span><span class="card-meta"><span class="badge">{{ p.discardedAt ? '已废弃' : statuses[p.intakeStatus] }}</span>{{ stages[p.salesStage] }} · {{ owner(p) }}</span><small>下一步：{{ p.nextAction || '尚未记录' }}</small>
       </ActionButton>
     </div>
     <div v-if="!items.length && !loading" class="empty">
-      <h2>{{ q || status || stage || province || after ? '没有符合筛选条件的项目' : view === 'unassigned' ? '没有待分配草稿' : view === 'followups' ? (followup === 'overdue' ? '没有逾期的跟进' : '未来 7 天没有安排跟进') : '还没有项目' }}</h2>
+      <h2>{{ q || status || stage || province || after ? '没有符合筛选条件的项目' : view === 'unassigned' ? '没有待分配草稿' : view === 'bin' ? '回收站是空的' : view === 'followups' ? (followup === 'overdue' ? '没有逾期的跟进' : '未来 7 天没有安排跟进') : '还没有项目' }}</h2>
       <p class="muted">{{ q || status || stage || province || after ? '调整或清空筛选条件后再试。' : '新建报备后会出现在这里。' }}</p>
     </div>
   </template>
@@ -306,7 +307,7 @@ const asOfText = computed(() => (asOf.value ? new Date(asOf.value).toLocaleStrin
       <h2>{{ preview.projectName || '未命名草稿' }}</h2>
       <p>{{ preview.customer }}</p>
       <div class="actions">
-        <span class="badge">{{ statuses[preview.intakeStatus] }}</span><span class="badge">{{ stages[preview.salesStage] }}</span>
+        <span class="badge">{{ preview.discardedAt ? '已废弃（回收站）' : statuses[preview.intakeStatus] }}</span><span class="badge">{{ stages[preview.salesStage] }}</span>
       </div>
       <dl>
         <dt>负责人</dt>

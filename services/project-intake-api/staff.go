@@ -27,6 +27,8 @@ const (
 	staffSuspended  = "SUSPENDED"
 	staffFailed     = "PROVISION_FAILED"
 	staffArchived   = "ARCHIVED"
+	// staffRevoked: an invitation withdrawn before the member ever signed in.
+	staffRevoked    = "REVOKED"
 	allCapabilities = 7
 )
 
@@ -37,7 +39,7 @@ var (
 )
 
 var capabilityNames = []string{"project.create", "project.submit", "activity.create"}
-var staffStates = []string{staffPending, staffActivation, staffActive, staffSuspended, staffFailed, staffArchived}
+var staffStates = []string{staffPending, staffActivation, staffActive, staffSuspended, staffFailed, staffArchived, staffRevoked}
 
 type staffProblem struct {
 	status        int
@@ -241,6 +243,12 @@ type staffTeam struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
 	Version int    `json:"version"`
+	// ACTIVE or ARCHIVED; archived teams cannot be chosen for members.
+	Status     string     `json:"status"`
+	ArchivedAt *time.Time `json:"archivedAt"`
+	// Members still counted against the team (anything not archived or revoked).
+	Members      int `json:"memberCount"`
+	OpenProjects int `json:"openProjectCount"`
 }
 type staffEvent struct {
 	Actor   string    `json:"actor"`
@@ -272,7 +280,8 @@ func scanStaff(row interface{ Scan(...any) error }) (staffMember, error) {
 	err := row.Scan(&m.ID, &m.Subject, &m.Name, &m.Email, &m.Phone, &m.TeamID, &m.Team, &m.Role, &m.Status, &m.Version, &m.Note, &mask, &m.Projects, &m.LastLogin, &m.SyncStatus, &m.IdentityVerified, &m.RoleChanged, &m.ProvisionReviewed, &m.AccountState, &m.MustChangePassword, &op)
 	m.AccountOperation = parseAccountOp([]byte(op))
 	m.Permissions = capabilityList(mask)
-	m.IdentityLinked = validIdentityUUID(m.Subject)
+	// A revoked invitation keeps its (permanent) subject but no longer has a login.
+	m.IdentityLinked = validIdentityUUID(m.Subject) && m.Status != staffRevoked
 	// Without an email, the exact Keycloak subject bound by the provisioning receipt
 	// plus an activation login carrying the exact client role is the identity proof.
 	emailOK := m.Email == ""
@@ -292,7 +301,7 @@ func readStaff(ctx context.Context, tx pgx.Tx, actor User, id string) (staffMemb
 	if errors.Is(err, pgx.ErrNoRows) {
 		return m, staffMissing
 	}
-	m.CanManage = staffWritable(actor, m.Subject, m.Role, m.TeamID) && m.Status != staffArchived
+	m.CanManage = staffWritable(actor, m.Subject, m.Role, m.TeamID) && m.Status != staffArchived && m.Status != staffRevoked
 	if m.AccountState != accountNone {
 		m.LoginName, _ = loginName(m.Phone)
 	}
@@ -340,7 +349,7 @@ func listStaff(ctx context.Context, tx pgx.Tx, actor User, at *time.Time, r *htt
 		if err != nil {
 			return nil, err
 		}
-		m.CanManage = staffWritable(actor, m.Subject, m.Role, m.TeamID) && m.Status != staffArchived
+		m.CanManage = staffWritable(actor, m.Subject, m.Role, m.TeamID) && m.Status != staffArchived && m.Status != staffRevoked
 		m.Note = ""
 		m.Phone = maskedPhone(m.Phone)
 		items = append(items, m)
@@ -418,7 +427,7 @@ type staffMutation struct {
 
 func reasonOK(reason string) bool { return strings.TrimSpace(reason) != "" && len(reason) <= 600 }
 
-func validateProfile(ctx context.Context, tx pgx.Tx, actor User, in *staffProfileInput, phoneOptional bool) error {
+func validateProfile(ctx context.Context, tx pgx.Tx, actor User, in *staffProfileInput, phoneOptional bool, currentTeam string) error {
 	in.Name = strings.TrimSpace(in.Name)
 	if !identityText(in.Name) || digitsOnly.MatchString(in.Name) {
 		return staffProblem{400, "STAFF_NAME_INVALID", "请填写成员真实姓名，不能只包含数字"}
@@ -458,12 +467,17 @@ func validateProfile(ctx context.Context, tx pgx.Tx, actor User, in *staffProfil
 		if !uuidPattern.MatchString(in.TeamID) {
 			return staffProblem{400, "STAFF_TEAM_REQUIRED", "销售和主管必须选择所属团队"}
 		}
-		var exists bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM teams WHERE id=$1)`, in.TeamID).Scan(&exists); err != nil {
+		var status string
+		err := tx.QueryRow(ctx, `SELECT status FROM teams WHERE id=$1`, in.TeamID).Scan(&status)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return staffMissing
+		}
+		if err != nil {
 			return err
 		}
-		if !exists {
-			return staffMissing
+		// An archived team keeps its current members' history but takes nobody new.
+		if status != teamActive && in.TeamID != currentTeam {
+			return teamArchivedProblem
 		}
 	} else if in.TeamID != "" {
 		return staffInvalid
@@ -478,7 +492,7 @@ func inviteStaff(ctx context.Context, tx pgx.Tx, actor User, at *time.Time, in s
 	if strings.TrimSpace(in.Reason) == "" {
 		in.Reason = "新增成员"
 	}
-	if err := validateProfile(ctx, tx, actor, &in, false); err != nil {
+	if err := validateProfile(ctx, tx, actor, &in, false, ""); err != nil {
 		return nil, err
 	}
 	// Creating a member with an advanced role grants that role: sensitive.
@@ -527,7 +541,7 @@ func editStaff(ctx context.Context, tx pgx.Tx, actor User, at *time.Time, m staf
 	}
 	// A member without a historical phone may be edited before one is added;
 	// once a phone exists it cannot be removed.
-	if err := validateProfile(ctx, tx, actor, &in, m.Phone == ""); err != nil {
+	if err := validateProfile(ctx, tx, actor, &in, m.Phone == "", m.TeamID); err != nil {
 		return nil, err
 	}
 	// A login account's name is the work phone: once an account exists (or an
@@ -788,20 +802,38 @@ func transferStaffProjects(ctx context.Context, tx pgx.Tx, actor User, from staf
 
 func staffTeams(ctx context.Context, tx pgx.Tx, actor User, w http.ResponseWriter, r *http.Request, id string) (any, error) {
 	if r.Method == "GET" && id == "" {
-		rows, err := tx.Query(ctx, `SELECT id::text,name,staff_version FROM teams WHERE $1<>'baobei_manager' OR id::text=$2 ORDER BY name,id`, actor.Role, actor.TeamID)
+		rows, err := tx.Query(ctx, `SELECT `+teamColumns+` FROM teams t WHERE $1<>'baobei_manager' OR t.id::text=$2 ORDER BY t.status,t.name,t.id`, actor.Role, actor.TeamID)
 		if err != nil {
 			return nil, err
 		}
 		defer rows.Close()
 		items := make([]staffTeam, 0)
 		for rows.Next() {
-			var t staffTeam
-			if err = rows.Scan(&t.ID, &t.Name, &t.Version); err != nil {
+			t, err := scanTeam(rows)
+			if err != nil {
 				return nil, err
 			}
 			items = append(items, t)
 		}
 		return map[string]any{"items": items}, rows.Err()
+	}
+	if r.Method == "GET" && uuidPattern.MatchString(id) {
+		// Team history (create, rename, archive, restore): administrators only.
+		if actor.Role != adminRole {
+			return nil, staffDenied
+		}
+		t, err := scanTeam(tx.QueryRow(ctx, `SELECT `+teamColumns+` FROM teams t WHERE t.id=$1`, id))
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, staffMissing
+		}
+		if err != nil {
+			return nil, err
+		}
+		history, err := listStaffAudit(ctx, tx, id)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"team": t, "history": history.(map[string]any)["items"]}, nil
 	}
 	if actor.Role != adminRole {
 		return nil, staffDenied
@@ -821,21 +853,35 @@ func staffTeams(ctx context.Context, tx pgx.Tx, actor User, w http.ResponseWrite
 	if !identityText(in.Name) || !reasonOK(in.Reason) {
 		return nil, staffInvalid
 	}
+	if id != "" {
+		var status string
+		err := tx.QueryRow(ctx, `SELECT status FROM teams WHERE id=$1`, id).Scan(&status)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, staffMissing
+		}
+		if err != nil {
+			return nil, err
+		}
+		if status != teamActive {
+			return nil, teamArchivedProblem
+		}
+	}
 	var duplicate bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM teams WHERE lower(name)=lower($1) AND id::text<>$2)`, in.Name, id).Scan(&duplicate); err != nil {
 		return nil, err
 	}
 	if duplicate {
-		return nil, staffConflict
+		return nil, staffProblem{409, "TEAM_NAME_DUPLICATE", "已有同名团队（含已归档团队），请换一个名称"}
 	}
-	var t staffTeam
+	var teamID string
+	var version int
 	var err error
 	action := "team.create"
 	if id == "" {
-		err = tx.QueryRow(ctx, `INSERT INTO teams(name) VALUES($1) RETURNING id::text,name,staff_version`, in.Name).Scan(&t.ID, &t.Name, &t.Version)
+		err = tx.QueryRow(ctx, `INSERT INTO teams(name) VALUES($1) RETURNING id::text,staff_version`, in.Name).Scan(&teamID, &version)
 	} else {
 		action = "team.edit"
-		err = tx.QueryRow(ctx, `UPDATE teams SET name=$2,staff_version=staff_version+1 WHERE id=$1 AND staff_version=$3 RETURNING id::text,name,staff_version`, id, in.Name, in.Version).Scan(&t.ID, &t.Name, &t.Version)
+		err = tx.QueryRow(ctx, `UPDATE teams SET name=$2,staff_version=staff_version+1 WHERE id=$1 AND staff_version=$3 RETURNING id::text,staff_version`, id, in.Name, in.Version).Scan(&teamID, &version)
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, staffConflict
@@ -843,10 +889,169 @@ func staffTeams(ctx context.Context, tx pgx.Tx, actor User, w http.ResponseWrite
 	if err != nil {
 		return nil, err
 	}
-	if err = staffAudit(ctx, tx, t.ID, actor.Subject, action, in.Reason, t.Version); err != nil {
+	if err = staffAudit(ctx, tx, teamID, actor.Subject, action, in.Reason, version); err != nil {
 		return nil, err
 	}
-	return t, nil
+	return scanTeam(tx.QueryRow(ctx, `SELECT `+teamColumns+` FROM teams t WHERE t.id=$1`, teamID))
+}
+
+const teamActive = "ACTIVE"
+
+var teamArchivedProblem = staffProblem{409, "TEAM_ARCHIVED", "该团队已归档，不能选择或修改；如需使用请先恢复团队"}
+
+// teamColumns: a team with the members and open projects still attached to it.
+// Archived and revoked members no longer count; neither do finished projects.
+const teamColumns = `t.id::text,t.name,t.staff_version,t.status,t.archived_at,
+ (SELECT count(*) FROM app_users u WHERE u.team_id=t.id AND u.staff_status NOT IN ('ARCHIVED','REVOKED')),
+ (SELECT count(*) FROM intake_projects p WHERE p.team_id=t.id AND p.` + `intake_status NOT IN ('REJECTED','CANCELLED','CONVERTED') AND p.sales_stage NOT IN ('WON','LOST'))`
+
+func scanTeam(row interface{ Scan(...any) error }) (staffTeam, error) {
+	var t staffTeam
+	err := row.Scan(&t.ID, &t.Name, &t.Version, &t.Status, &t.ArchivedAt, &t.Members, &t.OpenProjects)
+	return t, err
+}
+
+// teamLifecycle serves POST /api/v1/teams/{id}/archive and /restore (administrator).
+// A team with active members or unfinished projects cannot be archived: their
+// ownership must be handled first. History, projects and approvals keep the team.
+func teamLifecycle(ctx context.Context, tx pgx.Tx, actor User, w http.ResponseWriter, r *http.Request, id, action string) (any, error) {
+	if actor.Role != adminRole {
+		return nil, staffDenied
+	}
+	var in staffMutation
+	if !decode(w, r, &in) {
+		return nil, nil
+	}
+	if in.Permissions != nil || in.Version < 1 {
+		return nil, staffInvalid
+	}
+	if !reasonOK(in.Reason) {
+		return nil, staffReasonRequired
+	}
+	t, err := scanTeam(tx.QueryRow(ctx, `SELECT `+teamColumns+` FROM teams t WHERE t.id=$1 FOR UPDATE OF t`, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, staffMissing
+	}
+	if err != nil {
+		return nil, err
+	}
+	if t.Version != in.Version {
+		return nil, staffConflict
+	}
+	switch action {
+	case "archive":
+		if t.Status != teamActive {
+			return nil, staffProblem{409, "TEAM_ALREADY_ARCHIVED", "该团队已归档"}
+		}
+		if t.Members > 0 {
+			return nil, staffProblem{409, "TEAM_HAS_MEMBERS", "该团队还有 " + strconv.Itoa(t.Members) + " 名成员，请先调整他们的团队或停用并归档后再归档团队"}
+		}
+		if t.OpenProjects > 0 {
+			return nil, staffProblem{409, "TEAM_HAS_OPEN_PROJECTS", "该团队还有 " + strconv.Itoa(t.OpenProjects) + " 个未结束项目，请先移交或结束后再归档团队"}
+		}
+		_, err = tx.Exec(ctx, `UPDATE teams SET status='ARCHIVED',archived_at=now(),staff_version=staff_version+1 WHERE id=$1`, id)
+	case "restore":
+		if t.Status == teamActive {
+			return nil, staffProblem{409, "TEAM_NOT_ARCHIVED", "该团队未归档，无需恢复"}
+		}
+		_, err = tx.Exec(ctx, `UPDATE teams SET status='ACTIVE',archived_at=NULL,staff_version=staff_version+1 WHERE id=$1`, id)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err = staffAudit(ctx, tx, id, actor.Subject, "team."+action, in.Reason, t.Version+1); err != nil {
+		return nil, err
+	}
+	return scanTeam(tx.QueryRow(ctx, `SELECT `+teamColumns+` FROM teams t WHERE t.id=$1`, id))
+}
+
+// revocable: an invitation that never completed. The member never signed in,
+// no business record names the subject and no account operation is open.
+var (
+	staffHasHistory       = staffProblem{409, "STAFF_HAS_HISTORY", "该成员已有登录或业务记录，不能撤销开户；请使用停用和归档"}
+	staffNotRevocable     = staffProblem{409, "STAFF_NOT_REVOCABLE", "只有尚未完成开户的成员可以撤销"}
+	staffRevokeViaAccount = staffProblem{409, "STAFF_REVOKE_ACCOUNT_EXISTS", "该成员已有登录账号，请由管理员通过账号服务撤销"}
+)
+
+func revocableCheck(ctx context.Context, tx pgx.Tx, m staffMember) error {
+	if m.Status != staffPending && m.Status != staffFailed && m.Status != staffActivation {
+		return staffNotRevocable
+	}
+	if m.AccountOperation != nil && (m.AccountOperation.State == "STARTED" || m.AccountOperation.State == "REVIEW") || m.AccountState == accountReview || m.AccountState == accountCreating {
+		return staffProblem{409, "ACCOUNT_OPERATION_IN_PROGRESS", "该成员的账号操作尚未处理完成，请先完成或核对后再撤销"}
+	}
+	var history bool
+	if err := tx.QueryRow(ctx, `SELECT last_login_at IS NOT NULL OR staff_subject_referenced(subject) FROM app_users WHERE staff_id=$1`, m.ID).Scan(&history); err != nil {
+		return err
+	}
+	if history {
+		return staffHasHistory
+	}
+	return nil
+}
+
+// revokeMember ends the invitation: REVOKED, no login, no identity link, phone
+// and e-mail released for a new invitation. The row, staff id and history stay.
+func revokeMember(ctx context.Context, tx pgx.Tx, staffID string) (int, error) {
+	var subject string
+	var version int
+	err := tx.QueryRow(ctx, `UPDATE app_users SET staff_status='REVOKED',active=false,account_state='NONE',account_must_change_password=false,
+ work_phone=NULL,work_email=NULL,staff_version=staff_version+1
+ WHERE staff_id=$1 AND staff_status IN ('PENDING_PROVISION','PENDING_ACTIVATION','PROVISION_FAILED') AND last_login_at IS NULL
+ AND NOT staff_subject_referenced(subject) RETURNING subject,staff_version`, staffID).Scan(&subject, &version)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, staffConflict
+	}
+	if err != nil {
+		return 0, err
+	}
+	for _, sql := range []string{`DELETE FROM identity_links WHERE subject=$1`, `DELETE FROM app_sessions WHERE subject=$1`} {
+		if _, err = tx.Exec(ctx, sql, subject); err != nil {
+			return 0, err
+		}
+	}
+	_, err = tx.Exec(ctx, `UPDATE staff_outbox SET status='SUPERSEDED',processed_at=now() WHERE staff_id=$1 AND status='PENDING'`, staffID)
+	return version, err
+}
+
+// revokeInvitation: POST /api/v1/staff/{id}/revoke for a member without a login
+// account (nothing to undo outside Baobei). Members with an account are revoked
+// through the account service (POST …/account/revoke).
+func revokeInvitation(ctx context.Context, tx pgx.Tx, actor User, m staffMember, in staffMutation) (any, error) {
+	if in.Permissions != nil || in.Version < 1 {
+		return nil, staffInvalid
+	}
+	if !reasonOK(in.Reason) {
+		return nil, staffReasonRequired
+	}
+	if in.Version != m.Version {
+		return nil, staffConflict
+	}
+	if err := needsApproval(actor, m.Role, m.Role, nil, false); err != nil {
+		return nil, err
+	}
+	if err := revocableCheck(ctx, tx, m); err != nil {
+		return nil, err
+	}
+	var linked bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM identity_links WHERE subject=$1)`, m.Subject).Scan(&linked); err != nil {
+		return nil, err
+	}
+	if linked || !strings.HasPrefix(m.Subject, "pending:") || m.AccountState != accountNone && m.AccountState != accountFailed {
+		return nil, staffRevokeViaAccount
+	}
+	version, err := revokeMember(ctx, tx, m.ID)
+	if err != nil {
+		return nil, err
+	}
+	reason := in.Reason
+	if m.Phone != "" {
+		reason = "工作手机 " + maskedPhone(m.Phone) + " 已释放 · " + reason
+	}
+	if err = staffAudit(ctx, tx, m.ID, actor.Subject, "staff.revoke", reason, version); err != nil {
+		return nil, err
+	}
+	return readStaff(ctx, tx, actor, m.ID)
 }
 
 func (a *App) staffPool() *pgxpool.Pool {
@@ -918,6 +1123,9 @@ func staffRoute(ctx context.Context, tx pgx.Tx, w http.ResponseWriter, r *http.R
 		if len(parts) == 2 && parts[1] != "" {
 			return staffTeams(ctx, tx, actor, w, r, parts[1])
 		}
+		if len(parts) == 3 && r.Method == "POST" && (parts[2] == "archive" || parts[2] == "restore") && uuidPattern.MatchString(parts[1]) {
+			return teamLifecycle(ctx, tx, actor, w, r, parts[1], parts[2])
+		}
 		return nil, staffMissing
 	}
 	if len(parts) == 1 && r.Method == "GET" {
@@ -948,8 +1156,15 @@ func staffRoute(ctx context.Context, tx pgx.Tx, w http.ResponseWriter, r *http.R
 		return map[string]any{"member": m, "projects": projects, "recentReauth": actor.Role == adminRole && recentReauth(at),
 			"reauthExpiresAt": reauthExpiry(actor, at)}, err
 	}
-	if !staffWritable(actor, m.Subject, m.Role, m.TeamID) || m.Status == staffArchived {
+	if !staffWritable(actor, m.Subject, m.Role, m.TeamID) || m.Status == staffArchived || m.Status == staffRevoked {
 		return nil, staffDenied
+	}
+	if len(parts) == 3 && parts[2] == "revoke" && r.Method == "POST" {
+		var in staffMutation
+		if !decode(w, r, &in) {
+			return nil, nil
+		}
+		return revokeInvitation(ctx, tx, actor, m, in)
 	}
 	if len(parts) == 2 && r.Method == "PATCH" {
 		var in staffProfileInput

@@ -12,12 +12,12 @@ import { when } from './model';
 import { can } from './navigation';
 import { newIdempotencyKey, accountActions, accountCause, accountDisplayLabel, accountDisplayState, accountOperationLabel, type AccountAction } from './staff-account';
 import {
-  capabilities, nextStep, roles, staffEvents, statusLabel, syncStatuses,
+  capabilities, nextStep, revocable, roles, staffEvents, statusLabel, syncStatuses,
   type StaffEvent, type StaffMember, type StaffProject, type StaffTeam,
 } from './staff-model';
 
 type Dialog = 'invite' | 'edit' | 'verify' | 'permissions' | 'suspend' | 'reactivate' | 'retry' | 'archive' | 'transfer' |
-  'promote' | 'demote' | 'review' | AccountAction;
+  'promote' | 'demote' | 'review' | 'revoke' | AccountAction;
 const app = useApp();
 const route = useRoute();
 const router = useRouter();
@@ -67,6 +67,7 @@ const titles: Record<Dialog, string> = {
   archive: '归档账号', transfer: '批量移交项目', review: '审核开通',
   'account-create': '开通登录账号', 'account-reset': '重置登录密码', 'account-phone': '更换登录手机号',
   'account-disable': '停用登录', 'account-enable': '恢复登录',
+  revoke: '撤销开户', 'account-revoke': '撤销开户',
 };
 const descriptions: Partial<Record<Dialog, string>> = {
   invite: '保存后成员进入“待开通”，由管理员审核并开通企业账号。',
@@ -85,6 +86,8 @@ const descriptions: Partial<Record<Dialog, string>> = {
   'account-phone': '登录手机号随工作手机一起更换。旧手机号立即不能登录，成员当前登录全部失效。',
   'account-disable': '立即停止该成员使用报备中心，未结束项目进入待移交清单。',
   'account-enable': '恢复登录账号和角色，成员重新登录后可用。',
+  revoke: '撤销这次未完成的开户：成员记录标记为“已撤销开户”并保留历史，工作手机和邮箱释放，可用正确信息重新添加。',
+  'account-revoke': '撤销这次未完成的开户：删除尚未使用的登录账号，成员记录标记为“已撤销开户”并保留历史，工作手机和邮箱释放，可重新添加。',
 };
 const canManage = computed(() => member.value?.canManage ?? false);
 const showRoleAction = computed(() => administrator.value && canManage.value && member.value?.status === 'ACTIVE' &&
@@ -102,7 +105,7 @@ const sensitive = computed(() => {
   if (!administrator.value || !kind) return false;
   if (kind === 'promote' || kind === 'demote' || kind === 'verify') return true;
   // Server rule: account actions on advanced roles (not disabling) need a fresh password check.
-  if (kind.startsWith('account-')) return !!m && m.role !== 'baobei_sales' && kind !== 'account-disable';
+  if (kind.startsWith('account-')) return !!m && m.role !== 'baobei_sales' && kind !== 'account-disable' && kind !== 'account-revoke';
   if (kind === 'invite') return form.value.role !== 'baobei_sales';
   if (kind === 'reactivate') return m?.role !== 'baobei_sales';
   if (kind === 'edit' && m) return form.value.role !== m.role ||
@@ -260,7 +263,7 @@ async function saveAccount(kind: AccountAction) {
   member.value = data.member;
   dialog.value = null;
   if (data.credential) credential.value = { ...data.credential, name: data.member.name, action: kind === 'account-create' ? '登录账号已开通' : '密码已重置' };
-  else app.toast(data.replayed ? '该操作已完成（重复提交未再次执行）' : { 'account-phone': '登录手机号已更换', 'account-disable': '登录已停用', 'account-enable': '登录已恢复' }[kind as string] ?? '已保存');
+  else app.toast(data.replayed ? '该操作已完成（重复提交未再次执行）' : { 'account-phone': '登录手机号已更换', 'account-disable': '登录已停用', 'account-enable': '登录已恢复', 'account-revoke': '已撤销开户，登录账号已删除，工作手机已释放' }[kind as string] ?? '已保存');
   await load();
 }
 
@@ -380,7 +383,7 @@ async function save() {
     dialog.value = null;
     app.toast({
       promote: '已提交主管授权，等待开通', demote: '已提交恢复为销售，等待开通', verify: '已提交身份核验，等待开通',
-      reactivate: '已申请恢复，状态：待开通', suspend: '账号已停用', archive: '账号已归档', retry: '已重新排队',
+      reactivate: '已申请恢复，状态：待开通', suspend: '账号已停用', archive: '账号已归档', retry: '已重新排队', revoke: '已撤销开户，工作手机已释放，可重新添加',
       permissions: '业务权限已保存', edit: '成员资料已保存', transfer: '移交已完成',
     }[kind as string] ?? '已保存');
     await load();
@@ -464,6 +467,7 @@ onMounted(async () => {
           <option value="PROVISION_FAILED">开通失败</option>
           <option value="SUSPENDED">已停用</option>
           <option value="ARCHIVED">已归档</option>
+          <option value="REVOKED">已撤销开户</option>
         </select></label>
         <label>排序<select v-model="sort" @change="searchFromInput">
           <option value="name">姓名</option><option value="email">邮箱</option>
@@ -516,12 +520,12 @@ onMounted(async () => {
           <div v-else-if="administrator"><dt>企业账号</dt><dd>{{ member.identityVerified ? '已绑定并核验' : member.identityLinked ? '已绑定，待核验' : '尚未绑定' }}</dd></div>
           <div><dt>备注</dt><dd>{{ member.note || '—' }}</dd></div>
         </dl>
-        <ol v-if="accountService && member.status !== 'ACTIVE' && member.status !== 'ARCHIVED' && member.status !== 'SUSPENDED'" class="staff-progress" aria-label="开通进度">
+        <ol v-if="accountService && !['ACTIVE','ARCHIVED','SUSPENDED','REVOKED'].includes(member.status)" class="staff-progress" aria-label="开通进度">
           <li :data-done="true">已添加成员</li>
           <li :data-done="['READY','DISABLED'].includes(accountDisplayState(member))" :data-current="['NONE','CREATING','PROCESSING'].includes(accountDisplayState(member))" :data-failed="['FAILED','REVIEW'].includes(accountDisplayState(member))">开通登录账号</li>
           <li :data-current="member.status === 'PENDING_ACTIVATION'">成员首次登录并修改密码</li>
         </ol>
-        <ol v-else-if="member.status !== 'ACTIVE' && member.status !== 'ARCHIVED'" class="staff-progress" aria-label="开通进度">
+        <ol v-else-if="!['ACTIVE','ARCHIVED','REVOKED'].includes(member.status)" class="staff-progress" aria-label="开通进度">
           <li :data-done="true">已添加成员</li>
           <li :data-done="member.provisionReviewed || ['PENDING_ACTIVATION','ACTIVE'].includes(member.status)" :data-current="member.status === 'PENDING_PROVISION' && !member.provisionReviewed">管理员审核开通</li>
           <li :data-done="['PENDING_ACTIVATION','ACTIVE'].includes(member.status)" :data-current="member.status === 'PENDING_PROVISION' && member.provisionReviewed" :data-failed="member.status === 'PROVISION_FAILED'">企业身份核验并绑定</li>
@@ -529,6 +533,7 @@ onMounted(async () => {
         </ol>
         <p v-if="nextStep(member, administrator, accountService)" class="staff-hint" role="status">{{ nextStep(member, administrator, accountService) }}</p>
         <p v-if="failureReason" class="staff-hint" data-tone="risk" role="status">失败原因：{{ failureReason }}</p>
+        <p v-if="member.status === 'REVOKED'" class="staff-hint" role="status" data-testid="revoked-hint">该开户已撤销，记录仅供查阅；工作手机已释放，可用正确信息重新添加成员。</p>
         <p
           v-if="administrator && accountService && member.accountOperation" class="staff-hint" data-testid="account-operation"
           :data-tone="member.accountOperation.state === 'STARTED' ? undefined : 'risk'" role="status"
@@ -580,6 +585,12 @@ onMounted(async () => {
             action-id="staff.verify-identity" :run="() => open('verify')"
           >
             重新核验企业身份
+          </ActionButton>
+          <ActionButton
+            v-if="revocable(member) && (administrator || !(member.identityLinked && member.accountState !== 'NONE'))" action-id="staff.revoke"
+            :run="() => open(member!.identityLinked && member!.accountState !== 'NONE' ? 'account-revoke' : 'revoke')"
+          >
+            撤销开户
           </ActionButton>
           <ActionButton action-id="staff.edit" :run="() => open('edit')">编辑资料</ActionButton>
           <ActionButton v-if="!accountService && (member.status === 'PROVISION_FAILED' || member.status === 'SUSPENDED' && member.syncStatus === 'FAILED')" action-id="staff.retry" :run="() => open('retry')">重试开通</ActionButton>
@@ -652,7 +663,7 @@ onMounted(async () => {
           <label v-else>角色<input :value="roles[form.role]" disabled /></label>
           <label v-if="needsTeam" :class="{ invalid: errors.teamId }">团队 <span class="req" aria-hidden="true">*</span>
             <select id="staff-teamId" v-model="form.teamId" data-field="teamId" :disabled="supervisor" :aria-invalid="!!errors.teamId" aria-required="true" aria-describedby="staff-team-error">
-              <option value="">选择团队</option><option v-for="team in teams" :key="team.id" :value="team.id">{{ team.name }}</option>
+              <option value="">选择团队</option><option v-for="team in teams.filter(t => t.status !== 'ARCHIVED' || t.id === member?.teamId && dialog === 'edit')" :key="team.id" :value="team.id">{{ team.name }}{{ team.status === 'ARCHIVED' ? '（已归档）' : '' }}</option>
             </select>
             <small v-if="errors.teamId" id="staff-team-error" class="field-error">{{ errors.teamId }}</small>
           </label>
@@ -721,7 +732,7 @@ onMounted(async () => {
           <template v-if="!receipt">
             <ActionButton v-if="needsReauth" action-id="staff.role-reauth" primary :run="reauthenticateAndResume">验证密码并继续</ActionButton>
             <ActionButton v-else action-id="staff.confirm" primary :disabled="working" :run="save">
-              {{ ({ invite: '添加成员', review: '批准开通', suspend: '确认停用', archive: '确认归档', 'account-create': '开通账号', 'account-reset': '重置密码',
+              {{ ({ invite: '添加成员', review: '批准开通', suspend: '确认停用', archive: '确认归档', revoke: '确认撤销开户', 'account-revoke': '确认撤销开户', 'account-create': '开通账号', 'account-reset': '重置密码',
                     'account-phone': '更换手机号', 'account-disable': '停用登录', 'account-enable': '恢复登录' } as Record<string, string>)[dialog ?? ''] ?? '保存' }}
             </ActionButton>
           </template>

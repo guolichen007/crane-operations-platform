@@ -76,7 +76,7 @@ func (a *App) workspaceSummary(ctx context.Context, u User) (WorkspaceSummary, e
  count(*) FILTER (WHERE p.next_followup_at>=$4 AND p.next_followup_at<$5),
  count(*) FILTER (WHERE $2<>'baobei_sales' AND p.intake_status IN ('SUBMITTED','UNDER_REVIEW')),
  count(*) FILTER (WHERE `+reviewableSQL("p")+`)
- FROM intake_projects p WHERE `+projectScope("p"), u.Subject, u.Role, u.TeamID, asOf, asOf.Add(7*24*time.Hour)).
+ FROM intake_projects p WHERE p.discarded_at IS NULL AND `+projectScope("p"), u.Subject, u.Role, u.TeamID, asOf, asOf.Add(7*24*time.Hour)).
 		Scan(&total, &drafts, &returned, &unassigned, &submitted, &review, &approved, &overdue, &upcoming, &queue, &reviewable)
 	if err != nil {
 		return s, err
@@ -86,7 +86,7 @@ func (a *App) workspaceSummary(ctx context.Context, u User) (WorkspaceSummary, e
 	}
 	recent := func(where, order string, limit int, args ...any) ([]RecentItem, error) {
 		rows, err := tx.Query(ctx, `SELECT p.id::text,p.registration_no,p.project_name,coalesce(p.document->>'customer',''),p.intake_status,p.sales_stage,`+displayName("p.owner_subject")+`,p.updated_at,p.next_followup_at,p.next_action
- FROM intake_projects p WHERE `+projectScope("p")+where+` ORDER BY `+order+`,p.id LIMIT `+map[int]string{5: "5", 6: "6"}[limit], append([]any{u.Subject, u.Role, u.TeamID}, args...)...)
+ FROM intake_projects p WHERE p.discarded_at IS NULL AND `+projectScope("p")+where+` ORDER BY `+order+`,p.id LIMIT `+map[int]string{5: "5", 6: "6"}[limit], append([]any{u.Subject, u.Role, u.TeamID}, args...)...)
 		if err != nil {
 			return nil, err
 		}

@@ -81,7 +81,9 @@ type Project struct {
 	CustodianName         string                `json:"custodianName"`
 	SubmittedByName       string                `json:"submittedByName"`
 	ProtectedUntil        *time.Time            `json:"protectedUntil"`
-	NextReviewAt          *time.Time            `json:"nextReviewAt"`
+	// DiscardedAt: the draft is in the recycle bin (status CANCELLED) since then.
+	DiscardedAt  *time.Time `json:"discardedAt"`
+	NextReviewAt *time.Time `json:"nextReviewAt"`
 	// SubmittedAt is the frozen submission time of the current round; only
 	// the review queue fills it (G3-2B). Never derived from updatedAt.
 	SubmittedAt       *time.Time        `json:"submittedAt,omitempty"`

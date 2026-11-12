@@ -200,6 +200,13 @@ func (a *App) reconcile(ctx context.Context, pool *pgxpool.Pool, o *accountOp) e
 			return a.finishEnable(ctx, pool, o)
 		}
 		return a.abandonEnable(ctx, pool, o, nil)
+	case "REVOKE":
+		// Removing an unused login is safe to complete: the business row only
+		// changes after Keycloak confirms the login is gone or disabled.
+		if a.removeLogin(ctx, o.kcID, o.staffID) != nil {
+			return a.review(ctx, pool, o, "REVOKE_UNCONFIRMED")
+		}
+		return a.finishRevoke(ctx, pool, o)
 	}
 	return a.review(ctx, pool, o, "UNKNOWN_OPERATION")
 }

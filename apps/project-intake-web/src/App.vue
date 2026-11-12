@@ -11,7 +11,7 @@ import {
   Search,
   LogOut,
   Users,
-  Settings,
+  Settings, Trash2,
   Inbox,
   ClipboardCheck,
   Copy,
@@ -37,6 +37,7 @@ const icons = {
   chart: ChartNoAxesCombined,
   users: Users,
   settings: Settings,
+  trash: Trash2,
 };
 const nav = computed(() => navigation(app.user));
 const groups = computed(() => {

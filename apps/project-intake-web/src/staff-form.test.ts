@@ -60,3 +60,19 @@ describe('reauth draft', () => {
     clearStaffDraft();
   });
 });
+
+import { revocable } from './staff-model';
+describe('撤销开户入口（R2-P1）', () => {
+  const base = { status: 'PENDING_PROVISION', lastLogin: null, projectCount: 0, canManage: true, accountState: 'NONE' };
+  it('仅未完成开户、无登录、无项目、无未决账号操作时可撤销', () => {
+    expect(revocable(base)).toBe(true);
+    expect(revocable({ ...base, status: 'PROVISION_FAILED', accountState: 'FAILED' })).toBe(true);
+    expect(revocable({ ...base, status: 'PENDING_ACTIVATION', accountState: 'READY' })).toBe(true);
+    expect(revocable({ ...base, status: 'ACTIVE' })).toBe(false);
+    expect(revocable({ ...base, lastLogin: '2026-11-01T00:00:00Z' })).toBe(false);
+    expect(revocable({ ...base, projectCount: 1 })).toBe(false);
+    expect(revocable({ ...base, canManage: false })).toBe(false);
+    expect(revocable({ ...base, accountState: 'REVIEW' })).toBe(false);
+    expect(revocable({ ...base, accountOperation: { id: 'x', operation: 'CREATE', state: 'STARTED', step: 'ROLE', detail: '', at: '' } })).toBe(false);
+  });
+});

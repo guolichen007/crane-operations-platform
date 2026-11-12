@@ -45,6 +45,9 @@ export function navigation(u: User | null | undefined): NavItem[] {
   if (can(u, 'project.unassigned'))
     items.push({ path: '/unassigned', label: '待分配草稿', icon: 'inbox', group: 'projects' });
   items.push({ path: '/pipeline', label: '项目管道', icon: 'columns', group: 'projects' });
+  // Discarded drafts of the people who may discard (own sales drafts, admin).
+  if (can(u, 'project.create'))
+    items.push({ path: '/recycle-bin', label: '草稿回收站', icon: 'trash', group: 'projects' });
   if (can(u, 'project.review')) {
     items.push({ path: '/reviews', label: '报备审核', icon: 'check', group: 'governance' });
     items.push({ path: '/duplicates', label: '重复处理', icon: 'copy', group: 'governance' });
@@ -73,6 +76,7 @@ export function routeAllowed(u: User | null | undefined, path: string): boolean 
   if (!u) return false;
   if (path === '/reviews' || path === '/duplicates') return can(u, 'project.review');
   if (path === '/unassigned') return can(u, 'project.unassigned');
+  if (path === '/recycle-bin') return can(u, 'project.create');
   if (path.startsWith('/team/members')) return can(u, 'staff.manage');
   if (path.startsWith('/settings/users')) return can(u, 'staff.manage') && u.role === 'baobei_admin';
   if (path.startsWith('/settings/teams')) return can(u, 'team.manage');

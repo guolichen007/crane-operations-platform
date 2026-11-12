@@ -13,6 +13,7 @@ export const statuses: Record<string, string> = {
   SUSPENDED: '已停用',
   PROVISION_FAILED: '开通失败',
   ARCHIVED: '已归档',
+  REVOKED: '已撤销开户',
 };
 
 // Status shown in lists: "待开通" splits into "awaiting review" and "in progress"
@@ -28,6 +29,7 @@ export function statusLabel(m: Pick<StaffMember, 'status' | 'provisionReviewed'>
 // The next step for each state, in the words of the person who must act.
 export function nextStep(m: Pick<StaffMember, 'status' | 'provisionReviewed' | 'syncStatus'> & Partial<Pick<StaffMember, 'accountState' | 'mustChangePassword' | 'accountOperation'>>,
   admin: boolean, accountService = false): string {
+  if (m.status === 'REVOKED' || m.status === 'ARCHIVED') return '';
   if (accountService) {
     if (m.accountState === 'REVIEW' || m.accountOperation?.state === 'REVIEW') return admin ? '账号状态待核对，登录已暂停：请核对账号状态' : '等待管理员核对账号状态';
     if (m.accountOperation?.state === 'STARTED') return admin ? '账号操作处理中，系统会自动核对；稍后刷新' : '等待管理员处理';
@@ -86,7 +88,20 @@ export const staffEvents: Record<string, string> = {
   'staff.account.sync-role': '同步登录角色',
   'staff.account.failed': '账号操作未完成',
   'staff.account.review': '账号状态待核对',
+  'staff.revoke': '撤销开户',
+  'team.create': '新建团队',
+  'team.edit': '修改团队',
+  'team.archive': '归档团队',
+  'team.restore': '恢复团队',
 };
+
+// Revocable: an invitation that never completed (the server re-checks history).
+export function revocable(m: Pick<StaffMember, 'status' | 'lastLogin' | 'projectCount' | 'canManage'> & Partial<Pick<StaffMember, 'accountState' | 'accountOperation'>>) {
+  if (!m.canManage || m.lastLogin || m.projectCount > 0) return false;
+  if (m.accountOperation && ['STARTED', 'REVIEW'].includes(m.accountOperation.state)) return false;
+  if (m.accountState === 'REVIEW' || m.accountState === 'CREATING') return false;
+  return ['PENDING_PROVISION', 'PENDING_ACTIVATION', 'PROVISION_FAILED'].includes(m.status);
+}
 
 export interface StaffMember {
   id: string;
@@ -127,6 +142,10 @@ export interface StaffTeam {
   id: string;
   name: string;
   version: number;
+  status: 'ACTIVE' | 'ARCHIVED';
+  archivedAt: string | null;
+  memberCount: number;
+  openProjectCount: number;
 }
 
 export interface StaffEvent {

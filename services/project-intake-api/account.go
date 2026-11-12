@@ -192,7 +192,7 @@ func (a *App) accountAction(w http.ResponseWriter, r *http.Request, actor User, 
 		return accountKeyInvalid
 	}
 	op := map[string]string{"create": "CREATE", "reset-password": "RESET_PASSWORD", "change-phone": "CHANGE_PHONE",
-		"disable": "DISABLE", "enable": "ENABLE", "sync-role": "SET_ROLE"}[action]
+		"disable": "DISABLE", "enable": "ENABLE", "sync-role": "SET_ROLE", "revoke": "REVOKE"}[action]
 	if op == "" {
 		return staffMissing
 	}
@@ -226,6 +226,8 @@ func (a *App) accountAction(w http.ResponseWriter, r *http.Request, actor User, 
 		err = a.accountDisable(ctx, pool, o, m)
 	case "ENABLE", "SET_ROLE":
 		err = a.accountEnable(ctx, pool, o, m)
+	case "REVOKE":
+		err = a.accountRevoke(ctx, pool, o, m)
 	}
 	if err != nil {
 		var crash crashError
@@ -323,7 +325,7 @@ func (a *App) openAccountOp(ctx context.Context, pool *pgxpool.Pool, actor User,
 	}
 	// Advanced accounts (manager/director/admin) need a fresh password check for
 	// identity actions; ordinary sales accounts do not.
-	sensitive := m.Role != salesRole && op != "DISABLE"
+	sensitive := m.Role != salesRole && op != "DISABLE" && op != "REVOKE"
 	if err = needsApproval(actor, m.Role, m.Role, at, sensitive); err != nil {
 		return nil, staffMember{}, nil, err
 	}
@@ -372,6 +374,14 @@ func (a *App) openAccountOp(ctx context.Context, pool *pgxpool.Pool, actor User,
 	case "ENABLE", "SET_ROLE":
 		if !m.IdentityLinked {
 			return nil, staffMember{}, nil, staffConflict
+		}
+	case "REVOKE":
+		// Only an invitation that never completed: no sign-in, no business history.
+		if err = revocableCheck(ctx, tx, m); err != nil {
+			return nil, staffMember{}, nil, err
+		}
+		if !m.IdentityLinked {
+			return nil, staffMember{}, nil, staffProblem{409, "STAFF_REVOKE_NO_ACCOUNT", "该成员尚无登录账号，请直接撤销开户"}
 		}
 	}
 	err = tx.QueryRow(ctx, `INSERT INTO account_operations(idempotency_key,staff_id,operation,actor_subject,lease_token,lease_expires_at,
@@ -607,10 +617,9 @@ func (a *App) accountCreate(ctx context.Context, pool *pgxpool.Pool, o *accountO
 				return err
 			}
 			// Sign-in under the dedicated realm resolves (issuer, sub) through this link.
-			_, err = tx.Exec(ctx, `INSERT INTO identity_links(issuer,external_subject,subject) VALUES($1,$2,$2) ON CONFLICT (issuer,external_subject) DO NOTHING`, a.sessionIssuer(), o.kcID)
-			return err
+			return bindIdentityLink(ctx, tx, a.sessionIssuer(), o.kcID, o.kcID)
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO identity_links(issuer,external_subject,subject) VALUES($1,$2,$3)`, a.sessionIssuer(), o.kcID, m.Subject); err != nil {
+		if err := bindIdentityLink(ctx, tx, a.sessionIssuer(), o.kcID, m.Subject); err != nil {
 			return err
 		}
 		_, err = tx.Exec(ctx, `UPDATE app_users SET staff_status=CASE WHEN staff_status='ACTIVE' THEN 'PENDING_ACTIVATION' ELSE staff_status END,
@@ -657,11 +666,51 @@ func (a *App) accountCreate(ctx context.Context, pool *pgxpool.Pool, o *accountO
 	return &credential{Login: o.targetLogin, TemporaryPassword: password}, nil
 }
 
+// accountIdentityConflict: the Keycloak identity is already mapped to another
+// business identity (or this member already has another mapping). Nothing is
+// overwritten; the creation is undone.
+var accountIdentityConflict = staffProblem{409, "ACCOUNT_IDENTITY_CONFLICT", "该登录身份已对应其他成员，本次开通已撤销；请核对后重试"}
+
+// bindIdentityLink maps (issuer, external subject) to exactly one business
+// subject. It succeeds only if the row is written now or already exists with
+// exactly these values; a mapping that points elsewhere (by external subject or
+// by business subject) is refused and never touched.
+func bindIdentityLink(ctx context.Context, tx pgx.Tx, issuer, external, subject string) error {
+	tag, err := tx.Exec(ctx, `INSERT INTO identity_links(issuer,external_subject,subject) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, issuer, external, subject)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 1 {
+		return nil
+	}
+	var same bool
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM identity_links WHERE issuer=$1 AND external_subject=$2 AND subject=$3)`, issuer, external, subject).Scan(&same); err != nil {
+		return err
+	}
+	if !same {
+		return accountIdentityConflict
+	}
+	return nil
+}
+
 // compensateCreate undoes a failed creation on the Keycloak side (delete a user
 // this operation created, otherwise disable it), then records the failure. If
 // Keycloak cannot confirm the undo, the member is parked as REVIEW.
 func (a *App) compensateCreate(ctx context.Context, pool *pgxpool.Pool, o *accountOp, cause error) error {
 	if o.kcID != "" {
+		// A subject that business history already names is permanent (BB002): the
+		// login is only disabled and the member is parked for review; the user is
+		// never deleted and the subject never moved back.
+		var history bool
+		if err := pool.QueryRow(ctx, `SELECT subject=$2 AND (last_login_at IS NOT NULL OR staff_subject_referenced(subject)) FROM app_users WHERE staff_id=$1`, o.staffID, o.kcID).Scan(&history); err != nil {
+			return stored(o, err, nil)
+		}
+		if history {
+			if a.accounts.update(ctx, o.kcID, kcUser{Enabled: boolp(false)}) != nil {
+				return a.review(ctx, pool, o, "COMPENSATION_FAILED")
+			}
+			return a.review(ctx, pool, o, "SUBJECT_HAS_HISTORY")
+		}
 		var err error
 		if o.createdUser {
 			err = a.accounts.delete(ctx, o.kcID)
@@ -680,7 +729,10 @@ func (a *App) compensateCreate(ctx context.Context, pool *pgxpool.Pool, o *accou
 func (a *App) settleCreate(ctx context.Context, pool *pgxpool.Pool, o *accountOp, state, detail string, cause error) error {
 	err := a.commitOp(ctx, pool, o, state, detail, "settle", func(tx pgx.Tx) error {
 		if o.kcID != "" {
-			if _, err := tx.Exec(ctx, `DELETE FROM identity_links WHERE issuer=$1 AND external_subject=$2`, a.sessionIssuer(), o.kcID); err != nil {
+			// Only this member's own link; a link that maps the same Keycloak id to
+			// somebody else (identity conflict) is never deleted here.
+			if _, err := tx.Exec(ctx, `DELETE FROM identity_links WHERE issuer=$1 AND external_subject=$2
+ AND subject=(SELECT subject FROM app_users WHERE staff_id=$3)`, a.sessionIssuer(), o.kcID, o.staffID); err != nil {
 				return err
 			}
 		}
@@ -986,6 +1038,71 @@ func (a *App) finishEnable(ctx context.Context, pool *pgxpool.Pool, o *accountOp
 		}
 		action := map[string]string{"ENABLE": "staff.account.enable", "SET_ROLE": "staff.account.sync-role"}[o.operation]
 		return auditOp(ctx, tx, o, action, o.reason)
+	}), nil)
+}
+
+// accountRevoke withdraws an invitation whose login account exists but was never
+// used. The Keycloak user carrying this member's staff id is deleted (or, if that
+// is refused, disabled); the business row becomes REVOKED with phone and e-mail
+// released, its identity link removed and its history kept. If Keycloak cannot
+// confirm the login is unusable the member is parked for review: never a
+// half-revoked usable account.
+func (a *App) accountRevoke(ctx context.Context, pool *pgxpool.Pool, o *accountOp, m staffMember) error {
+	ext, err := a.externalID(ctx, pool, m)
+	if err != nil {
+		return a.failBeforeProvider(ctx, pool, o, staffConflict)
+	}
+	o.kcID = ext
+	if err = a.advance(ctx, pool, o, "KC_DELETE"); err != nil {
+		return stored(o, err, nil)
+	}
+	if err = a.removeLogin(ctx, o.kcID, m.ID); err != nil {
+		return a.review(ctx, pool, o, "REVOKE_UNCONFIRMED")
+	}
+	if err = a.inject("crash:after-revoke"); err != nil {
+		return err
+	}
+	return a.finishRevoke(ctx, pool, o)
+}
+
+// removeLogin makes the member's Keycloak user unusable: deleted when it carries
+// this member's staff id, otherwise (or if deletion fails) disabled and confirmed.
+func (a *App) removeLogin(ctx context.Context, id, staffID string) error {
+	u, err := a.accounts.getUser(ctx, id)
+	if err != nil {
+		return err
+	}
+	if u == nil {
+		return nil
+	}
+	if ownedBy(u, staffID) && a.accounts.delete(ctx, id) == nil {
+		return nil
+	}
+	if err = a.accounts.update(ctx, id, kcUser{Enabled: boolp(false)}); err != nil {
+		return err
+	}
+	if u, err = a.accounts.getUser(ctx, id); err != nil || enabled(u) {
+		return errAccountProvider
+	}
+	_ = a.accounts.logout(ctx, id)
+	return nil
+}
+
+func (a *App) finishRevoke(ctx context.Context, pool *pgxpool.Pool, o *accountOp) error {
+	return stored(o, a.commitOp(ctx, pool, o, "DONE", "", "final", func(tx pgx.Tx) error {
+		var phone string
+		if err := tx.QueryRow(ctx, `SELECT coalesce(work_phone,'') FROM app_users WHERE staff_id=$1`, o.staffID).Scan(&phone); err != nil {
+			return err
+		}
+		version, err := revokeMember(ctx, tx, o.staffID)
+		if err != nil {
+			return err
+		}
+		reason := o.reason
+		if phone != "" {
+			reason = "登录账号已删除，工作手机 " + maskedPhone(phone) + " 已释放 · " + reason
+		}
+		return staffAudit(ctx, tx, o.staffID, o.actor, "staff.revoke", reason, version)
 	}), nil)
 }
 

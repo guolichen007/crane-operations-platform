@@ -179,7 +179,7 @@ func authorizeOIDCSession(ctx context.Context, tx pgx.Tx, subject string, email 
 	if accountState == accountCreating || accountState == accountReview {
 		return "", loginNotProvisioned
 	}
-	if status == staffSuspended || status == staffArchived {
+	if status == staffSuspended || status == staffArchived || status == staffRevoked {
 		return "", loginDisabled
 	}
 	if !active && !(activate && managed && status == staffActivation) {

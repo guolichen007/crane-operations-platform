@@ -199,7 +199,7 @@ func (a *App) batchHints(ctx context.Context, q querier, u User, ps []*Project) 
 		} else if f.candidateConflict {
 			related = "REVIEW_CONFLICT"
 		}
-		for _, action := range []string{"edit", "submit", "activities", "stage-change", "ownership-transfer", "approve", "return", "reject", "duplicate-decisions"} {
+		for _, action := range []string{"edit", "submit", "activities", "stage-change", "ownership-transfer", "approve", "return", "reject", "duplicate-decisions", "discard", "restore"} {
 			code := policy.Action(*p, action)
 			if code == "" && action == "submit" {
 				if team, ok := teams[p.OwnerSubject]; !ok || team != p.TeamID {

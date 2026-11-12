@@ -141,8 +141,20 @@ func TestDatabaseProductionPrivileges(t *testing.T) {
 		// G4-S5-R1-F: the runtime role gains nothing on account operations.
 		"UPDATE account_operations SET state='DONE'", "UPDATE account_operations SET lease_expires_at=now()",
 		"UPDATE account_operations SET step='FINAL'",
+		// G4-S5-R1-F2 / R2-P1: runtime cannot archive teams or call the history check.
+		"UPDATE teams SET status='ARCHIVED',archived_at=now()", "SELECT staff_subject_referenced('synthetic-a')",
 	} {
 		deny(runtime, sql)
+	}
+	// The staff connection may archive teams and read the history check, but it can
+	// neither rewrite an identity link nor touch the draft recycle bin.
+	mustExec(staff, "SELECT staff_subject_referenced('synthetic-a')")
+	for _, sql := range []string{"UPDATE intake_projects SET discarded_at=now()", "UPDATE identity_links SET subject='synthetic-a'"} {
+		_, err := staff.Exec(ctx, sql)
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || pgErr.Code != "42501" && pgErr.Code != "BB003" {
+			t.Fatalf("staff connection %q: %v", sql, err)
+		}
 	}
 	for _, sql := range []string{
 		"CREATE TABLE public.forbidden(id integer)",

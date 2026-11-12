@@ -1,5 +1,5 @@
 // G4-S5-R1-E: administrator-managed login accounts (dedicated Baobei realm).
-export type AccountAction = 'account-create' | 'account-reset' | 'account-phone' | 'account-disable' | 'account-enable';
+export type AccountAction = 'account-create' | 'account-reset' | 'account-phone' | 'account-disable' | 'account-enable' | 'account-revoke';
 
 // Dialog kind → API action under /api/v1/staff/{id}/account/{action}.
 export const accountActions: Record<AccountAction, string> = {
@@ -8,6 +8,7 @@ export const accountActions: Record<AccountAction, string> = {
   'account-phone': 'change-phone',
   'account-disable': 'disable',
   'account-enable': 'enable',
+  'account-revoke': 'revoke',
 };
 
 export const accountStateLabel: Record<string, string> = {
@@ -31,7 +32,7 @@ export interface AccountOperation {
 
 export const accountOperationLabel: Record<string, string> = {
   CREATE: '开通登录账号', RESET_PASSWORD: '重置密码', CHANGE_PHONE: '更换登录手机号',
-  DISABLE: '停用登录', ENABLE: '恢复登录', SET_ROLE: '同步登录角色',
+  DISABLE: '停用登录', ENABLE: '恢复登录', SET_ROLE: '同步登录角色', REVOKE: '撤销开户',
 };
 
 const causes: Record<string, string> = {
@@ -56,6 +57,9 @@ const causes: Record<string, string> = {
   ROLE_UNCONFIRMED: '无法确认登录角色',
   OWNER_MISMATCH: '账号归属与成员不一致',
   LOGIN_MISSING: '找不到登录账号',
+  ACCOUNT_IDENTITY_CONFLICT: '该登录身份已对应其他成员，本次开通已撤销',
+  SUBJECT_HAS_HISTORY: '该成员已有业务记录，登录身份保留不回退，登录已暂停',
+  REVOKE_UNCONFIRMED: '无法确认登录账号已删除（报备中心已停止该成员访问）',
 };
 
 export function accountCause(detail: string) {

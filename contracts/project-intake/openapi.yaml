@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Project Intake API",
-    "version": "1.6.1-g4s4-r1",
-    "description": "全角色项目资源授权、不可覆盖提交证据、管理员未分配草稿及幂等创建；G2 增加审核资格提示、创建意图回执、显示名称与首页最小聚合。完整经营分析不在G2。 G4-S4：工作手机（新建必填、E.164）、邮箱选填、无邮箱以精确 subject 与唯一 Client Role 激活、管理员审核开通回执、仅敏感人员操作要求重新认证、本地/企业 SSO 退出与切换账号。"
+    "version": "1.7.0-g4s5-r2p1",
+    "description": "全角色项目资源授权、不可覆盖提交证据、管理员未分配草稿及幂等创建；G2 增加审核资格提示、创建意图回执、显示名称与首页最小聚合。完整经营分析不在G2。 G4-S4：工作手机（新建必填、E.164）、邮箱选填、无邮箱以精确 subject 与唯一 Client Role 激活、管理员审核开通回执、仅敏感人员操作要求重新认证、本地/企业 SSO 退出与切换账号。 G4-S5-R1-F2/R2-P1：身份映射冲突拒绝、历史身份不可回退；撤销未完成开户、团队归档与恢复、草稿废弃与回收站恢复。"
   },
   "servers": [
     {
@@ -282,6 +282,18 @@
               "enum": [
                 "pending",
                 "protection"
+              ]
+            }
+          },
+          {
+            "name": "bin",
+            "in": "query",
+            "required": false,
+            "description": "discarded=只看回收站中的草稿；缺省时列表、搜索与管道均排除回收站",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "discarded"
               ]
             }
           }
@@ -3395,6 +3407,64 @@
             }
           }
         ]
+      },
+      "get": {
+        "operationId": "team.history",
+        "summary": "团队详情与操作记录（管理员）",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "team": {
+                      "$ref": "#/components/schemas/StaffTeamLifecycle"
+                    },
+                    "history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/StaffInvalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/StaffUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/StaffForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/StaffNotFound"
+          },
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
       }
     },
     "/api/v1/project-create-receipts/{key}": {
@@ -3620,6 +3690,373 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/StaffProvisionReview"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/staff/{id}/revoke": {
+      "post": {
+        "operationId": "staff.revoke",
+        "summary": "撤销未完成开户（无登录账号）；成员记为已撤销开户，手机与邮箱释放，历史保留",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffMember"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/StaffInvalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/StaffUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/StaffForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/StaffNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/StaffConflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/StaffMediaType"
+          },
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffChange"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/teams/{id}/archive": {
+      "post": {
+        "operationId": "team.archive",
+        "summary": "归档团队（无成员、无未结束项目）",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffTeamLifecycle"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/StaffInvalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/StaffUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/StaffForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/StaffNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/StaffConflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/StaffMediaType"
+          },
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffChange"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/teams/{id}/restore": {
+      "post": {
+        "operationId": "team.restore",
+        "summary": "恢复已归档团队",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffTeamLifecycle"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/StaffInvalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/StaffUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/StaffForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/StaffNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/StaffConflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/StaffMediaType"
+          },
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffChange"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{id}/discard": {
+      "post": {
+        "operationId": "project.discard",
+        "summary": "废弃从未提交的草稿（移入回收站，状态 CANCELLED，内容不删除）",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "更新后的项目"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/StaffInvalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/StaffUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/StaffForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/StaffNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/StaffConflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/StaffMediaType"
+          },
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftLifecycleChange"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{id}/restore": {
+      "post": {
+        "operationId": "project.restore",
+        "summary": "从回收站恢复草稿，内容与归属不变",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "更新后的项目"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/StaffInvalid"
+          },
+          "401": {
+            "$ref": "#/components/responses/StaffUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/StaffForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/StaffNotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/StaffConflict"
+          },
+          "415": {
+            "$ref": "#/components/responses/StaffMediaType"
+          },
+          "503": {
+            "description": "服务暂不可用；输入保留，可重试"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftLifecycleChange"
               }
             }
           }
@@ -5550,6 +5987,56 @@
           "member",
           "draft"
         ]
+      },
+      "StaffTeamLifecycle": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "ARCHIVED"
+            ]
+          },
+          "archivedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "memberCount": {
+            "type": "integer"
+          },
+          "openProjectCount": {
+            "type": "integer"
+          }
+        }
+      },
+      "DraftLifecycleChange": {
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        }
       }
     },
     "responses": {

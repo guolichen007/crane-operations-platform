@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
-import { Plus, Pencil, ArrowLeft, Send } from '@lucide/vue';
+import { Plus, Pencil, ArrowLeft, Send, Trash2 } from '@lucide/vue';
 import { useApp } from './store';
 import {
   type Project,
@@ -38,6 +38,8 @@ const auditLabels: Record<string, string> = {
   'review.approve': '批准报备',
   'review.return': '退回补充',
   'review.reject': '拒绝报备',
+  'project.discard': '废弃草稿（移入回收站）',
+  'project.restore': '从回收站恢复草稿',
   'duplicate.confirm': '确认重复',
   'duplicate.dismiss': '排除重复并批准',
   APPROVE: '批准',
@@ -78,6 +80,8 @@ const shown = (action: string) => {
 };
 const reason = (action: string) => hintReason(p.value?.actions?.[action] as ActionHint | undefined);
 const governanceTitles: Record<string, string> = {
+  discard: '废弃草稿',
+  restore: '恢复草稿',
   'ownership-transfer': '指派或转移负责人',
   'stage-change': '修改销售阶段',
   approve: '批准报备',
@@ -110,7 +114,7 @@ async function saveGovernance() {
   const errors: Record<string, string> = {};
   if (action === 'ownership-transfer' && !target.value) errors.targetOwner = '请选择新负责人';
   if (action === 'stage-change' && !targetStage.value) errors.targetStage = '请选择目标阶段';
-  if (!governanceReason.value.trim()) errors.governanceReason = '请填写操作原因';
+  if (!governanceReason.value.trim() && action !== 'restore') errors.governanceReason = '请填写操作原因';
   governanceErrors.value = errors;
   const first = Object.keys(errors)[0];
   if (first) {
@@ -127,6 +131,8 @@ async function saveGovernance() {
   }
   governanceOpen.value = '';
   await load();
+  if (action === 'discard') return void app.toast('草稿已移入回收站，可随时恢复');
+  if (action === 'restore') return void app.toast('草稿已恢复，可继续编辑');
   app.toast(action === 'ownership-transfer' ? '负责人已更新，操作已记录' : ['approve', 'return', 'reject'].includes(action) ? '审核结论已保存' : '项目已更新，操作已记录');
 }
 const ownerText = computed(() => {
@@ -221,7 +227,7 @@ const reviewSummary = computed(() => {
         <div class="eyebrow">{{ p.registrationNo }}</div>
         <h1>{{ p.projectName || '未命名草稿' }}</h1>
         <div class="actions">
-          <span :class="['badge', p.intakeStatus.toLowerCase()]">{{ statuses[p.intakeStatus] }}</span><span class="badge">{{ stages[p.salesStage] }}</span><span :class="['owner-tag', { unassigned: !p.ownerSubject }]">负责人 · {{ ownerText }}</span>
+          <span :class="['badge', p.intakeStatus.toLowerCase()]">{{ p.discardedAt ? '已废弃（回收站）' : statuses[p.intakeStatus] }}</span><span class="badge">{{ stages[p.salesStage] }}</span><span :class="['owner-tag', { unassigned: !p.ownerSubject }]">负责人 · {{ ownerText }}</span>
         </div>
       </div>
       <div class="actions">
@@ -245,8 +251,14 @@ const reviewSummary = computed(() => {
           :run="() => { activityOpen = true; }"
         >
           <Plus :size="14" aria-hidden="true" />记录跟进
+        </ActionButton><ActionButton v-if="can('discard')" action-id="project.discard" :run="() => openGovernance('discard')">
+          <Trash2 :size="14" aria-hidden="true" />废弃草稿
         </ActionButton>
       </div>
+    </div>
+    <div v-if="p.discardedAt" class="note" data-testid="discarded-note">
+      此草稿已于 {{ when(p.discardedAt) }} 废弃，位于回收站，不出现在列表、管道和首页。恢复后内容、设备需求、客户资料和负责人保持不变。
+      <ActionButton v-if="can('restore')" action-id="project.restore" primary :run="() => openGovernance('restore')">恢复草稿</ActionButton>
     </div>
     <div v-if="p.intakeStatus === 'UNDER_REVIEW'" class="note">发现疑似重复，报备已进入待审核。归属需要独立审核人确认。</div>
     <div v-if="!p.ownerSubject" class="note">这是待分配草稿，只有管理员可见。指派有效销售后才能正式提交。</div>
@@ -398,7 +410,8 @@ const reviewSummary = computed(() => {
     <Modal
       :open="!!governanceOpen"
       :title="governanceTitles[governanceOpen] || '确认操作'"
-      description="请填写依据。操作会校验当前版本并记录操作人与时间。"
+      :description="governanceOpen === 'discard' ? '只有从未提交的草稿可以废弃。废弃后移入回收站，不出现在列表、管道和首页，可随时恢复，内容不会删除。'
+        : governanceOpen === 'restore' ? '恢复为草稿，内容、设备需求、客户资料和负责人保持不变。' : '请填写依据。操作会校验当前版本并记录操作人与时间。'"
       @update:open="closeGovernance"
     >
       <label v-if="governanceOpen === 'ownership-transfer'" :class="{ invalid: governanceErrors.targetOwner }">新负责人 <span class="req" aria-hidden="true">*</span><select v-model="target" name="targetOwner" aria-required="true" :aria-invalid="!!governanceErrors.targetOwner">
@@ -411,7 +424,7 @@ const reviewSummary = computed(() => {
         <!-- G3-4-A1 UAT-F2: only the stages the server accepts (same rule as the pipeline). -->
         <option v-for="key in nextStages(p.salesStage, p.intakeStatus)" :key="key" :value="key">{{ stages[key] }}</option>
       </select><small v-if="governanceErrors.targetStage" class="field-error">{{ governanceErrors.targetStage }}</small></label>
-      <label :class="{ invalid: governanceErrors.governanceReason }">操作原因 <span class="req" aria-hidden="true">*</span><textarea v-model="governanceReason" name="governanceReason" maxlength="1000" aria-required="true" :aria-invalid="!!governanceErrors.governanceReason"></textarea><small v-if="governanceErrors.governanceReason" class="field-error">{{ governanceErrors.governanceReason }}</small></label>
+      <label :class="{ invalid: governanceErrors.governanceReason }">操作原因 <span v-if="governanceOpen !== 'restore'" class="req" aria-hidden="true">*</span><span v-else class="muted">（选填）</span><textarea v-model="governanceReason" name="governanceReason" maxlength="1000" aria-required="true" :aria-invalid="!!governanceErrors.governanceReason"></textarea><small v-if="governanceErrors.governanceReason" class="field-error">{{ governanceErrors.governanceReason }}</small></label>
       <div class="actions modal-actions">
         <ActionButton action-id="dialog.cancel" :run="closeGovernance">取消</ActionButton><ActionButton
           action-id="governance.confirm"
