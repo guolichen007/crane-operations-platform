@@ -85,5 +85,6 @@ it('Q4-QA-R1: a different account or changed grants is a new data scope (one eve
   session.clearWebSession(); // logout
   expect(events).toEqual([true, true, false]);
   expect(session.scopeGeneration).toBe(g0 + 3);
-  expect(session.sessionScopeKey({ ...sample, projects: [...sample.projects].reverse() })).toBe(session.sessionScopeKey(sample));
+  const two = { ...sample, projects: [{ projectId: 'P001', projectName: 'A', role: 'viewer' as const }, { projectId: 'P002', projectName: 'B', role: 'operator' as const }] };
+  expect(session.sessionScopeKey({ ...two, projects: [...two.projects].reverse() })).toBe(session.sessionScopeKey(two));
 });
