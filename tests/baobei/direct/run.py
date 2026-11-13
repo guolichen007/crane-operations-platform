@@ -27,6 +27,9 @@ def test():
         release, manifest = direct.verify_release(docker, state, secrets_dir, source)
         assert manifest["mode"] == "direct-local" and manifest["rollback_target"] is None
         assert manifest["source_sha"] == source
+        # G5-RC1-R2: the release tools of this commit are snapshotted and hashed.
+        assert manifest["tools_sha256"] == direct.hash_files(release, direct.TOOL_FILES)
+        assert (release / "tools/direct-deploy.py").read_bytes() == direct.git("show", source + ":deploy/baobei/direct-deploy.py")
         for image in manifest["images"].values():
             assert direct.IMAGE_ID.fullmatch(image["id"])
             assert image["ref"].startswith("baobei-local/") and image["ref"].endswith(":" + source)

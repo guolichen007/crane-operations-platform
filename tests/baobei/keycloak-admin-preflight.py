@@ -134,10 +134,22 @@ def main():
     state = Path(tmp) / 'state'
     state.mkdir(mode=0o700)
     rid = dd.release_id('c' * 40, 'baobei')
-    for ph in dd.PHASES[:dd.PHASES.index('IDENTITY_PRECHECK')]:
-        dd.record_phase(state, rid, ph, 'drill-' + ph.lower())
+    import shutil
+
+    def prepared(st):
+        # G5-RC1-R2: a release with its tool snapshot (the bytes preflight executes).
+        rel = st / 'releases' / rid
+        (rel / 'tools').mkdir(parents=True)
+        for name in dd.TOOL_FILES:
+            shutil.copyfile(os.path.join(HERE, '..', '..', 'deploy', 'baobei', os.path.basename(name)), rel / name)
+        dd.atomic_json(rel / 'manifest.json', {'mode': 'direct-local', 'source_sha': 'c' * 40, 'source': dd.SOURCE,
+                                               'identity_realm': 'baobei', 'identity_issuer': dd.REALMS['baobei']['issuer'],
+                                               'tools_sha256': dd.hash_files(rel, dd.TOOL_FILES)})
+        for ph in dd.PHASES[:dd.PHASES.index('IDENTITY_PRECHECK')]:
+            dd.record_phase(st, rid, ph, 'drill-' + ph.lower())
     real_issuer = dd.REALMS['baobei']['issuer']
     dd.REALMS['baobei']['issuer'] = issuer  # loopback Keycloak stands in for the approved host
+    prepared(state)
     tool_args = {'base': BASE, 'admin': a, 'link': lk, 'service_secret_file': svc_file, 'password_file': p,
                  'web_secret_file': web_file, 'redirect': REDIRECT}
     try:
@@ -150,12 +162,29 @@ def main():
         check('preflight record contains no phone, password or secret',
               all(x not in record_text for x in (phone, phone[3:], password, svc_secret, web_secret)), 'leak')
         dd.verify_preflight_record(state, rid, staff_id)
-        cmd = dd.switch_command(state, rid, staff_id, 'drill-op', '演练', 'CHG-DRILL-2')
+        check('preflight record carries tool and release identity',
+              entry['measured']['source_sha'] == 'c' * 40 and len(entry['measured']['tool_hashes']) == 2, entry['measured'].get('tool_hashes'))
+        cmd = dd.switch_command(state, rid, staff_id, 'drill-op', '演练', 'CHG-DRILL-1')
         check('identity-switch command built only from the verified record', cmd[cmd.index('--takeover-admin') + 1] == staff_id, cmd)
+        try:
+            dd.switch_command(state, rid, staff_id, 'drill-op', '演练', 'CHG-DRILL-2')
+            ok = False
+        except ValueError:
+            ok = True
+        check('precheck of change CHG-DRILL-1 cannot complete change CHG-DRILL-2', ok)
+        helper = state / 'releases' / rid / 'tools/admin-preflight.py'
+        original = helper.read_bytes()
+        helper.write_bytes(original + b'\n# replaced\n')
+        try:
+            dd.switch_command(state, rid, staff_id, 'drill-op', '演练', 'CHG-DRILL-1')
+            ok = False
+        except ValueError:
+            ok = True
+        helper.write_bytes(original)
+        check('replaced snapshot helper after a real precheck → switch refused', ok)
         state2 = Path(tmp) / 'state2'
         state2.mkdir(mode=0o700)
-        for ph in dd.PHASES[:dd.PHASES.index('IDENTITY_PRECHECK')]:
-            dd.record_phase(state2, rid, ph, 'drill-' + ph.lower())
+        prepared(state2)
         try:
             dd.preflight(state2, rid, '%08x-1111-4000-8000-%012x' % (9, 9), 'CHG-DRILL-3', tool_args)
             ok = False

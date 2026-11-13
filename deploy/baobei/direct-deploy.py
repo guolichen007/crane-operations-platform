@@ -121,9 +121,17 @@ def verify_source(source):
     git("merge-base", "--is-ancestor", source, PRODUCT_REF)
 
 
+# G5-RC1-R2: the release tools of the candidate commit are part of the release:
+# copied at prepare, hashed into the manifest; preflight/switch only run with
+# these exact bytes (the running direct-deploy.py must equal the snapshot, and
+# admin-preflight.py is executed from the snapshot, never from the work tree).
+TOOL_FILES = ("tools/direct-deploy.py", "tools/admin-preflight.py")
+
+
 def export_source(source, dest):
     """Extract only regular tracked build inputs and runtime configuration."""
     selected = {"deploy/baobei/" + name for name in SNAPSHOT}
+    selected.update("deploy/baobei/" + Path(name).name for name in TOOL_FILES)
     selected.add("deploy/baobei/nginx.conf")
     for name in ("api", "web"):
         selected.update(f"deploy/baobei/{name}.Dockerfile{ext}" for ext in ("", ".dockerignore"))
@@ -394,6 +402,10 @@ def prepare(docker, state, secrets, source, realm=DEFAULT_REALM):
             dest = snapshot / name
             dest.parent.mkdir(exist_ok=True)
             shutil.copyfile(staged / "deploy/baobei" / name, dest)
+        for name in TOOL_FILES:
+            dest = snapshot / name
+            dest.parent.mkdir(exist_ok=True)
+            shutil.copyfile(staged / "deploy/baobei" / Path(name).name, dest)
         db_contract = database_contract(staged)
         images = sibling or build_images(docker, source, staged, go_proxy)
         manifest = {
@@ -402,6 +414,7 @@ def prepare(docker, state, secrets, source, realm=DEFAULT_REALM):
             "identity_realm": realm, "identity_issuer": realm_profile(realm)["issuer"],
             "compose_sha256": config_hash(docker, snapshot, secrets, images, realm),
             "snapshot_sha256": hash_files(snapshot, SNAPSHOT), "database_contract_sha256": db_contract,
+            "tools_sha256": hash_files(snapshot, TOOL_FILES),
             "rollback_target": pointer(state, "active"),
         }
         atomic_json(snapshot / "manifest.json", manifest)
@@ -547,7 +560,6 @@ def record_phase(state, rid, phase, evidence, measured=None):
 # identity-switch, and records IDENTITY_SWITCH only after the database trusts
 # the target issuer.
 PREFLIGHT_VALIDITY = timedelta(minutes=60)
-PREFLIGHT_TOOL = Path(__file__).resolve().parent / "admin-preflight.py"
 UUID_TEXT = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 TOOL_PHASES = {"IDENTITY_PRECHECK", "IDENTITY_SWITCH"}
 
@@ -576,9 +588,40 @@ def seal(key, record):
     return hmac.new(key, canonical_json(body), sha256).hexdigest()
 
 
-def run_admin_preflight(tool_args, realm):
-    """Run admin-preflight.py login against the real Keycloak (files only, no secret on the command line)."""
-    args = [sys.executable, "-B", str(PREFLIGHT_TOOL), "login", "--realm", realm]
+def verify_release_tools(state, rid):
+    """The approved tool bytes of this release (G5-RC1-R2). Docker-free, so the
+    precheck can run before the window's application steps; checks the manifest
+    identity, the snapshotted tools against the manifest, and that the running
+    direct-deploy.py is byte-identical to the snapshot."""
+    source, realm = parse_release(rid)
+    release = state / "releases" / rid
+    manifest_path = release / "manifest.json"
+    if not manifest_path.is_file():
+        raise ValueError("没有本发布的清单：先 prepare 候选 SHA（发布工具快照缺失）")
+    manifest = read_json(manifest_path)
+    if (manifest.get("source_sha") != source or manifest.get("source") != SOURCE or
+            manifest.get("identity_realm", DEFAULT_REALM) != realm or
+            manifest.get("identity_issuer", REALMS[realm]["issuer"]) != REALMS[realm]["issuer"]):
+        raise ValueError("发布清单与批准的 SOURCE_SHA、Realm 或 Issuer 不一致")
+    if "tools_sha256" not in manifest:
+        raise ValueError("该发布没有受核验的发布工具快照（G5-RC1-R2 之前准备），请重新 prepare")
+    hashes = {}
+    for name in TOOL_FILES:
+        path = release / name
+        if not path.is_file() or path.is_symlink():
+            raise ValueError("发布工具缺失或不是普通文件：" + name)
+        hashes[name] = digest(path.read_bytes())
+    if digest(canonical_json(hashes)) != manifest["tools_sha256"]:
+        raise ValueError("发布工具与清单不一致（被替换或修改）")
+    if digest(Path(__file__).resolve().read_bytes()) != hashes["tools/direct-deploy.py"]:
+        raise ValueError("正在运行的 direct-deploy.py 不是本发布快照中的发布工具")
+    return {"source_sha": source, "release": rid, "tools_sha256": manifest["tools_sha256"], "tool_hashes": hashes,
+            "manifest_sha256": digest(manifest_path.read_bytes())}
+
+
+def execute_preflight_tool(helper, tool_args, realm):
+    """Run the snapshotted admin-preflight.py login (files only, no secret on the command line)."""
+    args = [sys.executable, "-I", "-B", str(helper), "login", "--realm", realm]
     for name in ("base", "admin", "link", "service_secret_file", "password_file", "web_secret_file", "redirect"):
         value = tool_args.get(name)
         if not value:
@@ -598,7 +641,10 @@ def preflight(state, rid, staff_id, change, tool_args, now=None):
     if not UUID_TEXT.fullmatch(staff_id or "") or not EVIDENCE.fullmatch(change or ""):
         raise ValueError("预检需要批准的管理员 staff_id 与变更编号")
     require_phase(state, rid, "IDENTITY_PRECHECK")
-    result = run_admin_preflight(tool_args, realm)
+    tools = verify_release_tools(state, rid)
+    result = execute_preflight_tool(state / "releases" / rid / "tools/admin-preflight.py", tool_args, realm)
+    if verify_release_tools(state, rid) != tools:
+        raise ValueError("预检期间发布工具或清单发生变化，未记录 IDENTITY_PRECHECK")
     admin, login = result.get("admin") or {}, result.get("login") or {}
     problems = []
     if result.get("ADMIN_ACCOUNT_VERIFIED") != "PASS" or result.get("ADMIN_LOGIN_VERIFIED") != "PASS":
@@ -618,7 +664,10 @@ def preflight(state, rid, staff_id, change, tool_args, now=None):
     record = {"release": rid, "realm": realm, "issuer": REALMS[realm]["issuer"], "staff_id": staff_id,
               "keycloak_subject": kc, "business_subject": admin["businessSubject"], "change": change,
               "generated_at": now.isoformat(), "expires_at": (now + PREFLIGHT_VALIDITY).isoformat(),
-              "ADMIN_ACCOUNT_VERIFIED": "PASS", "ADMIN_LOGIN_VERIFIED": "PASS"}
+              "ADMIN_ACCOUNT_VERIFIED": "PASS", "ADMIN_LOGIN_VERIFIED": "PASS",
+              # tool and release identity (G5-RC1-R2), re-checked before the switch
+              "source_sha": tools["source_sha"], "tools_sha256": tools["tools_sha256"],
+              "tool_hashes": tools["tool_hashes"], "manifest_sha256": tools["manifest_sha256"]}
     record["seal"] = seal(seal_key(state, create=True), record)
     atomic_json(state / "preflight.json", record)
     os.chmod(state / "preflight.json", 0o600)
@@ -642,11 +691,19 @@ def verify_preflight_record(state, rid, staff_id, now=None):
         raise ValueError("身份预检记录不属于本发布、Realm、Issuer 或管理员")
     if (now or datetime.now(timezone.utc)) > datetime.fromisoformat(record["expires_at"]):
         raise ValueError("身份预检记录已过期，请重新执行 preflight")
+    tools = verify_release_tools(state, rid)
+    if any(record.get(k) != tools[k] for k in ("source_sha", "tools_sha256", "tool_hashes", "manifest_sha256")):
+        raise ValueError("身份预检记录与当前发布或发布工具不一致（发布版本或工具已变化）")
     return record
 
 
 def switch_command(state, rid, staff_id, operator, reason, approval):
     record = verify_preflight_record(state, rid, staff_id)
+    # Change binding: the switch completes exactly the change the precheck was
+    # recorded for. Whether that change is actually approved is confirmed by the
+    # independent release owner; this tool only enforces that the two are the same.
+    if approval != record.get("change"):
+        raise ValueError("切换的变更编号与身份预检的变更编号不一致：变更 %s 的预检不能用于其他变更" % record.get("change"))
     window = read_window(state)
     if not window or not any(e["phase"] == "IDENTITY_PRECHECK" and e.get("measured", {}).get("record_sha256") ==
                              digest(canonical_json(record)) for e in window["phases"]):

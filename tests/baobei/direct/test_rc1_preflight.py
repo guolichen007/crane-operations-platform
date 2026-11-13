@@ -49,13 +49,22 @@ class Window:
         self.state = Path(tmp).resolve() / "state"
         self.state.mkdir(mode=0o700)
         self.rid = direct.release_id(NEW, "baobei")
+        # G5-RC1-R2: a prepared release with its tool snapshot.
+        release = self.state / "releases" / self.rid
+        (release / "tools").mkdir(parents=True)
+        import shutil
+        for name in direct.TOOL_FILES:
+            shutil.copyfile(ROOT / "deploy/baobei" / Path(name).name, release / name)
+        direct.atomic_json(release / "manifest.json", {"mode": "direct-local", "source_sha": NEW, "source": direct.SOURCE,
+                                                       "identity_realm": "baobei", "identity_issuer": ISSUER,
+                                                       "tools_sha256": direct.hash_files(release, direct.TOOL_FILES)})
         for phase in direct.PHASES[:direct.PHASES.index("IDENTITY_PRECHECK")]:
             direct.record_phase(self.state, self.rid, phase, "evidence-" + phase.lower())
 
 
 def run_preflight(w, result, staff=ADMIN, change="CHG-RC1-001", now=None):
     """Drive the release tool's own preflight with a faked Keycloak result."""
-    with patch.object(direct, "run_admin_preflight", return_value=result):
+    with patch.object(direct, "execute_preflight_tool", return_value=result):
         return direct.preflight(w.state, w.rid, staff_id=staff, change=change,
                                 tool_args={"base": "https://crane.youdaozd.com"}, now=now)
 
@@ -158,14 +167,14 @@ class ProvenanceTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             w = Window(tmp)
             with self.assertRaisesRegex(ValueError, "预检"):
-                direct.switch_command(w.state, w.rid, ADMIN, operator="op-1", reason="切换", approval="CHG-1")
+                direct.switch_command(w.state, w.rid, ADMIN, operator="op-1", reason="切换", approval="CHG-RC1-001")
             run_preflight(w, good_tool_result())
-            cmd = direct.switch_command(w.state, w.rid, ADMIN, operator="op-1", reason="切换", approval="CHG-1")
+            cmd = direct.switch_command(w.state, w.rid, ADMIN, operator="op-1", reason="切换", approval="CHG-RC1-001")
             self.assertEqual(cmd[:3], ["maintenance", "identity-switch", "--realm"])
             self.assertIn("baobei", cmd)
             self.assertEqual(cmd[cmd.index("--takeover-admin") + 1], ADMIN)
             with self.assertRaisesRegex(ValueError, "预检"):
-                direct.switch_command(w.state, w.rid, OTHER, operator="op-1", reason="切换", approval="CHG-1")
+                direct.switch_command(w.state, w.rid, OTHER, operator="op-1", reason="切换", approval="CHG-RC1-001")
 
     def test_precheck_cannot_be_recorded_by_hand(self):
         # Dedicated realm: IDENTITY_PRECHECK and IDENTITY_SWITCH only through the tool.
