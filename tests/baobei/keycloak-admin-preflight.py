@@ -125,6 +125,59 @@ def main():
     check('admin-only mode never claims a login (ADMIN_LOGIN_VERIFIED=NOT_RUN)',
           code == 0 and v.get('ADMIN_LOGIN_VERIFIED') == 'NOT_RUN', out + err)
 
+    # G5-RC1: the release tool's own preflight against this real Keycloak:
+    # records a sealed IDENTITY_PRECHECK bound to release, realm, admin and change.
+    dspec = importlib.util.spec_from_file_location('dd', os.path.join(HERE, '..', '..', 'deploy', 'baobei', 'direct-deploy.py'))
+    dd = importlib.util.module_from_spec(dspec)
+    dspec.loader.exec_module(dd)
+    from pathlib import Path
+    state = Path(tmp) / 'state'
+    state.mkdir(mode=0o700)
+    rid = dd.release_id('c' * 40, 'baobei')
+    for ph in dd.PHASES[:dd.PHASES.index('IDENTITY_PRECHECK')]:
+        dd.record_phase(state, rid, ph, 'drill-' + ph.lower())
+    real_issuer = dd.REALMS['baobei']['issuer']
+    dd.REALMS['baobei']['issuer'] = issuer  # loopback Keycloak stands in for the approved host
+    tool_args = {'base': BASE, 'admin': a, 'link': lk, 'service_secret_file': svc_file, 'password_file': p,
+                 'web_secret_file': web_file, 'redirect': REDIRECT}
+    try:
+        window = dd.preflight(state, rid, staff_id, 'CHG-DRILL-1', tool_args)
+        entry = window['phases'][-1]
+        check('release tool preflight on real Keycloak records IDENTITY_PRECHECK (machine-verified, sealed, expiring)',
+              entry['phase'] == 'IDENTITY_PRECHECK' and entry['kind'] == 'machine-verified'
+              and entry['measured']['keycloak_subject'] == ext and entry['measured']['staff_id'] == staff_id, entry)
+        record_text = (state / 'preflight.json').read_text()
+        check('preflight record contains no phone, password or secret',
+              all(x not in record_text for x in (phone, phone[3:], password, svc_secret, web_secret)), 'leak')
+        dd.verify_preflight_record(state, rid, staff_id)
+        cmd = dd.switch_command(state, rid, staff_id, 'drill-op', '演练', 'CHG-DRILL-2')
+        check('identity-switch command built only from the verified record', cmd[cmd.index('--takeover-admin') + 1] == staff_id, cmd)
+        state2 = Path(tmp) / 'state2'
+        state2.mkdir(mode=0o700)
+        for ph in dd.PHASES[:dd.PHASES.index('IDENTITY_PRECHECK')]:
+            dd.record_phase(state2, rid, ph, 'drill-' + ph.lower())
+        try:
+            dd.preflight(state2, rid, '%08x-1111-4000-8000-%012x' % (9, 9), 'CHG-DRILL-3', tool_args)
+            ok = False
+        except ValueError:
+            ok = not (state2 / 'preflight.json').exists()
+        check('real result for this admin refused when another staff_id is approved (nothing recorded)', ok)
+    finally:
+        dd.REALMS['baobei']['issuer'] = real_issuer
+
+    # baobei_subject missing on the Keycloak user → refused.
+    s, rep, _ = call('GET', f'/admin/realms/baobei/users/{ext}', token=adm)
+    rep['attributes'] = {k: v for k, v in (rep.get('attributes') or {}).items() if k != 'baobei_subject'}
+    call('PUT', f'/admin/realms/baobei/users/{ext}', rep, adm)
+    s, after, _ = call('GET', f'/admin/realms/baobei/users/{ext}', token=adm)
+    check('fixture: baobei_subject really removed in Keycloak', 'baobei_subject' not in (after.get('attributes') or {}), after.get('attributes'))
+    a2, lk2, p2 = files()
+    code, out, err = run(tmp, 'login', a2, lk2, svc_file, p2, web_file)
+    check('Keycloak user without baobei_subject → account FAIL, no login attempted',
+          code == 1 and verdict(out).get('ADMIN_ACCOUNT_VERIFIED') == 'FAIL' and 'baobei_subject' in out, out + err)
+    rep['attributes'] = {'baobei_staff_id': [staff_id], 'baobei_subject': [subject]}
+    call('PUT', f'/admin/realms/baobei/users/{ext}', rep, adm)
+
     a, lk, p = files(pw='wrong-' + secrets.token_urlsafe(8))
     code, out, err = run(tmp, 'login', a, lk, svc_file, p, web_file)
     check('wrong password → ADMIN_LOGIN_VERIFIED FAIL, exit 1', code == 1 and verdict(out).get('ADMIN_LOGIN_VERIFIED') == 'FAIL', out + err)

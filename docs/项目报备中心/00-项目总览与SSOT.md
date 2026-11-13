@@ -5,7 +5,7 @@ BAOBEI_MAIN_MERGE=FORBIDDEN
 BAOBEI_R2_MERGE=FORBIDDEN
 BASE_SHA=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18
 BRANCH=product/baobei-v1
-CURRENT_BATCH=G5_RC0_R1_SWITCH_BACK_FIRST_EPOCH
+CURRENT_BATCH=G5_RC1_PREFLIGHT_PROVENANCE
 DEPLOYED_SHA=7b9558084d73f5210cdd08e8240883ecc1659de8
 SCHEMA_VERSION=00008
 RELEASE_SHA=572c6aa609e06419b832f7652e73bf29e8c65c37
@@ -19,7 +19,11 @@ PRODUCTION_DEPLOYED=YES (7b95580; G4-S4 未部署)
 
 目标：快速报项目、识别重复、明确归属并跟进。独立产品，永不合并 main/R2。
 
-## 当前实施：G5-RC0-R1 发布回切与首次身份纪元缺口修复
+## 当前实施：G5-RC1 可信身份预检
+
+基线 `a8703bf`（Run 43356975836 a1 8/8）。接管管理员预检只能由 direct-deploy `preflight` 真实执行并封印绑定（Realm、Issuer、管理员、Keycloak/业务 subject、变更、60 分钟有效期），`switch` 复核后才切换；admin-preflight 要求 baobei_subject。服务器全链路彩排见 [46 号](46-G5-RC1生产等价全链路发布彩排验收报告.md)（NOT_RUN，交服务器 CC）。
+
+## 历史：G5-RC0-R1 发布回切与首次身份纪元缺口修复
 
 基线 `c800c18`（Run 43336850962 a1 8/8）。路径 A 同提交受控 Realm 切换、IDENTITY_EPOCH_INIT 与空纪元拒绝启动、迁移前机器实测旧 API 已停止与业务连接清零、接管管理员 Keycloak 只读核查与真实登录（admin-preflight.py）。45 号 §4–§7 为可直接执行的 Runbook。仅研发与隔离验证。
 

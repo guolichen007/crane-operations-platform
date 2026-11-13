@@ -4,7 +4,9 @@
 import argparse
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from datetime import timedelta
 from hashlib import sha256
+import hmac
 from io import BytesIO
 import json
 import os
@@ -535,16 +537,143 @@ def record_phase(state, rid, phase, evidence, measured=None):
     return window
 
 
-def preflight_report(path):
-    """Accept the takeover-administrator preflight only when both the account
-    checks and the real target-realm login passed."""
-    if path is None:
-        raise ValueError("专属 Realm 的 IDENTITY_PRECHECK 需要 --preflight-report（admin-preflight.py login 输出）")
-    report = read_json(path.absolute())
-    if report.get("ADMIN_ACCOUNT_VERIFIED") != "PASS" or report.get("ADMIN_LOGIN_VERIFIED") != "PASS":
-        raise ValueError("接管管理员未通过目标 Realm 的账号核查与真实登录（ADMIN_LOGIN_VERIFIED 必须为 PASS）")
-    return {"ADMIN_ACCOUNT_VERIFIED": "PASS", "ADMIN_LOGIN_VERIFIED": "PASS",
-            "admin": (report.get("admin") or {}).get("staffId"), "report_sha256": digest(path.read_bytes())}
+# G5-RC1: the takeover-administrator precheck is produced by this tool, never
+# read from an editable file. `preflight` runs admin-preflight.py (real Keycloak
+# account checks + real target-realm login), checks that the result is for this
+# release, realm, issuer and approved administrator, and writes a record sealed
+# with a key that exists only in the private state directory. IDENTITY_PRECHECK
+# is recorded only from that run; `switch` re-verifies the record (same release,
+# realm, issuer, administrator, not expired, seal intact) before it invokes
+# identity-switch, and records IDENTITY_SWITCH only after the database trusts
+# the target issuer.
+PREFLIGHT_VALIDITY = timedelta(minutes=60)
+PREFLIGHT_TOOL = Path(__file__).resolve().parent / "admin-preflight.py"
+UUID_TEXT = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+TOOL_PHASES = {"IDENTITY_PRECHECK", "IDENTITY_SWITCH"}
+
+
+def operator_phase_allowed(phase, realm):
+    if phase not in OPERATOR_PHASES or (realm != DEFAULT_REALM and phase in TOOL_PHASES):
+        raise ValueError("该阶段由部署工具在对应步骤成功后自动记录（专属 Realm 的预检与切换只能用 preflight / switch）")
+
+
+def seal_key(state, create=False):
+    """32 random bytes, private to this state directory; never printed or exported."""
+    path = state / ".preflight-key"
+    if not path.exists():
+        if not create:
+            raise ValueError("身份预检记录无效：本状态目录没有预检密钥")
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as out:
+            out.write(os.urandom(32))
+    if os.name != "nt" and path.stat().st_mode & 0o077:
+        raise ValueError("身份预检密钥权限必须为 0600")
+    return path.read_bytes()
+
+
+def seal(key, record):
+    body = {k: v for k, v in record.items() if k != "seal"}
+    return hmac.new(key, canonical_json(body), sha256).hexdigest()
+
+
+def run_admin_preflight(tool_args, realm):
+    """Run admin-preflight.py login against the real Keycloak (files only, no secret on the command line)."""
+    args = [sys.executable, "-B", str(PREFLIGHT_TOOL), "login", "--realm", realm]
+    for name in ("base", "admin", "link", "service_secret_file", "password_file", "web_secret_file", "redirect"):
+        value = tool_args.get(name)
+        if not value:
+            raise ValueError("预检参数缺失：--" + name.replace("_", "-"))
+        args += ["--" + name.replace("_", "-"), str(value)]
+    result = subprocess.run(args, check=False, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    try:
+        return json.loads(result.stdout)
+    except ValueError:
+        return {}
+
+
+def preflight(state, rid, staff_id, change, tool_args, now=None):
+    _, realm = parse_release(rid)
+    if realm == DEFAULT_REALM:
+        raise ValueError("共享 Realm 不需要接管管理员预检")
+    if not UUID_TEXT.fullmatch(staff_id or "") or not EVIDENCE.fullmatch(change or ""):
+        raise ValueError("预检需要批准的管理员 staff_id 与变更编号")
+    require_phase(state, rid, "IDENTITY_PRECHECK")
+    result = run_admin_preflight(tool_args, realm)
+    admin, login = result.get("admin") or {}, result.get("login") or {}
+    problems = []
+    if result.get("ADMIN_ACCOUNT_VERIFIED") != "PASS" or result.get("ADMIN_LOGIN_VERIFIED") != "PASS":
+        problems.append("账号核查或真实登录未通过")
+    if result.get("realm") != realm or result.get("issuer") != REALMS[realm]["issuer"]:
+        problems.append("结果不是目标 Realm / Issuer")
+    if admin.get("staffId") != staff_id:
+        problems.append("结果不是批准的管理员")
+    kc = admin.get("keycloakSubject")
+    if not UUID_TEXT.fullmatch(kc or "") or login.get("sub") != kc or login.get("roles") != ["baobei_admin"]:
+        problems.append("真实登录的 subject 或角色与账号服务核查不一致")
+    if not admin.get("businessSubject"):
+        problems.append("缺少业务身份映射")
+    if problems:
+        raise ValueError("身份预检未通过，未记录 IDENTITY_PRECHECK：" + "；".join(problems))
+    now = now or datetime.now(timezone.utc)
+    record = {"release": rid, "realm": realm, "issuer": REALMS[realm]["issuer"], "staff_id": staff_id,
+              "keycloak_subject": kc, "business_subject": admin["businessSubject"], "change": change,
+              "generated_at": now.isoformat(), "expires_at": (now + PREFLIGHT_VALIDITY).isoformat(),
+              "ADMIN_ACCOUNT_VERIFIED": "PASS", "ADMIN_LOGIN_VERIFIED": "PASS"}
+    record["seal"] = seal(seal_key(state, create=True), record)
+    atomic_json(state / "preflight.json", record)
+    os.chmod(state / "preflight.json", 0o600)
+    measured = {k: v for k, v in record.items() if k != "seal"}
+    measured["record_sha256"] = digest(canonical_json(record))
+    return record_phase(state, rid, "IDENTITY_PRECHECK", "preflight:" + change, measured)
+
+
+def verify_preflight_record(state, rid, staff_id, now=None):
+    path = state / "preflight.json"
+    if not path.exists():
+        raise ValueError("没有本发布的身份预检记录：先执行 preflight")
+    record = read_json(path)
+    key = seal_key(state)
+    if not hmac.compare_digest(str(record.get("seal", "")), seal(key, record)):
+        raise ValueError("身份预检记录被修改或来自其他状态目录")
+    _, realm = parse_release(rid)
+    if (record.get("release") != rid or record.get("realm") != realm or record.get("issuer") != REALMS[realm]["issuer"] or
+            record.get("staff_id") != staff_id or record.get("ADMIN_ACCOUNT_VERIFIED") != "PASS" or
+            record.get("ADMIN_LOGIN_VERIFIED") != "PASS"):
+        raise ValueError("身份预检记录不属于本发布、Realm、Issuer 或管理员")
+    if (now or datetime.now(timezone.utc)) > datetime.fromisoformat(record["expires_at"]):
+        raise ValueError("身份预检记录已过期，请重新执行 preflight")
+    return record
+
+
+def switch_command(state, rid, staff_id, operator, reason, approval):
+    record = verify_preflight_record(state, rid, staff_id)
+    window = read_window(state)
+    if not window or not any(e["phase"] == "IDENTITY_PRECHECK" and e.get("measured", {}).get("record_sha256") ==
+                             digest(canonical_json(record)) for e in window["phases"]):
+        raise ValueError("身份预检记录与维护窗口中的 IDENTITY_PRECHECK 不一致")
+    return ["maintenance", "identity-switch", "--realm", record["realm"], "--operator", operator, "--reason", reason,
+            "--takeover-admin", staff_id, "--approval", approval]
+
+
+def identity_switch(docker, state, secrets, rid, staff_id, operator, reason, approval, maintenance_dsn):
+    """Run the API's identity-switch after the precheck record re-verifies."""
+    require_phase(state, rid, "IDENTITY_SWITCH")
+    command = switch_command(state, rid, staff_id, operator, reason, approval)
+    release, manifest = verify_release(docker, state, secrets, rid)
+    if maintenance_dsn is None or maintenance_dsn.parent != secrets:
+        raise ValueError("需要在外部密钥目录提供 --maintenance-dsn")
+    require_file(maintenance_dsn)
+    realm = manifest["identity_realm"]
+    docker.call("run", "--rm", "--pull", "never", "--read-only", "--network", "u-dao-baobei-internal",
+                "--security-opt", "no-new-privileges", "--env", "APP_ENV=production",
+                "--env", "DATABASE_URL_FILE=/run/secrets/db_url",
+                "--mount", f"type=bind,src={maintenance_dsn},dst=/run/secrets/db_url,readonly",
+                manifest["images"]["baobei-api"]["id"], *command, capture=False)
+    trusted = database_issuer(docker, release, secrets, manifest["images"], realm)
+    if trusted != REALMS[realm]["issuer"]:
+        raise ValueError("identity-switch 后数据库身份纪元未指向目标 Realm")
+    return record_phase(state, rid, "IDENTITY_SWITCH", "switch:" + approval,
+                        {"issuer": trusted, "takeover_admin": staff_id})
 
 
 def require_phase(state, rid, phase):
@@ -651,7 +780,8 @@ def apply(docker, state, secrets, rid, command, migrator_dsn, confirm_realm=None
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("prepare", "db", "migrate", "up", "rollback", "phase", "status"))
+    parser.add_argument("command", choices=("prepare", "db", "migrate", "up", "rollback", "phase", "status",
+                                            "preflight", "switch"))
     parser.add_argument("--source-sha", required=True)
     parser.add_argument("--identity-realm", choices=tuple(REALMS), default=DEFAULT_REALM,
                         help="批准的身份 Realm；默认 crane（现状）。写入不可变发布清单")
@@ -662,8 +792,20 @@ def main():
     parser.add_argument("--migrator-dsn", type=Path)
     parser.add_argument("--phase", choices=PHASES)
     parser.add_argument("--evidence")
-    parser.add_argument("--preflight-report", type=Path,
-                        help="IDENTITY_PRECHECK（专属 Realm）：admin-preflight.py login 的 JSON 输出文件")
+    # preflight / switch (dedicated realm only)
+    parser.add_argument("--takeover-admin", help="批准的接管管理员 staff_id")
+    parser.add_argument("--change", help="变更编号（预检记录绑定）")
+    parser.add_argument("--keycloak-base")
+    parser.add_argument("--admin-row", type=Path, help="接管管理员业务行（私有 0600 文件）")
+    parser.add_argument("--link-row", type=Path, help="身份链接行（私有 0600 文件）")
+    parser.add_argument("--service-secret-file", type=Path)
+    parser.add_argument("--web-secret-file", type=Path)
+    parser.add_argument("--password-file", type=Path, help="接管管理员本人提供的私有密码文件")
+    parser.add_argument("--redirect")
+    parser.add_argument("--operator")
+    parser.add_argument("--reason")
+    parser.add_argument("--approval")
+    parser.add_argument("--maintenance-dsn", type=Path)
     args = parser.parse_args()
     state, secrets = args.state_dir.absolute(), args.secrets_dir.absolute()
     if (state.is_relative_to(ROOT) or secrets.is_relative_to(ROOT) or secrets.is_relative_to(state) or
@@ -673,21 +815,28 @@ def main():
     rid = release_id(args.source_sha, args.identity_realm)
     with deployment_lock(state):
         if args.command == "phase":
-            if args.phase not in OPERATOR_PHASES:
-                raise ValueError("该阶段由部署工具在对应步骤成功后自动记录")
-            measured = None
-            if args.phase == "IDENTITY_PRECHECK" and args.identity_realm != DEFAULT_REALM:
-                # The dedicated realm needs the takeover administrator proven in
-                # Keycloak (admin-preflight.py login): both verdicts PASS.
-                measured = preflight_report(args.preflight_report)
-            window = record_phase(state, rid, args.phase, args.evidence, measured)
+            operator_phase_allowed(args.phase, args.identity_realm)
+            window = record_phase(state, rid, args.phase, args.evidence)
             print("BAOBEI_PHASE_" + args.phase + "=RECORDED " + str(len(window["phases"])) + "/" + str(len(PHASES)))
             return
         if args.command == "status":
             print(json.dumps({"active": pointer(state, "active"), "pending": pointer(state, "pending"),
                               "maintenance": read_window(state)}, ensure_ascii=False, sort_keys=True))
             return
+        if args.command == "preflight":
+            window = preflight(state, rid, args.takeover_admin, args.change, {
+                "base": args.keycloak_base, "admin": args.admin_row, "link": args.link_row,
+                "service_secret_file": args.service_secret_file, "password_file": args.password_file,
+                "web_secret_file": args.web_secret_file, "redirect": args.redirect})
+            m = window["phases"][-1]["measured"]
+            print("BAOBEI_PREFLIGHT=PASS realm=%s admin=%s expires_at=%s" % (m["realm"], m["staff_id"], m["expires_at"]))
+            return
         docker = Docker()
+        if args.command == "switch":
+            identity_switch(docker, state, secrets, rid, args.takeover_admin, args.operator, args.reason, args.approval,
+                            args.maintenance_dsn.absolute() if args.maintenance_dsn else None)
+            print("BAOBEI_IDENTITY_SWITCH=PASS")
+            return
         if args.command == "prepare":
             path = prepare(docker, state, secrets, args.source_sha, args.identity_realm)
             print(path / "manifest.json")

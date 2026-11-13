@@ -312,27 +312,5 @@ class FirstEpochTests(unittest.TestCase):
                 self.assertEqual(direct.pointer(state, "active"), NEW)
 
 
-class PreflightReportTests(unittest.TestCase):
-    def test_precheck_requires_real_login_verdict(self):
-        with TemporaryDirectory() as tmp:
-            tmp = Path(tmp).resolve()
-            with self.assertRaisesRegex(ValueError, "--preflight-report"):
-                direct.preflight_report(None)
-            for verdict in ({"ADMIN_ACCOUNT_VERIFIED": "PASS", "ADMIN_LOGIN_VERIFIED": "NOT_RUN"},
-                            {"ADMIN_ACCOUNT_VERIFIED": "PASS", "ADMIN_LOGIN_VERIFIED": "FAIL"},
-                            {"ADMIN_ACCOUNT_VERIFIED": "FAIL", "ADMIN_LOGIN_VERIFIED": "PASS"}, {}):
-                path = tmp / ("r%d.json" % len(list(tmp.iterdir())))
-                path.write_text(json.dumps(verdict))
-                with self.subTest(verdict=verdict), self.assertRaisesRegex(ValueError, "ADMIN_LOGIN_VERIFIED"):
-                    direct.preflight_report(path)
-            ok = tmp / "ok.json"
-            ok.write_text(json.dumps({"ADMIN_ACCOUNT_VERIFIED": "PASS", "ADMIN_LOGIN_VERIFIED": "PASS", "admin": {"staffId": "s"}}))
-            measured = direct.preflight_report(ok)
-            self.assertEqual(measured["ADMIN_LOGIN_VERIFIED"], "PASS")
-            state = tmp / "state"
-            state.mkdir()
-            rid = direct.release_id(NEW, "baobei")
-            for phase in direct.PHASES[:direct.PHASES.index("IDENTITY_PRECHECK")]:
-                direct.record_phase(state, rid, phase, "evidence-" + phase.lower())
-            window = direct.record_phase(state, rid, "IDENTITY_PRECHECK", "precheck-1", measured)
-            self.assertEqual(window["phases"][-1]["kind"], "machine-verified")
+# G5-RC1: the former PreflightReportTests accepted a hand-written PASS JSON
+# (staffId "s"); that path is removed. Provenance is tested in test_rc1_preflight.py.

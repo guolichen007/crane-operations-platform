@@ -171,8 +171,9 @@ def check_admin(args, report):
             problems.append('Keycloak 用户 ID 与身份链接不一致')
         if attrs.get('baobei_staff_id') != [admin.get('staff_id')]:
             problems.append('baobei_staff_id 属性与业务记录不一致')
-        if attrs.get('baobei_subject') not in (None, [admin.get('subject')]):
-            problems.append('baobei_subject 属性与业务 subject 不一致')
+        # G5-RC1: the attribute is required and must be exactly the business subject.
+        if attrs.get('baobei_subject') != [admin.get('subject')]:
+            problems.append('baobei_subject 属性缺失或与业务 subject 不一致')
         if u.get('username') != admin.get('work_phone', '')[3:]:
             problems.append('登录名不是批准的工作手机号')
         s, clients, _ = c.call('GET', f'/admin/realms/{realm}/clients?clientId={approved["client"]}', token=t)
@@ -184,8 +185,11 @@ def check_admin(args, report):
             problems.append('baobei-web Client Role 不是精确的 baobei_admin（实际 %s）' % web_roles)
         if 'realm-management' in client_maps:
             problems.append('管理员账号不应持有 realm-management 角色')
+    # Identifiers only (no phone, no token): the release tool binds them to its record.
+    report['realm'], report['issuer'] = realm, issuer
     report['admin'] = {'staffId': admin.get('staff_id'), 'login': mask(admin.get('work_phone', '')),
-                       'keycloakUser': ext[:8] + '…', 'problems': problems}
+                       'keycloakSubject': ext if u else '', 'businessSubject': admin.get('subject') if not problems else '',
+                       'problems': problems}
     report['ADMIN_ACCOUNT_VERIFIED'] = 'PASS' if not problems else 'FAIL'
     return c, admin, link
 
@@ -231,7 +235,8 @@ def check_login(args, report, c, admin, link):
     roles = sorted(((claims or {}).get('resource_access') or {}).get(approved['client'], {}).get('roles', []))
     ok = claims is not None and claims.get('sub') == link['external_subject'] and roles == ['baobei_admin']
     report['login'] = {'result': '已通过目标 Realm 真实登录' if ok else '登录令牌与身份链接或角色不一致：' + (why or str(roles)),
-                       'subMatchesLink': bool(claims) and claims.get('sub') == link['external_subject'], 'roles': roles}
+                       'subMatchesLink': bool(claims) and claims.get('sub') == link['external_subject'], 'roles': roles,
+                       'sub': (claims or {}).get('sub', '')}
     report['ADMIN_LOGIN_VERIFIED'] = 'PASS' if ok else 'FAIL'
 
 
