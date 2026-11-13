@@ -268,17 +268,9 @@ class OrderGateTests(unittest.TestCase):
         calls, active = self.apply_case(old, new, "up")
         self.assertEqual(active, new)
 
-    def test_path_a_same_sha_back_to_crane(self):
-        # Keep the new schema and image, only switch the realm back: same commit,
-        # crane release, same database contract → allowed with confirmation.
-        new = direct.release_id(CURRENT, "baobei")
-        back = direct.release_id(CURRENT, "crane")
-        with TemporaryDirectory() as tmp:
-            pass
-        with self.assertRaisesRegex(ValueError, "--confirm-realm"):
-            self.apply_case(new, back, "up")
-        calls, active = self.apply_case(new, back, "up", confirm="crane")
-        self.assertEqual((active, calls[0][-1]), (back, "crane"))
+    # Path A (same commit, switch back to crane) is covered end to end by
+    # test_rc0r1_lifecycle.PathATests with real prepare/verify/apply (G5-RC0-R1);
+    # the earlier synthetic case did not follow the real preparation order.
 
     def test_rollback_across_contracts_still_refused(self):
         with TemporaryDirectory() as tmp:

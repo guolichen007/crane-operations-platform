@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"errors"
@@ -164,6 +165,18 @@ func TestDatabaseProductionPrivileges(t *testing.T) {
 		"SELECT token_hash FROM app_sessions",
 	} {
 		deny(maintenance, sql)
+	}
+	// G5-RC0-R1: the identity-switch precheck and the first epoch run as the
+	// maintenance role (fail-closed queries must not fail for lack of privilege).
+	{
+		var out bytes.Buffer
+		if err := identitySwitchCommand(ctx, maintenance, "production", []string{"--realm", "crane", "--dry-run"}, &out); err != nil ||
+			!strings.Contains(out.String(), `"precheck":"PASS"`) {
+			t.Fatal("maintenance dry-run", out.String(), err)
+		}
+		if err := identitySwitchCommand(ctx, maintenance, "production", []string{"--realm", "baobei", "--takeover-admin", "00000000-0000-4000-8000-000000000000", "--dry-run"}, &out); !errors.Is(err, errSwitchEpoch) && !errors.Is(err, errSwitchAdmin) {
+			t.Fatal("maintenance dry-run into baobei must refuse", err)
+		}
 	}
 
 	// Drive the real HTTP handlers against a restricted login using synthetic actors.

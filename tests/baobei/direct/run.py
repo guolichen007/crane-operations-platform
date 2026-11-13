@@ -161,6 +161,18 @@ volumes:
 """
 
 
+class patch_attr:
+    def __init__(self, obj, name, value):
+        self.obj, self.name, self.value = obj, name, value
+
+    def __enter__(self):
+        self.old = getattr(self.obj, self.name)
+        setattr(self.obj, self.name, self.value)
+
+    def __exit__(self, *exc):
+        setattr(self.obj, self.name, self.old)
+
+
 class FixtureDocker:
     """Same compose()/call() surface as direct.Docker, bound to an isolated CI project."""
 
@@ -234,6 +246,37 @@ def postgres_not_recreated(docker, work, manifest, postgres_image):
         assert psql(pg_id, "SELECT note FROM fixture_marker") == "kept"
         assert app_ids() == {s: images["new"][s]["id"] for s in direct.SERVICES}
         print("DIRECT_POSTGRES_NOT_RECREATED=PASS APP_SWITCHED=PASS")
+        # G5-RC0-R1: machine drain check against real containers. The fixture
+        # PostgreSQL uses its own superuser; the tool's read-only query is routed
+        # to it, the container checks are the real ones.
+        def fixture_read(dk, release, secrets_, imgs, realm, sql):
+            return psql(pg_id, sql)
+        with patch_attr(direct, "database_read", fixture_read):
+            try:
+                direct.verify_runtime_drained(fixture, new, None, images["new"], "crane")
+            except ValueError as error:
+                assert "仍处于" in str(error), error
+            else:
+                raise AssertionError("drain check accepted a running API")
+            fixture.compose(new, None, images["new"], "stop", "baobei-api", capture=False)
+            drained = direct.verify_runtime_drained(fixture, new, None, images["new"], "crane")
+            assert drained["api_running"] == 0 and drained["business_connections"] == 0, drained
+            psql(pg_id, "CREATE ROLE baobei_runtime LOGIN")
+            # Hold one baobei_runtime connection open (local socket, fixture only).
+            docker.call("exec", "-d", pg_id, "psql", "-U", "baobei_runtime", "-d", "postgres", "-c", "SELECT pg_sleep(30)")
+            for _ in range(20):
+                if psql(pg_id, "SELECT count(*) FROM pg_stat_activity WHERE usename='baobei_runtime'") != "0":
+                    break
+                import time
+                time.sleep(0.5)
+            try:
+                direct.verify_runtime_drained(fixture, new, None, images["new"], "crane")
+            except ValueError as error:
+                assert "业务连接" in str(error), error
+            else:
+                raise AssertionError("drain check accepted an open baobei_runtime connection")
+            fixture.compose(new, None, images["new"], "start", "baobei-api", capture=False)
+        print("DIRECT_DRAIN_GUARD_REAL_CONTAINERS=PASS")
         # Control: the pre-fix whole-project up would recreate PostgreSQL in this same fixture.
         fixture.compose(new, None, images["new"], "up", "-d", "--no-build", "--pull", "never",
                         "--wait", "--wait-timeout", "180", capture=False)

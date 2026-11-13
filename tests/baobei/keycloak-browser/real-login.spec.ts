@@ -4,6 +4,7 @@ import { test, expect } from '../../../apps/project-intake-web/node_modules/@pla
 import { readFileSync, rmSync, statSync } from 'node:fs';
 
 const KC = process.env.BAOBEI_KEYCLOAK_URL!;
+const statSyncSafe = (f?: string) => { try { return !!f && !!statSync(f); } catch { return false; } };
 // G5-RC0: the fixture hands the one-time credential over in a private 0600
 // file (BAOBEI_KC_CREDENTIAL_FILE), never on stdout or in the environment. It
 // is read once and deleted at once; the values are never logged.
@@ -17,14 +18,21 @@ function takeCredential(): { phone: string; temporaryPassword: string } | null {
     rmSync(file, { force: true });
   }
 }
-const cred = takeCredential();
-const phone = cred?.phone ?? '';
-const temp = cred?.temporaryPassword ?? '';
+// Read only inside the test worker (the runner also loads this module once to
+// collect tests; that load must not consume the one-time file).
+let phone = '';
+let temp = '';
+test.beforeAll(() => {
+  const cred = takeCredential();
+  phone = cred?.phone ?? '';
+  temp = cred?.temporaryPassword ?? '';
+});
 const newPw = 'Real-' + Math.random().toString(36).slice(2, 10) + 'A1';
 const newerPw = 'Real-' + Math.random().toString(36).slice(2, 10) + 'B2';
 
 test('真实 Keycloak：11 位手机号 + 初始密码登录，强制改密，个人修改密码，退出后必须重新输入密码', async ({ page }) => {
   test.skip(!KC || !phone || !temp, 'NOT_RUN: real Keycloak fixture required');
+  expect(statSyncSafe(process.env.BAOBEI_KC_CREDENTIAL_FILE)).toBe(false); // consumed and deleted
   await page.goto('/login');
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page).toHaveURL(new RegExp('^' + KC.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '/realms/baobei/'));

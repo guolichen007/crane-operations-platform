@@ -433,6 +433,40 @@ def database_identity(docker, release, secrets, images, realm=DEFAULT_REALM):
     return state[0], state[1]
 
 
+def database_read(docker, release, secrets, images, realm, sql):
+    """One read-only query inside the running PostgreSQL container (local socket,
+    bootstrap role). Used only for release checks; never writes."""
+    container = docker.compose(release, secrets, images, "ps", "-q", "baobei-postgres", realm=realm).decode().strip()
+    if not container or len(container.split()) != 1:
+        raise ValueError("PostgreSQL 未运行，无法核验")
+    out = docker.call("exec", container, "psql", "-X", "-qAt", "-U", "baobei_bootstrap", "-d", "baobei",
+                      "-v", "ON_ERROR_STOP=1", "-c", "BEGIN READ ONLY; " + sql + "; COMMIT;")
+    return out.decode().strip()
+
+
+def database_issuer(docker, release, secrets, images, realm):
+    """The issuer the database currently trusts (identity_epoch), or None."""
+    value = database_read(docker, release, secrets, images, realm,
+                          "SELECT coalesce((SELECT issuer FROM identity_epoch), '')")
+    return value or None
+
+
+def verify_runtime_drained(docker, release, secrets, images, realm):
+    """Machine check before an incompatible migration (G5-RC0-R1): the old API is
+    not running, no runtime or staff connection is left, PostgreSQL is healthy.
+    Independent of any recorded evidence."""
+    api = docker.compose(release, secrets, images, "ps", "-a", "-q", "baobei-api", realm=realm).decode().split()
+    for container in api:
+        status = docker.call("inspect", "--format", "{{.State.Status}}", container).decode().strip()
+        if status not in ("exited", "created", "dead"):
+            raise ValueError(f"旧 baobei-api 仍处于 {status} 状态，拒绝迁移；先停止 API")
+    connections = database_read(docker, release, secrets, images, realm,
+                                "SELECT count(*) FROM pg_stat_activity WHERE usename IN ('baobei_runtime','baobei_staff_api')")
+    if connections != "0":
+        raise ValueError(f"仍有 {connections} 个业务连接（baobei_runtime / baobei_staff_api），拒绝迁移")
+    return {"api_containers": len(api), "api_running": 0, "business_connections": 0}
+
+
 def start(docker, release, secrets, manifest, realm=DEFAULT_REALM):
     """Reconcile only Web/API. PostgreSQL is created solely by the explicit db command."""
     images = manifest["images"]
@@ -452,13 +486,13 @@ def start(docker, release, secrets, manifest, realm=DEFAULT_REALM):
 # of the previous one. The tool records phases and refuses out-of-order steps;
 # it never stops services, takes backups or switches realms by itself.
 PHASES = ("MAINTENANCE_ENTER", "FRESH_BACKUP_VERIFIED", "OLD_API_DRAINED", "SCHEMA_UPGRADE",
-          "IDENTITY_PRECHECK", "IDENTITY_SWITCH", "NEW_API_START", "WEB_START", "SMOKE_TEST",
+          "IDENTITY_EPOCH_INIT", "IDENTITY_PRECHECK", "IDENTITY_SWITCH", "NEW_API_START", "WEB_START", "SMOKE_TEST",
           "RELEASE_COMPLETE")
 EVIDENCE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:@/+-]{2,199}")
 # Phases recorded by the operator with a reference to their evidence (backup
 # id + checksum, drain proof, precheck report, smoke result); the rest are
 # recorded by this tool when its own step succeeds.
-OPERATOR_PHASES = {"MAINTENANCE_ENTER", "FRESH_BACKUP_VERIFIED", "OLD_API_DRAINED", "IDENTITY_PRECHECK",
+OPERATOR_PHASES = {"MAINTENANCE_ENTER", "FRESH_BACKUP_VERIFIED", "OLD_API_DRAINED", "IDENTITY_EPOCH_INIT", "IDENTITY_PRECHECK",
                    "IDENTITY_SWITCH", "SMOKE_TEST", "RELEASE_COMPLETE"}
 
 
@@ -475,7 +509,7 @@ def window_done(window, phase):
     return any(entry["phase"] == phase for entry in window["phases"])
 
 
-def record_phase(state, rid, phase, evidence):
+def record_phase(state, rid, phase, evidence, measured=None):
     """Append one phase with its evidence; refuses skipping or repeating a phase."""
     if phase not in PHASES or not EVIDENCE.fullmatch(evidence or ""):
         raise ValueError("阶段名或证据编号无效")
@@ -490,10 +524,27 @@ def record_phase(state, rid, phase, evidence):
     expected = PHASES[len(done)]
     if phase != expected:
         raise ValueError(f"阶段顺序错误：下一步必须是 {expected}")
-    window["phases"].append({"phase": phase, "evidence": evidence,
-                             "at": datetime.now(timezone.utc).isoformat()})
+    # "kind" separates what a person recorded (evidence reference only) from what
+    # this tool measured itself (machine-checked values are stored with it).
+    entry = {"phase": phase, "evidence": evidence, "at": datetime.now(timezone.utc).isoformat(),
+             "kind": "machine-verified" if measured is not None else "evidence-recorded"}
+    if measured is not None:
+        entry["measured"] = measured
+    window["phases"].append(entry)
     atomic_json(window_path(state), window)
     return window
+
+
+def preflight_report(path):
+    """Accept the takeover-administrator preflight only when both the account
+    checks and the real target-realm login passed."""
+    if path is None:
+        raise ValueError("专属 Realm 的 IDENTITY_PRECHECK 需要 --preflight-report（admin-preflight.py login 输出）")
+    report = read_json(path.absolute())
+    if report.get("ADMIN_ACCOUNT_VERIFIED") != "PASS" or report.get("ADMIN_LOGIN_VERIFIED") != "PASS":
+        raise ValueError("接管管理员未通过目标 Realm 的账号核查与真实登录（ADMIN_LOGIN_VERIFIED 必须为 PASS）")
+    return {"ADMIN_ACCOUNT_VERIFIED": "PASS", "ADMIN_LOGIN_VERIFIED": "PASS",
+            "admin": (report.get("admin") or {}).get("staffId"), "report_sha256": digest(path.read_bytes())}
 
 
 def require_phase(state, rid, phase):
@@ -533,16 +584,28 @@ def apply(docker, state, secrets, rid, command, migrator_dsn, confirm_realm=None
         if target_realm != realm and confirm_realm != target_realm:
             raise ValueError("回滚目标使用另一身份 Realm：需先完成 identity-switch 并以 --confirm-realm 明确确认")
         check_mounts(secrets, command, migrator_dsn, target_realm)
+        if target_realm != realm and database_issuer(docker, release, secrets, previous["images"], target_realm) != REALMS[target_realm]["issuer"]:
+            raise ValueError("数据库身份纪元未指向回滚目标的 Realm：先执行 identity-switch")
         atomic_json(state / "pending.json", {"source_sha": rid})
         start(docker, release, secrets, previous, target_realm)
         atomic_json(state / "active.json", {"source_sha": target})
     else:
-        if active not in (rid, manifest["rollback_target"]):
+        active_source, active_realm = parse_release(active) if active else (None, DEFAULT_REALM)
+        # Path A (G5-RC0-R1): the same commit prepared for the other approved realm.
+        # Both releases are verified; same images and database contract; only the
+        # identity realm differs. The original rollback baseline is kept untouched.
+        same_commit_switch = (command == "up" and active not in (None, rid) and active_source == source
+                              and active_realm != realm)
+        if same_commit_switch:
+            _, current = verify_release(docker, state, secrets, active)
+            if (current["database_contract_sha256"] != manifest["database_contract_sha256"] or
+                    current["images"] != manifest["images"]):
+                raise ValueError("同提交 Realm 切换要求相同镜像与数据库契约")
+        elif active not in (rid, manifest["rollback_target"]):
             raise ValueError("清单的回滚基线已过期")
-        active_realm = parse_release(active)[1] if active else DEFAULT_REALM
         if command == "up" and active and active_realm != realm and confirm_realm != realm:
             raise ValueError("本发布改变身份 Realm：需先完成 identity-switch 并以 --confirm-realm 明确确认")
-        gated = incompatible(docker, state, secrets, manifest, active)
+        gated = not same_commit_switch and incompatible(docker, state, secrets, manifest, active)
         if command == "migrate" and gated:
             require_phase(state, rid, "SCHEMA_UPGRADE")
         if command == "up" and gated:
@@ -552,18 +615,36 @@ def apply(docker, state, secrets, rid, command, migrator_dsn, confirm_realm=None
             docker.compose(release, secrets, images, *DB_UP, capture=False, realm=realm)
             return
         if command == "migrate":
+            runtime = None
+            if gated:
+                # Evidence alone is not enough: measure the runtime state now.
+                database = database_identity(docker, release, secrets, images, realm)
+                runtime = verify_runtime_drained(docker, release, secrets, images, realm)
             docker.call("run", "--rm", "--pull", "never", "--read-only", "--network", "u-dao-baobei-internal",
                         "--security-opt", "no-new-privileges", "--env", "APP_ENV=production",
                         "--env", "DATABASE_URL_FILE=/run/secrets/db_url",
                         "--mount", f"type=bind,src={migrator_dsn},dst=/run/secrets/db_url,readonly",
                         images["baobei-api"]["id"], "maintenance", "migrate", capture=False)
             if gated:
-                record_phase(state, rid, "SCHEMA_UPGRADE", "migrate:" + manifest["database_contract_sha256"][:16])
+                if database_identity(docker, release, secrets, images, realm) != database:
+                    raise ValueError("PostgreSQL 容器在迁移期间被改变，停止并人工核查")
+                record_phase(state, rid, "SCHEMA_UPGRADE", "migrate:" + manifest["database_contract_sha256"][:16],
+                             measured={"runtime_drained": runtime, "postgres": database[0][:12]})
             return
+        if "identity_realm" in manifest:
+            # Every RC0+ release (schema ≥ 00006) starts only when the database
+            # already trusts its issuer: an empty epoch (fresh 00005 → 00008
+            # upgrade without IDENTITY_EPOCH_INIT) or another realm is refused
+            # before Compose touches anything.
+            trusted = database_issuer(docker, release, secrets, images, realm)
+            if trusted != REALMS[realm]["issuer"]:
+                raise ValueError("数据库身份纪元为空或未指向目标 Realm：先在维护窗口执行 identity-switch（首次须先建立共享 crane 纪元）")
         start(docker, release, secrets, manifest, realm)
         if gated:
-            record_phase(state, rid, "NEW_API_START", "image:" + images["baobei-api"]["id"][7:23])
-            record_phase(state, rid, "WEB_START", "image:" + images["baobei-web"]["id"][7:23])
+            record_phase(state, rid, "NEW_API_START", "image:" + images["baobei-api"]["id"][7:23],
+                         measured={"running_image": images["baobei-api"]["id"]})
+            record_phase(state, rid, "WEB_START", "image:" + images["baobei-web"]["id"][7:23],
+                         measured={"running_image": images["baobei-web"]["id"]})
         atomic_json(state / "active.json", {"source_sha": rid})
     (state / "pending.json").unlink(missing_ok=True)
 
@@ -581,6 +662,8 @@ def main():
     parser.add_argument("--migrator-dsn", type=Path)
     parser.add_argument("--phase", choices=PHASES)
     parser.add_argument("--evidence")
+    parser.add_argument("--preflight-report", type=Path,
+                        help="IDENTITY_PRECHECK（专属 Realm）：admin-preflight.py login 的 JSON 输出文件")
     args = parser.parse_args()
     state, secrets = args.state_dir.absolute(), args.secrets_dir.absolute()
     if (state.is_relative_to(ROOT) or secrets.is_relative_to(ROOT) or secrets.is_relative_to(state) or
@@ -592,7 +675,12 @@ def main():
         if args.command == "phase":
             if args.phase not in OPERATOR_PHASES:
                 raise ValueError("该阶段由部署工具在对应步骤成功后自动记录")
-            window = record_phase(state, rid, args.phase, args.evidence)
+            measured = None
+            if args.phase == "IDENTITY_PRECHECK" and args.identity_realm != DEFAULT_REALM:
+                # The dedicated realm needs the takeover administrator proven in
+                # Keycloak (admin-preflight.py login): both verdicts PASS.
+                measured = preflight_report(args.preflight_report)
+            window = record_phase(state, rid, args.phase, args.evidence, measured)
             print("BAOBEI_PHASE_" + args.phase + "=RECORDED " + str(len(window["phases"])) + "/" + str(len(PHASES)))
             return
         if args.command == "status":
