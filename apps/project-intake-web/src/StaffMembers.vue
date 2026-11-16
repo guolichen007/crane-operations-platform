@@ -10,7 +10,7 @@ import { clearStaffDraft, readStaffDraft, saveStaffDraft, type StaffDraftAction 
 import { fieldLabels, fieldOrder, serverFieldErrors, validateStaff, type StaffErrors, type StaffField } from './staff-form';
 import { when } from './model';
 import { can } from './navigation';
-import { newIdempotencyKey, accountActions, accountCause, accountDisplayLabel, accountDisplayState, accountOperationLabel, type AccountAction } from './staff-account';
+import { newIdempotencyKey, accountActions, accountCause, accountDisplayLabel, accountDisplayState, accountOperationLabel, awaitsRoleSync, type AccountAction } from './staff-account';
 import {
   capabilities, nextStep, revocable, roles, staffEvents, statusLabel, syncStatuses,
   type StaffEvent, type StaffMember, type StaffProject, type StaffTeam,
@@ -66,7 +66,7 @@ const titles: Record<Dialog, string> = {
   suspend: '停用账号', reactivate: '恢复账号', retry: '重试开通',
   archive: '归档账号', transfer: '批量移交项目', review: '审核开通',
   'account-create': '开通登录账号', 'account-reset': '重置登录密码', 'account-phone': '更换登录手机号',
-  'account-disable': '停用登录', 'account-enable': '恢复登录',
+  'account-disable': '停用登录', 'account-enable': '恢复登录', 'account-sync': '同步登录角色',
   revoke: '撤销开户', 'account-revoke': '撤销开户',
 };
 const descriptions: Partial<Record<Dialog, string>> = {
@@ -86,10 +86,17 @@ const descriptions: Partial<Record<Dialog, string>> = {
   'account-phone': '登录手机号随工作手机一起更换。旧手机号立即不能登录，成员当前登录全部失效。',
   'account-disable': '立即停止该成员使用报备中心，未结束项目进入待移交清单。',
   'account-enable': '恢复登录账号和角色，成员重新登录后可用。',
+  'account-sync': '把登录账号的角色设为当前记录的角色（只保留这一个），完成身份处理。之后成员本人用手机号重新登录，新角色才正式生效；在此之前旧登录和旧权限都不可用。',
   revoke: '撤销这次未完成的开户：成员记录标记为“已撤销开户”并保留历史，工作手机和邮箱释放，可用正确信息重新添加。',
   'account-revoke': '撤销这次未完成的开户：删除尚未使用的登录账号，成员记录标记为“已撤销开户”并保留历史，工作手机和邮箱释放，可重新添加。',
 };
 const canManage = computed(() => member.value?.canManage ?? false);
+// G5-C-U1: a role change / re-verification of a member who already has a login:
+// submitted → identity processing (role sync) → own login → in effect.
+const roleChangeFlow = computed(() => {
+  const m = member.value;
+  return !!m && (awaitsRoleSync(m) || m.status === 'PENDING_ACTIVATION' && m.accountState === 'READY' && !!m.lastLogin && !m.mustChangePassword);
+});
 const showRoleAction = computed(() => administrator.value && canManage.value && member.value?.status === 'ACTIVE' &&
   ['baobei_sales', 'baobei_manager'].includes(member.value.role));
 const failureReason = computed(() => member.value?.status === 'PROVISION_FAILED' || member.value?.syncStatus === 'FAILED'
@@ -116,7 +123,7 @@ const sensitive = computed(() => {
 const needsReauth = computed(() => sensitive.value && !reauthActive.value);
 const reasonRequired = computed(() => {
   const kind = dialog.value;
-  if (!kind || kind === 'invite' || kind === 'account-create' || kind === 'account-enable') return false;
+  if (!kind || kind === 'invite' || kind === 'account-create' || kind === 'account-enable' || kind === 'account-sync') return false;
   if (kind === 'edit') return !!member.value && (form.value.role !== member.value.role || form.value.teamId !== member.value.teamId);
   return true;
 });
@@ -152,7 +159,7 @@ async function load() {
 // Keep the form, go to the enterprise login page (fresh password), come back here.
 function reauthenticateAndResume() {
   const kind = dialog.value;
-  if (!app.user || !kind || !['invite', 'edit', 'promote', 'demote', 'verify', 'reactivate'].includes(kind)) return;
+  if (!app.user || !kind || !['invite', 'edit', 'promote', 'demote', 'verify', 'reactivate', 'account-sync'].includes(kind)) return;
   if (!checkForm()) return;
   saveStaffDraft({
     actor: app.user.subject, staffId: kind === 'invite' ? '' : member.value?.id ?? '', action: kind as StaffDraftAction,
@@ -263,7 +270,7 @@ async function saveAccount(kind: AccountAction) {
   member.value = data.member;
   dialog.value = null;
   if (data.credential) credential.value = { ...data.credential, name: data.member.name, action: kind === 'account-create' ? '登录账号已开通' : '密码已重置' };
-  else app.toast(data.replayed ? '该操作已完成（重复提交未再次执行）' : { 'account-phone': '登录手机号已更换', 'account-disable': '登录已停用', 'account-enable': '登录已恢复', 'account-revoke': '已撤销开户，登录账号已删除，工作手机已释放' }[kind as string] ?? '已保存');
+  else app.toast(data.replayed ? '该操作已完成（重复提交未再次执行）' : { 'account-phone': '登录手机号已更换', 'account-disable': '登录已停用', 'account-enable': '登录已恢复', 'account-revoke': '已撤销开户，登录账号已删除，工作手机已释放', 'account-sync': '登录角色已同步，等待成员本人重新登录后生效' }[kind as string] ?? '已保存');
   await load();
 }
 
@@ -381,11 +388,13 @@ async function save() {
     }
     clearStaffDraft();
     dialog.value = null;
-    app.toast({
-      promote: '已提交主管授权，等待开通', demote: '已提交恢复为销售，等待开通', verify: '已提交身份核验，等待开通',
-      reactivate: '已申请恢复，状态：待开通', suspend: '账号已停用', archive: '账号已归档', retry: '已重新排队', revoke: '已撤销开户，工作手机已释放，可重新添加',
-      permissions: '业务权限已保存', edit: '成员资料已保存', transfer: '移交已完成',
-    }[kind as string] ?? '已保存');
+    app.toast(accountService.value && ['promote', 'demote', 'verify'].includes(kind) && member.value?.accountState === 'READY'
+      ? '已提交，尚未生效：下一步“同步登录角色”，成员本人重新登录后生效'
+      : {
+        promote: '已提交主管授权，等待开通', demote: '已提交恢复为销售，等待开通', verify: '已提交身份核验，等待开通',
+        reactivate: '已申请恢复，状态：待开通', suspend: '账号已停用', archive: '账号已归档', retry: '已重新排队', revoke: '已撤销开户，工作手机已释放，可重新添加',
+        permissions: '业务权限已保存', edit: '成员资料已保存', transfer: '移交已完成',
+      }[kind as string] ?? '已保存');
     await load();
   } catch (error) {
     // Keep every input; show the problem next to the field or at the top of the form.
@@ -520,7 +529,13 @@ onMounted(async () => {
           <div v-else-if="administrator"><dt>企业账号</dt><dd>{{ member.identityVerified ? '已绑定并核验' : member.identityLinked ? '已绑定，待核验' : '尚未绑定' }}</dd></div>
           <div><dt>备注</dt><dd>{{ member.note || '—' }}</dd></div>
         </dl>
-        <ol v-if="accountService && !['ACTIVE','ARCHIVED','SUSPENDED','REVOKED'].includes(member.status)" class="staff-progress" aria-label="开通进度">
+        <ol v-if="accountService && roleChangeFlow" class="staff-progress" aria-label="变更生效进度" data-testid="role-progress">
+          <li :data-done="true">已提交</li>
+          <li :data-done="!awaitsRoleSync(member)" :data-current="awaitsRoleSync(member)">待身份处理（同步登录角色）</li>
+          <li :data-current="member.status === 'PENDING_ACTIVATION'">待本人重新登录</li>
+          <li>正式生效</li>
+        </ol>
+        <ol v-else-if="accountService && !['ACTIVE','ARCHIVED','SUSPENDED','REVOKED'].includes(member.status)" class="staff-progress" aria-label="开通进度">
           <li :data-done="true">已添加成员</li>
           <li :data-done="['READY','DISABLED'].includes(accountDisplayState(member))" :data-current="['NONE','CREATING','PROCESSING'].includes(accountDisplayState(member))" :data-failed="['FAILED','REVIEW'].includes(accountDisplayState(member))">开通登录账号</li>
           <li :data-current="member.status === 'PENDING_ACTIVATION'">成员首次登录并修改密码</li>
@@ -561,6 +576,7 @@ onMounted(async () => {
             <ActionButton v-if="member.accountState !== 'NONE' && member.identityLinked && member.status !== 'SUSPENDED'" action-id="staff.account-phone" :run="() => open('account-phone')">更换登录手机号</ActionButton>
             <ActionButton v-if="member.status === 'SUSPENDED' && member.identityLinked" action-id="staff.account-enable" primary :run="() => open('account-enable')">恢复登录</ActionButton>
             <ActionButton v-if="member.status !== 'SUSPENDED' && member.identityLinked && member.accountState !== 'NONE'" action-id="staff.account-disable" :run="() => open('account-disable')">停用登录</ActionButton>
+            <ActionButton v-if="awaitsRoleSync(member)" action-id="staff.account-sync-role" primary :run="() => open('account-sync')">同步登录角色</ActionButton>
           </template>
           <ActionButton
             v-if="administrator && !accountService && member.status === 'PENDING_PROVISION' && member.syncStatus === 'PENDING'"
@@ -733,7 +749,7 @@ onMounted(async () => {
             <ActionButton v-if="needsReauth" action-id="staff.role-reauth" primary :run="reauthenticateAndResume">验证密码并继续</ActionButton>
             <ActionButton v-else action-id="staff.confirm" primary :disabled="working" :run="save">
               {{ ({ invite: '添加成员', review: '批准开通', suspend: '确认停用', archive: '确认归档', revoke: '确认撤销开户', 'account-revoke': '确认撤销开户', 'account-create': '开通账号', 'account-reset': '重置密码',
-                    'account-phone': '更换手机号', 'account-disable': '停用登录', 'account-enable': '恢复登录' } as Record<string, string>)[dialog ?? ''] ?? '保存' }}
+                    'account-phone': '更换手机号', 'account-disable': '停用登录', 'account-enable': '恢复登录', 'account-sync': '同步登录角色' } as Record<string, string>)[dialog ?? ''] ?? '保存' }}
             </ActionButton>
           </template>
         </div>

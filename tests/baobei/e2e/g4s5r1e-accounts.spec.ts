@@ -112,7 +112,9 @@ test('管理员网页开户：一次性初始密码、重置、换手机号、�
   expect(await employeeSignIn(emp, phone2)).toBe(403);
   await action(page, 'staff.account-enable').click();
   await page.getByRole('dialog', { name: '恢复登录' }).getByRole('button', { name: '恢复登录' }).click();
-  await expect(page.locator('.staff-title')).toContainText('待首次登录');
+  // G5-C-U1: the member has signed in before, so the restored login waits for the
+  // member's own next sign-in (not a "first" login).
+  await expect(page.locator('.staff-title')).toContainText('待本人重新登录');
   expect(await employeeSignIn(emp, phone2)).toBe(200);
   // Audit trail shows every account action, without passwords.
   for (const label of ['开通登录账号', '重置登录密码', '更换登录手机号', '停用登录', '恢复登录'])

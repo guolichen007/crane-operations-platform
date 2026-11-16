@@ -5,7 +5,7 @@ BAOBEI_MAIN_MERGE=FORBIDDEN
 BAOBEI_R2_MERGE=FORBIDDEN
 BASE_SHA=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18
 BRANCH=product/baobei-v1
-CURRENT_BATCH=G5_C_P0_LEGACY_RELEASE
+CURRENT_BATCH=G5_C_U1_ROLE_SYNC
 DEPLOYED_SHA=7b9558084d73f5210cdd08e8240883ecc1659de8
 SCHEMA_VERSION=00008
 RELEASE_SHA=572c6aa609e06419b832f7652e73bf29e8c65c37
@@ -19,7 +19,11 @@ PRODUCTION_DEPLOYED=YES (7b95580; G4-S4 未部署)
 
 目标：快速报项目、识别重复、明确归属并跟进。独立产品，永不合并 main/R2。
 
-## 当前实施：G5-C-P0 旧版真实发布兼容
+## 当前实施：G5-C-U1 人员身份与角色操作闭环
+
+基线 `a4d2046`（Run 43789241233 a1 8/8）。真实 Keycloak 26.8.1 + PG 18.4 验证：重新核验/晋升 → 同步登录角色 → 本人登录生效，后端无需修复；前端补“同步登录角色”入口（仅管理员）与“待身份处理 / 待本人重新登录 / 正式生效”状态。见 [47 号](47-G5-C-U1人员身份与角色操作闭环.md)。到此停止研发。
+
+## 历史：G5-C-P0 旧版真实发布兼容
 
 基线 `6a493e4`（Run 43377375213 a1 8/8）。新工具此前会错误拒绝现网 7b95580 的真实发布（旧 Compose 无 BAOBEI_IDENTITY_REALM）。改为新旧身份契约分离：只有批准的 7b95580/253b4a8 且清单键集合与旧工具完全一致时按旧契约核验，其余缺 Realm 的清单一律拒绝。见 45 号 §10。到此冻结，等待独立审查。
 

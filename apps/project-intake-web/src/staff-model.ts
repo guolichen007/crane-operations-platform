@@ -1,4 +1,4 @@
-import type { AccountOperation } from './staff-account';
+import { awaitsRoleSync, type AccountOperation } from './staff-account';
 export const roles: Record<string, string> = {
   baobei_sales: '销售',
   baobei_manager: '主管',
@@ -18,16 +18,19 @@ export const statuses: Record<string, string> = {
 
 // Status shown in lists: "待开通" splits into "awaiting review" and "in progress"
 // once an administrator approved this exact version.
-export function statusLabel(m: Pick<StaffMember, 'status' | 'provisionReviewed'> & Partial<Pick<StaffMember, 'accountState' | 'accountOperation'>>) {
+export function statusLabel(m: Pick<StaffMember, 'status' | 'provisionReviewed'> & Partial<Pick<StaffMember, 'accountState' | 'accountOperation' | 'identityLinked' | 'lastLogin'>>) {
   if (m.accountState === 'REVIEW' || m.accountOperation?.state === 'REVIEW') return '待核对';
   if (m.accountOperation?.state === 'STARTED') return '处理中';
   if (m.accountState === 'FAILED' && m.status !== 'SUSPENDED') return '开通失败';
   if (m.accountState === 'NONE' && m.status === 'PENDING_PROVISION') return '待开通';
+  // G5-C-U1: submitted, but the login still has the old role (not in effect).
+  if (m.accountState && awaitsRoleSync({ ...m, accountState: m.accountState, identityLinked: !!m.identityLinked })) return '待身份处理';
+  if (m.status === 'PENDING_ACTIVATION' && m.accountState === 'READY' && m.lastLogin) return '待本人重新登录';
   return m.status === 'PENDING_PROVISION' && m.provisionReviewed ? '待身份核验' : statuses[m.status] ?? m.status;
 }
 
 // The next step for each state, in the words of the person who must act.
-export function nextStep(m: Pick<StaffMember, 'status' | 'provisionReviewed' | 'syncStatus'> & Partial<Pick<StaffMember, 'accountState' | 'mustChangePassword' | 'accountOperation'>>,
+export function nextStep(m: Pick<StaffMember, 'status' | 'provisionReviewed' | 'syncStatus'> & Partial<Pick<StaffMember, 'accountState' | 'mustChangePassword' | 'accountOperation' | 'identityLinked' | 'lastLogin'>>,
   admin: boolean, accountService = false): string {
   if (m.status === 'REVOKED' || m.status === 'ARCHIVED') return '';
   if (accountService) {
@@ -36,6 +39,9 @@ export function nextStep(m: Pick<StaffMember, 'status' | 'provisionReviewed' | '
     if (m.status === 'SUSPENDED') return admin ? '可恢复登录或归档' : '';
     if (m.accountState === 'FAILED') return admin ? '开通未完成，可重新开通' : '等待管理员处理';
     if (m.accountState === 'NONE' || m.accountState === 'CREATING') return admin ? '请开通登录账号' : '等待管理员开通登录账号';
+    if (m.accountState && awaitsRoleSync({ ...m, accountState: m.accountState, identityLinked: !!m.identityLinked }))
+      return admin ? '已提交，尚未生效：请“同步登录角色”完成身份处理，之后成员本人重新登录才生效' : '已提交，等待管理员完成身份处理';
+    if (m.status === 'PENDING_ACTIVATION' && m.lastLogin && !m.mustChangePassword) return '等待成员本人用手机号重新登录，登录后才正式生效';
     if (m.status === 'PENDING_ACTIVATION' || m.mustChangePassword) return '等待成员用手机号和初始密码首次登录并修改密码';
     return '';
   }

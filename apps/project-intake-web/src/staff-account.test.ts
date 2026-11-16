@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { accountCause, accountDisplayState } from './staff-account';
+import { accountCause, accountDisplayState, awaitsRoleSync } from './staff-account';
 import { nextStep, statusLabel } from './staff-model';
 
 // G4-S5-R1-F: an unfinished or unconfirmed account operation is never shown as ready.
@@ -33,5 +33,33 @@ describe('account display state', () => {
 
   it('a finished account is ready', () => {
     expect(accountDisplayState({ accountState: 'READY', accountOperation: null })).toBe('READY');
+  });
+});
+
+// G5-C-U1: HTTP 200 of a promotion / re-verification is not "in effect".
+describe('role change after submit', () => {
+  const submitted = { status: 'PENDING_PROVISION', provisionReviewed: false, syncStatus: 'PENDING', accountState: 'READY',
+    identityLinked: true, mustChangePassword: false, lastLogin: '2026-11-16T00:00:00Z', accountOperation: null };
+  it('submitted with a login: 待身份处理, only the administrator syncs the role', () => {
+    expect(awaitsRoleSync(submitted)).toBe(true);
+    expect(statusLabel(submitted)).toBe('待身份处理');
+    expect(nextStep(submitted, true, true)).toContain('同步登录角色');
+    expect(nextStep(submitted, true, true)).toContain('尚未生效');
+    expect(nextStep(submitted, false, true)).toContain('等待管理员');
+  });
+  it('no sync entry without a login, while running or under review', () => {
+    expect(awaitsRoleSync({ ...submitted, accountState: 'NONE' })).toBe(false);
+    expect(awaitsRoleSync({ ...submitted, identityLinked: false })).toBe(false);
+    expect(awaitsRoleSync({ ...submitted, status: 'ACTIVE' })).toBe(false);
+    for (const state of ['STARTED', 'REVIEW'] as const)
+      expect(awaitsRoleSync({ ...submitted, accountOperation: { id: 'x', operation: 'SET_ROLE', state, step: 'ROLE', detail: '', at: '' } })).toBe(false);
+  });
+  it('after the sync: 待本人重新登录, then 已启用 after the own login', () => {
+    const synced = { ...submitted, status: 'PENDING_ACTIVATION', syncStatus: 'SUPERSEDED' };
+    expect(statusLabel(synced)).toBe('待本人重新登录');
+    expect(nextStep(synced, true, true)).toContain('本人重新登录');
+    expect(statusLabel({ ...synced, status: 'ACTIVE' })).toBe('已启用');
+    // A brand-new account still asks for the first login with the initial password.
+    expect(nextStep({ ...synced, lastLogin: null, mustChangePassword: true }, true, true)).toContain('初始密码');
   });
 });

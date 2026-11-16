@@ -1,7 +1,7 @@
 // A pending sensitive staff action survives the enterprise reauthentication round
 // trip (sessionStorage, same tab only, five minutes). The server re-checks
 // everything on submit; this only restores the administrator's form.
-export type StaffDraftAction = 'invite' | 'edit' | 'promote' | 'demote' | 'verify' | 'reactivate';
+export type StaffDraftAction = 'invite' | 'edit' | 'promote' | 'demote' | 'verify' | 'reactivate' | 'account-sync';
 
 export interface StaffDraftForm {
   name: string;
@@ -24,7 +24,7 @@ export interface StaffDraft {
 }
 
 const key = 'baobei.staffReauthDraft';
-const actions: StaffDraftAction[] = ['invite', 'edit', 'promote', 'demote', 'verify', 'reactivate'];
+const actions: StaffDraftAction[] = ['invite', 'edit', 'promote', 'demote', 'verify', 'reactivate', 'account-sync'];
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 
 export function saveStaffDraft(draft: StaffDraft) {

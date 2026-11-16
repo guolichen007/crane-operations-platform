@@ -1,5 +1,5 @@
 // G4-S5-R1-E: administrator-managed login accounts (dedicated Baobei realm).
-export type AccountAction = 'account-create' | 'account-reset' | 'account-phone' | 'account-disable' | 'account-enable' | 'account-revoke';
+export type AccountAction = 'account-create' | 'account-reset' | 'account-phone' | 'account-disable' | 'account-enable' | 'account-revoke' | 'account-sync';
 
 // Dialog kind → API action under /api/v1/staff/{id}/account/{action}.
 export const accountActions: Record<AccountAction, string> = {
@@ -9,7 +9,17 @@ export const accountActions: Record<AccountAction, string> = {
   'account-disable': 'disable',
   'account-enable': 'enable',
   'account-revoke': 'revoke',
+  'account-sync': 'sync-role',
 };
+
+// G5-C-U1: a submitted role change or identity re-verification of a member who
+// already has a login waits here: the login still carries the old role and
+// cannot sign in until an administrator syncs the exact role ("同步登录角色"),
+// and the change takes effect only after the member's own next login.
+export function awaitsRoleSync(m: { status: string; accountState: string; identityLinked: boolean; accountOperation?: AccountOperation | null }) {
+  return m.status === 'PENDING_PROVISION' && m.accountState === 'READY' && m.identityLinked &&
+    !(m.accountOperation && ['STARTED', 'REVIEW'].includes(m.accountOperation.state));
+}
 
 export const accountStateLabel: Record<string, string> = {
   NONE: '未开通',
