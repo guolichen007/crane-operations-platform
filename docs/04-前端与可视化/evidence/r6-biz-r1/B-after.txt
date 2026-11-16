@@ -1,0 +1,18 @@
+=== RUN   TestUpdateEquipmentTypeAndCatalogGuard
+--- PASS: TestUpdateEquipmentTypeAndCatalogGuard (0.12s)
+=== RUN   TestCreateEquipmentCatalogTypeMismatchRejected
+--- PASS: TestCreateEquipmentCatalogTypeMismatchRejected (0.10s)
+=== RUN   TestUpdateEquipmentCatalogImmutability
+--- PASS: TestUpdateEquipmentCatalogImmutability (0.10s)
+=== RUN   TestCreateEquipmentRejectsDisabledType
+--- PASS: TestCreateEquipmentRejectsDisabledType (0.10s)
+=== RUN   TestCreateEquipmentRejectsDisabledTypeThroughActiveCatalog
+--- PASS: TestCreateEquipmentRejectsDisabledTypeThroughActiveCatalog (0.10s)
+=== RUN   TestCreateEquipmentRejectsUnregisteredOrMissingType
+--- PASS: TestCreateEquipmentRejectsUnregisteredOrMissingType (0.10s)
+=== RUN   TestCreateEquipmentCatalogGuards
+--- PASS: TestCreateEquipmentCatalogGuards (0.11s)
+=== RUN   TestConcurrentTypeDisableBlocksInstall
+--- PASS: TestConcurrentTypeDisableBlocksInstall (0.12s)
+PASS
+ok  	github.com/guolichen007/crane-operations-platform/internal/asset	0.851s

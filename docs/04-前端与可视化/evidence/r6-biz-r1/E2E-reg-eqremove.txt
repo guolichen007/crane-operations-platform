@@ -1,0 +1,5 @@
+
+Running 1 test using 1 worker
+
+[1/1] [premium] › tests/e2e/premium/equipment-remove.spec.ts:76:1 › 拆卸提交中：按钮禁用、Esc/蒙层/取消均不能关闭，双击只发一次请求
+  1 passed (12.1s)

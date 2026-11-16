@@ -1,0 +1,25 @@
+
+Running 6 tests using 1 worker
+
+[1/6] [premium] › tests/e2e/premium/r5-mobile-overflow.spec.ts:101:3 › 移动/桌面 375px：主要页面无全局横向溢出
+[premium] › tests/e2e/premium/r5-mobile-overflow.spec.ts:101:3 › 移动/桌面 375px：主要页面无全局横向溢出
+MOBILE 375 [["/overview",375,[],[]],["/overview?view=2d",375,[],[]],["/portfolio",375,[],[]],["/projects",375,[],[]],["/devices",375,[],[]],["/assets",375,[],[]],["/assets/A2",375,[],[]],["/locations?project=P001",375,[],[]],["/catalog",375,[],[]],["/runtime",375,[],[]],["/alarms",375,[],[]]]
+
+[2/6] [premium] › tests/e2e/premium/r5-mobile-overflow.spec.ts:101:3 › 移动/桌面 390px：主要页面无全局横向溢出
+[premium] › tests/e2e/premium/r5-mobile-overflow.spec.ts:101:3 › 移动/桌面 390px：主要页面无全局横向溢出
+MOBILE 390 [["/overview",390,[],[]],["/overview?view=2d",390,[],[]],["/portfolio",390,[],[]],["/projects",390,[],[]],["/devices",390,[],[]],["/assets",390,[],[]],["/assets/A2",390,[],[]],["/locations?project=P001",390,[],[]],["/catalog",390,[],[]],["/runtime",390,[],[]],["/alarms",390,[],[]]]
+
+[3/6] [premium] › tests/e2e/premium/r5-mobile-overflow.spec.ts:101:3 › 移动/桌面 768px：主要页面无全局横向溢出
+[premium] › tests/e2e/premium/r5-mobile-overflow.spec.ts:101:3 › 移动/桌面 768px：主要页面无全局横向溢出
+MOBILE 768 [["/overview",768,[],[]],["/overview?view=2d",768,[],[]],["/portfolio",768,[],[]],["/projects",768,[],[]],["/devices",768,[],[]],["/assets",768,[],[]],["/assets/A2",768,[],[]],["/locations?project=P001",768,[],[]],["/catalog",768,[],[]],["/runtime",768,[],[]],["/alarms",768,[],[]]]
+
+[4/6] [premium] › tests/e2e/premium/r5-mobile-overflow.spec.ts:101:3 › 移动/桌面 1366px：主要页面无全局横向溢出
+[premium] › tests/e2e/premium/r5-mobile-overflow.spec.ts:101:3 › 移动/桌面 1366px：主要页面无全局横向溢出
+MOBILE 1366 [["/overview",1366,[],[]],["/overview?view=2d",1366,[],[]],["/portfolio",1366,[],[]],["/projects",1366,[],[]],["/devices",1366,[],[]],["/assets",1366,[],[]],["/assets/A2",1366,[],[]],["/locations?project=P001",1366,[],[]],["/catalog",1366,[],[]],["/runtime",1366,[],[]],["/alarms",1366,[],[]]]
+
+[5/6] [premium] › tests/e2e/premium/r5-mobile-overflow.spec.ts:101:3 › 移动/桌面 1920px：主要页面无全局横向溢出
+[premium] › tests/e2e/premium/r5-mobile-overflow.spec.ts:101:3 › 移动/桌面 1920px：主要页面无全局横向溢出
+MOBILE 1920 [["/overview",1920,[],[]],["/overview?view=2d",1920,[],[]],["/portfolio",1920,[],[]],["/projects",1920,[],[]],["/devices",1920,[],[]],["/assets",1920,[],[]],["/assets/A2",1920,[],[]],["/locations?project=P001",1920,[],[]],["/catalog",1920,[],[]],["/runtime",1920,[],[]],["/alarms",1920,[],[]]]
+
+[6/6] [premium] › tests/e2e/premium/r5-mobile-overflow.spec.ts:130:1 › D 运行身份入口为「查看运行状态」，不出现「最近状态 / LIVE」；空编号显示待补全与内部 ID
+  6 passed (1.2m)

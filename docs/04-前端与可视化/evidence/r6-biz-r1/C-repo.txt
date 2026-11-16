@@ -1,0 +1,8 @@
+=== RUN   TestAssetMoveHistory
+--- PASS: TestAssetMoveHistory (0.12s)
+=== RUN   TestAssetLocationReadbackAndHistory
+--- PASS: TestAssetLocationReadbackAndHistory (0.12s)
+=== RUN   TestConcurrentMoveLeavesExactlyOneCurrentLocation
+--- PASS: TestConcurrentMoveLeavesExactlyOneCurrentLocation (0.11s)
+PASS
+ok  	github.com/guolichen007/crane-operations-platform/internal/asset	0.355s

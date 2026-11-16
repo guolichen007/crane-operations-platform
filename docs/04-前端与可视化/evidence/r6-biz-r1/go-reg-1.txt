@@ -1,0 +1,5 @@
+ok  	github.com/guolichen007/crane-operations-platform/internal/asset	5.645s
+ok  	github.com/guolichen007/crane-operations-platform/internal/equipmenttypes	0.625s
+ok  	github.com/guolichen007/crane-operations-platform/internal/equipment	0.001s
+ok  	github.com/guolichen007/crane-operations-platform/tools/equipment-types	0.136s
+ok  	github.com/guolichen007/crane-operations-platform/deploy/postgres/migrations	0.368s

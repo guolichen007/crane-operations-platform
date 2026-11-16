@@ -1,0 +1,11 @@
+ok  	github.com/guolichen007/crane-operations-platform/internal/scheduling	1.277s
+ok  	github.com/guolichen007/crane-operations-platform/internal/fleet	0.009s
+ok  	github.com/guolichen007/crane-operations-platform/internal/platform	0.003s
+ok  	github.com/guolichen007/crane-operations-platform/internal/geo	0.016s
+ok  	github.com/guolichen007/crane-operations-platform/contracts/go	0.007s
+ok  	github.com/guolichen007/crane-operations-platform/contracts/pointcloud	0.001s
+ok  	github.com/guolichen007/crane-operations-platform/tools/astguard	0.003s
+?   	github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/alarm	[no test files]
+ok  	github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/device	0.317s
+ok  	github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/session	0.003s
+ok  	github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/auth	0.002s

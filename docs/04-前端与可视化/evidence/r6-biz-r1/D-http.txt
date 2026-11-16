@@ -1,0 +1,6 @@
+=== RUN   TestR6EquipmentTypeDirectoryHTTP
+--- PASS: TestR6EquipmentTypeDirectoryHTTP (0.19s)
+=== RUN   TestR6AssetLocationReadbackHTTP
+--- PASS: TestR6AssetLocationReadbackHTTP (0.17s)
+PASS
+ok  	github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/app	0.366s

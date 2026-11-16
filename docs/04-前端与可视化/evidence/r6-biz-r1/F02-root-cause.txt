@@ -1,0 +1,30 @@
+## F-02 root cause evidence — baseline 9809ecf44a8c942a20eb013de5b0b35d6216b14f (read with git grep at that SHA)
+
+### 1. migrations (00001–00012) touching equipment_types
+9809ecf:deploy/postgres/migrations/00005_asset_location_equipment_foundation.sql:9:CREATE TABLE equipment_types (
+9809ecf:deploy/postgres/migrations/00005_asset_location_equipment_foundation.sql:145:  type_code text NOT NULL REFERENCES equipment_types(type_code),
+9809ecf:deploy/postgres/migrations/00005_asset_location_equipment_foundation.sql:171:  type_code text NOT NULL REFERENCES equipment_types(type_code),
+
+### 2. INSERT statements in all 12 migrations (none target equipment_types)
+9809ecf:deploy/postgres/migrations/00001_baseline.sql:17:INSERT INTO tenants VALUES ('demo','Anonymous Demo');
+9809ecf:deploy/postgres/migrations/00001_baseline.sql:18:INSERT INTO projects VALUES ('Project-A','demo','Project-A');
+9809ecf:deploy/postgres/migrations/00001_baseline.sql:19:INSERT INTO users VALUES ('dev-admin','development-only');
+9809ecf:deploy/postgres/migrations/00001_baseline.sql:20:INSERT INTO roles VALUES ('platform_admin'),('operator'),('maintainer'),('viewer');
+9809ecf:deploy/postgres/migrations/00001_baseline.sql:21:INSERT INTO user_roles VALUES ('dev-admin','platform_admin');
+
+### 3. Who inserts equipment_types at 9809ecf (only tests and the B4 fixture)
+9809ecf:internal/asset/asset_test.go:23:	if _, err := db.Exec(`INSERT INTO equipment_types(type_code,display_name,domain,spec_schema_version,status) VALUES($1,$1,'MECHANICAL','1','ACTIVE')`, code); err != nil {
+9809ecf:internal/inventory/database_test.go:291:	if _, e := db.Exec(`INSERT INTO equipment_types(type_code,display_name,domain) VALUES('MOTOR','Motor','MECHANICAL')`); e != nil {
+9809ecf:services/cloud-api/internal/app/asset_audit_http_test.go:158:	if _, err := f.db.Exec(`INSERT INTO equipment_types(type_code,display_name,domain,spec_schema_version,status) VALUES('MOTOR','MOTOR','MECHANICAL','1','ACTIVE')`); err != nil {
+9809ecf:services/cloud-api/internal/app/asset_patch_noop_http_test.go:159:	if _, err := p.f.db.Exec(`INSERT INTO equipment_types(type_code,display_name,domain,spec_schema_version,status) VALUES
+9809ecf:services/cloud-api/internal/app/terminal_guard_http_test.go:14:	if _, err := f.db.Exec(`INSERT INTO equipment_types(type_code,display_name,domain,spec_schema_version,status) VALUES('MOTOR','MOTOR','MECHANICAL','1','ACTIVE')`); err != nil {
+9809ecf:tests/integration/a1fixture/main.go:249:	if _, err = db.ExecContext(ctx, `INSERT INTO equipment_types(type_code,display_name,domain,spec_schema_version,status) VALUES ('MOTOR','Motor','MECHANICAL','1','ACTIVE'),('PLC','PLC','CONTROL','1','ACTIVE') ON CONFLICT (type_code) DO NOTHING`); err != nil {
+
+### 4. Code registry size
+43
+
+### 5. Install API before R6 reads equipment_types without status (9809ecf internal/asset/asset.go)
+1171:	if err := tx.QueryRowContext(ctx, `SELECT spec_schema_version FROM equipment_types WHERE type_code=$1`, typeCode).Scan(&v); err != nil {
+
+### 6. GET /equipment/types = registry ∩ ACTIVE rows (empty table ⇒ [])
+612:		rows, err := h.db.QueryContext(r.Context(), `SELECT type_code, spec_schema_version FROM equipment_types WHERE status='ACTIVE'`)

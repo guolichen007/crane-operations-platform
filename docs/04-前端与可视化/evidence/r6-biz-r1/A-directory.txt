@@ -1,0 +1,10 @@
+=== RUN   TestFreshSchema12BootstrapMakesEquipmentInstallable
+--- PASS: TestFreshSchema12BootstrapMakesEquipmentInstallable (0.12s)
+=== RUN   TestApplyIsRepeatableAndDigestBound
+--- PASS: TestApplyIsRepeatableAndDigestBound (0.10s)
+=== RUN   TestDisabledConflictAndUnregisteredProtection
+--- PASS: TestDisabledConflictAndUnregisteredProtection (0.10s)
+=== RUN   TestApplyDoesNotTouchInstallationsOrHistory
+--- PASS: TestApplyDoesNotTouchInstallationsOrHistory (0.10s)
+PASS
+ok  	github.com/guolichen007/crane-operations-platform/internal/equipmenttypes	0.426s

@@ -1,0 +1,8 @@
+
+Running 4 tests using 1 worker
+
+[1/4] [premium] › tests/e2e/premium/r6-asset-location.spec.ts:65:1 › F-02 类型目录为空：安装表单显示管理员提示，安装按钮禁用，不发出空类型请求
+[2/4] [premium] › tests/e2e/premium/r6-asset-location.spec.ts:82:1 › F-02 有可用类型时：未选类型不能提交；选中后才可提交
+[3/4] [premium] › tests/e2e/premium/r6-asset-location.spec.ts:99:1 › F-03 当前位置：首次无位置诚实空态 → 移动后刷新为完整路径 → 再移动 → 历史两条 → 跳转位置中心
+[4/4] [premium] › tests/e2e/premium/r6-asset-location.spec.ts:143:1 › F-03 位置读取失败：显示错误与重试，而不是“未安装”
+  4 passed (1.6m)

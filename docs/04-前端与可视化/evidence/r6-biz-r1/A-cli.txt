@@ -1,0 +1,6 @@
+=== RUN   TestParseRefusesUnsafeInvocations
+--- PASS: TestParseRefusesUnsafeInvocations (0.00s)
+=== RUN   TestCLIPlanApplyVerifyNeverPrintsSecret
+--- PASS: TestCLIPlanApplyVerifyNeverPrintsSecret (0.13s)
+PASS
+ok  	github.com/guolichen007/crane-operations-platform/tools/equipment-types	0.137s

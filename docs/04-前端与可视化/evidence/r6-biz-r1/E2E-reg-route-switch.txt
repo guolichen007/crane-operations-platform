@@ -1,0 +1,10 @@
+
+Running 6 tests using 1 worker
+
+[1/6] [premium] › tests/e2e/premium/asset-route-switch.spec.ts:60:1 › 编辑草稿：A 的草稿在路由更新到 B 时需要确认；拒绝则留在 A，确认放弃后 B 页面无 A 的表单，B 从未被写入
+[2/6] [premium] › tests/e2e/premium/asset-route-switch.spec.ts:89:3 › 已打开的移动对话框：路由更新到 B 后对话框不得残留并对 B 生效
+[3/6] [premium] › tests/e2e/premium/asset-route-switch.spec.ts:89:3 › 已打开的退役对话框：路由更新到 B 后对话框不得残留并对 B 生效
+[4/6] [premium] › tests/e2e/premium/asset-route-switch.spec.ts:106:1 › Equipment 安装表单：A 的安装草稿不能安装到 B
+[5/6] [premium] › tests/e2e/premium/asset-route-switch.spec.ts:125:1 › 提交中切换：A 的保存请求未返回时拒绝切到 B；完成后 A 被更新、B 不变
+[6/6] [premium] › tests/e2e/premium/asset-route-switch.spec.ts:147:1 › 干净状态下切换：没有草稿与对话框时 A→B 直接切换且不提示
+  6 passed (15.7s)

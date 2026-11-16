@@ -1,0 +1,8 @@
+ok  	github.com/guolichen007/crane-operations-platform/internal/identity	0.332s
+ok  	github.com/guolichen007/crane-operations-platform/internal/portfolio	0.444s
+ok  	github.com/guolichen007/crane-operations-platform/internal/inventory	1.519s
+ok  	github.com/guolichen007/crane-operations-platform/internal/operations	1.305s
+?   	github.com/guolichen007/crane-operations-platform/internal/auditlog	[no test files]
+ok  	github.com/guolichen007/crane-operations-platform/internal/webauth	1.805s
+ok  	github.com/guolichen007/crane-operations-platform/tools/uatdata	1.940s
+?   	github.com/guolichen007/crane-operations-platform/tools/identity	[no test files]

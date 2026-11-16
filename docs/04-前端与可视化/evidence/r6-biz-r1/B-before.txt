@@ -1,0 +1,20 @@
+=== RUN   TestCreateEquipmentRejectsDisabledType
+    equipment_type_guard_test.go:53: install of a DISABLED equipment type was accepted
+--- FAIL: TestCreateEquipmentRejectsDisabledType (0.15s)
+=== RUN   TestCreateEquipmentRejectsDisabledTypeThroughActiveCatalog
+    equipment_type_guard_test.go:92: an ACTIVE catalog item must not reopen a DISABLED equipment type
+--- FAIL: TestCreateEquipmentRejectsDisabledTypeThroughActiveCatalog (0.11s)
+=== RUN   TestCreateEquipmentRejectsUnregisteredOrMissingType
+    equipment_type_guard_test.go:108: type missing from equipment_types: err = equipment type spec version: sql: no rows in result set, want ErrInvalidInput
+--- FAIL: TestCreateEquipmentRejectsUnregisteredOrMissingType (0.10s)
+=== RUN   TestCreateEquipmentCatalogGuards
+    equipment_type_guard_test.go:159: catalog type differs from instance type: err = catalog type "PLC" does not match equipment type "MOTOR", want invalid input
+    equipment_type_guard_test.go:159: disabled catalog: err = catalog item "2795f69b3d193ab0180dd7ec" is disabled, want invalid input
+    equipment_type_guard_test.go:159: unknown catalog: err = catalog spec version: sql: no rows in result set, want invalid input
+--- FAIL: TestCreateEquipmentCatalogGuards (0.11s)
+=== RUN   TestConcurrentTypeDisableBlocksInstall
+    equipment_type_guard_test.go:198: install ran against the pre-disable snapshot and succeeded
+--- FAIL: TestConcurrentTypeDisableBlocksInstall (0.13s)
+FAIL
+FAIL	github.com/guolichen007/crane-operations-platform/internal/asset	0.601s
+FAIL
