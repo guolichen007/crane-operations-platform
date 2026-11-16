@@ -21,7 +21,7 @@ SPEC = importlib.util.spec_from_file_location("direct_deploy_lifecycle", ENTRY)
 direct = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(direct)
 
-OLD, NEW = "253b4a8" + "0" * 33, "c" * 40
+OLD, NEW = "7b9558084d73f5210cdd08e8240883ecc1659de8", "c" * 40   # OLD = deployed production commit
 MIGRATIONS = ROOT / "services/project-intake-api/migrations"
 
 
@@ -143,15 +143,24 @@ class FakeDocker:
 
 
 def prepare_old(docker, state, secrets):
-    """The currently deployed pre-RC0 release: manifest without identity fields."""
-    with patch.object(direct, "SNAPSHOT", tuple(n for n in direct.SNAPSHOT if n != "compose.realm-baobei.yaml")):
-        direct.prepare(docker, state, secrets, OLD, "crane")
-    path = state / "releases" / OLD / "manifest.json"
-    manifest = json.loads(path.read_text())
-    manifest.pop("identity_realm")
-    manifest.pop("identity_issuer")
-    manifest["snapshot_sha256"] = direct.hash_files(state / "releases" / OLD, direct.snapshot_names(manifest))
-    direct.atomic_json(path, manifest)
+    """The currently deployed pre-RC0 release (G5-C-P0): the real files of the
+    deployed commit and the manifest exactly as the old tool wrote it (no realm
+    fields, old snapshot list, compose_sha256 of the old Compose)."""
+    import subprocess
+    release = state / "releases" / OLD
+    for name in direct.LEGACY_SNAPSHOT:
+        body = subprocess.run(["git", "show", f"{OLD}:deploy/baobei/{name}"], cwd=ROOT, check=True,
+                              capture_output=True).stdout
+        (release / name).parent.mkdir(parents=True, exist_ok=True)
+        (release / name).write_bytes(body)
+    images = docker.w.build_images(docker, OLD, None, None)
+    config = json.loads(docker.compose(release, secrets, images, "config", realm="crane"))
+    manifest = {"mode": "direct-local", "source_sha": OLD, "source": direct.SOURCE, "platform": docker.platform,
+                "built_at": "2026-11-11T00:00:00+00:00", "images": images, "go_proxy": direct.PUBLIC_GO_PROXIES[0],
+                "compose_sha256": direct.digest(direct.canonical_json(config)),
+                "snapshot_sha256": direct.hash_files(release, direct.LEGACY_SNAPSHOT),
+                "database_contract_sha256": direct.database_contract(docker.w.trees[OLD]), "rollback_target": None}
+    direct.atomic_json(release / "manifest.json", manifest)
     direct.atomic_json(state / "active.json", {"source_sha": OLD})
 
 
@@ -171,14 +180,8 @@ class PathATests(unittest.TestCase):
                  patch.object(direct.sys, "platform", "linux"):
                 # 1. Production today: the old release (crane) is active.
                 world.epoch_issuer = direct.REALMS["crane"]["issuer"]   # (pre-00006 the old API has no epoch; modelled as trusted)
-                with patch.object(direct, "SNAPSHOT", tuple(n for n in direct.SNAPSHOT if n != "compose.realm-baobei.yaml")):
-                    direct.prepare(docker, state, secrets, OLD, "crane")
-                old_manifest = json.loads((state / "releases" / OLD / "manifest.json").read_text())
-                old_manifest.pop("identity_realm")
-                old_manifest.pop("identity_issuer")
-                old_manifest["snapshot_sha256"] = direct.hash_files(state / "releases" / OLD, direct.snapshot_names(old_manifest))
-                direct.atomic_json(state / "releases" / OLD / "manifest.json", old_manifest)
-                direct.atomic_json(state / "active.json", {"source_sha": OLD})
+                prepare_old(docker, state, secrets)
+                direct.verify_release(docker, state, secrets, OLD)   # the real deployed release verifies
                 # 2. Prepare the new commit for both realms while OLD is active.
                 direct.prepare(docker, state, secrets, NEW, "crane")
                 direct.prepare(docker, state, secrets, NEW, "baobei")

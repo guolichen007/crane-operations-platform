@@ -171,7 +171,7 @@ class ManifestTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             state = Path(tmp).resolve()
             rid, release, manifest = self.make(state, "baobei")
-            with patch.object(direct, "config_hash", side_effect=lambda d, r, s, i, realm: "h-" + realm):
+            with patch.object(direct, "config_hash", side_effect=lambda d, r, s, i, realm, legacy=False: "h-" + realm):
                 direct.verify_release(self.docker(), state, state, rid)
                 # 1. overlay edited after prepare → snapshot hash mismatch
                 original = (release / "compose.realm-baobei.yaml").read_text()
@@ -194,16 +194,20 @@ class ManifestTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "Compose 配置哈希"):
                     direct.verify_release(self.docker(), state, state, rid)
 
-    def test_pre_rc0_release_still_verifies_as_crane(self):
+    def test_dropping_realm_fields_does_not_make_a_release_legacy(self):
+        # G5-C-P0: the former test mocked config_hash and accepted any commit
+        # whose manifest lacked identity_realm. Legacy acceptance now needs an
+        # approved deployed commit (test_legacy_release.py, real old files).
         with TemporaryDirectory() as tmp:
             state = Path(tmp).resolve()
             rid, release, manifest = self.make(state, "crane")
             legacy = {k: v for k, v in manifest.items() if k not in ("identity_realm", "identity_issuer")}
             (release / "compose.realm-baobei.yaml").unlink()
-            legacy["snapshot_sha256"] = direct.hash_files(release, direct.snapshot_names(legacy))
+            legacy["snapshot_sha256"] = direct.hash_files(release, direct.LEGACY_SNAPSHOT)
             direct.atomic_json(release / "manifest.json", legacy)
-            with patch.object(direct, "config_hash", side_effect=lambda d, r, s, i, realm: "h-" + realm):
-                direct.verify_release(self.docker(), state, state, rid)
+            with patch.object(direct, "config_hash", side_effect=lambda d, r, s, i, realm, legacy=False: "h-" + realm):
+                with self.assertRaisesRegex(ValueError, "旧版"):
+                    direct.verify_release(self.docker(), state, state, rid)
 
 
 class OrderGateTests(unittest.TestCase):

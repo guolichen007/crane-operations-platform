@@ -88,6 +88,7 @@ def test():
         else:
             raise AssertionError("unknown release id accepted")
         print("DIRECT_REALM_CRANE_DEFAULT=PASS DIRECT_REALM_BAOBEI_WIRED=PASS")
+        legacy_release_real_compose(docker, state, secrets_dir, manifest["images"])
         if sys.platform != "linux":
             print("BIND_ENGINE_MISSING_DENIED=NOT_RUN_NON_LINUX")
             return
@@ -124,6 +125,73 @@ def test():
                 docker.call(*args, "down", "--remove-orphans")
         print("BIND_ENGINE_MISSING_DENIED=PASS")
         postgres_not_recreated(docker, work, manifest, rendered["services"]["baobei-postgres"]["image"])
+
+
+def legacy_release_real_compose(docker, state, secrets_dir, current_images):
+    """G5-C-P0: the deployed pre-RC0 release (real files of 7b95580) verifies with
+    the new tool under real `docker compose config`; its manifest is written by
+    the old tool's own code (fetched from that commit) and kept byte-identical.
+    Images are tagged locally from the current build (only the tag and OCI labels
+    of the old commit are checked here; the old image content is not rebuilt)."""
+    import hashlib
+    old_sha = "7b9558084d73f5210cdd08e8240883ecc1659de8"
+    try:
+        old_tool = direct.git("show", old_sha + ":deploy/baobei/direct-deploy.py")
+    except ValueError:
+        print("DIRECT_LEGACY_REAL_COMPOSE=NOT_RUN (history of the deployed commit not fetched)")
+        return
+    namespace = {"__name__": "old_direct_deploy", "__file__": str(direct.ROOT / "deploy/baobei/direct-deploy.py")}
+    exec(compile(old_tool, "direct-deploy@7b95580", "exec"), namespace)
+    release = state / "releases" / old_sha
+    release.mkdir(parents=True)
+    for name in namespace["SNAPSHOT"]:
+        (release / name).parent.mkdir(parents=True, exist_ok=True)
+        (release / name).write_bytes(direct.git("show", f"{old_sha}:deploy/baobei/{name}"))
+    images = {}
+    for service, image in current_images.items():
+        ref = direct.local_ref(service, old_sha)
+        df = state / ("legacy-" + service + ".Dockerfile")
+        df.write_text(f"FROM {image['ref']}\nLABEL org.opencontainers.image.revision={old_sha} "
+                      f"org.opencontainers.image.source={direct.SOURCE}\n")
+        docker.call("build", "--pull=false", "--tag", ref, "-f", str(df), str(state), capture=False)
+        images[service] = docker.inspect(ref, old_sha)
+
+    class OldDocker:
+        """The old tool's compose(): production + direct only, as deployed."""
+        platform = docker.platform
+
+        def compose(self, rel, sec, imgs, *args, capture=True):
+            return docker.call("compose", "--project-name", "u-dao-baobei", "-f", "compose.production.yaml",
+                               "-f", "compose.direct.yaml", *args, cwd=rel, capture=capture,
+                               env={"COMPOSE_DISABLE_ENV_FILE": "1", "BAOBEI_SECRETS_DIR": str(sec),
+                                    "BAOBEI_WEB_IMAGE": imgs["baobei-web"]["ref"], "BAOBEI_API_IMAGE": imgs["baobei-api"]["ref"]})
+    manifest = {
+        "mode": "direct-local", "source_sha": old_sha, "source": direct.SOURCE, "platform": docker.platform,
+        "built_at": "2026-11-11T02:40:00+00:00", "images": images, "go_proxy": direct.PUBLIC_GO_PROXIES[0],
+        "compose_sha256": namespace["config_hash"](OldDocker(), release, secrets_dir, images),
+        "snapshot_sha256": namespace["hash_files"](release, namespace["SNAPSHOT"]),
+        "database_contract_sha256": "deployed-00005", "rollback_target": None,
+    }
+    namespace["atomic_json"](release / "manifest.json", manifest)
+    raw = (release / "manifest.json").read_bytes()
+    print("DIRECT_LEGACY_MANIFEST_SHA256=" + hashlib.sha256(raw).hexdigest())
+    _, verified = direct.verify_release(docker, state, secrets_dir, old_sha)
+    assert verified == manifest and (release / "manifest.json").read_bytes() == raw
+    # Tampering the old Compose (issuer) is refused even with a rehashed snapshot.
+    compose = release / "compose.production.yaml"
+    original = compose.read_bytes()
+    compose.write_bytes(original.replace(b"realms/crane", b"realms/other"))
+    tampered = {**manifest, "snapshot_sha256": namespace["hash_files"](release, namespace["SNAPSHOT"])}
+    namespace["atomic_json"](release / "manifest.json", tampered)
+    try:
+        direct.verify_release(docker, state, secrets_dir, old_sha)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("tampered legacy Compose accepted")
+    compose.write_bytes(original)
+    (release / "manifest.json").write_bytes(raw)
+    print("DIRECT_LEGACY_REAL_COMPOSE=PASS")
 
 
 FIXTURE = """name: {project}

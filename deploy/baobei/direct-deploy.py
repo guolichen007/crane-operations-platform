@@ -73,6 +73,31 @@ def parse_release(rid):
     if not match:
         raise ValueError("无效的发布标识")
     return match.group(1), match.group(2) or DEFAULT_REALM
+
+
+# G5-C-P0 (P0-LEGACY-01): releases prepared by the pre-RC0 tool have no realm
+# fields and a compose.production.yaml without BAOBEI_IDENTITY_REALM. They are
+# accepted only when they are one of these approved, already-deployed commits
+# (strict allow list, never "the manifest lacks identity_realm"), and only with
+# the legacy identity contract: shared crane issuer and client, no account
+# service. Every other check (snapshot hash, images, Compose hash, services,
+# database contract) is the same as for current releases.
+LEGACY_RELEASES = frozenset({
+    "253b4a8f8e612c2380355b83e8a790e8c9cd7d8a",  # G4-S4 review baseline
+    "7b9558084d73f5210cdd08e8240883ecc1659de8",  # deployed in production (schema 00005)
+})
+LEGACY_SNAPSHOT = tuple(n for n in SNAPSHOT if n != "compose.realm-baobei.yaml")
+LEGACY_MANIFEST_KEYS = frozenset({"mode", "source_sha", "source", "platform", "built_at", "images", "go_proxy",
+                                  "compose_sha256", "snapshot_sha256", "database_contract_sha256", "rollback_target"})
+
+
+def legacy_release(manifest, source):
+    """True only for an approved pre-RC0 release in the exact old manifest format."""
+    if "identity_realm" in manifest or "identity_issuer" in manifest or "tools_sha256" in manifest:
+        return False
+    if source not in LEGACY_RELEASES or set(manifest) != LEGACY_MANIFEST_KEYS:
+        raise ValueError("发布清单缺少身份 Realm：只有批准的旧版发布可按旧格式校验")
+    return True
 # Upgrades and rollbacks must never reconcile PostgreSQL: a new release directory changes
 # the bind-mount source paths and therefore the database service config hash.
 APP_UP = ("up", "-d", "--no-build", "--pull", "never", "--no-deps",
@@ -271,13 +296,21 @@ class Docker:
         return {"ref": ref, "id": image["Id"], "created_at": image["Created"]}
 
 
-def check_identity(config, realm):
-    """The rendered API service must carry exactly the approved realm wiring."""
+def check_identity(config, realm, legacy=False):
+    """The rendered API service must carry exactly the approved realm wiring.
+
+    legacy=True (approved pre-RC0 release only): the old Compose had no
+    BAOBEI_IDENTITY_REALM; it must still name the crane issuer and client and
+    must not carry the account service."""
     profile = realm_profile(realm)
     api = config["services"]["baobei-api"]
     env = api.get("environment") or {}
     secrets = {s["source"] if isinstance(s, dict) else s for s in api.get("secrets") or []}
     expected = {"BAOBEI_IDENTITY_REALM": realm, "OIDC_ISSUER": profile["issuer"], "OIDC_CLIENT_ID": profile["client_id"]}
+    if legacy:
+        if realm != DEFAULT_REALM or "BAOBEI_IDENTITY_REALM" in env:
+            raise ValueError("旧版发布只能是不含 Realm 字段的共享 crane 配置")
+        expected.pop("BAOBEI_IDENTITY_REALM")
     if any(env.get(k) != v for k, v in expected.items()):
         raise ValueError("渲染后的 API 身份配置与批准的 Realm 不一致")
     if profile["account_client_id"]:
@@ -292,10 +325,10 @@ def check_identity(config, realm):
         raise ValueError("共享 Realm 不得启用账号服务")
 
 
-def config_hash(docker, release, secrets, images, realm=DEFAULT_REALM):
+def config_hash(docker, release, secrets, images, realm=DEFAULT_REALM, legacy=False):
     config = json.loads(docker.compose(release, secrets, images, "config", "--no-path-resolution",
                                       "--format", "json", realm=realm))
-    check_identity(config, realm)
+    check_identity(config, realm, legacy)
     services = config["services"]
     if set(services) != {*SERVICES, "baobei-postgres"}:
         raise ValueError("直接部署服务集合有误")
@@ -349,11 +382,12 @@ def verify_release(docker, state, secrets, rid):
     release = state / "releases" / rid
     require_directory(release)
     manifest = read_json(release / "manifest.json")
-    # Releases prepared before G5-RC0 have no realm field: they are crane releases.
-    if manifest.get("identity_realm", DEFAULT_REALM) != realm:
-        raise ValueError("发布清单的身份 Realm 与发布标识不一致")
-    if manifest.get("identity_issuer", REALMS[realm]["issuer"]) != REALMS[realm]["issuer"]:
-        raise ValueError("发布清单的 Issuer 与批准的 Realm 不一致")
+    # Approved pre-RC0 releases only (strict allow list + exact old manifest keys).
+    legacy = legacy_release(manifest, source)
+    if legacy and realm != DEFAULT_REALM:
+        raise ValueError("旧版发布只能作为共享 crane 发布校验")
+    if not legacy and (manifest.get("identity_realm") != realm or manifest.get("identity_issuer") != REALMS[realm]["issuer"]):
+        raise ValueError("发布清单的身份 Realm 或 Issuer 与发布标识不一致")
     if (manifest["mode"] != "direct-local" or manifest["source_sha"] != source or
             manifest["source"] != SOURCE or manifest["platform"] != docker.platform or
             manifest["snapshot_sha256"] != hash_files(release, snapshot_names(manifest))):
@@ -363,14 +397,14 @@ def verify_release(docker, state, secrets, rid):
     for service, image in manifest["images"].items():
         if docker.inspect(local_ref(service, source), source) != image:
             raise ValueError("本地镜像已更改，请停止部署")
-    if manifest["compose_sha256"] != config_hash(docker, release, secrets, manifest["images"], realm):
+    if manifest["compose_sha256"] != config_hash(docker, release, secrets, manifest["images"], realm, legacy):
         raise ValueError("Compose 配置哈希不匹配")
     return release, manifest
 
 
 def snapshot_names(manifest):
-    """Pre-RC0 releases were snapshotted without the realm overlay."""
-    return SNAPSHOT if "identity_realm" in manifest else tuple(n for n in SNAPSHOT if n != "compose.realm-baobei.yaml")
+    """Approved pre-RC0 releases were snapshotted without the realm overlay."""
+    return LEGACY_SNAPSHOT if legacy_release(manifest, manifest.get("source_sha")) else SNAPSHOT
 
 
 def prepare(docker, state, secrets, source, realm=DEFAULT_REALM):
