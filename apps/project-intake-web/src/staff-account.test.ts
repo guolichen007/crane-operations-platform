@@ -57,7 +57,7 @@ describe('role change after submit', () => {
   it('after the sync: 待本人重新登录, then 已启用 after the own login', () => {
     const synced = { ...submitted, status: 'PENDING_ACTIVATION', syncStatus: 'SUPERSEDED' };
     expect(statusLabel(synced)).toBe('待本人重新登录');
-    expect(nextStep(synced, true, true)).toContain('本人重新登录');
+    expect(nextStep(synced, true, true)).toBe('等待成员本人用手机号重新登录，登录后才正式生效');
     expect(statusLabel({ ...synced, status: 'ACTIVE' })).toBe('已启用');
     // A brand-new account still asks for the first login with the initial password.
     expect(nextStep({ ...synced, lastLogin: null, mustChangePassword: true }, true, true)).toContain('初始密码');
