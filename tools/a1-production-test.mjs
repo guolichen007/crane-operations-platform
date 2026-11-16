@@ -89,7 +89,30 @@ try {
     b4Args[b4Args.indexOf('--config') + 1] = 'playwright.b4.config.ts';
     // Pin the run id so the DB verifier can locate this run's run-unique codes.
     const b4RunId = Math.random().toString(16).slice(2, 10).toUpperCase().padEnd(8, '0');
-    run(npm[0], b4Args, { A1_WEB_ORIGIN: webOrigin, A1_AUTH_ORIGIN: authOrigin, A1_BROWSER_PASSWORD_FILE: join(directory, 'secrets/browser_test_password'), B4_RUN_ID: b4RunId });
+    const b4Env = { A1_WEB_ORIGIN: webOrigin, A1_AUTH_ORIGIN: authOrigin, A1_BROWSER_PASSWORD_FILE: join(directory, 'secrets/browser_test_password'), B4_RUN_ID: b4RunId };
+    // R6-BIZ-R1 F-02: (1) the freshly migrated directory is empty — prove the UI/API refusal first;
+    // (2) initialize MOTOR/PLC with the production equipment-types binary from the candidate image
+    //     (read-only plan → apply bound to the plan digest → verify), keeping its JSON records;
+    // (3) run the rest of the B4 suite on the initialized directory.
+    const r6Dir = resolve('test-results-r6'); mkdirSync(r6Dir, { recursive: true });
+    run(npm[0], [...b4Args, '--grep', '@r6-empty-types'], b4Env);
+    const typesTool = [...compose, 'run', '--rm', '--no-deps', '--entrypoint', 'equipment-types', '-e', 'DATABASE_URL=postgres://crane_app@postgres:5432/crane_app?sslmode=disable', '-e', 'DATABASE_PASSWORD_FILE=/fixture/secrets/app_db_password', 'fixture-tool'];
+    const planOut = run(docker, [...typesTool, 'plan', '--types', 'MOTOR,PLC'], {}, true);
+    const plan = JSON.parse(planOut).plan;
+    assert.deepEqual(plan.toCreate, ['MOTOR', 'PLC']);
+    const applyOut = run(docker, [...typesTool, 'apply', '--types', 'MOTOR,PLC', '--approve', plan.digest, '--actor', 'b4-fixture-operator'], {}, true);
+    assert.equal(JSON.parse(applyOut).record.result, 'success');
+    const verifyOut = run(docker, [...typesTool, 'verify', '--types', 'MOTOR,PLC'], {}, true);
+    assert.equal(JSON.parse(verifyOut).report.consistent, true);
+    const replanOut = run(docker, [...typesTool, 'plan', '--types', 'MOTOR,PLC'], {}, true);
+    const reapplyOut = run(docker, [...typesTool, 'apply', '--types', 'MOTOR,PLC', '--approve', JSON.parse(replanOut).plan.digest, '--actor', 'b4-fixture-operator'], {}, true);
+    assert.equal(JSON.parse(reapplyOut).record.result, 'noop');
+    for (const [name, text] of [['plan', planOut], ['apply', applyOut], ['verify', verifyOut], ['replan', replanOut], ['reapply', reapplyOut]]) {
+      assert.doesNotMatch(text, /postgres:\/\/|password/i);
+      writeFileSync(join(r6Dir, `equipment-types-${name}.json`), text);
+    }
+    console.log('R6_EQUIPMENT_TYPES_BOOTSTRAP=PASS CREATED=MOTOR,PLC SECOND_APPLY=noop');
+    run(npm[0], [...b4Args, '--grep-invert', '@r6-empty-types'], b4Env);
     run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-tool', '--operation', 'verify-b4-state', '--b4-run-id', b4RunId]);
     console.log('B4_BUSINESS_ACCEPTANCE=PASS KEYCLOAK=REAL E2E_BROWSER_CRUD=REAL RBAC=REAL DB_STATE=VERIFIED');
   }

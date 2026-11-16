@@ -89,6 +89,30 @@ const h21aPackages = [
     'TestSnapshotInvariantDetectsTornReader',
     'TestSummaryRuntimeInvariants',
   ]],
+  // R6-BIZ-R1: F-02 type directory bootstrap, disabled-type install guard, F-03 location readback.
+  ['r6-equipmenttypes', './internal/equipmenttypes', [
+    'TestFreshSchema12BootstrapMakesEquipmentInstallable',
+    'TestApplyIsRepeatableAndDigestBound',
+    'TestDisabledConflictAndUnregisteredProtection',
+    'TestApplyDoesNotTouchInstallationsOrHistory',
+  ]],
+  ['r6-equipment-types-cli', './tools/equipment-types', [
+    'TestParseRefusesUnsafeInvocations',
+    'TestCLIPlanApplyVerifyNeverPrintsSecret',
+  ]],
+  ['r6-asset', './internal/asset', [
+    'TestCreateEquipmentRejectsDisabledType',
+    'TestCreateEquipmentRejectsDisabledTypeThroughActiveCatalog',
+    'TestCreateEquipmentRejectsUnregisteredOrMissingType',
+    'TestCreateEquipmentCatalogGuards',
+    'TestConcurrentTypeDisableBlocksInstall',
+    'TestAssetLocationReadbackAndHistory',
+    'TestConcurrentMoveLeavesExactlyOneCurrentLocation',
+  ]],
+  ['r6-cloudapi', './services/cloud-api/internal/app', [
+    'TestR6EquipmentTypeDirectoryHTTP',
+    'TestR6AssetLocationReadbackHTTP',
+  ]],
   // D1 synthetic acceptance dataset: exact-id cleanup, ownership refusal, server-side guard.
   ['h3-uatdata', './tools/uatdata', [
     'TestSeedVerifyReseedCleanup',
@@ -144,6 +168,7 @@ try {
   console.log('R2_H21A_DB_TEST=PASS');
   console.log('R2_H21C_DB_TEST=PASS');
   console.log('R2_H3_UATDATA_DB_TEST=PASS');
+  console.log('R2_R6_BIZ_DB_TEST=PASS');
 } finally {
   run(docker, [...compose, 'down', '--volumes', '--remove-orphans'], first);
 }

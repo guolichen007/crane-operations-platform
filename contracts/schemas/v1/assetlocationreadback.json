@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.invalid/crane/v1/assetlocationreadback.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "assetId",
+    "projectId",
+    "assetStatus",
+    "current"
+  ],
+  "properties": {
+    "assetId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "projectId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,80}$"
+    },
+    "assetStatus": {
+      "type": "string",
+      "enum": [
+        "DRAFT",
+        "ACTIVE",
+        "OUT_OF_SERVICE",
+        "RETIRED"
+      ]
+    },
+    "current": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AssetCurrentLocation"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "AssetCurrentLocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "installationId",
+        "locationId",
+        "code",
+        "name",
+        "kind",
+        "status",
+        "validFrom",
+        "path"
+      ],
+      "properties": {
+        "installationId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        },
+        "locationId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        },
+        "code": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 160
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "SITE",
+            "PLANT",
+            "WORKSHOP",
+            "BAY",
+            "RUNWAY",
+            "OTHER"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "ACTIVE",
+            "DISABLED"
+          ]
+        },
+        "validFrom": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "path": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AssetLocationPathNode"
+          }
+        }
+      }
+    },
+    "AssetLocationPathNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "code",
+        "name",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,80}$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "SITE",
+            "PLANT",
+            "WORKSHOP",
+            "BAY",
+            "RUNWAY",
+            "OTHER"
+          ]
+        },
+        "code": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 160
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "ACTIVE",
+            "DISABLED"
+          ]
+        }
+      }
+    }
+  }
+}

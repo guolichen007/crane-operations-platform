@@ -1868,3 +1868,12 @@
 /* R5-UX-PERF D: a missing business number is labelled, never invented. */
 .code-missing { color: var(--warning, #e8b75d); font-weight: 500; }
 .code-missing small { display: block; margin-top: 2px; color: var(--text-3); font-size: 11px; font-weight: 400; overflow-wrap: anywhere; }
+/* R6-BIZ-R1 F-03: current installation location on the asset detail overview. */
+.asset-location { margin-top: 16px; display: flex; flex-direction: column; gap: 10px; }
+.asset-location-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.asset-location-head h2 { margin: 0; font-size: 15px; color: var(--text-1); }
+.detail-cell.wide { grid-column: 1 / -1; }
+.detail-cell b a { color: var(--accent-blue); }
+.detail-cell b, .history-modal td { overflow-wrap: anywhere; }
+.history-modal { width: min(920px, calc(100vw - 32px)); max-height: calc(100vh - 64px); overflow: auto; }
+.data-row.row-focus { outline: 2px solid var(--accent-blue); outline-offset: -2px; }

@@ -530,6 +530,48 @@ export interface OperationsSummary {
   metrics: OperationsMetrics;
   regions: (OperationsRegion)[];
 }
+export interface AssetLocationPathNode {
+  id: string;
+  kind: "SITE" | "PLANT" | "WORKSHOP" | "BAY" | "RUNWAY" | "OTHER";
+  code: string | null;
+  name: string;
+  status: "ACTIVE" | "DISABLED";
+}
+export interface AssetCurrentLocation {
+  installationId: string;
+  locationId: string;
+  code: string | null;
+  name: string;
+  kind: "SITE" | "PLANT" | "WORKSHOP" | "BAY" | "RUNWAY" | "OTHER";
+  status: "ACTIVE" | "DISABLED";
+  validFrom: string;
+  path: (AssetLocationPathNode)[];
+}
+export interface AssetLocationReadback {
+  assetId: string;
+  projectId: string;
+  assetStatus: "DRAFT" | "ACTIVE" | "OUT_OF_SERVICE" | "RETIRED";
+  current: AssetCurrentLocation | null;
+}
+export interface AssetInstallationRecord {
+  installationId: string;
+  locationId: string;
+  code: string | null;
+  name: string;
+  kind: "SITE" | "PLANT" | "WORKSHOP" | "BAY" | "RUNWAY" | "OTHER";
+  status: "ACTIVE" | "DISABLED";
+  validFrom: string;
+  validTo: string | null;
+  current: boolean;
+  path: (AssetLocationPathNode)[];
+}
+export interface AssetInstallationHistory {
+  assetId: string;
+  total: number;
+  limit: number;
+  offset: number;
+  items: (AssetInstallationRecord)[];
+}
 export type Envelope = {
   schemaVersion: 1;
   messageId: string;

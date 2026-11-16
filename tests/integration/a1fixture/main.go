@@ -245,10 +245,11 @@ func seed(ctx context.Context) error {
 			}
 		}
 	}
-	// Seed reference data and a cross-project target for the B4 business flow.
-	if _, err = db.ExecContext(ctx, `INSERT INTO equipment_types(type_code,display_name,domain,spec_schema_version,status) VALUES ('MOTOR','Motor','MECHANICAL','1','ACTIVE'),('PLC','PLC','CONTROL','1','ACTIVE') ON CONFLICT (type_code) DO NOTHING`); err != nil {
-		return err
-	}
+	// R6-BIZ-R1 F-02: the equipment type directory is NOT seeded here any more. A real deployment
+	// migrates to schema 12 with an empty directory; the B4 run proves that state first
+	// (tests/e2e/b4/r6-business-closure.spec.ts @r6-empty-types) and then initializes MOTOR/PLC with
+	// the production `equipment-types` tool (tools/a1-production-test.mjs), exactly as the operator
+	// runbook does.
 	// Q4-QA-R1: no location is seeded. The B4 browser flow creates its own location through the
 	// 位置中心 UI before moving an asset (tests/e2e/b4/asset-crud.spec.ts), so the business loop is
 	// proven from an empty location table.

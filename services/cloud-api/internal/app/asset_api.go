@@ -350,6 +350,67 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 		respondAPI(w, 200, map[string]string{"status": "moved"})
 	})
 
+	// ---- R6-BIZ-R1 F-03: current installation location + history (read-only) ----
+	// Project scope first, exactly like GET /api/v1/assets/{id}: an unknown asset or
+	// one outside the caller's projects is 404 (never a leak); no write, no audit.
+	api.HandleFunc("GET /api/v1/assets/{id}/location", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		project, err := h.projectOfAsset(r, id)
+		if err != nil {
+			respondAPI(w, 404, map[string]string{"error": "not found"})
+			return
+		}
+		if !h.authorizeProjectCapability(w, r, project, identity.CapRead) {
+			return
+		}
+		out, err := asset.GetAssetLocation(r.Context(), h.db, id)
+		if err != nil {
+			if errors.Is(err, asset.ErrNotFound) {
+				respondAPI(w, 404, map[string]string{"error": "not found"})
+				return
+			}
+			respondAPI(w, 503, map[string]string{"error": "database unavailable"})
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		respondAPI(w, 200, out)
+	})
+
+	api.HandleFunc("GET /api/v1/assets/{id}/installation-history", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		project, err := h.projectOfAsset(r, id)
+		if err != nil {
+			respondAPI(w, 404, map[string]string{"error": "not found"})
+			return
+		}
+		if !h.authorizeProjectCapability(w, r, project, identity.CapRead) {
+			return
+		}
+		q := r.URL.Query()
+		opts := asset.ListOptions{}
+		for key, dst := range map[string]*int{"limit": &opts.Limit, "offset": &opts.Offset} {
+			if v := q.Get(key); v != "" {
+				n, err := strconv.Atoi(v)
+				if err != nil || n < 0 || (key == "limit" && (n < 1 || n > 100)) {
+					respondAPI(w, 400, map[string]string{"error": "invalid " + key})
+					return
+				}
+				*dst = n
+			}
+		}
+		out, err := asset.ListAssetInstallationHistory(r.Context(), h.db, id, opts)
+		if err != nil {
+			if errors.Is(err, asset.ErrNotFound) {
+				respondAPI(w, 404, map[string]string{"error": "not found"})
+				return
+			}
+			respondAPI(w, 503, map[string]string{"error": "database unavailable"})
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		respondAPI(w, 200, out)
+	})
+
 	// ---- Location ----
 	api.HandleFunc("GET /api/v1/projects/{projectId}/locations", func(w http.ResponseWriter, r *http.Request) {
 		projectID := r.PathValue("projectId")
@@ -804,11 +865,22 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 		in.AssetId = assetID
 		out, err := asset.CreateEquipment(r.Context(), h.db, in.EquipmentInstallation, in.Spec, currentPrincipal(r).user, requestID(r), r.Header.Get("Idempotency-Key"))
 		if err != nil {
-			if errors.Is(err, asset.ErrIdempotencyKey) {
+			// R6-BIZ-R1: a refused install is classified (422 not installable / 409 terminal or
+			// replay conflict / 404 gone); a database failure is 503, never a client error.
+			switch {
+			case errors.Is(err, asset.ErrIdempotencyKey):
 				respondAPI(w, 409, map[string]string{"error": "idempotency conflict"})
-				return
+			case errors.Is(err, asset.ErrRetired):
+				respondAPI(w, 409, map[string]string{"error": err.Error()})
+			case errors.Is(err, asset.ErrNotFound):
+				respondAPI(w, 404, map[string]string{"error": "not found"})
+			case errors.Is(err, asset.ErrCrossProject):
+				respondAPI(w, 422, map[string]string{"error": "catalog item belongs to another project"})
+			case errors.Is(err, asset.ErrInvalidInput):
+				respondAPI(w, 422, map[string]string{"error": err.Error()})
+			default:
+				respondAPI(w, 503, map[string]string{"error": "database unavailable"})
 			}
-			respondAPI(w, 400, map[string]string{"error": err.Error()})
 			return
 		}
 		setETag(w, out.Version)

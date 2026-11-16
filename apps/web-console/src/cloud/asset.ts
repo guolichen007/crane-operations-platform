@@ -8,6 +8,9 @@ import type {
   EquipmentInstallation,
   EquipmentRelation,
   EquipmentType,
+  AssetLocationReadback,
+  AssetInstallationHistory,
+  AssetLocationPathNode,
 } from '../../../../contracts/typescript/types.gen';
 
 export type AssetListParams = {
@@ -63,6 +66,16 @@ export const retireAsset = (id: string, version: number) =>
   api<{ status: string }>(`assets/${encodeURIComponent(id)}/retire`, { method: 'POST', body: {}, ifMatch: version });
 export const moveAsset = (id: string, locationId: string, version: number) =>
   api<{ status: string }>(`assets/${encodeURIComponent(id)}/move`, { method: 'POST', body: { locationId }, ifMatch: version });
+
+// ---- R6-BIZ-R1 F-03: current installation location (read-only) ----
+/** Current location (current=null when the asset was never installed) — never a coordinate. */
+export const getAssetLocation = (id: string) => api<AssetLocationReadback>(`assets/${encodeURIComponent(id)}/location`);
+export const listAssetInstallationHistory = (id: string, limit = 20, offset = 0) =>
+  api<AssetInstallationHistory>(`assets/${encodeURIComponent(id)}/installation-history`, { query: { limit, offset } });
+/** 「场地 › 厂区 › 车间」 from the root→leaf path; each level shows its name (and code when present). */
+export function locationPathText(path: readonly AssetLocationPathNode[], kindText: Record<string, string>): string {
+  return path.map((n) => `${kindText[n.kind] ?? n.kind}·${n.name}${n.code ? `（${n.code}）` : ''}`).join(' › ');
+}
 
 // ---- Location ----
 export const listLocations = (projectId: string, params: LocationListParams = {}) =>

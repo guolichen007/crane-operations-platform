@@ -16,7 +16,12 @@ import {
   listAllLocations,
   listEquipmentTypes,
   equipmentTypeLabel,
+  getAssetLocation,
+  listAssetInstallationHistory,
+  locationPathText,
 } from '../cloud/asset';
+import { KIND_TEXT } from '../cloud/location-form';
+import { formatCloudTime } from '../cloud/format';
 import { ApiError } from '../cloud/client';
 import { assetCodeDisplay } from '../cloud/format';
 import { webSession } from '../cloud/session';
@@ -57,9 +62,33 @@ const locationsQuery = useQuery({
   enabled: computed(() => !!assetProjectId.value),
 });
 
-// No API returns an asset's current location yet (moves are recorded in asset_installations, which is
-// not exposed): the former "位置" tab was a dead button and is removed rather than showing an invented
-// location (Q4-QA-R1 §4, recorded as DEFERRED).
+// R6-BIZ-R1 F-03: the current installation location comes from GET /assets/{id}/location
+// (asset_installations, valid_to IS NULL). current=null is an honest "未安装到任何位置" — never a
+// map or regional coordinate. History is loaded only when the user opens it.
+const locationQuery = useQuery({
+  queryKey: computed(() => ['asset-location', id.value]),
+  queryFn: () => getAssetLocation(id.value),
+});
+const currentLocation = computed(() => locationQuery.data.value?.current ?? null);
+const HISTORY_PAGE = 20;
+const historyOpen = ref(false);
+const historyOffset = ref(0);
+const historyQuery = useQuery({
+  queryKey: computed(() => ['asset-installation-history', id.value, historyOffset.value]),
+  queryFn: () => listAssetInstallationHistory(id.value, HISTORY_PAGE, historyOffset.value),
+  enabled: historyOpen,
+});
+function openHistory() {
+  historyOffset.value = 0;
+  historyOpen.value = true;
+}
+function closeHistory() {
+  historyOpen.value = false;
+}
+const kindLabel = (k: string) => KIND_TEXT[k] ?? k;
+const pathLabel = (p: Parameters<typeof locationPathText>[0]) => locationPathText(p, KIND_TEXT);
+/** 位置中心 deep link that scopes to the asset's project and highlights the location. */
+const locationLink = (locationId: string) => ({ path: '/locations', query: { project: asset.value?.projectId ?? '', location: locationId } });
 const tab = ref<'overview' | 'equipment'>('overview');
 const moveTargets = computed(() => (locationsQuery.data.value ?? []) as AssetLocation[]);
 
@@ -141,6 +170,8 @@ async function refreshAfterWrite() {
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: ['asset', id] }),
     queryClient.invalidateQueries({ queryKey: ['assets'] }),
+    queryClient.invalidateQueries({ queryKey: ['asset-location'] }),
+    queryClient.invalidateQueries({ queryKey: ['asset-installation-history'] }),
   ]);
 }
 
@@ -173,12 +204,14 @@ function openMove() {
   void locationsQuery.refetch();
 }
 const moved = ref('');
+const movedLocationId = ref('');
 const moveMutation = useMutation({
   mutationFn: () => moveAsset(moveTarget.value, move.draft.value!.locationId, move.baseVersion.value!),
   onSuccess: async () => {
     const target = moveTargets.value.find((l) => l.id === move.draft.value?.locationId);
     move.close();
     moved.value = target ? `已移动到「${target.name}」。` : '已移动。';
+    movedLocationId.value = target?.id ?? '';
     await refreshAfterWrite();
   },
   onError: (e) => {
@@ -249,6 +282,7 @@ function onKeydown(event: KeyboardEvent) {
   else if (equipmentEditing.value) closeEquipmentEdit();
   else if (equipmentAdding.value) closeEquipmentAdd();
   else if (removeConfirm.value) closeRemove();
+  else if (historyOpen.value) closeHistory();
 }
 function onBeforeUnload(event: BeforeUnloadEvent) {
   if (anyDirty.value || anyPending.value) {
@@ -281,6 +315,7 @@ function closeAllDialogs() {
   move.close();
   moveError.value = '';
   moved.value = '';
+  movedLocationId.value = '';
   retire.close();
   retireError.value = '';
   equipmentAdding.value = false;
@@ -290,6 +325,7 @@ function closeAllDialogs() {
   equipmentEditError.value = '';
   removeTarget.value = null;
   removeError.value = '';
+  historyOpen.value = false;
   editTarget.value = moveTarget.value = retireTarget.value = equipmentAddTarget.value = '';
   tab.value = 'overview';
 }
@@ -300,7 +336,13 @@ function closeAllDialogs() {
 // Equipment types come from the backend's code-owned registry (the same one
 // that validates specs), so the form never offers an unregistered code and each
 // option shows the Chinese name next to the stable code.
-const typesQuery = useQuery({ queryKey: ['equipment-types'], queryFn: listEquipmentTypes, staleTime: Infinity });
+// staleTime is bounded (not Infinity): after an administrator initializes the type directory the
+// page picks it up on the next visit instead of keeping a cached empty list for the whole session.
+const typesQuery = useQuery({ queryKey: ['equipment-types'], queryFn: listEquipmentTypes, staleTime: 60_000 });
+// R6-BIZ-R1 F-02: a successfully loaded but EMPTY dictionary means the type directory was never
+// initialized. Installing is then impossible: say so plainly and offer no submit.
+const noInstallableTypes = computed(() => typesQuery.isSuccess.value && (typesQuery.data.value?.length ?? 0) === 0);
+const NO_TYPES_TEXT = '尚未配置可安装的设备类型，请联系管理员初始化类型目录';
 const typeLabel = (code: string) => equipmentTypeLabel(code, typesQuery.data.value);
 const equipmentAdding = ref(false);
 const blankEquipment = (): EquipmentInstallation => ({
@@ -332,6 +374,7 @@ const equipmentAddDirty = computed(
 // only generated when (re)opening the form or after a successful install.
 let equipmentIdemKey = '';
 function openEquipmentAdd() {
+  void typesQuery.refetch();
   equipmentDraft.value = blankEquipment();
   equipmentSpec.value = {};
   equipmentAddError.value = '';
@@ -345,18 +388,23 @@ function closeEquipmentAdd() {
   equipmentAddError.value = '';
 }
 const createEquipmentMutation = useMutation({
-  mutationFn: () =>
-    createEquipment(
+  mutationFn: () => {
+    // Never send an install without a type chosen from the loaded dictionary.
+    if (!equipmentDraft.value.typeCode || !typesQuery.data.value?.some((t) => t.typeCode === equipmentDraft.value.typeCode)) {
+      return Promise.reject(new Error('请选择已初始化的设备类型'));
+    }
+    return createEquipment(
       { ...equipmentDraft.value, assetId: equipmentAddTarget.value, spec: equipmentSpec.value },
-      equipmentIdemKey
-    ),
+      equipmentIdemKey,
+    );
+  },
   onSuccess: async () => {
     equipmentAdding.value = false;
     equipmentIdemKey = '';
     await queryClient.invalidateQueries({ queryKey: ['equipment', id] });
   },
   // The form stays open with every input kept; the error is shown inside it.
-  onError: (e) => (equipmentAddError.value = errorText(e, '安装失败')),
+  onError: (e) => (equipmentAddError.value = e instanceof ApiError ? errorText(e, '安装失败') : (e as Error).message || '安装失败'),
 });
 // The confirmation pins id, code and version when it opens (Q4-QA-R1): the submit sends exactly that
 // version as If-Match, so a background refetch can never make it remove a newer record the user has
@@ -460,13 +508,17 @@ const statusText: Record<string, string> = {
       <button type="button" class="ghost-action" @click="assetQuery.refetch()">重试</button>
     </p>
     <template v-else-if="asset">
-      <p v-if="moved" class="form-note" role="status" data-testid="asset-moved">{{ moved }}</p>
+      <p v-if="moved" class="form-note" role="status" data-testid="asset-moved">
+        {{ moved }}
+        <RouterLink v-if="movedLocationId" :to="locationLink(movedLocationId)" data-testid="asset-moved-location-link">在位置中心查看</RouterLink>
+      </p>
       <div class="tabs" role="tablist">
         <button :class="{ active: tab === 'overview' }" @click="tab = 'overview'">概览</button>
         <button :class="{ active: tab === 'equipment' }" @click="tab = 'equipment'">设备</button>
       </div>
 
-      <div v-if="tab === 'overview'" class="detail-grid">
+      <template v-if="tab === 'overview'">
+      <div class="detail-grid">
         <div class="detail-cell"><span>资产名称</span><b>{{ asset.displayName || '—' }}</b></div>
         <div class="detail-cell"><span>资产编号</span><b v-if="assetCodeDisplay(asset).code">{{ assetCodeDisplay(asset).code }}</b
           ><b v-else class="code-missing" data-testid="asset-code-missing">编号待补全<small>内部 ID {{ asset.id }} · 项目 {{ asset.projectId }}</small></b></div>
@@ -478,6 +530,33 @@ const statusText: Record<string, string> = {
         <div class="detail-cell"><span>特种设备代码</span><b>{{ asset.specialEquipmentCode ?? '—' }}</b></div>
         <div class="detail-cell"><span>使用登记证号</span><b>{{ asset.useRegistrationNo ?? '—' }}</b></div>
       </div>
+
+      <section class="asset-location" data-testid="asset-current-location" aria-labelledby="asset-location-title">
+        <header class="asset-location-head">
+          <h2 id="asset-location-title">当前位置</h2>
+          <button type="button" class="ghost-action" data-testid="asset-location-history-open" @click="openHistory">查看位置历史</button>
+        </header>
+        <p v-if="locationQuery.isLoading.value" class="skeleton" aria-busy="true" data-testid="asset-location-loading" style="height: 32px"></p>
+        <p v-else-if="locationQuery.isError.value" class="workspace-error" role="alert" data-testid="asset-location-error">
+          {{ errorText(locationQuery.error.value, '当前位置加载失败') }}（不是“未安装”）
+          <button type="button" class="ghost-action" @click="locationQuery.refetch()">重试</button>
+        </p>
+        <p v-else-if="!currentLocation" class="workspace-empty" data-testid="asset-location-empty">
+          该资产尚未安装到任何位置。<template v-if="canWrite">可点击右上角「移动」选择所在位置。</template>
+        </p>
+        <div v-else class="detail-grid" data-testid="asset-location-current" :data-location-id="currentLocation.locationId">
+          <div class="detail-cell"><span>位置</span><b>
+            <RouterLink :to="locationLink(currentLocation.locationId)" data-testid="asset-location-link">{{ currentLocation.name }}</RouterLink>
+            <small v-if="currentLocation.code">（{{ currentLocation.code }}）</small>
+          </b></div>
+          <div class="detail-cell"><span>类型</span><b>{{ kindLabel(currentLocation.kind) }}</b></div>
+          <div class="detail-cell"><span>位置状态</span><b data-testid="asset-location-status">{{ currentLocation.status === 'ACTIVE' ? '在用' : '已停用' }}</b></div>
+          <div class="detail-cell"><span>安装起始</span><b>{{ formatCloudTime(currentLocation.validFrom) }}</b></div>
+          <div class="detail-cell wide"><span>完整路径</span><b data-testid="asset-location-path">{{ pathLabel(currentLocation.path) }}</b></div>
+        </div>
+        <p class="muted small">位置来自资产安装记录；不显示经纬度，不以行政区中心代替现场位置。</p>
+      </section>
+      </template>
 
       <div v-else>
         <div class="equipment-toolbar">
@@ -608,10 +687,11 @@ const statusText: Record<string, string> = {
         <h2>安装 Equipment</h2>
         <label>设备类型
           <select v-model="equipmentDraft.typeCode" required aria-label="设备类型选择">
-            <option value="" disabled>{{ typesQuery.isLoading.value ? '加载类型…' : typesQuery.isError.value ? '类型字典加载失败' : '选择已注册类型' }}</option>
+            <option value="" disabled>{{ typesQuery.isLoading.value ? '加载类型…' : typesQuery.isError.value ? '类型字典加载失败' : noInstallableTypes ? '暂无可安装类型' : '选择已注册类型' }}</option>
             <option v-for="t in typesQuery.data.value" :key="t.typeCode" :value="t.typeCode">{{ t.displayName }}（{{ t.typeCode }}）</option>
           </select>
         </label>
+        <p v-if="noInstallableTypes" class="form-error" role="alert" data-testid="equipment-types-empty">{{ NO_TYPES_TEXT }}</p>
         <p v-if="typesQuery.isError.value" class="form-error" role="alert" data-testid="equipment-types-error">
           设备类型字典加载失败，无法选择类型。
           <button type="button" class="ghost-action" @click="typesQuery.refetch()">重试</button>
@@ -627,7 +707,7 @@ const statusText: Record<string, string> = {
         <p v-if="equipmentAddError" class="form-error" role="alert" data-testid="equipment-create-error">{{ equipmentAddError }}</p>
         <div class="modal-actions">
           <button type="button" class="ghost-action" :disabled="createEquipmentMutation.isPending.value" @click="closeEquipmentAdd">取消</button>
-          <button type="submit" class="primary-action" :disabled="createEquipmentMutation.isPending.value">
+          <button type="submit" class="primary-action" data-testid="equipment-create-submit" :disabled="createEquipmentMutation.isPending.value || !typesQuery.isSuccess.value || noInstallableTypes || !equipmentDraft.typeCode">
             {{ createEquipmentMutation.isPending.value ? '安装中…' : '安装' }}
           </button>
         </div>
@@ -674,6 +754,39 @@ const statusText: Record<string, string> = {
           >
             {{ removeEquipmentMutation.isPending.value ? '拆卸中…' : '确认拆卸' }}
           </button>
+        </div>
+      </div>
+    </div>
+    <div v-if="historyOpen" class="modal-backdrop" @click.self="closeHistory">
+      <div class="workspace-modal history-modal" role="dialog" aria-labelledby="asset-history-title" data-testid="asset-location-history">
+        <h2 id="asset-history-title">位置历史</h2>
+        <p v-if="historyQuery.isLoading.value" class="skeleton table-skeleton" aria-busy="true"></p>
+        <p v-else-if="historyQuery.isError.value" class="form-error" role="alert" data-testid="asset-location-history-error">
+          {{ errorText(historyQuery.error.value, '位置历史加载失败') }}
+          <button type="button" class="ghost-action" @click="historyQuery.refetch()">重试</button>
+        </p>
+        <p v-else-if="!historyQuery.data.value?.items.length" class="workspace-empty" data-testid="asset-location-history-empty">该资产没有安装位置记录。</p>
+        <template v-else>
+          <table class="data-table" data-testid="asset-location-history-table">
+            <thead><tr><th>位置</th><th>完整路径</th><th>起始</th><th>结束</th><th>位置状态</th></tr></thead>
+            <tbody>
+              <tr v-for="r in historyQuery.data.value.items" :key="r.installationId" class="data-row" :data-installation-id="r.installationId" :data-current="r.current">
+                <td><RouterLink :to="locationLink(r.locationId)">{{ r.name }}</RouterLink> <span v-if="r.current" class="tiny-badge">当前</span></td>
+                <td>{{ pathLabel(r.path) }}</td>
+                <td>{{ formatCloudTime(r.validFrom) }}</td>
+                <td>{{ r.validTo ? formatCloudTime(r.validTo) : '—' }}</td>
+                <td>{{ r.status === 'ACTIVE' ? '在用' : '已停用' }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="modal-actions" v-if="historyQuery.data.value.total > HISTORY_PAGE">
+            <span class="muted small">共 {{ historyQuery.data.value.total }} 条</span>
+            <button type="button" class="ghost-action" :disabled="historyOffset === 0" @click="historyOffset = Math.max(0, historyOffset - HISTORY_PAGE)">上一页</button>
+            <button type="button" class="ghost-action" :disabled="historyOffset + HISTORY_PAGE >= historyQuery.data.value.total" @click="historyOffset += HISTORY_PAGE">下一页</button>
+          </div>
+        </template>
+        <div class="modal-actions">
+          <button type="button" class="ghost-action" data-testid="asset-location-history-close" @click="closeHistory">关闭</button>
         </div>
       </div>
     </div>

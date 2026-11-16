@@ -23,6 +23,9 @@ const status = ref('');
 // "全国运营视图" scope. Without a scope, the page offers the caller's projects.
 const projectId = computed(() => (typeof route.query.project === 'string' ? route.query.project : ''));
 const grants = computed(() => webSession.value?.projects ?? []);
+// R6-BIZ-R1: ?location= (from 资产详情「当前位置」) highlights that row; the row is still found only inside
+// the scoped, authorized project's own location list — the parameter never widens what is read.
+const focusLocation = computed(() => (typeof route.query.location === 'string' ? route.query.location : ''));
 const authorized = computed(() => !productionAuth || isAuthorizedScope(projectId.value, grants.value));
 // The create entry follows CapLocationWrite (platform_admin on THIS project); the server decides.
 const canCreate = computed(() => !!projectId.value && (!productionAuth || canWriteProject(webSession.value, projectId.value)));
@@ -213,7 +216,7 @@ onBeforeRouteUpdate((to, from) => {
         <table class="data-table" data-testid="location-table">
           <thead><tr><th>名称</th><th>编号</th><th>类型</th><th>状态</th><th>坐标</th><th>地址</th></tr></thead>
           <tbody>
-            <tr v-for="row in flattened" :key="row.node.id" class="data-row" :class="row.depth ? 'tree-child' : 'tree-root'" :data-location-id="row.node.id">
+            <tr v-for="row in flattened" :key="row.node.id" class="data-row" :class="[row.depth ? 'tree-child' : 'tree-root', { 'row-focus': row.node.id === focusLocation }]" :data-location-id="row.node.id" :aria-current="row.node.id === focusLocation ? 'location' : undefined">
               <td :style="{ paddingLeft: 12 + row.depth * 16 + 'px' }">{{ row.depth ? '└ ' : '' }}{{ row.node.name }}</td>
               <td>{{ row.node.code ?? '—' }}</td>
               <td>{{ KIND_TEXT[row.node.kind] ?? row.node.kind }}</td>

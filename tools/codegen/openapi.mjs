@@ -101,6 +101,14 @@ add('/api/v1/assets/{id}', 'get', 'getAssetMasterData', assetMaster);
 add('/api/v1/assets/{id}', 'patch', 'updateAssetMasterData', assetMaster);
 add('/api/v1/assets/{id}/retire', 'post', 'retireAsset', null);
 add('/api/v1/assets/{id}/move', 'post', 'moveAsset', null);
+// R6-BIZ-R1 F-03: read-only current installation location and paged installation history
+// (asset_installations, valid_to IS NULL = current). Project scope first: unknown or foreign asset → 404.
+add('/api/v1/assets/{id}/location', 'get', 'getAssetLocation', { $ref: '#/components/schemas/AssetLocationReadback' });
+add('/api/v1/assets/{id}/installation-history', 'get', 'listAssetInstallationHistory', { $ref: '#/components/schemas/AssetInstallationHistory' });
+paths['/api/v1/assets/{id}/installation-history'].get.parameters.push(
+  { name: 'limit', in: 'query', required: false, schema: { type: 'integer', minimum: 1, maximum: 100, default: 50 } },
+  { name: 'offset', in: 'query', required: false, schema: { type: 'integer', minimum: 0, default: 0 } },
+);
 add('/api/v1/projects/{projectId}/locations', 'get', 'listLocations', { type: 'array', items: assetLocation });
 add('/api/v1/projects/{projectId}/locations', 'post', 'createLocation', assetLocation, '201');
 add('/api/v1/locations/{id}', 'get', 'getLocation', assetLocation);

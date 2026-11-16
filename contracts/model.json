@@ -2315,6 +2315,189 @@
           "ref": "OperationsRegion"
         }
       }
+    },
+    "AssetLocationPathNode": {
+      "id": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "kind": {
+        "type": "string",
+        "enum": [
+          "SITE",
+          "PLANT",
+          "WORKSHOP",
+          "BAY",
+          "RUNWAY",
+          "OTHER"
+        ]
+      },
+      "code": {
+        "type": "string",
+        "maxLength": 160,
+        "nullable": true
+      },
+      "name": {
+        "type": "string",
+        "maxLength": 256
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "ACTIVE",
+          "DISABLED"
+        ]
+      }
+    },
+    "AssetCurrentLocation": {
+      "installationId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "locationId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "code": {
+        "type": "string",
+        "maxLength": 160,
+        "nullable": true
+      },
+      "name": {
+        "type": "string",
+        "maxLength": 256
+      },
+      "kind": {
+        "type": "string",
+        "enum": [
+          "SITE",
+          "PLANT",
+          "WORKSHOP",
+          "BAY",
+          "RUNWAY",
+          "OTHER"
+        ]
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "ACTIVE",
+          "DISABLED"
+        ]
+      },
+      "validFrom": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "path": {
+        "type": "array",
+        "items": {
+          "ref": "AssetLocationPathNode"
+        }
+      }
+    },
+    "AssetLocationReadback": {
+      "assetId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "projectId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "assetStatus": {
+        "type": "string",
+        "enum": [
+          "DRAFT",
+          "ACTIVE",
+          "OUT_OF_SERVICE",
+          "RETIRED"
+        ]
+      },
+      "current": {
+        "ref": "AssetCurrentLocation",
+        "nullable": true
+      }
+    },
+    "AssetInstallationRecord": {
+      "installationId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "locationId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "code": {
+        "type": "string",
+        "maxLength": 160,
+        "nullable": true
+      },
+      "name": {
+        "type": "string",
+        "maxLength": 256
+      },
+      "kind": {
+        "type": "string",
+        "enum": [
+          "SITE",
+          "PLANT",
+          "WORKSHOP",
+          "BAY",
+          "RUNWAY",
+          "OTHER"
+        ]
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "ACTIVE",
+          "DISABLED"
+        ]
+      },
+      "validFrom": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "validTo": {
+        "type": "string",
+        "format": "date-time",
+        "nullable": true
+      },
+      "current": {
+        "type": "boolean"
+      },
+      "path": {
+        "type": "array",
+        "items": {
+          "ref": "AssetLocationPathNode"
+        }
+      }
+    },
+    "AssetInstallationHistory": {
+      "assetId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,80}$"
+      },
+      "total": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "offset": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "items": {
+        "type": "array",
+        "items": {
+          "ref": "AssetInstallationRecord"
+        }
+      }
     }
   },
   "restTypes": [
@@ -2363,6 +2546,11 @@
     "OperationsRegion",
     "OperationsFreshness",
     "OperationsScope",
-    "OperationsSummary"
+    "OperationsSummary",
+    "AssetLocationPathNode",
+    "AssetCurrentLocation",
+    "AssetLocationReadback",
+    "AssetInstallationRecord",
+    "AssetInstallationHistory"
   ]
 }

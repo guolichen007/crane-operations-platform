@@ -1145,33 +1145,56 @@ type equipmentSnapshot struct {
 	Spec json.RawMessage `json:"spec,omitempty"`
 }
 
-// resolveSpecSchemaVersion derives the spec schema version from the catalog item
-// when present, otherwise from the registered equipment type. When a catalog is
-// referenced it must be type-consistent, enabled, and global or same-project.
-// It never hardcodes "1".
+// resolveSpecSchemaVersion is the single installability gate for a NEW equipment
+// installation (R6-BIZ-R1 B). It derives the spec schema version from the catalog
+// item when present, otherwise from the equipment type, and never hardcodes "1".
+//
+//   - typeCode must be in the code-owned registry (equipment.Types / spec schemas);
+//   - its equipment_types row must exist and be ACTIVE — a DISABLED type is not
+//     installable even through an ACTIVE catalog item;
+//   - a referenced catalog must exist, be ACTIVE, have the same type and be global
+//     or of the asset's project.
+//
+// Both rows are read FOR SHARE inside the install transaction, so a concurrent
+// disable of the type or catalog either commits first (and the install sees it,
+// READ COMMITTED re-reads the locked row) or waits until the install commits. Only
+// new installations are gated: existing installations of a later-disabled type
+// keep their history and stay updatable/removable.
 func resolveSpecSchemaVersion(ctx context.Context, tx *sql.Tx, assetProjectID, typeCode string, catalogItemID *string) (string, error) {
+	if !equipment.ValidTypeCode(typeCode) {
+		return "", fmt.Errorf("%w: equipment type %q is not in the code registry", ErrInvalidInput, typeCode)
+	}
+	var typeStatus, typeVersion string
+	if err := tx.QueryRowContext(ctx, `SELECT status, spec_schema_version FROM equipment_types WHERE type_code=$1 FOR SHARE`, typeCode).Scan(&typeStatus, &typeVersion); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", fmt.Errorf("%w: equipment type %q is not initialized in the type directory", ErrInvalidInput, typeCode)
+		}
+		return "", err
+	}
+	if typeStatus != "ACTIVE" {
+		return "", fmt.Errorf("%w: equipment type %q is disabled", ErrInvalidInput, typeCode)
+	}
 	if catalogItemID != nil && *catalogItemID != "" {
 		var catType, catStatus, schemaVersion string
 		var catProject *string
-		if err := tx.QueryRowContext(ctx, `SELECT type_code,status,spec_schema_version,project_id FROM equipment_catalog_items WHERE id=$1`, *catalogItemID).Scan(&catType, &catStatus, &schemaVersion, &catProject); err != nil {
-			return "", fmt.Errorf("catalog spec version: %w", err)
-		}
-		if catType != typeCode {
-			return "", fmt.Errorf("catalog type %q does not match equipment type %q", catType, typeCode)
-		}
-		if catStatus != "ACTIVE" {
-			return "", fmt.Errorf("catalog item %q is disabled", *catalogItemID)
+		if err := tx.QueryRowContext(ctx, `SELECT type_code,status,spec_schema_version,project_id FROM equipment_catalog_items WHERE id=$1 FOR SHARE`, *catalogItemID).Scan(&catType, &catStatus, &schemaVersion, &catProject); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return "", fmt.Errorf("%w: catalog item not found", ErrInvalidInput)
+			}
+			return "", err
 		}
 		if catProject != nil && *catProject != assetProjectID {
 			return "", ErrCrossProject
 		}
+		if catType != typeCode {
+			return "", fmt.Errorf("%w: catalog type %q does not match equipment type %q", ErrInvalidInput, catType, typeCode)
+		}
+		if catStatus != "ACTIVE" {
+			return "", fmt.Errorf("%w: catalog item %q is disabled", ErrInvalidInput, *catalogItemID)
+		}
 		return schemaVersion, nil
 	}
-	var v string
-	if err := tx.QueryRowContext(ctx, `SELECT spec_schema_version FROM equipment_types WHERE type_code=$1`, typeCode).Scan(&v); err != nil {
-		return "", fmt.Errorf("equipment type spec version: %w", err)
-	}
-	return v, nil
+	return typeVersion, nil
 }
 
 // CreateEquipment installs an equipment instance on an asset, validating the
@@ -1216,7 +1239,7 @@ func CreateEquipment(ctx context.Context, db *sql.DB, in contract.EquipmentInsta
 		return in, err
 	}
 	if err := equipment.ValidateSpec(in.TypeCode, schemaVersion, spec); err != nil {
-		return in, fmt.Errorf("equipment spec: %w", err)
+		return in, fmt.Errorf("%w: equipment spec: %v", ErrInvalidInput, err)
 	}
 	if in.Id == "" {
 		in.Id = platform.ID()
@@ -1237,6 +1260,12 @@ func CreateEquipment(ctx context.Context, db *sql.DB, in contract.EquipmentInsta
 	_, err = tx.ExecContext(ctx, `INSERT INTO asset_equipment_installations(id,asset_id,equipment_code,type_code,catalog_item_id,manufacturer_snapshot,brand_snapshot,model_snapshot,serial_number,semantic_slot,position_label,criticality,administrative_state,valid_from,version,spec_json) VALUES($1,$2,$3,$4,$5,'','','',$6,$7,$8,$9,$10,now(),$11,$12::jsonb)`,
 		in.Id, in.AssetId, in.EquipmentCode, in.TypeCode, in.CatalogItemId, in.SerialNumber, in.SemanticSlot, in.PositionLabel, in.Criticality, in.AdministrativeState, in.Version, string(spec))
 	if err != nil {
+		// A client-caused constraint violation (duplicate equipment code on the asset,
+		// out-of-range criticality / state) is invalid input, not a database outage.
+		var pg *pgconn.PgError
+		if errors.As(err, &pg) && (pg.Code == "23505" || pg.Code == "23514") {
+			return in, fmt.Errorf("%w: %s", ErrInvalidInput, pg.Message)
+		}
 		return in, err
 	}
 	if err := revision(ctx, tx, projectID, in.AssetId, "equipment", in.Id, actor, requestID, []string{"created"}, equipmentSnapshot{EquipmentInstallation: in, Spec: spec}); err != nil {

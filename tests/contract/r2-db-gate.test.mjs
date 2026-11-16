@@ -53,12 +53,20 @@ test('r2-b2-test.mjs gates the four H2-1A real-PostgreSQL tests and gives invent
     'TestSummaryFutureSkewBoundariesAndConfig', 'TestSummaryEmptyDatabaseIsLegalZero', 'TestSummaryMoreThan100RecordsAndReviewAssets',
     'TestSummaryQueryFailureIsUnavailableNotPartial', 'TestSummaryConcurrentWritersSeeOneSnapshot',
     'TestSummaryLeavesNoSessionSettingOnPooledConnection', 'TestSnapshotInvariantDetectsTornReader', 'TestSummaryRuntimeInvariants',
-    'TestSeedVerifyReseedCleanup', 'TestCleanupRefusesForeignOwnership', 'TestVerifyDetectsDrift', 'TestVerifyDetectsGrantLeak', 'TestGuardRequiresServerSideIdentity'])
+    'TestSeedVerifyReseedCleanup', 'TestCleanupRefusesForeignOwnership', 'TestVerifyDetectsDrift', 'TestVerifyDetectsGrantLeak', 'TestGuardRequiresServerSideIdentity',
+    // R6-BIZ-R1
+    'TestFreshSchema12BootstrapMakesEquipmentInstallable', 'TestApplyIsRepeatableAndDigestBound', 'TestDisabledConflictAndUnregisteredProtection',
+    'TestApplyDoesNotTouchInstallationsOrHistory', 'TestParseRefusesUnsafeInvocations', 'TestCLIPlanApplyVerifyNeverPrintsSecret',
+    'TestCreateEquipmentRejectsDisabledType', 'TestCreateEquipmentRejectsDisabledTypeThroughActiveCatalog', 'TestCreateEquipmentRejectsUnregisteredOrMissingType',
+    'TestCreateEquipmentCatalogGuards', 'TestConcurrentTypeDisableBlocksInstall', 'TestAssetLocationReadbackAndHistory',
+    'TestConcurrentMoveLeavesExactlyOneCurrentLocation', 'TestR6EquipmentTypeDirectoryHTTP', 'TestR6AssetLocationReadbackHTTP'])
     assert.ok(runner.includes(`'${name}'`), `missing required test ${name}`);
   assert.match(runner, /\['h21a-inventory', '\.\/internal\/inventory'/);
   assert.match(runner, /\['h21a-cloudapi', '\.\/services\/cloud-api\/internal\/app'/);
   assert.match(runner, /\['h21c-operations', '\.\/internal\/operations'/);
   assert.match(runner, /\['h3-uatdata', '\.\/tools\/uatdata'/);
+  for (const [name, path] of [['r6-equipmenttypes', 'internal/equipmenttypes'], ['r6-equipment-types-cli', 'tools/equipment-types'], ['r6-asset', 'internal/asset'], ['r6-cloudapi', 'services/cloud-api/internal/app']])
+    assert.ok(runner.includes(`['${name}', './${path}'`), `R6 gate package ${name} missing`);
   assert.match(runner, /runTargetGate\(name, required\)/);
   assert.match(runner, /gateProblems\(output, required, \{ exact: true \}\)/);
   const compose = readFileSync('tests/integration/a1/compose.yml', 'utf8');
