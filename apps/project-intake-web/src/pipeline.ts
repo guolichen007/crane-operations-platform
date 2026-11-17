@@ -4,6 +4,21 @@ import { stages } from './model';
 export const stageCodes = Object.keys(stages);
 export const progressStages = stageCodes.slice(0, 9); // L0..L8
 
+// V1.1: six display groups over the 12 stored stage codes. Display only: the
+// stored codes, the state machine and history never change.
+export const stageGroups = [
+  { code: 'G1', label: '商机发现', stages: ['L0_LEAD', 'L1_REQUIREMENT'] },
+  { code: 'G2', label: '技术推进', stages: ['L2_TECHNICAL', 'L3_SITE_SURVEY'] },
+  { code: 'G3', label: '方案报价', stages: ['L4_SOLUTION', 'L5_QUOTATION'] },
+  { code: 'G4', label: '商务推进', stages: ['L6_TENDER', 'L7_COMMERCIAL'] },
+  { code: 'G5', label: '签约推进', stages: ['L8_PENDING_CONTRACT'] },
+  { code: 'G6', label: '结果归档', stages: ['WON', 'LOST', 'HOLD'] },
+] as const;
+export const groupOf = (stage: string) => stageGroups.find((g) => (g.stages as readonly string[]).includes(stage))?.code ?? '';
+export function groupCounts(counts: Record<string, number>) {
+  return stageGroups.map((g) => ({ ...g, count: g.stages.reduce((a, s) => a + (counts[s] ?? 0), 0) }));
+}
+
 // Mirror of the server's validStage() for statuses where a stage change is
 // allowed (DRAFT/RETURNED: any other stage; SUBMITTED/UNDER_REVIEW/APPROVED:
 // one step forward, HOLD/LOST with a reason, WON only from L8, HOLD only back
@@ -42,6 +57,9 @@ export interface PipelineFilters {
   status: string;
   province: string;
   updatedAfter: string; // RFC3339 or ''
+  scope?: string;
+  memberId?: string;
+  teamId?: string;
 }
 export function filterQuery(f: PipelineFilters): URLSearchParams {
   const p = new URLSearchParams();

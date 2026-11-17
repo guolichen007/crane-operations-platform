@@ -2,7 +2,9 @@
 import { ref, watch, computed, onBeforeUnmount } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { Search, SlidersHorizontal, ArrowUpRight, List, Columns3 } from '@lucide/vue';
-import { readFilters, writeFilters, toPipeline } from './view-state';
+import { readFilters, writeFilters, toPipeline, scopeParams } from './view-state';
+import { stageGroups } from './pipeline';
+import ScopePicker, { type ScopeValue } from './ScopePicker.vue';
 import { useApp } from './store';
 import { type Project, statuses, stages, when } from './model';
 import { projectScopeLabel, can } from './navigation';
@@ -25,6 +27,9 @@ const app = useApp(),
   after = ref(initial.after),
   sort = ref<'updated' | 'name'>(initial.sort),
   page = ref(initial.page),
+  // V1.1: server-checked scope (mine/team/member/all) and six-group filter.
+  sel = ref<ScopeValue>({ scope: initial.scope, memberId: initial.memberId, teamId: initial.teamId }),
+  group = ref(initial.group),
   preview = ref<Project | null>(null),
   columns = ref(false),
   showLocation = ref(true),
@@ -60,6 +65,18 @@ async function load() {
     set('q', q.value);
     set('status', status.value);
     set('stage', stage.value);
+    set('group', group.value);
+    if (view.value === 'projects' || view.value === 'followups')
+      for (const [k, v] of Object.entries(scopeParams(sel.value))) params.set(k, v);
+    if (sel.value.scope === 'member' && !sel.value.memberId || sel.value.scope === 'team' && !sel.value.teamId && app.user?.role !== 'baobei_manager') {
+      if (n === generation) {
+        items.value = [];
+        total.value = 0;
+        failure.value = sel.value.scope === 'member' ? '请选择成员' : '请选择团队';
+        loading.value = false;
+      }
+      return;
+    }
     set('province', province.value);
     if (sort.value !== 'updated') params.set('sort', sort.value);
     if (after.value) params.set('updatedAfter', new Date(after.value).toISOString());
@@ -81,7 +98,7 @@ async function load() {
     if (n === generation) loading.value = false;
   }
 }
-const current = () => ({ q: q.value.trim(), status: status.value, stage: stage.value, province: province.value.trim(), after: after.value, sort: sort.value, page: page.value });
+const current = () => ({ q: q.value.trim(), status: status.value, stage: stage.value, province: province.value.trim(), after: after.value, sort: sort.value, page: page.value, ...sel.value, group: group.value });
 // Keep the URL in step with the screen (replace: typing does not flood history).
 // Bound to this page's route: a pending sync must never rewrite another page's URL.
 const ownPath = route.path;
@@ -92,7 +109,7 @@ function syncUrl() {
 }
 let timer: ReturnType<typeof setTimeout>;
 let applying = false;
-watch([q, status, stage, province, after, sort, followup], () => {
+watch([q, status, stage, province, after, sort, followup, sel, group], () => {
   if (applying) return;
   page.value = 1;
   clearTimeout(timer);
@@ -117,6 +134,7 @@ watch(
     applying = true;
     q.value = f.q; status.value = f.status; stage.value = f.stage; province.value = f.province;
     after.value = f.after; sort.value = f.sort; page.value = f.page;
+    sel.value = { scope: f.scope, memberId: f.memberId, teamId: f.teamId }; group.value = f.group;
     followup.value = query.window === 'upcoming' ? 'upcoming' : 'overdue';
     void Promise.resolve().then(() => {
       applying = false;
@@ -155,6 +173,7 @@ const asOfText = computed(() => (asOf.value ? new Date(asOf.value).toLocaleStrin
       <ActionButton v-if="view === 'unassigned' && can(app.user, 'project.create')" action-id="project.create" primary :run="() => router.push('/new')">新建项目</ActionButton>
     </div>
   </div>
+  <ScopePicker v-if="view === 'projects' || view === 'followups'" v-model="sel" />
   <div v-if="view === 'followups'" class="segmented" role="tablist" aria-label="跟进时间窗口">
     <ActionButton action-id="followup.window" role="tab" :aria-selected="followup === 'overdue'" :class="{ selected: followup === 'overdue' }" :run="() => { followup = 'overdue'; }">已逾期</ActionButton>
     <ActionButton action-id="followup.window" role="tab" :aria-selected="followup === 'upcoming'" :class="{ selected: followup === 'upcoming' }" :run="() => { followup = 'upcoming'; }">未来 7 天</ActionButton>
@@ -173,6 +192,9 @@ const asOfText = computed(() => (asOf.value ? new Date(asOf.value).toLocaleStrin
     </select><select v-model="stage" aria-label="阶段筛选">
       <option value="">全部阶段</option>
       <option v-for="(label, key) in stages" :key="key" :value="key">{{ label }}</option>
+    </select><select v-model="group" aria-label="阶段分组筛选">
+      <option value="">全部分组</option>
+      <option v-for="g in stageGroups" :key="g.code" :value="g.code">{{ g.label }}</option>
     </select><input v-model="province" aria-label="省份筛选" placeholder="省份" /><input
       v-model="after"
       type="date"
@@ -266,8 +288,8 @@ const asOfText = computed(() => (asOf.value ? new Date(asOf.value).toLocaleStrin
       </ActionButton>
     </div>
     <div v-if="!items.length && !loading" class="empty">
-      <h2>{{ q || status || stage || province || after ? '没有符合筛选条件的项目' : view === 'unassigned' ? '没有待分配草稿' : view === 'bin' ? '回收站是空的' : view === 'followups' ? (followup === 'overdue' ? '没有逾期的跟进' : '未来 7 天没有安排跟进') : '还没有项目' }}</h2>
-      <p class="muted">{{ q || status || stage || province || after ? '调整或清空筛选条件后再试。' : '新建报备后会出现在这里。' }}</p>
+      <h2>{{ q || status || stage || group || province || after ? '没有符合筛选条件的项目' : view === 'unassigned' ? '没有待分配草稿' : view === 'bin' ? '回收站是空的' : view === 'followups' ? (followup === 'overdue' ? '没有逾期的跟进' : '未来 7 天没有安排跟进') : '还没有项目' }}</h2>
+      <p class="muted">{{ q || status || stage || group || province || after ? '调整或清空筛选条件后再试。' : '新建报备后会出现在这里。' }}</p>
     </div>
   </template>
   <div v-if="total > 0" class="pagination">

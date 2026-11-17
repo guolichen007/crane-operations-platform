@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readFilters, returnLabel, safeReturn, toList, toPipeline, writeFilters } from './view-state';
+import { readFilters, returnLabel, safeReturn, scopeParams, toList, toPipeline, writeFilters } from './view-state';
 
 describe('view filters in the URL', () => {
   it('round-trips non-default filters and drops defaults', () => {
@@ -30,5 +30,24 @@ describe('detail return target', () => {
   it('names the return action after its target', () => {
     expect(returnLabel('/pipeline?q=a', '我的报备')).toBe('返回项目管道');
     expect(returnLabel('/projects', '我的报备')).toBe('返回我的报备');
+  });
+});
+
+describe('V1.1 scope and group in the URL', () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  it('keeps only valid scope, member, team and group values', () => {
+    const f = readFilters({ scope: 'member', memberId: id, teamId: 'x', group: 'G3' });
+    expect(f).toMatchObject({ scope: 'member', memberId: id, teamId: '', group: 'G3' });
+    expect(readFilters({ scope: 'everyone', memberId: '1 OR 1=1', group: 'G9' })).toMatchObject({ scope: '', memberId: '', group: '' });
+  });
+  it('writes the member only with scope=member and the team only with scope=team', () => {
+    expect(writeFilters({ scope: 'team', memberId: id, teamId: id })).toEqual({ scope: 'team', teamId: id });
+    expect(scopeParams({ scope: 'member', memberId: id, teamId: id })).toEqual({ scope: 'member', memberId: id });
+    expect(scopeParams({ scope: '', memberId: id, teamId: '' })).toEqual({});
+  });
+  it('carries the scope between list and pipeline', () => {
+    const f = readFilters({ scope: 'mine', q: 'a' });
+    expect(toPipeline(f)).toEqual({ q: 'a', scope: 'mine' });
+    expect(toList(f)).toEqual({ q: 'a', scope: 'mine' });
   });
 });

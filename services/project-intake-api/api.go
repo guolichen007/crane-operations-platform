@@ -127,6 +127,9 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 	if path == "/api/v1/workspace-summary" && method == "GET" {
 		return a.summaryHandler(w, r, u)
 	}
+	if strings.HasPrefix(path, "/api/v1/analytics/") && method == "GET" {
+		return a.analyticsHandler(w, r, u)
+	}
 	if path == "/api/v1/stage-summary" && method == "GET" {
 		return a.stageSummaryHandler(w, r, u)
 	}

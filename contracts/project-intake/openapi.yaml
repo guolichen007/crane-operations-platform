@@ -131,10 +131,24 @@
             "description": "未登录"
           },
           "403": {
-            "description": "权限或CSRF不允许"
+            "description": "SCOPE_FORBIDDEN：角色无此统计范围",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "404": {
-            "description": "不可见或不存在"
+            "description": "SCOPE_NOT_FOUND：成员/团队不存在或不可见（不区分）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "409": {
             "description": "版本或状态冲突"
@@ -296,6 +310,54 @@
                 "discarded"
               ]
             }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "mine",
+                "team",
+                "member",
+                "all"
+              ]
+            },
+            "description": "V1.1 分层范围（服务端白名单）：销售 mine；主管 team/mine/member（仅本团队成员）；总监与管理员 all/team/member。总与 projectScope 取交集，只能缩小。"
+          },
+          {
+            "name": "memberId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "scope=member 时的人员编号（staff id）；不可见或不存在一律 404 SCOPE_NOT_FOUND"
+          },
+          {
+            "name": "teamId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "scope=team 时的团队；主管只能是本团队（可省略），总监/管理员必填"
+          },
+          {
+            "name": "group",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "G1",
+                "G2",
+                "G3",
+                "G4",
+                "G5",
+                "G6"
+              ]
+            },
+            "description": "V1.1 六组展示分组（G1=L0/L1，G2=L2/L3，G3=L4/L5，G4=L6/L7，G5=L8，G6=WON/LOST/HOLD）；仅为 12 码集合筛选"
           }
         ],
         "description": "统一ProjectPolicy范围内的列表。仅接受白名单筛选，未知参数或非法取值返回400 INVALID_FILTER。时间窗口共用响应中的asOf。 默认排序 updated_at DESC 后以 id 打破并列，分页稳定。"
@@ -3610,6 +3672,38 @@
               "type": "string",
               "format": "date-time"
             }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "mine",
+                "team",
+                "member",
+                "all"
+              ]
+            },
+            "description": "V1.1 分层范围（服务端白名单）：销售 mine；主管 team/mine/member（仅本团队成员）；总监与管理员 all/team/member。总与 projectScope 取交集，只能缩小。"
+          },
+          {
+            "name": "memberId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "scope=member 时的人员编号（staff id）；不可见或不存在一律 404 SCOPE_NOT_FOUND"
+          },
+          {
+            "name": "teamId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "scope=team 时的团队；主管只能是本团队（可省略），总监/管理员必填"
           }
         ],
         "responses": {
@@ -3638,6 +3732,26 @@
           },
           "503": {
             "description": "服务暂不可用"
+          },
+          "403": {
+            "description": "SCOPE_FORBIDDEN：角色无此统计范围",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SCOPE_NOT_FOUND：成员/团队不存在或不可见（不区分）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -4080,6 +4194,196 @@
             }
           }
         ]
+      }
+    },
+    "/api/v1/analytics/overview": {
+      "get": {
+        "operationId": "analytics.overview",
+        "summary": "V1.1 分层统计总览（本人/成员/团队/全局）",
+        "description": "同一 REPEATABLE READ 快照：12 阶段与金额（同 stage-summary）、六组、报备状态与跟进计数。项目集合与 GET /projects 同参数严格一致。",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "客户、项目名称或报备编号"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "DRAFT",
+                "SUBMITTED",
+                "UNDER_REVIEW",
+                "APPROVED",
+                "RETURNED",
+                "REJECTED",
+                "EXPIRED",
+                "CANCELLED",
+                "CONVERTED"
+              ]
+            },
+            "description": "报备状态（intake_status）"
+          },
+          {
+            "name": "province",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "updatedAfter",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "mine",
+                "team",
+                "member",
+                "all"
+              ]
+            },
+            "description": "V1.1 分层范围（服务端白名单）：销售 mine；主管 team/mine/member（仅本团队成员）；总监与管理员 all/team/member。总与 projectScope 取交集，只能缩小。"
+          },
+          {
+            "name": "memberId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "scope=member 时的人员编号（staff id）；不可见或不存在一律 404 SCOPE_NOT_FOUND"
+          },
+          {
+            "name": "teamId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "scope=team 时的团队；主管只能是本团队（可省略），总监/管理员必填"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyticsOverview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_FILTER",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "SCOPE_FORBIDDEN：角色无此统计范围",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SCOPE_NOT_FOUND：成员/团队不存在或不可见（不区分）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          }
+        }
+      }
+    },
+    "/api/v1/analytics/members": {
+      "get": {
+        "operationId": "analytics.members",
+        "summary": "V1.1 成员对比（主管本团队；总监/管理员按团队）",
+        "description": "主管：本团队销售与主管逐人统计，另列调离/归档负责人合计行，合计=团队项目数。总监/管理员：无 teamId 时按团队汇总，有 teamId 时逐人。销售 403。",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "teamId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembersReport"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "SCOPE_FORBIDDEN：角色无此统计范围",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SCOPE_NOT_FOUND：成员/团队不存在或不可见（不区分）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          }
+        }
       }
     }
   },
@@ -5911,6 +6215,12 @@
           },
           "unclassifiedAmount": {
             "$ref": "#/components/schemas/AmountSummary"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GroupCount"
+            }
           }
         }
       },
@@ -6086,6 +6396,204 @@
         "properties": {
           "field": {
             "type": "string"
+          }
+        }
+      },
+      "GroupCount": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "stages",
+          "count"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "G1",
+              "G2",
+              "G3",
+              "G4",
+              "G5",
+              "G6"
+            ]
+          },
+          "stages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "ScopeSelection": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "scope"
+        ],
+        "properties": {
+          "scope": {
+            "type": "string"
+          },
+          "teamId": {
+            "type": "string"
+          },
+          "memberId": {
+            "type": "string"
+          },
+          "memberName": {
+            "type": "string"
+          },
+          "memberRole": {
+            "type": "string"
+          }
+        }
+      },
+      "AnalyticsOverview": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/StageSummary"
+          },
+          {
+            "type": "object",
+            "required": [
+              "selection",
+              "availableScopes",
+              "counts",
+              "groups"
+            ],
+            "properties": {
+              "selection": {
+                "$ref": "#/components/schemas/ScopeSelection"
+              },
+              "availableScopes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "counts": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "description": "draft/submitted/underReview/approved/returned/rejected/otherStatus/pendingReview/overdue/upcoming7d/unscheduled/unassignedDrafts"
+              },
+              "groups": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/GroupCount"
+                }
+              },
+              "lastUpdatedAt": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true
+              }
+            }
+          }
+        ]
+      },
+      "MembersReport": {
+        "type": "object",
+        "required": [
+          "asOf",
+          "total"
+        ],
+        "properties": {
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "teamId": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "memberId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "others": {
+                  "type": "boolean",
+                  "description": "调离或已归档负责人的合计行"
+                },
+                "total": {
+                  "type": "integer"
+                },
+                "approved": {
+                  "type": "integer"
+                },
+                "pendingReview": {
+                  "type": "integer"
+                },
+                "overdue": {
+                  "type": "integer"
+                },
+                "stages": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "integer"
+                  }
+                },
+                "amount": {
+                  "$ref": "#/components/schemas/AmountSummary"
+                },
+                "lastUpdatedAt": {
+                  "type": "string",
+                  "nullable": true
+                }
+              }
+            }
+          },
+          "teams": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "teamId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "total": {
+                  "type": "integer"
+                },
+                "approved": {
+                  "type": "integer"
+                },
+                "pendingReview": {
+                  "type": "integer"
+                },
+                "overdue": {
+                  "type": "integer"
+                }
+              }
+            }
           }
         }
       }

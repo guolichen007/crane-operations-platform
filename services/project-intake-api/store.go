@@ -138,7 +138,7 @@ func (a *App) duplicates(ctx context.Context, q querier, p Input, exclude string
 
 // listParams are the only accepted project list filters. Unknown keys are
 // rejected so the UI cannot present a filter the server does not apply.
-var listParams = map[string]bool{"q": true, "status": true, "stage": true, "province": true, "updatedAfter": true, "sort": true, "page": true, "pageSize": true, "due": true, "followup": true, "assignment": true, "review": true, "bin": true}
+var listParams = map[string]bool{"q": true, "status": true, "stage": true, "province": true, "updatedAfter": true, "sort": true, "page": true, "pageSize": true, "due": true, "followup": true, "assignment": true, "review": true, "bin": true, "group": true, "scope": true, "memberId": true, "teamId": true}
 
 type listError string
 
@@ -158,10 +158,15 @@ func (a *App) listAt(ctx context.Context, u User, params map[string]string) ([]P
 			return nil, 0, asOf, listError("不支持的筛选条件：" + k)
 		}
 	}
+	sel, err := resolveScope(ctx, a.db, u, params)
+	if err != nil {
+		return nil, 0, asOf, err
+	}
 	where, args, err := projectFilters(u, params, asOf)
 	if err != nil {
 		return nil, 0, asOf, err
 	}
+	where, args = sel.narrow(where, args)
 	var total int
 	if e := a.db.QueryRow(ctx, `SELECT count(*) FROM intake_projects p`+where, args...).Scan(&total); e != nil {
 		return nil, 0, asOf, e

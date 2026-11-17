@@ -11,7 +11,15 @@ export interface ViewFilters {
   after: string; // yyyy-mm-dd
   sort: 'updated' | 'name';
   page: number;
+  // V1.1 R2: server-checked scope selection (mine/team/member/all), shared by
+  // list, pipeline and statistics. The server refuses anything not allowed.
+  scope: string;
+  memberId: string;
+  teamId: string;
+  // V1.1 R3: pipeline display group G1..G6 (list filter; 12 codes stay stored).
+  group: string;
 }
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 const one = (v: LocationQuery[string]) => (Array.isArray(v) ? v[0] ?? '' : v ?? '');
 
@@ -25,6 +33,10 @@ export function readFilters(query: LocationQuery): ViewFilters {
     after: /^\d{4}-\d{2}-\d{2}$/.test(one(query.after)) ? one(query.after) : '',
     sort: one(query.sort) === 'name' ? 'name' : 'updated',
     page: Number.isSafeInteger(page) && page > 1 && page <= 10000 ? page : 1,
+    scope: ['mine', 'team', 'member', 'all'].includes(one(query.scope)) ? one(query.scope) : '',
+    memberId: uuid.test(one(query.memberId)) ? one(query.memberId) : '',
+    teamId: uuid.test(one(query.teamId)) ? one(query.teamId) : '',
+    group: /^G[1-6]$/.test(one(query.group)) ? one(query.group) : '',
   };
 }
 
@@ -38,16 +50,29 @@ export function writeFilters(f: Partial<ViewFilters>): LocationQueryRaw {
   if (f.after) q.after = f.after;
   if (f.sort === 'name') q.sort = 'name';
   if (f.page && f.page > 1) q.page = String(f.page);
+  if (f.scope) q.scope = f.scope;
+  if (f.scope === 'member' && f.memberId) q.memberId = f.memberId;
+  if (f.scope === 'team' && f.teamId) q.teamId = f.teamId;
+  if (f.group) q.group = f.group;
   return q;
 }
 
 // Switching view keeps the shared filters. The pipeline has no single stage
 // filter and no paging; the list restarts at page 1.
 export function toPipeline(f: ViewFilters): LocationQueryRaw {
-  return writeFilters({ q: f.q, status: f.status, province: f.province, after: f.after });
+  return writeFilters({ q: f.q, status: f.status, province: f.province, after: f.after, ...scopeOf(f) });
 }
 export function toList(f: ViewFilters): LocationQueryRaw {
-  return writeFilters({ q: f.q, status: f.status, province: f.province, after: f.after, sort: f.sort });
+  return writeFilters({ q: f.q, status: f.status, province: f.province, after: f.after, sort: f.sort, ...scopeOf(f) });
+}
+export const scopeOf = (f: Pick<ViewFilters, 'scope' | 'memberId' | 'teamId'>) => ({ scope: f.scope, memberId: f.memberId, teamId: f.teamId });
+/** API parameters of a scope selection (only the fields the server accepts). */
+export function scopeParams(f: Pick<ViewFilters, 'scope' | 'memberId' | 'teamId'>): Record<string, string> {
+  if (!f.scope) return {};
+  const out: Record<string, string> = { scope: f.scope };
+  if (f.scope === 'member' && f.memberId) out.memberId = f.memberId;
+  if (f.scope === 'team' && f.teamId) out.teamId = f.teamId;
+  return out;
 }
 
 // A detail page remembers where it was opened from (path + query), as a local

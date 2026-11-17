@@ -2813,3 +2813,45 @@ td.unassigned,
   .segmented button, .segmented [role="tab"] { min-height: 44px; }
   :is(.review-views, .reviews-views) button { min-height: 44px; }
 }
+
+/* V1.1 R2: scope picker and member comparison. */
+.scope-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.scope-picker .segmented {
+  margin-bottom: 0;
+}
+.scope-picker select {
+  min-height: 36px;
+  max-width: 100%;
+}
+.stats-status {
+  margin-top: 12px;
+}
+.stats-members h2 {
+  font-size: 16px;
+  margin: 20px 0 8px;
+}
+@media (max-width: 700px) {
+  .scope-picker {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .scope-picker .segmented {
+    display: flex;
+  }
+  .scope-picker .segmented button {
+    flex: 1;
+    min-height: 44px;
+  }
+  .scope-picker select {
+    min-height: 44px;
+  }
+}
+@media (max-width: 700px) {
+  .stats-members .stats-table-wrap { display: block; }
+}

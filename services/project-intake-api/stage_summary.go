@@ -32,6 +32,14 @@ func projectFilters(u User, params map[string]string, asOf time.Time) (string, [
 	if v := params["stage"]; v != "" && !contains(stages, v) {
 		return "", nil, listError("销售阶段不正确")
 	}
+	// V1.1 display groups: a group is a fixed set of the 12 stored stage codes.
+	if v := params["group"]; v != "" {
+		codes := groupStages(v)
+		if codes == nil {
+			return "", nil, listError("阶段分组不正确")
+		}
+		add(` AND p.sales_stage = ANY(?::text[])`, codes)
+	}
 	for k, col := range map[string]string{"status": "p.intake_status", "stage": "p.sales_stage", "province": "p.document->'location'->>'province'"} {
 		if v := params[k]; v != "" {
 			add(` AND `+col+`=?`, v)
@@ -88,7 +96,7 @@ func projectFilters(u User, params map[string]string, asOf time.Time) (string, [
 // stageSummaryParams are the base filters of the pipeline. They apply to all
 // stages; a stage choice never narrows the other columns, so stage, paging,
 // sorting and window filters are rejected here.
-var stageSummaryParams = map[string]bool{"q": true, "status": true, "province": true, "updatedAfter": true}
+var stageSummaryParams = map[string]bool{"q": true, "status": true, "province": true, "updatedAfter": true, "scope": true, "memberId": true, "teamId": true}
 
 type StageCount struct {
 	Code   string        `json:"code"`
@@ -125,6 +133,8 @@ type StageSummary struct {
 	// Amount over all projects (= sum of stages[].amount + unclassifiedAmount).
 	Amount             AmountSummary `json:"amount"`
 	UnclassifiedAmount AmountSummary `json:"unclassifiedAmount"`
+	// V1.1: the six display groups summed from stages (stage-summary only).
+	Groups []GroupCount `json:"groups,omitempty"`
 }
 
 var scopeLabels = map[string]string{salesRole: "OWN", managerRole: "TEAM", directorRole: "ALL_ASSIGNED", adminRole: "ALL"}
@@ -135,6 +145,20 @@ var stageCodesSQL = "'" + strings.Join(stages, "','") + "'"
 func zeroAmount() AmountSummary { return AmountSummary{KnownTotal: "0.00"} }
 
 func (a *App) stageSummary(ctx context.Context, u User, params map[string]string) (StageSummary, error) {
+	for k := range params {
+		if !stageSummaryParams[k] {
+			return StageSummary{}, listError("阶段统计不支持的筛选条件：" + k)
+		}
+	}
+	sel, err := resolveScope(ctx, a.db, u, params)
+	if err != nil {
+		return StageSummary{}, err
+	}
+	return a.stageSummaryIn(ctx, a.db, u, params, sel)
+}
+
+// stageSummaryIn: the summary of projectScope ∩ selection ∩ filters on q.
+func (a *App) stageSummaryIn(ctx context.Context, q querier, u User, params map[string]string, sel scopeSel) (StageSummary, error) {
 	asOf := time.Now().UTC().Truncate(time.Microsecond)
 	out := StageSummary{AsOf: asOf, Scope: scopeLabels[u.Role], Filters: map[string]string{}, Stages: make([]StageCount, len(stages)), Amount: zeroAmount(), UnclassifiedAmount: zeroAmount()}
 	for k, v := range params {
@@ -149,11 +173,21 @@ func (a *App) stageSummary(ctx context.Context, u User, params map[string]string
 	if err != nil {
 		return out, err
 	}
+	where, args = sel.narrow(where, args)
+	if sel.Scope != "" {
+		out.Filters["scope"] = sel.Scope
+		if sel.MemberID != "" {
+			out.Filters["memberId"] = sel.MemberID
+		}
+		if sel.Team != "" {
+			out.Filters["teamId"] = sel.Team
+		}
+	}
 	// One statement (one snapshot): per stage group plus the grand total via
 	// GROUPING SETS. Amount classification is amountClassSQL; sums are
 	// unconstrained numeric (G3-3B-R1: no fixed precision cap — 10,000 × 1e14
 	// overflowed numeric(20,2)), rounded only to fix the 2-place text form.
-	rows, err := a.db.Query(ctx, `SELECT GROUPING(g.stage)=1, g.stage, count(*),
+	rows, err := q.Query(ctx, `SELECT GROUPING(g.stage)=1, g.stage, count(*),
  round(coalesce(sum(g.amount) FILTER (WHERE g.class='KNOWN'),0),2)::text,
  count(*) FILTER (WHERE g.class='KNOWN'),
  count(*) FILTER (WHERE g.class='KNOWN' AND g.amount=0),
@@ -212,6 +246,9 @@ func (a *App) stageSummaryHandler(w http.ResponseWriter, r *http.Request, u User
 		params[k] = v[0]
 	}
 	out, err := a.stageSummary(r.Context(), u, params)
+	if err == nil {
+		out.Groups = groupsOf(out.Stages)
+	}
 	if le, ok := err.(listError); ok {
 		fail(w, 400, "INVALID_FILTER", le.Error())
 		return nil

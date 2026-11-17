@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { nextStages, followupState, columnQuery, stageCodes } from './pipeline';
+import { nextStages, followupState, columnQuery, stageCodes, stageGroups, groupOf, groupCounts } from './pipeline';
 
 describe('销售管道规则镜像', () => {
   it('12 个阶段顺序与服务端一致', () => {
@@ -34,5 +34,19 @@ describe('栏请求参数', () => {
     expect(columnQuery({ q: '甲', status: '', province: '江苏省', updatedAfter: '' }, 'L3_SITE_SURVEY', 2, 10)).toBe(
       'q=%E7%94%B2&province=%E6%B1%9F%E8%8B%8F%E7%9C%81&stage=L3_SITE_SURVEY&page=2&pageSize=10'
     );
+  });
+});
+
+describe('V1.1 six display groups', () => {
+  it('cover the 12 stored codes exactly once', () => {
+    const all = stageGroups.flatMap((g) => [...g.stages]);
+    expect(all.sort()).toEqual([...stageCodes].sort());
+    expect(groupOf('L3_SITE_SURVEY')).toBe('G2');
+    expect(groupOf('HOLD')).toBe('G6');
+    expect(groupOf('BOGUS')).toBe('');
+  });
+  it('sum group counts from stage counts', () => {
+    const g = groupCounts({ L0_LEAD: 500, L1_REQUIREMENT: 2, WON: 1, LOST: 1 });
+    expect(g.map((x) => x.count)).toEqual([502, 0, 0, 0, 0, 2]);
   });
 });
