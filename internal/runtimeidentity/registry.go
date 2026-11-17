@@ -422,6 +422,25 @@ func MergeFleet(existing contract.FleetManifest, r Request) (contract.FleetManif
 	return out, nil
 }
 
+// RequestSimulatorFleet is what ONE simulator run may use: the SIMULATION identities of this request
+// only, taken from the merged Fleet (same descriptors the cloud accepts). Earlier SIMULATION
+// identities already in the Fleet (e.g. without client certificates) are never included.
+func RequestSimulatorFleet(m contract.FleetManifest, r Request) contract.FleetManifest {
+	want := map[string]bool{}
+	for _, e := range r.Entries {
+		if e.SourceMode == "SIMULATION" {
+			want[e.RuntimeDeviceId] = true
+		}
+	}
+	out := contract.FleetManifest{TenantId: m.TenantId, Devices: []contract.RuntimeDescriptor{}}
+	for _, d := range m.Devices {
+		if want[d.RuntimeDeviceId] && d.SourceMode == "SIMULATION" {
+			out.Devices = append(out.Devices, d)
+		}
+	}
+	return out
+}
+
 // SimulatorFleet is the subset a simulator may run: SIMULATION identities only (the Edge Agent
 // mock runner refuses anything else).
 func SimulatorFleet(m contract.FleetManifest) contract.FleetManifest {

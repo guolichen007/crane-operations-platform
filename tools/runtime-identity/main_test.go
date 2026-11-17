@@ -50,6 +50,7 @@ func TestMergeAndACL(t *testing.T) {
 	dir := t.TempDir()
 	cur := filepath.Join(dir, "fleet.json")
 	a := "A0"
+	// SIM-OLD: a historical SIMULATION identity without client certificate (as on the site).
 	b, _ := json.Marshal(contract.FleetManifest{TenantId: "demo", Devices: []contract.RuntimeDescriptor{{RuntimeDeviceId: "SIM-OLD", ProjectId: "P0", AssetDeviceId: &a, SourceMode: "SIMULATION"}}})
 	if err := os.WriteFile(cur, b, 0o600); err != nil {
 		t.Fatal(err)
@@ -70,9 +71,10 @@ func TestMergeAndACL(t *testing.T) {
 	if _, err := execute([]string{"merge", "--request", req, "--fleet", cur, "--simulator"}, &out); err != nil {
 		t.Fatal(err)
 	}
+	m = contract.FleetManifest{}
 	_ = json.Unmarshal(out.Bytes(), &m)
-	if len(m.Devices) != 2 {
-		t.Fatalf("simulator fleet has %d devices, want SIMULATION only", len(m.Devices))
+	if len(m.Devices) != 1 || m.Devices[0].RuntimeDeviceId != "SIM-NEW" {
+		t.Fatalf("simulator fleet = %+v, want exactly this request's SIMULATION identity SIM-NEW (not SIM-OLD, not TEST)", m.Devices)
 	}
 	// Conflicting reuse of an existing id is refused.
 	conflict := write(t, map[string]any{"tenantId": "demo", "entries": []map[string]any{{"runtimeDeviceId": "SIM-OLD", "projectId": "P9", "assetDeviceId": "A9", "sourceMode": "SIMULATION"}}})

@@ -7,6 +7,8 @@
 //	runtime-identity verify --request req.json
 //	runtime-identity fleet  --request req.json        (prints the Fleet manifest; no database)
 //	runtime-identity merge  --request req.json --fleet current.json [--simulator]   (merged Fleet; no database)
+//	                        --simulator prints ONLY this request's SIMULATION identities (the
+//	                        simulator run Fleet); the cloud Fleet is the output without --simulator
 //	runtime-identity acl    --fleet fleet.json        (broker ACL for exactly that Fleet; no database)
 //
 // The database URL is password-free; the password comes only from DATABASE_PASSWORD_FILE.
@@ -50,7 +52,7 @@ func execute(args []string, out io.Writer) (int, error) {
 	approve := flags.String("approve", "", "approved plan digest (apply only)")
 	actor := flags.String("actor", "", "host administrator (apply only)")
 	current := flags.String("fleet", "", "current Fleet manifest (merge only)")
-	simulator := flags.Bool("simulator", false, "merge: output only SIMULATION identities")
+	simulator := flags.Bool("simulator", false, "merge: output only this request's SIMULATION identities")
 	if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 || *path == "" {
 		return 1, errors.New("invalid arguments")
 	}
@@ -91,7 +93,7 @@ func execute(args []string, out io.Writer) (int, error) {
 			return 1, err
 		}
 		if *simulator {
-			m = runtimeidentity.SimulatorFleet(m)
+			m = runtimeidentity.RequestSimulatorFleet(m, req)
 			if err := fleet.Validate(m, true); err != nil {
 				return 1, err
 			}
