@@ -5,7 +5,7 @@
 //
 //	equipment-types plan   (--all | --types MOTOR,PLC)
 //	equipment-types apply  (--all | --types …) --approve <plan digest> --actor <admin id>
-//	equipment-types verify (--all | --types …)
+//	equipment-types verify (--all | --types …) [--expect-installable N]
 //
 // plan and verify are read-only. apply writes only the missing registry types, in
 // one transaction, and refuses unless --approve equals the digest of the current
@@ -39,6 +39,7 @@ type options struct {
 	types   []string
 	approve string
 	actor   string
+	expect  int
 }
 
 func parse(args []string) (options, error) {
@@ -55,10 +56,14 @@ func parse(args []string) (options, error) {
 	types := flags.String("types", "", "comma-separated registered type codes")
 	approve := flags.String("approve", "", "digest of the approved plan (apply only)")
 	actor := flags.String("actor", "", "explicit host administrator identity (apply only)")
+	expect := flags.Int("expect-installable", -1, "verify only: required number of installable types in scope")
 	if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 {
 		return options{}, errors.New("invalid arguments")
 	}
-	o.all, o.approve, o.actor = *all, strings.TrimSpace(*approve), strings.TrimSpace(*actor)
+	o.all, o.approve, o.actor, o.expect = *all, strings.TrimSpace(*approve), strings.TrimSpace(*actor), *expect
+	if o.expect != -1 && (o.op != "verify" || o.expect < 0) {
+		return options{}, errors.New("--expect-installable is only accepted by verify (N >= 0)")
+	}
 	if *types != "" {
 		o.types = strings.Split(*types, ",")
 	}
@@ -132,7 +137,7 @@ func execute(args []string, out io.Writer) (int, error) {
 		if err := enc.Encode(map[string]any{"operation": "verify", "report": r}); err != nil {
 			return 1, err
 		}
-		if !r.Consistent {
+		if !r.Consistent || (o.expect >= 0 && len(r.Installable) != o.expect) {
 			return exitDrift, nil
 		}
 		return 0, nil
@@ -150,7 +155,7 @@ func safeReason(err error) string {
 	switch msg := err.Error(); {
 	case strings.HasPrefix(msg, "usage:"), msg == "unknown operation", msg == "invalid arguments",
 		strings.HasPrefix(msg, "apply requires"), strings.HasPrefix(msg, "--approve/--actor"),
-		strings.HasPrefix(msg, "choose either"), msg == "equipment-types database unavailable":
+		strings.HasPrefix(msg, "choose either"), strings.HasPrefix(msg, "--expect-installable"), msg == "equipment-types database unavailable":
 		return msg
 	}
 	return "operation failed; check private DB configuration and retry (details withheld)"

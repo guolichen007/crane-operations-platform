@@ -108,10 +108,15 @@ const h21aPackages = [
     'TestConcurrentTypeDisableBlocksInstall',
     'TestAssetLocationReadbackAndHistory',
     'TestConcurrentMoveLeavesExactlyOneCurrentLocation',
+    'TestLocationParentGuards',
+    'TestLocationLegalUpdatesAndInstalledAssetPath',
+    'TestConcurrentReparentCannotBuildCycle',
+    'TestMoveAssetTraceability',
   ]],
   ['r6-cloudapi', './services/cloud-api/internal/app', [
     'TestR6EquipmentTypeDirectoryHTTP',
     'TestR6AssetLocationReadbackHTTP',
+    'TestR6LocationParentGuardHTTP',
   ]],
   // D1 synthetic acceptance dataset: exact-id cleanup, ownership refusal, server-side guard.
   ['h3-uatdata', './tools/uatdata', [

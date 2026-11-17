@@ -70,8 +70,19 @@ type Definition struct {
 	Status            string `json:"status"`
 }
 
+// Target identifies the database a plan was computed against, without any secret: database
+// name, role, database OID and applied schema version. It is part of the digest, so a plan
+// approved on one database can never be applied to another.
+type Target struct {
+	Database      string `json:"database"`
+	Role          string `json:"role"`
+	DatabaseOID   int64  `json:"databaseOid"`
+	SchemaVersion int64  `json:"schemaVersion"`
+}
+
 // Plan is the read-only classification of a scope.
 type Plan struct {
+	Target       Target   `json:"target"`
 	Scope        []string `json:"scope"`
 	Items        []Item   `json:"items"`
 	ToCreate     []string `json:"toCreate"`
@@ -86,6 +97,7 @@ type Plan struct {
 
 // Record is the complete, credential-free record of one Apply.
 type Record struct {
+	Target    Target    `json:"target"`
 	RequestID string    `json:"requestId"`
 	Actor     string    `json:"actor"`
 	AppliedAt time.Time `json:"appliedAt"`
@@ -94,7 +106,9 @@ type Record struct {
 	Created   []string  `json:"created"`
 	Existing  []string  `json:"existing"`
 	Disabled  []string  `json:"disabled"`
-	Result    string    `json:"result"` // "success" (rows created) or "noop"
+	// Result is "success" when rows were created, "noop" when the approved plan had nothing to
+	// create (the directory was already initialized; only the audit row is written).
+	Result string `json:"result"`
 }
 
 // Scope resolves an explicit scope: all registered types, or the given codes,
@@ -145,12 +159,18 @@ func registryDefinitions() map[string]Definition {
 
 type querier interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
 // classify reads the whole directory (it is small and bounded by the registry)
 // and classifies the scope. Unregistered rows are always reported, whatever the
 // scope, because they are drift the operator must see.
 func classify(ctx context.Context, q querier, scope []string) (Plan, error) {
+	var target Target
+	if err := q.QueryRowContext(ctx, `SELECT current_database(), current_user, (SELECT oid::bigint FROM pg_database WHERE datname=current_database()), COALESCE((SELECT max(version_id) FROM goose_db_version WHERE is_applied),0)`).
+		Scan(&target.Database, &target.Role, &target.DatabaseOID, &target.SchemaVersion); err != nil {
+		return Plan{}, err
+	}
 	rows, err := q.QueryContext(ctx, `SELECT type_code, display_name, domain, spec_schema_version, status FROM equipment_types ORDER BY type_code`)
 	if err != nil {
 		return Plan{}, err
@@ -169,7 +189,7 @@ func classify(ctx context.Context, q querier, scope []string) (Plan, error) {
 		return Plan{}, err
 	}
 	reg := registryDefinitions()
-	p := Plan{Scope: append([]string(nil), scope...), Items: []Item{}, ToCreate: []string{}, Existing: []string{}, Disabled: []string{}, Conflicts: []string{}, Unregistered: []string{}}
+	p := Plan{Target: target, Scope: append([]string(nil), scope...), Items: []Item{}, ToCreate: []string{}, Existing: []string{}, Disabled: []string{}, Conflicts: []string{}, Unregistered: []string{}}
 	for _, code := range scope {
 		want := reg[code]
 		item := Item{TypeCode: code, Expected: &want}
@@ -203,9 +223,10 @@ func classify(ctx context.Context, q querier, scope []string) (Plan, error) {
 		p.Unregistered = append(p.Unregistered, code)
 	}
 	b, err := json.Marshal(struct {
-		Scope []string `json:"scope"`
-		Items []Item   `json:"items"`
-	}{p.Scope, p.Items})
+		Target Target   `json:"target"`
+		Scope  []string `json:"scope"`
+		Items  []Item   `json:"items"`
+	}{p.Target, p.Scope, p.Items})
 	if err != nil {
 		return Plan{}, err
 	}
@@ -283,7 +304,7 @@ func Apply(ctx context.Context, db *sql.DB, scope []string, approvedDigest, acto
 	if err := tx.Commit(); err != nil {
 		return Record{}, err
 	}
-	return Record{RequestID: requestID, Actor: actorID, AppliedAt: now.UTC(), Digest: approvedDigest, Scope: p.Scope, Created: p.ToCreate, Existing: p.Existing, Disabled: p.Disabled, Result: result}, nil
+	return Record{Target: p.Target, RequestID: requestID, Actor: actorID, AppliedAt: now.UTC(), Digest: approvedDigest, Scope: p.Scope, Created: p.ToCreate, Existing: p.Existing, Disabled: p.Disabled, Result: result}, nil
 }
 
 // Report is the outcome of Verify.

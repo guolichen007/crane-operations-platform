@@ -219,3 +219,38 @@ func TestR6AssetLocationReadbackHTTP(t *testing.T) {
 		t.Fatalf("retired readback = %d %s", code, body)
 	}
 }
+
+// R6-BIZ-R1 F-08 over the BFF: a cyclic / self / foreign parent on PATCH is 422 (not 503), a
+// legal re-parent is 200.
+func TestR6LocationParentGuardHTTP(t *testing.T) {
+	f := newSecurityFixture(t)
+	admin, ai := f.login(t, "admin")
+	mk := func(body map[string]any) contract.AssetLocation {
+		w := f.doBody(admin, ai.CsrfToken, "POST", "/api/v1/projects/P001/locations", nil, body)
+		if w.Code != http.StatusCreated {
+			t.Fatalf("create = %d %s", w.Code, w.Body.String())
+		}
+		return decodeJSON[contract.AssetLocation](t, w.Body.Bytes())
+	}
+	a := mk(map[string]any{"kind": "SITE", "name": "F08-A"})
+	b := mk(map[string]any{"kind": "PLANT", "name": "F08-B", "parentId": a.Id})
+	other := mk(map[string]any{"kind": "SITE", "name": "F08-O"})
+	patch := func(l contract.AssetLocation, parent *string) (int, string) {
+		l.ParentId = parent
+		w := f.doBody(admin, ai.CsrfToken, "PATCH", "/api/v1/locations/"+l.Id, map[string]string{"If-Match": strconv.FormatInt(l.Version, 10)}, l)
+		return w.Code, w.Body.String()
+	}
+	if c, body := patch(a, &a.Id); c != 422 {
+		t.Fatalf("self parent = %d %s", c, body)
+	}
+	if c, body := patch(a, &b.Id); c != 422 {
+		t.Fatalf("cycle = %d %s", c, body)
+	}
+	p2 := "q4-none"
+	if c, body := patch(b, &p2); c != 422 {
+		t.Fatalf("unknown parent = %d %s", c, body)
+	}
+	if c, body := patch(b, &other.Id); c != 200 {
+		t.Fatalf("legal re-parent = %d %s", c, body)
+	}
+}

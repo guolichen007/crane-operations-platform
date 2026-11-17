@@ -100,9 +100,13 @@ try {
     const planOut = run(docker, [...typesTool, 'plan', '--types', 'MOTOR,PLC'], {}, true);
     const plan = JSON.parse(planOut).plan;
     assert.deepEqual(plan.toCreate, ['MOTOR', 'PLC']);
+    assert.equal(plan.target.database, 'crane_app'); assert.equal(plan.target.role, 'crane_app'); assert.equal(plan.target.schemaVersion, 12);
     const applyOut = run(docker, [...typesTool, 'apply', '--types', 'MOTOR,PLC', '--approve', plan.digest, '--actor', 'b4-fixture-operator'], {}, true);
     assert.equal(JSON.parse(applyOut).record.result, 'success');
-    const verifyOut = run(docker, [...typesTool, 'verify', '--types', 'MOTOR,PLC'], {}, true);
+    // The approved digest is single-use: re-presenting it after the apply is refused (exit 1).
+    const stale = spawnSync(docker, [...typesTool, 'apply', '--types', 'MOTOR,PLC', '--approve', plan.digest, '--actor', 'b4-fixture-operator'], { env, encoding: 'utf8' });
+    assert.equal(stale.status, 1);
+    const verifyOut = run(docker, [...typesTool, 'verify', '--types', 'MOTOR,PLC', '--expect-installable', '2'], {}, true);
     assert.equal(JSON.parse(verifyOut).report.consistent, true);
     const replanOut = run(docker, [...typesTool, 'plan', '--types', 'MOTOR,PLC'], {}, true);
     const reapplyOut = run(docker, [...typesTool, 'apply', '--types', 'MOTOR,PLC', '--approve', JSON.parse(replanOut).plan.digest, '--actor', 'b4-fixture-operator'], {}, true);

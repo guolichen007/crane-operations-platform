@@ -74,7 +74,7 @@ func TestFreshSchema12BootstrapMakesEquipmentInstallable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rec.Result != "success" || len(rec.Created) != len(equipment.Types()) || rec.Actor != "host:ops-admin" {
+	if rec.Result != "success" || len(rec.Created) != len(equipment.Types()) || rec.Actor != "host:ops-admin" || rec.Target.SchemaVersion != 12 || rec.Target.Database == "" {
 		t.Fatalf("apply record = %+v", rec)
 	}
 	if n := count(t, db, `SELECT count(*) FROM equipment_types WHERE status='ACTIVE'`); n != len(equipment.Types()) {
@@ -239,3 +239,38 @@ func TestApplyDoesNotTouchInstallationsOrHistory(t *testing.T) {
 }
 
 func ptr(s string) *string { return &s }
+
+// The operator runbook and the deployment acceptance initialize exactly 43 types; a registry
+// change must update the runbook (docs/08-部署运维与成本/R6-Equipment设备类型目录初始化操作手册.md).
+func TestRegistryCountMatchesRunbook(t *testing.T) {
+	if n := len(equipment.Types()); n != 43 {
+		t.Fatalf("code registry lists %d types; the runbook and acceptance expect 43", n)
+	}
+	s, err := Scope(true, nil)
+	if err != nil || len(s) != 43 {
+		t.Fatalf("--all scope = %d (err=%v), want 43", len(s), err)
+	}
+}
+
+// A plan computed on one database cannot be applied to another: the target identity is part
+// of the digest.
+func TestPlanDigestBoundToDatabase(t *testing.T) {
+	ctx := context.Background()
+	db1 := testsupport.Database(t)
+	db2 := testsupport.Database(t)
+	scope, _ := Scope(false, []string{"MOTOR"})
+	p1, err := PlanTypes(ctx, db1, scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p2, _ := PlanTypes(ctx, db2, scope)
+	if p1.Digest == p2.Digest || p1.Target.Database == p2.Target.Database {
+		t.Fatalf("identical empty databases produced the same digest/target: %+v / %+v", p1.Target, p2.Target)
+	}
+	if _, err := Apply(ctx, db2, scope, p1.Digest, "ops", "x"); !errors.Is(err, ErrDigestMismatch) {
+		t.Fatalf("cross-database apply: %v", err)
+	}
+	if n := count(t, db2, `SELECT count(*) FROM equipment_types`); n != 0 {
+		t.Fatal("cross-database apply wrote rows")
+	}
+}

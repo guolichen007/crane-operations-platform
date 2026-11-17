@@ -21,6 +21,8 @@ func TestParseRefusesUnsafeInvocations(t *testing.T) {
 		{"apply", "--all", "--actor", "ops"},
 		{"plan", "--all", "--approve", "x"},
 		{"plan", "--all", "extra"},
+		{"plan", "--all", "--expect-installable", "2"},
+		{"verify", "--all", "--expect-installable", "-3"},
 	} {
 		if _, err := parse(args); err == nil {
 			t.Errorf("parse(%q) accepted", args)
@@ -90,8 +92,14 @@ func TestCLIPlanApplyVerifyNeverPrintsSecret(t *testing.T) {
 	if code, _ := run("apply", "--types", "MOTOR,PLC", "--approve", plan.Plan.Digest, "--actor", "ops"); code != 0 {
 		t.Fatalf("apply exit %d", code)
 	}
-	if code, _ := run("verify", "--types", "MOTOR,PLC"); code != 0 {
+	if code, _ := run("verify", "--types", "MOTOR,PLC", "--expect-installable", "2"); code != 0 {
 		t.Fatalf("verify after apply exit %d", code)
+	}
+	if code, _ := run("verify", "--types", "MOTOR,PLC", "--expect-installable", "43"); code != exitDrift {
+		t.Fatalf("verify with a wrong installable expectation exit %d, want %d", code, exitDrift)
+	}
+	if !strings.Contains(text, `"database": "`+name+`"`) || !strings.Contains(text, `"schemaVersion": 12`) {
+		t.Fatalf("plan output lacks the target identity: %s", text)
 	}
 	var n int
 	if err := db.QueryRow(`SELECT count(*) FROM equipment_types`).Scan(&n); err != nil || n != 2 {

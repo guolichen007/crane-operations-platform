@@ -496,6 +496,10 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 				respondAPI(w, 404, map[string]string{"error": "not found"})
 			case errors.Is(err, asset.ErrVersionConflict), errors.Is(err, asset.ErrExpectedVersion):
 				respondAPI(w, 409, map[string]string{"error": "version conflict"})
+			case errors.Is(err, asset.ErrDuplicateLocation):
+				respondAPI(w, 409, map[string]string{"error": err.Error()})
+			case errors.Is(err, asset.ErrInvalidInput):
+				respondAPI(w, 422, map[string]string{"error": err.Error()})
 			default:
 				respondAPI(w, 503, map[string]string{"error": "database unavailable"})
 			}

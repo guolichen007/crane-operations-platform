@@ -478,19 +478,67 @@ func MoveAsset(ctx context.Context, db *sql.DB, assetID, locationID string, expe
 	if locStatus == "DISABLED" {
 		return ErrDisabledLocation
 	}
+	var previous moveEndpoint
+	err = tx.QueryRowContext(ctx, `SELECT id, location_id FROM asset_installations WHERE asset_id=$1 AND valid_to IS NULL`, assetID).Scan(&previous.InstallationID, &previous.LocationID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `UPDATE asset_installations SET valid_to=now() WHERE asset_id=$1 AND valid_to IS NULL`, assetID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO asset_installations(id,asset_id,location_id,valid_from,source,notes) VALUES($1,$2,$3,now(),'BUSINESS','moved')`, platform.ID(), assetID, locationID); err != nil {
+	next := moveEndpoint{InstallationID: platform.ID(), LocationID: locationID}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO asset_installations(id,asset_id,location_id,valid_from,source,notes) VALUES($1,$2,$3,now(),'BUSINESS','moved')`, next.InstallationID, assetID, locationID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE asset_devices SET version=version+1,updated_at=now() WHERE id=$1 AND version=$2`, assetID, expectedVersion); err != nil {
+	result, err := tx.ExecContext(ctx, `UPDATE asset_devices SET version=version+1,updated_at=now() WHERE id=$1 AND version=$2`, assetID, expectedVersion)
+	if err != nil {
+		return err
+	}
+	if n, err := result.RowsAffected(); err != nil || n != 1 {
+		return ErrVersionConflict
+	}
+	// R6-BIZ-R1 F-06: the move is traceable from entity_revisions (same request id as the
+	// audit row) and the asset timeline, written atomically with the installation change.
+	// Earlier moves are not back-filled; existing history is never rewritten.
+	var snap contract.AssetMasterData
+	if err := tx.QueryRowContext(ctx, `SELECT `+assetColumns+` FROM asset_devices WHERE id=$1`, assetID).Scan(&snap.Id, &snap.ProjectId, &snap.DisplayName, &snap.AssetCode, &snap.AssetType, &snap.AssetStatus, &snap.ManufacturerId, &snap.ManufacturerSnapshot, &snap.BrandSnapshot, &snap.ModelSnapshot, &snap.SerialNumber, &snap.ManufactureDate, &snap.InstallationDate, &snap.CommissioningDate, &snap.LiftingHeightM, &snap.ApplicationType, &snap.ControlMode, &snap.SpecialEquipmentCode, &snap.UseRegistrationNo, &snap.Version); err != nil {
+		return err
+	}
+	movement := assetMoveSnapshot{AssetMasterData: snap, Move: assetMove{To: next}}
+	if previous.InstallationID != "" {
+		movement.Move.From = &previous
+	}
+	if err := revision(ctx, tx, assetProject, assetID, "asset", assetID, actor, requestID, []string{"moved"}, movement); err != nil {
+		return err
+	}
+	var locName string
+	if err := tx.QueryRowContext(ctx, `SELECT name FROM asset_locations WHERE id=$1`, locationID).Scan(&locName); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO asset_timeline_events(project_id,asset_id,category,occurred_at,source,reference_type,reference_id,summary) VALUES($1,$2,'LOCATION',now(),'BUSINESS','asset_installation',$3,$4)`,
+		assetProject, assetID, next.InstallationID, "moved to "+locName); err != nil {
 		return err
 	}
 	if err := auditlog.Write(ctx, tx, auditlog.Event{Actor: actor, Project: assetProject, Action: "asset_moved", Result: "success", RequestID: requestID}); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+type moveEndpoint struct {
+	InstallationID string `json:"installationId"`
+	LocationID     string `json:"locationId"`
+}
+type assetMove struct {
+	From *moveEndpoint `json:"from"`
+	To   moveEndpoint  `json:"to"`
+}
+
+// assetMoveSnapshot is the asset revision snapshot of a move: the post-move asset plus the
+// closed and the opened installation.
+type assetMoveSnapshot struct {
+	contract.AssetMasterData
+	Move assetMove `json:"move"`
 }
 
 // ---------------------------------------------------------------------------
@@ -731,7 +779,20 @@ func UpdateLocation(ctx context.Context, db *sql.DB, in contract.AssetLocation, 
 	defer tx.Rollback()
 	var projectID string
 	var version int64
-	if err := tx.QueryRowContext(ctx, `SELECT project_id,version FROM asset_locations WHERE id=$1 FOR UPDATE`, in.Id).Scan(&projectID, &version); err != nil {
+	var oldParent sql.NullString
+	// Lock order for every location update: project tree lock first, then the row. Two
+	// concurrent re-parentings that each held their own row before the tree lock could
+	// otherwise deadlock on each other's parent row. project_id is immutable.
+	if err := tx.QueryRowContext(ctx, `SELECT project_id FROM asset_locations WHERE id=$1`, in.Id).Scan(&projectID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return in, ErrNotFound
+		}
+		return in, err
+	}
+	if err := lockLocationTree(ctx, tx, projectID); err != nil {
+		return in, err
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT project_id,version,parent_id FROM asset_locations WHERE id=$1 FOR UPDATE`, in.Id).Scan(&projectID, &version, &oldParent); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return in, ErrNotFound
 		}
@@ -739,6 +800,22 @@ func UpdateLocation(ctx context.Context, db *sql.DB, in contract.AssetLocation, 
 	}
 	if version != expectedVersion {
 		return in, ErrVersionConflict
+	}
+	// R6-BIZ-R1 F-08: an update is validated like a create (status is not edited here; a
+	// DISABLED location keeps its status), and the hierarchy must stay a same-project forest.
+	check := in
+	check.Status = ""
+	if err := validateNewLocation(check); err != nil {
+		return in, err
+	}
+	in.Name = strings.TrimSpace(in.Name)
+	if in.ParentId != nil && strings.TrimSpace(*in.ParentId) == "" {
+		in.ParentId = nil
+	}
+	if in.ParentId != nil {
+		if err := checkLocationParent(ctx, tx, projectID, in.Id, *in.ParentId, !oldParent.Valid || oldParent.String != *in.ParentId); err != nil {
+			return in, err
+		}
 	}
 	var code any
 	if in.Code != nil && strings.TrimSpace(*in.Code) != "" {
@@ -754,6 +831,9 @@ func UpdateLocation(ctx context.Context, db *sql.DB, in contract.AssetLocation, 
 	}
 	result, err := tx.ExecContext(ctx, `UPDATE asset_locations SET parent_id=$2,kind=$3,code=$4,name=$5,address=$6,province=$7,city=$8,county=$9,longitude=$10,latitude=$11,coordinate_system=$12,coordinate_source=$13,version=version+1,updated_at=now() WHERE id=$1 AND version=$14`,
 		in.Id, in.ParentId, in.Kind, code, in.Name, in.Address, in.Province, in.City, in.County, in.Longitude, in.Latitude, in.CoordinateSystem, in.CoordinateSource, expectedVersion)
+	if isUniqueViolation(err, "asset_locations_project_id_code_key") {
+		return in, ErrDuplicateLocation
+	}
 	if err != nil {
 		return in, err
 	}
@@ -769,6 +849,49 @@ func UpdateLocation(ctx context.Context, db *sql.DB, in contract.AssetLocation, 
 		return in, err
 	}
 	return in, tx.Commit()
+}
+
+// lockLocationTree serializes every location update of one project with a
+// transaction-scoped advisory lock, so two concurrent re-parentings (X under Y, Y under X)
+// cannot each pass the ancestor walk on their own view and jointly build a cycle.
+func lockLocationTree(ctx context.Context, tx *sql.Tx, projectID string) error {
+	_, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('asset_locations.tree:' || $1, 0))`, projectID)
+	return err
+}
+
+// checkLocationParent validates a location's parent inside the update transaction (the
+// project tree lock is already held). A newly referenced parent must be ACTIVE; keeping an
+// existing parent that was disabled later stays legal.
+func checkLocationParent(ctx context.Context, tx *sql.Tx, projectID, locationID, parentID string, changed bool) error {
+	if parentID == locationID {
+		return invalid("a location cannot be its own parent")
+	}
+	var parentStatus string
+	err := tx.QueryRowContext(ctx, `SELECT status FROM asset_locations WHERE id=$1 AND project_id=$2 FOR SHARE`, parentID, projectID).Scan(&parentStatus)
+	if errors.Is(err, sql.ErrNoRows) {
+		return invalid("parent location not found in this project")
+	}
+	if err != nil {
+		return err
+	}
+	if changed && parentStatus != "ACTIVE" {
+		return invalid("parent location is disabled")
+	}
+	// Walk up from the new parent (now under the project lock, reading committed state); reaching
+	// this location means the change would close a cycle.
+	var cycle bool
+	if err := tx.QueryRowContext(ctx, `WITH RECURSIVE up(id, parent_id, depth) AS (
+	   SELECT id, parent_id, 0 FROM asset_locations WHERE id=$1 AND project_id=$3
+	   UNION ALL
+	   SELECT l.id, l.parent_id, up.depth+1 FROM asset_locations l JOIN up ON l.id = up.parent_id
+	    WHERE l.project_id=$3 AND up.depth < $4)
+	 SELECT EXISTS(SELECT 1 FROM up WHERE id = $2)`, parentID, locationID, projectID, maxLocationDepth+1).Scan(&cycle); err != nil {
+		return err
+	}
+	if cycle {
+		return invalid("parent change would create a cycle in the location hierarchy")
+	}
+	return nil
 }
 
 // DisableLocation disables a location rather than deleting it. Historical
