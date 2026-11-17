@@ -33,7 +33,7 @@ const DIGEST_REF = /^[a-z0-9./-]+(?::[A-Za-z0-9._-]+)?@sha256:[a-f0-9]{64}$/;
 export class Stop extends Error { constructor(message) { super('STOP: ' + message); this.code = 2; } }
 export { validateDevelopment };
 
-function defaults(options = {}) {
+export function defaults(options = {}) {
   return {
     root: repositoryRoot, execute: spawnSync, diskGate: checkProductionDisks, now: () => new Date(),
     probe: (url) => {
@@ -46,7 +46,7 @@ function defaults(options = {}) {
   };
 }
 
-function loadEnv(ctx, environmentArgument) {
+export function loadEnv(ctx, environmentArgument) {
   const envFile = resolve(environmentArgument);
   if (process.platform !== 'win32' && statSync(envFile).mode & 0o077) throw Error('Private env requires mode 0600');
   const environment = parseEnv(readFileSync(envFile, 'utf8'));
@@ -56,14 +56,14 @@ function loadEnv(ctx, environmentArgument) {
   return { envFile, environment };
 }
 
-function docker(ctx, args, capture = true) {
+export function docker(ctx, args, capture = true) {
   const result = ctx.execute('docker', args, { cwd: ctx.root, encoding: 'utf8', stdio: capture ? 'pipe' : 'inherit' });
   // Upstream output is never echoed: it may contain resolved configuration.
   if (result.error || result.status !== 0) throw Error('Docker step failed: ' + args.filter(a => !a.startsWith('/')).slice(0, 4).join(' '));
   return result.stdout || '';
 }
 
-function compose(ctx, envFile) {
+export function compose(ctx, envFile) {
   return ['compose', '--project-name', productionProject, '--project-directory', resolve(ctx.root, 'deploy/compose'), '--env-file', envFile,
     '-f', resolve(ctx.root, 'deploy/compose/docker-compose.prod.yml'), '-f', resolve(ctx.root, OVERLAY)];
 }
@@ -162,7 +162,7 @@ export function verifyBackup(dir, previous, currentSchema, now) {
   return true;
 }
 
-function smoke(ctx) {
+export function smoke(ctx) {
   const checks = [];
   const check = (name, ok) => { checks.push(`${name}=${ok ? 'PASS' : 'FAIL'}`); return ok; };
   const home = ctx.probe(DEV_ORIGIN + '/');
