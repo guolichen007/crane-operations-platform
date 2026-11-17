@@ -70,3 +70,6 @@ GRANT SELECT ON identity_links TO baobei_maintenance;
 GRANT EXECUTE ON FUNCTION staff_subject_referenced(text) TO baobei_staff_api;
 GRANT UPDATE (status,archived_at) ON teams TO baobei_staff_api;
 GRANT UPDATE (discarded_at,discarded_by_subject) ON intake_projects TO baobei_runtime;
+-- V1.1 R1: review-route evidence is insert-only like the frozen submissions.
+GRANT SELECT, INSERT ON project_review_routes TO baobei_runtime;
+GRANT SELECT ON project_review_routes TO baobei_staff_api, baobei_maintenance;

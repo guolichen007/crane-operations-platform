@@ -339,7 +339,7 @@ const missing = computed(() => {
 });
 const ownerLine = computed(() => {
   const p = project.value;
-  if (!p) return isAdmin.value ? '保存后为待分配草稿，由你保管' : '你（当前登录销售）';
+  if (!p) return isAdmin.value ? '保存后为待分配草稿，由你保管' : app.user?.role === 'baobei_manager' ? '你本人（主管本人报备，提交后由销售总监审核）' : '你（当前登录销售）';
   if (!p.ownerSubject) return '待分配 · 保管人 ' + (p.custodianName || '管理员');
   return p.ownerName || '姓名待核对';
 });

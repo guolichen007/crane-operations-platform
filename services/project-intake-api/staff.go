@@ -745,7 +745,10 @@ type transferResult struct {
 func transferStaffProjects(ctx context.Context, tx pgx.Tx, actor User, from staffMember, in staffTransferInput) (any, error) {
 	// G2: admin manages all legal business projects, so it may hand off a sales
 	// member's projects. manager() keeps its manager/director meaning.
-	if !(manager(actor) || actor.Role == adminRole) || from.Role != salesRole {
+	// V1.1: a supervisor may hold their own projects; administrators and
+	// directors hand those off too (a supervisor never manages another
+	// supervisor). The target is always an active sales member.
+	if !(manager(actor) || actor.Role == adminRole) || from.Role != salesRole && !(from.Role == managerRole && actor.Role != managerRole) {
 		return nil, staffDenied
 	}
 	if from.Version != in.Version {
@@ -784,7 +787,11 @@ func transferStaffProjects(ctx context.Context, tx pgx.Tx, actor User, from staf
 		if err != nil {
 			return nil, err
 		}
-		if enforceProject(actor, Project{ID: item.ID, OwnerSubject: owner, TeamID: team, IntakeStatus: status}, "ownership-transfer") != nil {
+		ownerRole := from.Role
+		if owner == target.Subject {
+			ownerRole = target.Role
+		}
+		if enforceProject(actor, Project{ID: item.ID, OwnerSubject: owner, OwnerRole: ownerRole, TeamID: team, IntakeStatus: status}, "ownership-transfer") != nil {
 			results = append(results, result)
 			continue
 		}

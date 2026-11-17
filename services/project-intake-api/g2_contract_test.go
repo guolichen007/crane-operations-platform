@@ -186,9 +186,14 @@ func TestDatabaseG2Contract(t *testing.T) {
 		if d := projectFrom(t, s, b); d.Actions["approve"].Allowed {
 			t.Fatal("handoff actor may not review")
 		}
-		// Non-sales source and sales actor remain denied.
+		// V1.1: a supervisor may own projects, so an administrator may hand off a
+		// supervisor's projects too; projects the supervisor does not own are
+		// reported as not available, never moved. A sales actor stays denied.
 		s, b = f.admin.call("POST", "/api/v1/staff/"+managerID+"/ownership-transfer-batch", body)
-		expect(t, s, 403, b)
+		expect(t, s, 200, b)
+		if strings.Count(string(b), `"NOT_AVAILABLE"`) != 2 || strings.Contains(string(b), `"TRANSFERRED"`) {
+			t.Fatal(string(b))
+		}
 		s, b = f.sales.call("POST", "/api/v1/staff/"+toID+"/ownership-transfer-batch", body)
 		expect(t, s, 403, b)
 		// manager() still means manager/director only.

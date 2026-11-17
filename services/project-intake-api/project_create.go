@@ -30,7 +30,9 @@ func (a *App) createProject(w http.ResponseWriter, r *http.Request, u User) erro
 		return nil
 	}
 	in.Version = 1
-	if u.Role == salesRole && (in.AssignmentMode != "" || in.TargetSubject != "") {
+	// Sales members and (V1.1) supervisors always own what they create; only an
+	// administrator assigns or leaves a draft unassigned.
+	if filerRole(u.Role) && (in.AssignmentMode != "" || in.TargetSubject != "") {
 		return problem(403, "BUSINESS_PERMISSION_DENIED")
 	}
 	if u.Role == adminRole {
@@ -78,15 +80,22 @@ func (a *App) createProject(w http.ResponseWriter, r *http.Request, u User) erro
 		return err
 	}
 	owner, team := "", ""
-	if u.Role == salesRole {
+	if filerRole(u.Role) {
 		owner = u.Subject
+		team, err = selfOwner(ctx, tx, owner)
+		if err != nil {
+			return err
+		}
+		// The session's team is the only team: a stale session never files into
+		// a team the member has since left.
+		if team != u.TeamID {
+			return problem(409, "OWNER_INACTIVE")
+		}
 	} else if in.AssignmentMode == "ASSIGN_ACTIVE_SALES" {
 		owner = in.TargetSubject
 		if owner == "" {
 			return problem(400, "INVALID_TARGET")
 		}
-	}
-	if owner != "" {
 		team, err = activeOwner(ctx, tx, owner)
 		if err != nil {
 			return err

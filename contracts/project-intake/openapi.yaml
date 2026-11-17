@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Project Intake API",
-    "version": "1.7.1-g5d1",
-    "description": "全角色项目资源授权、不可覆盖提交证据、管理员未分配草稿及幂等创建；G2 增加审核资格提示、创建意图回执、显示名称与首页最小聚合。完整经营分析不在G2。 G4-S4：工作手机（新建必填、E.164）、邮箱选填、无邮箱以精确 subject 与唯一 Client Role 激活、管理员审核开通回执、仅敏感人员操作要求重新认证、本地/企业 SSO 退出与切换账号。 G4-S5-R1-F2/R2-P1：身份映射冲突拒绝、历史身份不可回退；撤销未完成开户、团队归档与恢复、草稿废弃与回收站恢复。"
+    "version": "1.8.0-v11",
+    "description": "全角色项目资源授权、不可覆盖提交证据、管理员未分配草稿及幂等创建；G2 增加审核资格提示、创建意图回执、显示名称与首页最小聚合。完整经营分析不在G2。 G4-S4：工作手机（新建必填、E.164）、邮箱选填、无邮箱以精确 subject 与唯一 Client Role 激活、管理员审核开通回执、仅敏感人员操作要求重新认证、本地/企业 SSO 退出与切换账号。 G4-S5-R1-F2/R2-P1：身份映射冲突拒绝、历史身份不可回退；撤销未完成开户、团队归档与恢复、草稿废弃与回收站恢复。 V1.1：主管本人报备（负责人=本人、团队取会话）由销售总监独立审核（reviewRoute=DIRECTOR，REVIEW_ROUTE_DIRECTOR）；按提交冻结不可变审核路由；主管只写本人项目；分层统计、项目中心、姓名完善。"
   },
   "servers": [
     {
@@ -4790,6 +4790,26 @@
             "format": "date-time",
             "nullable": true,
             "description": "当前提交轮次冻结提交记录的时间；仅审核队列（eligibility）返回。用于计算等待时长，不以 updatedAt 代替；历史迁移数据可能为 null。"
+          },
+          "ownerRole": {
+            "type": "string",
+            "enum": [
+              "",
+              "baobei_sales",
+              "baobei_manager",
+              "baobei_director",
+              "baobei_admin"
+            ],
+            "description": "当前负责人角色（V1.1：销售或销售主管）"
+          },
+          "reviewRoute": {
+            "type": "string",
+            "enum": [
+              "",
+              "TEAM_MANAGER",
+              "DIRECTOR"
+            ],
+            "description": "当前报备的审核路由：TEAM_MANAGER=本团队主管或总监；DIRECTOR=仅销售总监（主管本人报备，或负责人非销售）。只升不降。"
           }
         }
       },

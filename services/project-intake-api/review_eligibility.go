@@ -50,6 +50,7 @@ func pendingCasesSQL(p string) string {
 func reviewableSQL(p string) string {
 	return `(` + p + `.intake_status IN ('SUBMITTED','UNDER_REVIEW') AND $2 IN ('baobei_manager','baobei_director','baobei_admin')
  AND ` + projectScope(p) + ` AND ` + primaryCompleteSQL(p) + ` AND NOT ` + primaryConflictSQL(p, "$1") + `
+ AND NOT ($2='baobei_manager' AND ` + reviewRouteSQL(p) + `='DIRECTOR')
  AND (` + pendingCasesSQL(p) + `=0 OR (NOT EXISTS(` + relatedCandidatesSQL(p) + ` AND NOT ` + projectScope("c") + `)
  AND NOT EXISTS(` + relatedCandidatesSQL(p) + ` AND ` + candidateConflictSQL("c", "$1") + `))))`
 }
@@ -156,7 +157,7 @@ func (a *App) batchHints(ctx context.Context, q querier, u User, ps []*Project) 
 	}
 	teams := map[string]string{}
 	if len(owners) > 0 {
-		rows, err := q.Query(ctx, `SELECT subject,team_id::text FROM app_users WHERE subject=ANY($1) AND active AND role='baobei_sales' AND team_id IS NOT NULL`, owners)
+		rows, err := q.Query(ctx, `SELECT subject,team_id::text FROM app_users WHERE subject=ANY($1) AND active AND role IN ('baobei_sales','baobei_manager') AND team_id IS NOT NULL`, owners)
 		if err != nil {
 			return err
 		}

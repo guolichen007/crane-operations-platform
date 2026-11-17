@@ -80,7 +80,13 @@ type Project struct {
 	CreatedByName         string                `json:"createdByName"`
 	CustodianName         string                `json:"custodianName"`
 	SubmittedByName       string                `json:"submittedByName"`
-	ProtectedUntil        *time.Time            `json:"protectedUntil"`
+	// OwnerRole: the current owner's role (V1.1: sales or supervisor).
+	OwnerRole string `json:"ownerRole"`
+	// ReviewRoute: who decides the current filing — TEAM_MANAGER (a team
+	// supervisor or a director) or DIRECTOR (directors only). Empty without owner.
+	ReviewRoute    string `json:"reviewRoute"`
+	routeSnapshot  string
+	ProtectedUntil *time.Time `json:"protectedUntil"`
 	// DiscardedAt: the draft is in the recycle bin (status CANCELLED) since then.
 	DiscardedAt  *time.Time `json:"discardedAt"`
 	NextReviewAt *time.Time `json:"nextReviewAt"`
@@ -163,7 +169,7 @@ func fingerprint(p Input) string {
 }
 func canRead(u User, p Project) bool { return (ProjectPolicy{u}).Read(p) }
 func canWrite(u User, p Project) bool {
-	return (u.Role == adminRole || u.Role == salesRole && p.OwnerSubject == u.Subject) && canRead(u, p)
+	return (u.Role == adminRole || filerRole(u.Role) && p.OwnerSubject == u.Subject) && canRead(u, p)
 }
 func editable(s string) bool { return s == "DRAFT" || s == "RETURNED" }
 func validateInput(p *Input, submit bool) error {

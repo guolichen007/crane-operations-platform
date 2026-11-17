@@ -71,6 +71,9 @@ export interface Project extends Input {
  documentHash: string;
  review?: ReviewEligibility;
  ownerName: string;
+ // V1.1: owner role (sales or supervisor) and who decides the current filing.
+ ownerRole?: string;
+ reviewRoute?: '' | 'TEAM_MANAGER' | 'DIRECTOR';
  createdByName: string;
  custodianName: string;
  submittedByName: string;

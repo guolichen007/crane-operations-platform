@@ -101,6 +101,11 @@ const showRoleAction = computed(() => administrator.value && canManage.value && 
   ['baobei_sales', 'baobei_manager'].includes(member.value.role));
 const failureReason = computed(() => member.value?.status === 'PROVISION_FAILED' || member.value?.syncStatus === 'FAILED'
   ? events.value.find(event => event.action === 'staff.provision.fail')?.reason : '');
+// V1.1: supervisors may own projects; an administrator hands those off (to an
+// active sales member) like a sales member's. Directors move a supervisor's
+// project one by one from the project page; supervisors never manage supervisors.
+const handoffAllowed = computed(() => !!member.value && (member.value.role === 'baobei_sales'
+  || member.value.role === 'baobei_manager' && administrator.value));
 const needsTeam = computed(() => ['baobei_sales', 'baobei_manager'].includes(form.value.role));
 const profileDialog = computed(() => dialog.value === 'invite' || dialog.value === 'edit');
 const reauthActive = computed(() => reauthUntil.value > now.value);
@@ -622,7 +627,7 @@ onMounted(async () => {
       </div>
       <div class="staff-card panel">
         <h2>名下项目 · {{ member.projectCount }}</h2>
-        <p v-if="member.role !== 'baobei_sales'" class="muted">人员管理仅展示项目计数。</p>
+        <p v-if="!handoffAllowed" class="muted">人员管理仅展示项目计数。</p>
         <template v-else>
           <p v-if="!projects.length" class="muted">没有待移交的未结束项目</p>
           <label v-for="item in projects" :key="item.id" class="staff-check">

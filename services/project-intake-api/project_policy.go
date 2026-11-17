@@ -31,6 +31,9 @@ func (s ProjectPolicy) Read(p Project) bool {
 	case salesRole:
 		return p.OwnerSubject != "" && p.OwnerSubject == u.Subject
 	case managerRole:
+		// A supervisor's own filings carry the supervisor's team (create and
+		// submit require it; a team change requires a handoff first), so the
+		// team scope already contains them.
 		return p.OwnerSubject != "" && u.TeamID != "" && p.TeamID == u.TeamID
 	case directorRole:
 		return p.OwnerSubject != ""
@@ -47,10 +50,42 @@ func projectScope(alias string) string {
 func projectScopeAt(alias, subject, role, team string) string {
 	return strings.NewReplacer("$1", subject, "$2", role, "$3", team).Replace(projectScope(alias))
 }
+
+// filerRole: roles that may file and hold their own projects. V1.1 opens own
+// filings to supervisors; directors still cannot file for themselves.
+func filerRole(role string) bool { return role == salesRole || role == managerRole }
+
 func (s ProjectPolicy) Create() bool {
-	return s.User.Role == adminRole || s.User.Role == salesRole && contains(s.User.Permissions, "project.create")
+	return s.User.Role == adminRole || filerRole(s.User.Role) && contains(s.User.Permissions, "project.create")
 }
 func (s ProjectPolicy) Manage() bool { return manager(s.User) || s.User.Role == adminRole }
+
+// Review routes (V1.1 R1). A sales member's filing is decided by a supervisor
+// of the team (or a director); a supervisor's own filing only by a director.
+// The effective route never drops below the route frozen with the submitted
+// revision, and it is DIRECTOR whenever the current owner is not a sales member.
+const (
+	routeTeamManager = "TEAM_MANAGER"
+	routeDirector    = "DIRECTOR"
+)
+
+func effectiveRoute(p Project) string {
+	if p.OwnerSubject == "" {
+		return ""
+	}
+	if p.routeSnapshot == routeDirector || p.OwnerRole != salesRole {
+		return routeDirector
+	}
+	return routeTeamManager
+}
+
+// reviewRouteSQL is the SQL form of effectiveRoute for alias p.
+func reviewRouteSQL(p string) string {
+	return `(CASE WHEN ` + p + `.owner_subject IS NULL THEN '' WHEN EXISTS(SELECT 1 FROM project_review_routes rr WHERE rr.project_id=` + p + `.id
+ AND rr.submission_revision=` + p + `.submission_revision AND rr.route='DIRECTOR')
+ OR coalesce((SELECT ru.role FROM app_users ru WHERE ru.subject=` + p + `.owner_subject),'')<>'baobei_sales' THEN 'DIRECTOR' ELSE 'TEAM_MANAGER' END)`
+}
+
 func (s ProjectPolicy) Action(p Project, action string) string {
 	u := s.User
 	if !s.Read(p) {
@@ -59,7 +94,9 @@ func (s ProjectPolicy) Action(p Project, action string) string {
 	if p.OwnerSubject == "" && p.IntakeStatus != "DRAFT" && p.DiscardedAt == nil {
 		return "INVALID_STATE"
 	}
-	own := u.Role == salesRole && p.OwnerSubject == u.Subject
+	// Only the owner writes their project; seeing a team project (supervisor)
+	// gives review rights, never edit rights.
+	own := filerRole(u.Role) && p.OwnerSubject == u.Subject
 	writer := u.Role == adminRole || own
 	switch action {
 	case "edit":
@@ -97,6 +134,11 @@ func (s ProjectPolicy) Action(p Project, action string) string {
 		if !s.Manage() {
 			return "BUSINESS_PERMISSION_DENIED"
 		}
+		// A supervisor hands off their own projects and those of the team's sales
+		// members, never another supervisor's own projects.
+		if u.Role == managerRole && p.OwnerSubject != u.Subject && p.OwnerRole != salesRole {
+			return "BUSINESS_PERMISSION_DENIED"
+		}
 		if !editable(p.IntakeStatus) && !contains([]string{"SUBMITTED", "UNDER_REVIEW", "APPROVED"}, p.IntakeStatus) {
 			return "INVALID_STATE"
 		}
@@ -129,6 +171,9 @@ func (s ProjectPolicy) Action(p Project, action string) string {
 		if u.Subject == p.CreatedBySubject || u.Subject == p.OwnerSubject || u.Subject == p.SubmittedBySubject {
 			return "REVIEW_CONFLICT"
 		}
+		if u.Role == managerRole && effectiveRoute(p) == routeDirector {
+			return "REVIEW_ROUTE_DIRECTOR"
+		}
 	default:
 		return "BUSINESS_PERMISSION_DENIED"
 	}
@@ -148,16 +193,41 @@ func enforceProject(u User, p Project, action string) error {
 	}
 	return problem(status, code)
 }
+
+// activeOwner: a legal assignment target (administrator assignment, project
+// transfer, staff handoff): an active sales member with a team.
 func activeOwner(ctx context.Context, q querier, subject string) (string, error) {
+	return ownerTeam(ctx, q, subject, []string{salesRole})
+}
+
+// selfOwner: a legal holder of their own filing (create, submit): an active
+// sales member or supervisor with a team (V1.1). Archiving a team requires
+// that no member is left in it, so an active member never sits in an archived team.
+func selfOwner(ctx context.Context, q querier, subject string) (string, error) {
+	return ownerTeam(ctx, q, subject, []string{salesRole, managerRole})
+}
+
+func ownerTeam(ctx context.Context, q querier, subject string, roles []string) (string, error) {
 	if subject == "" {
 		return "", problem(409, "OWNER_REQUIRED")
 	}
 	var team string
-	err := q.QueryRow(ctx, `SELECT u.team_id::text FROM app_users u WHERE u.team_id IS NOT NULL AND u.subject=$1 AND u.active AND u.role='baobei_sales'`, subject).Scan(&team)
+	err := q.QueryRow(ctx, `SELECT u.team_id::text FROM app_users u WHERE u.team_id IS NOT NULL AND u.subject=$1 AND u.active AND u.role=ANY($2)`, subject, roles).Scan(&team)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", problem(409, "OWNER_INACTIVE")
 	}
 	return team, err
+}
+
+// freezeRoute writes the immutable review route of the revision just frozen.
+func freezeRoute(ctx context.Context, tx pgx.Tx, p Project, revision int) error {
+	tag, err := tx.Exec(ctx, `INSERT INTO project_review_routes(project_id,submission_revision,owner_subject,owner_role,team_id,route,basis)
+ SELECT $1,$2,u.subject,u.role,$3::uuid,CASE WHEN u.role='baobei_sales' THEN 'TEAM_MANAGER' ELSE 'DIRECTOR' END,'SUBMISSION'
+ FROM app_users u WHERE u.subject=$4`, p.ID, revision, p.TeamID, p.OwnerSubject)
+	if err == nil && tag.RowsAffected() != 1 {
+		return problem(409, "OWNER_INACTIVE")
+	}
+	return err
 }
 func participation(ctx context.Context, tx pgx.Tx, p Project, u User, kind string) error {
 	_, err := tx.Exec(ctx, `INSERT INTO project_participations(project_id,actor_subject,kind,source_version,owner_subject,team_id,document_hash)

@@ -388,7 +388,8 @@ const reviewSummary = computed(() => {
       <template v-if="tab === '归属历史'">
         <h2>归属历史</h2>
         <dl class="detail-grid">
-          <dt>当前负责人</dt><dd>{{ ownerText }}</dd>
+          <dt>当前负责人</dt><dd>{{ ownerText }}<template v-if="p.ownerRole === 'baobei_manager'">（销售主管）</template></dd>
+          <dt v-if="p.reviewRoute">审核路由</dt><dd v-if="p.reviewRoute">{{ p.reviewRoute === 'DIRECTOR' ? '销售总监审核（主管本人报备）' : '本团队主管或销售总监审核' }}</dd>
           <dt>创建人</dt><dd>{{ p.createdByName || '姓名待核对' }}</dd>
           <dt v-if="!p.ownerSubject">草稿保管人</dt><dd v-if="!p.ownerSubject">{{ p.custodianName || '姓名待核对' }}</dd>
           <dt>本轮提交人</dt><dd>{{ p.submittedByName || (p.submissionRevision ? '姓名待核对' : '尚未正式提交') }}</dd>

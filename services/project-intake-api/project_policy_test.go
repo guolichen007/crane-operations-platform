@@ -23,7 +23,7 @@ func TestProjectPolicyMatrix(t *testing.T) {
 	for _, role := range roles {
 		for _, resource := range []string{"own", "same-team", "other-team", "unassigned"} {
 			for _, status := range statuses {
-				p := Project{OwnerSubject: "sales", TeamID: "one", CreatedBySubject: "creator", SubmittedBySubject: "submitter", EvidenceState: "COMPLETE", SubmissionRevision: 1, IntakeStatus: status}
+				p := Project{OwnerSubject: "sales", OwnerRole: salesRole, TeamID: "one", CreatedBySubject: "creator", SubmittedBySubject: "submitter", EvidenceState: "COMPLETE", SubmissionRevision: 1, IntakeStatus: status}
 				if resource == "same-team" {
 					p.OwnerSubject = "other"
 				}
@@ -33,6 +33,7 @@ func TestProjectPolicyMatrix(t *testing.T) {
 				}
 				if resource == "unassigned" {
 					p.OwnerSubject = ""
+					p.OwnerRole = ""
 					p.TeamID = ""
 				}
 				u := User{Subject: "sales", Role: role, TeamID: "one", Permissions: capabilityList(7)}

@@ -100,7 +100,7 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 		return nil
 	}
 	if path == "/api/v1/duplicate-checks" && method == "POST" {
-		if u.Role != salesRole && u.Role != adminRole {
+		if u.Role != salesRole && u.Role != managerRole && u.Role != adminRole {
 			fail(w, 403, "FORBIDDEN", "没有报备权限")
 			return nil
 		}
@@ -346,7 +346,7 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 		}
 		if action == "submit" {
 			in = p.Input
-			team, err := activeOwner(ctx, tx, p.OwnerSubject)
+			team, err := selfOwner(ctx, tx, p.OwnerSubject)
 			if err != nil {
 				return err
 			}
@@ -376,6 +376,9 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 				p.IntakeStatus = "UNDER_REVIEW"
 			}
 			if e = freezeSubmission(ctx, tx, p, u); e != nil {
+				return e
+			}
+			if e = freezeRoute(ctx, tx, p, p.SubmissionRevision+1); e != nil {
 				return e
 			}
 			for _, d := range ds {
