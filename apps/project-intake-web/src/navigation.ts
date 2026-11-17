@@ -35,24 +35,31 @@ export function roleLabel(role: string) {
   );
 }
 
+// V1.1 A1/A7: one "项目中心" entry; list and board are two views of it (the
+// old /pipeline path stays a valid bookmark and highlights the same entry).
+export const PROJECT_CENTER = '项目中心';
+/** Nav entry that is active for a path (/pipeline belongs to the project center). */
+export function activeEntry(path: string) {
+  if (path === '/pipeline' || path.startsWith('/projects/')) return '/projects';
+  return path;
+}
 export function navigation(u: User | null | undefined): NavItem[] {
   if (!u) return [];
   const items: NavItem[] = [
     { path: '/', label: '工作台', icon: 'dashboard', group: 'workspace' },
     { path: '/followups', label: '待跟进', icon: 'clock', group: 'workspace' },
-    { path: '/projects', label: projectScopeLabel(u), icon: 'folder', group: 'projects' },
+    { path: '/projects', label: PROJECT_CENTER, icon: 'folder', group: 'projects' },
   ];
   if (can(u, 'project.unassigned'))
     items.push({ path: '/unassigned', label: '待分配草稿', icon: 'inbox', group: 'projects' });
-  items.push({ path: '/pipeline', label: '项目管道', icon: 'columns', group: 'projects' });
   // Discarded drafts of the people who may discard (own sales drafts, admin).
   if (can(u, 'project.create'))
     items.push({ path: '/recycle-bin', label: '草稿回收站', icon: 'trash', group: 'projects' });
   if (can(u, 'project.review')) {
-    items.push({ path: '/reviews', label: '报备审核', icon: 'check', group: 'governance' });
+    items.push({ path: '/reviews', label: '审核中心', icon: 'check', group: 'governance' });
     items.push({ path: '/duplicates', label: '重复处理', icon: 'copy', group: 'governance' });
   }
-  items.push({ path: '/statistics', label: '统计', icon: 'chart', group: 'governance' });
+  items.push({ path: '/statistics', label: '数据分析', icon: 'chart', group: 'governance' });
   if (can(u, 'staff.manage'))
     items.push({
       path: u.role === 'baobei_admin' ? '/settings/users' : '/team/members',
@@ -66,7 +73,7 @@ export function navigation(u: User | null | undefined): NavItem[] {
 }
 export const navGroups: Record<NavItem['group'], string> = {
   workspace: '工作',
-  projects: '项目中心',
+  projects: '项目',
   governance: '审核与分析',
   organization: '组织',
 };
@@ -74,6 +81,8 @@ export const navGroups: Record<NavItem['group'], string> = {
 // Route guard rules, expressed as required server capabilities.
 export function routeAllowed(u: User | null | undefined, path: string): boolean {
   if (!u) return false;
+  // V1.1 R3: until the name is confirmed only the profile page is reachable.
+  if (u.profileCompleted === false) return path === '/profile';
   if (path === '/reviews' || path === '/duplicates') return can(u, 'project.review');
   if (path === '/unassigned') return can(u, 'project.unassigned');
   if (path === '/recycle-bin') return can(u, 'project.create');

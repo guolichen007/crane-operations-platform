@@ -27,7 +27,14 @@ async function authorize(page: Page) {
 }
 
 async function workspace(page: Page) {
-  await expect(page.getByRole('heading', { name: '工作台', exact: true })).toBeVisible();
+  // V1.1 R3: a member whose name is not confirmed yet confirms it first.
+  const home = page.getByRole('heading', { name: '工作台', exact: true });
+  const confirm = page.getByRole('heading', { name: '请确认你的姓名' });
+  await expect(home.or(confirm)).toBeVisible();
+  if (await confirm.isVisible()) {
+    await page.locator('[data-action-id="profile.save"]:visible').click();
+  }
+  await expect(home).toBeVisible();
   const session = (await page.context().cookies()).find(c => c.name === '__Host-baobei_session');
   expect(session).toMatchObject({ httpOnly: true, secure: true, sameSite: 'Lax', path: '/' });
 }
@@ -142,7 +149,7 @@ test('会话过期与会话库 503 区分，并支持重试', async ({ page }) =
   await workspace(page);
 
   await control(page, 'expire-session');
-  await page.getByRole('button', { name: '我的报备', exact: true }).click();
+  await page.getByRole('button', { name: '项目中心', exact: true }).click();
   await expect(page).toHaveURL('/login');
   await expect(page.getByRole('alert')).toContainText('登录已过期');
   await page.reload();

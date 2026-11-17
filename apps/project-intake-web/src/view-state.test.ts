@@ -29,7 +29,7 @@ describe('detail return target', () => {
   });
   it('names the return action after its target', () => {
     expect(returnLabel('/pipeline?q=a', '我的报备')).toBe('返回项目管道');
-    expect(returnLabel('/projects', '我的报备')).toBe('返回我的报备');
+    expect(returnLabel('/projects', '项目中心')).toBe('返回项目中心');
   });
 });
 

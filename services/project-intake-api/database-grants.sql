@@ -73,3 +73,13 @@ GRANT UPDATE (discarded_at,discarded_by_subject) ON intake_projects TO baobei_ru
 -- V1.1 R1: review-route evidence is insert-only like the frozen submissions.
 GRANT SELECT, INSERT ON project_review_routes TO baobei_runtime;
 GRANT SELECT ON project_review_routes TO baobei_staff_api, baobei_maintenance;
+-- V1.1 R3: first-login name confirmation. The runtime reads the completion
+-- flag and its own audit; names change only through the definer function.
+GRANT SELECT (profile_completed_at,profile_name_source,profile_version,staff_id) ON app_users TO baobei_runtime;
+GRANT SELECT ON profile_audit TO baobei_runtime, baobei_staff_api, baobei_maintenance;
+-- V1.1 R2: layered statistics resolve a member by staff id and list the
+-- team's members and teams (names and states only; no contact data).
+GRANT SELECT (staff_status) ON app_users TO baobei_runtime;
+GRANT SELECT (id,name,status) ON teams TO baobei_runtime;
+GRANT EXECUTE ON FUNCTION confirm_own_profile(text, text, text, integer) TO baobei_runtime;
+GRANT SELECT (profile_completed_at,profile_name_source,profile_version) ON app_users TO baobei_staff_api;

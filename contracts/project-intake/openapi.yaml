@@ -44,6 +44,10 @@
                         "$ref": "#/components/schemas/ActionHint"
                       },
                       "description": "导航能力提示：project.create/read/review/assign/unassigned、staff.manage、team.manage。仅用于界面入口，所有接口服务端重验。"
+                    },
+                    "profileCompleted": {
+                      "type": "boolean",
+                      "description": "V1.1：本人姓名已确认；false 时业务 API 返回 403 PROFILE_INCOMPLETE"
                     }
                   }
                 }
@@ -4385,6 +4389,97 @@
           }
         }
       }
+    },
+    "/api/v1/me/profile": {
+      "get": {
+        "operationId": "me.profile",
+        "summary": "V1.1 本人资料（姓名确认状态与记录）",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnProfile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "me.profile.update",
+        "summary": "V1.1 确认或修改本人显示姓名",
+        "description": "只接受 name/reason/version；role、teamId、subject 等任何其他字段 400。经 SECURITY DEFINER 函数 confirm_own_profile 一次写入姓名与不可变 profile_audit。未确认姓名前其余业务 API 返回 403 PROFILE_INCOMPLETE；/auth/*（登录、改密、退出）与 GET /me 不受影响。",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OwnProfileChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "PROFILE_NAME_INVALID / INVALID_INPUT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "账号状态变化",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "VERSION_CONFLICT",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -6594,6 +6689,99 @@
                 }
               }
             }
+          }
+        }
+      },
+      "OwnProfile": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "role",
+          "team",
+          "completed",
+          "source",
+          "version",
+          "history"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "team": {
+            "type": "string"
+          },
+          "completed": {
+            "type": "boolean"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "UNCONFIRMED",
+              "SELF_CONFIRMED",
+              "BACKFILL_VERIFIED",
+              "DEV_FIXTURE"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "profile.confirm",
+                    "profile.rename",
+                    "profile.backfill"
+                  ]
+                },
+                "oldName": {
+                  "type": "string"
+                },
+                "newName": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            }
+          }
+        }
+      },
+      "OwnProfileChange": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "version"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
           }
         }
       }

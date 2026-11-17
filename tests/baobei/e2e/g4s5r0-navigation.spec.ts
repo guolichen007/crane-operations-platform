@@ -21,7 +21,7 @@ test('列表↔管道双向切换保持筛选，详情返回原视图，前进�
   });
   expect(created.status).toBe(200);
 
-  await page.getByRole('button', { name: '我的报备', exact: true }).click();
+  await page.getByRole('button', { name: '项目中心', exact: true }).click();
   await page.getByRole('textbox', { name: '搜索报备', exact: true }).fill(name);
   await page.getByLabel('报备状态筛选').selectOption('DRAFT');
   await expect(page).toHaveURL((u) => u.searchParams.get('q') === name && u.searchParams.get('status') === 'DRAFT');
@@ -33,17 +33,18 @@ test('列表↔管道双向切换保持筛选，详情返回原视图，前进�
   await expect(page.getByRole('textbox', { name: '搜索报备', exact: true })).toHaveValue(name);
   await expect(page.getByLabel('报备状态筛选')).toHaveValue('DRAFT');
   await expect(page.locator('h1 small')).toHaveText('1');
-  // Open the card from its column; return lands on the same pipeline view and column.
-  await action(page, 'pipeline.jump').filter({ hasText: '技术交流' }).click();
-  const card = page.locator('[data-stage="L2_TECHNICAL"] .stage-card').filter({ hasText: name });
+  // Open the card from its group column (V1.1 six groups: 技术交流 is in 技术推进);
+  // return lands on the same pipeline view and column.
+  await action(page, 'pipeline.jump').filter({ hasText: '技术推进' }).click();
+  const card = page.locator('[data-group="G2"] .stage-card').filter({ hasText: name });
   await card.locator('[data-action-id="project.detail"]').click();
   await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+\?from=/);
   await expect(action(page, 'nav.open').filter({ hasText: '返回项目管道' })).toBeVisible();
   await page.reload();
   await action(page, 'nav.open').filter({ hasText: '返回项目管道' }).click();
-  await expect(page).toHaveURL((u) => u.pathname === '/pipeline' && u.searchParams.get('q') === name && u.searchParams.get('col') === 'L2_TECHNICAL');
+  await expect(page).toHaveURL((u) => u.pathname === '/pipeline' && u.searchParams.get('q') === name && u.searchParams.get('col') === 'G2');
   await expect(page.getByRole('textbox', { name: '搜索报备', exact: true })).toHaveValue(name);
-  await expect(page.locator('[data-stage="L2_TECHNICAL"] .stage-card').filter({ hasText: name })).toBeVisible();
+  await expect(page.locator('[data-group="G2"] .stage-card').filter({ hasText: name })).toBeVisible();
 
   // Pipeline -> list keeps the filters; back/forward restore each view.
   await action(page, 'view.list').click();
@@ -59,8 +60,8 @@ test('列表↔管道双向切换保持筛选，详情返回原视图，前进�
   // From the list, the project returns to the list with the same filters.
   await action(page, 'project.preview').first().click();
   await action(page, 'project.detail').click();
-  await expect(action(page, 'nav.open').filter({ hasText: '返回我的报备' })).toBeVisible();
-  await action(page, 'nav.open').filter({ hasText: '返回我的报备' }).click();
+  await expect(action(page, 'nav.open').filter({ hasText: '返回项目中心' })).toBeVisible();
+  await action(page, 'nav.open').filter({ hasText: '返回项目中心' }).click();
   await expect(page).toHaveURL((u) => u.pathname === '/projects' && u.searchParams.get('q') === name && u.searchParams.get('status') === 'DRAFT');
   await expect(page.locator('h1 small')).toHaveText('1');
   // A direct link with filters opens the filtered list.
@@ -68,7 +69,7 @@ test('列表↔管道双向切换保持筛选，详情返回原视图，前进�
   await expect(page.locator('h1 small')).toHaveText('1');
   // An untrusted return target falls back to the list.
   await page.goto('/projects/' + created.body.id + '?from=' + encodeURIComponent('https://evil.test/'));
-  await expect(action(page, 'nav.open').filter({ hasText: '返回我的报备' })).toBeVisible();
+  await expect(action(page, 'nav.open').filter({ hasText: '返回项目中心' })).toBeVisible();
 });
 
 test('弹窗内显示错误与必填提示，统一关闭入口，重新加载与全局搜索', async ({ page, cleanup }) => {
@@ -124,8 +125,8 @@ test('弹窗内显示错误与必填提示，统一关闭入口，重新加载�
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
 
   // Statistics refresh reloads from the server.
-  await page.getByRole('button', { name: '统计', exact: true }).click();
-  const refreshed = page.waitForResponse((r) => r.url().includes('/api/v1/stage-summary'));
+  await page.getByRole('button', { name: '数据分析', exact: true }).click();
+  const refreshed = page.waitForResponse((r) => r.url().includes('/api/v1/analytics/overview'));
   await action(page, 'statistics.refresh').first().click();
   expect((await refreshed).status()).toBe(200);
 });

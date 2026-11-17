@@ -128,7 +128,7 @@ function openStage(code: string) {
 <template>
   <div class="page-heading">
     <div>
-      <h1>统计</h1>
+      <h1>数据分析</h1>
       <p class="muted">
         范围：{{ selectionText }} · {{ statusText }}<template v-if="data"> · 统计时间 {{ when(data.asOf) }}</template>
       </p>

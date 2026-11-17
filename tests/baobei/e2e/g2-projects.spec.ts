@@ -119,7 +119,7 @@ test('follow-up windows are computed by the server and do not overlap', async ({
 test('sales cannot reach admin or review routes; director sees no unassigned drafts', async ({ page }) => {
   await login(page, 'synthetic-a');
   await expect(page.getByRole('button', { name: '待分配草稿' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '报备审核' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '审核中心' })).toHaveCount(0);
   for (const path of ['/unassigned', '/reviews', '/settings/users']) {
     await page.goto(path);
     await expect(page).toHaveURL('/');

@@ -133,6 +133,8 @@ export interface User {
   teamId: string;
   permissions: string[];
   businessActions?: Record<string, ActionHint>;
+  // V1.1 R3: own display name confirmed (first-login gate).
+  profileCompleted?: boolean;
 }
 // G3-2A: the only disclosure about related candidates the viewer cannot read.
 export interface RestrictedRelated {

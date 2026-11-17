@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { navigation, routeAllowed } from './navigation';
+import { navigation, routeAllowed, activeEntry } from './navigation';
 import type { User } from './model';
 
 const hint = (allowed: boolean) => ({ allowed, reasonCode: allowed ? null : 'BUSINESS_PERMISSION_DENIED' });
@@ -14,7 +14,7 @@ const paths = (u: User) => navigation(u).map((i) => i.path);
 describe('服务端能力驱动导航', () => {
   it('管理员有业务工作台、待分配与组织入口', () => {
     const admin = user('baobei_admin', { 'project.create': true, 'project.review': true, 'project.unassigned': true, 'staff.manage': true, 'team.manage': true });
-    expect(paths(admin)).toEqual(['/', '/followups', '/projects', '/unassigned', '/pipeline', '/recycle-bin', '/reviews', '/duplicates', '/statistics', '/settings/users', '/settings/teams']);
+    expect(paths(admin)).toEqual(['/', '/followups', '/projects', '/unassigned', '/recycle-bin', '/reviews', '/duplicates', '/statistics', '/settings/users', '/settings/teams']);
     expect(routeAllowed(admin, '/new')).toBe(true);
   });
   it('销售没有审核与组织入口', () => {
@@ -32,7 +32,7 @@ describe('服务端能力驱动导航', () => {
   });
   it('角色名本身不授予入口：缺少能力提示即隐藏', () => {
     const admin = user('baobei_admin', {});
-    expect(paths(admin)).toEqual(['/', '/followups', '/projects', '/pipeline', '/statistics']);
+    expect(paths(admin)).toEqual(['/', '/followups', '/projects', '/statistics']);
     expect(routeAllowed(admin, '/new')).toBe(false);
     expect(routeAllowed(admin, '/unassigned')).toBe(false);
   });
@@ -41,5 +41,22 @@ describe('服务端能力驱动导航', () => {
     expect(paths(manager)).toContain('/team/members');
     expect(routeAllowed(manager, '/settings/users')).toBe(false);
     expect(routeAllowed(manager, '/settings/teams')).toBe(false);
+  });
+});
+
+describe('V1.1 项目中心与首次姓名确认', () => {
+  it('只有一个项目中心入口，管道路径归属同一入口', () => {
+    const sales = user('baobei_sales', { 'project.create': true });
+    const labels = navigation(sales).map((i) => i.label);
+    expect(labels.filter((l) => l === '项目中心')).toHaveLength(1);
+    expect(labels).not.toContain('项目管道');
+    expect(new Set(labels).size).toBe(labels.length);
+    expect(activeEntry('/pipeline')).toBe('/projects');
+    expect(routeAllowed(sales, '/pipeline')).toBe(true);
+  });
+  it('姓名未确认时只能进入个人资料页', () => {
+    const sales = { ...user('baobei_sales', { 'project.create': true }), profileCompleted: false };
+    expect(routeAllowed(sales, '/profile')).toBe(true);
+    for (const p of ['/', '/projects', '/pipeline', '/new', '/statistics']) expect(routeAllowed(sales, p)).toBe(false);
   });
 });

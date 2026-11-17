@@ -12,6 +12,7 @@ import Wizard from './Wizard.vue';
 import Detail from './Detail.vue';
 import StaffMembers from './StaffMembers.vue';
 import StaffTeams from './StaffTeams.vue';
+import Profile from './Profile.vue';
 import { useApp } from './store';
 import { routeAllowed } from './navigation';
 import { loginErrorMessage } from './login-errors';
@@ -35,6 +36,7 @@ const router = createRouter({
     { path: '/followups', component: Projects },
     { path: '/pipeline', component: Pipeline },
     { path: '/statistics', component: Statistics },
+    { path: '/profile', component: Profile },
     { path: '/new', component: Wizard },
     { path: '/projects/:id/edit', component: Wizard },
     { path: '/projects/:id', component: Detail },
@@ -53,6 +55,9 @@ router.beforeEach(async (to) => {
       return { path: draftPath(draft), query: { resume: draft.action }, replace: true };
     if (draft) clearStaffDraft();
   }
+  // V1.1 R3: first login confirms the own name before anything else.
+  if (app.user && app.user.profileCompleted === false && to.path !== '/profile' && to.path !== '/login')
+    return { path: '/profile', query: { first: '1', next: to.fullPath }, replace: true };
   // Continuing an existing draft is authorized per project by Project.actions.
   if (to.path === '/new' && to.query.draft) return;
   if (app.user && to.path !== '/login' && !routeAllowed(app.user, to.path)) return '/';

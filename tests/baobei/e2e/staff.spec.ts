@@ -80,7 +80,7 @@ test('B3 主管邀请、调整权限、审核、停用与交接', async ({ page,
     }, draft);
 
     await login(page, 'synthetic-manager');
-    await page.getByRole('button', { name: '报备审核', exact: true }).click();
+    await page.getByRole('button', { name: '审核中心', exact: true }).click();
     // The queue is oldest-first and shared; the target may be on any page.
     await (await findCard(page, projectName)).click();
     await action(page, 'review.approve').click();
@@ -189,7 +189,8 @@ test('B3 管理员维护团队与邀请高级角色', async ({ page }, info) => 
   await expect(page.locator('[data-action-id="staff.provision-review"]')).toHaveCount(0);
   await expect(page.locator('.staff-title')).toContainText('待开通');
   await expect(page.locator('.staff-hint')).toHaveText('请开通登录账号');
-  await expect(page.getByText('人员管理仅展示项目计数。')).toBeVisible();
+  // V1.1: a supervisor may own projects; the administrator sees them for handoff.
+  await expect(page.getByText('没有待移交的未结束项目')).toBeVisible();
   await action(page, 'staff.suspend').click();
   await confirm(page, 'Synthetic B3 停用高级角色');
   await action(page, 'staff.archive').click();

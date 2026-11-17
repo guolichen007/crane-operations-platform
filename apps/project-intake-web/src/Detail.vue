@@ -19,7 +19,7 @@ import {
   projectTypes,
   when,
 } from './model';
-import { projectScopeLabel } from './navigation';
+import { PROJECT_CENTER } from './navigation';
 import { nextStages } from './pipeline';
 import { hintReason, recovery } from './reasons';
 import { ApiError } from './api-client';
@@ -226,7 +226,7 @@ const reviewSummary = computed(() => {
   </p>
   <template v-if="p">
     <ActionButton action-id="nav.open" class="back-link" :run="() => router.push(backTarget)">
-      <ArrowLeft :size="14" aria-hidden="true" />{{ returnLabel(backTarget, projectScopeLabel(app.user)) }}
+      <ArrowLeft :size="14" aria-hidden="true" />{{ returnLabel(backTarget, PROJECT_CENTER) }}
     </ActionButton>
     <div class="detail-heading">
       <div>

@@ -7,7 +7,7 @@ import { stageGroups } from './pipeline';
 import ScopePicker, { type ScopeValue } from './ScopePicker.vue';
 import { useApp } from './store';
 import { type Project, statuses, stages, when } from './model';
-import { projectScopeLabel, can } from './navigation';
+import { can, PROJECT_CENTER } from './navigation';
 import { recovery } from './reasons';
 import ActionButton from './ActionButton.vue';
 import Modal from './Modal.vue';
@@ -41,7 +41,6 @@ let generation = 0;
 const view = computed(() =>
   route.path === '/followups' ? 'followups' : route.path === '/unassigned' ? 'unassigned' : route.path === '/recycle-bin' ? 'bin' : 'projects'
 );
-const scopeName = computed(() => projectScopeLabel(app.user));
 const scopeNote = computed(
   () =>
     ({
@@ -53,7 +52,7 @@ const scopeNote = computed(
 );
 const title = computed(
   () =>
-    ({ followups: '待跟进', unassigned: '待分配草稿', bin: '草稿回收站', projects: scopeName.value })[view.value]
+    ({ followups: '待跟进', unassigned: '待分配草稿', bin: '草稿回收站', projects: PROJECT_CENTER })[view.value]
 );
 async function load() {
   const n = ++generation;
@@ -167,8 +166,8 @@ const asOfText = computed(() => (asOf.value ? new Date(asOf.value).toLocaleStrin
     </div>
     <div class="actions">
       <nav v-if="view === 'projects'" class="view-switch" aria-label="切换视图">
-        <span class="view-current" aria-current="page"><List :size="15" aria-hidden="true" />列表视图</span>
-        <ActionButton action-id="view.pipeline" :run="() => router.push(pipelineLink)"><Columns3 :size="15" aria-hidden="true" />管道视图</ActionButton>
+        <span class="view-current" aria-current="page"><List :size="15" aria-hidden="true" />列表</span>
+        <ActionButton action-id="view.pipeline" :run="() => router.push(pipelineLink)"><Columns3 :size="15" aria-hidden="true" />管道</ActionButton>
       </nav>
       <ActionButton v-if="view === 'unassigned' && can(app.user, 'project.create')" action-id="project.create" primary :run="() => router.push('/new')">新建项目</ActionButton>
     </div>

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -255,6 +256,35 @@ func TestDatabaseProductionPrivileges(t *testing.T) {
 	if project.IntakeStatus != "APPROVED" {
 		t.Fatal("restricted role approval failed")
 	}
+	// V1.1: layered statistics, supervisor filing and own-name confirmation run
+	// under the restricted runtime role; a direct name update stays denied.
+	for _, q := range []string{"/api/v1/analytics/overview?scope=team", "/api/v1/analytics/members", "/api/v1/projects?scope=mine&group=G1"} {
+		status, response = manager.call("GET", q, nil)
+		expect(t, status, 200, response)
+	}
+	status, response = director.call("GET", "/api/v1/analytics/members", nil)
+	expect(t, status, 200, response)
+	status, response = manager.call("POST", "/api/v1/projects", sample("Synthetic supervisor filing"))
+	own := projectFrom(t, status, response)
+	status, response = manager.call("POST", "/api/v1/projects/"+own.ID+"/submit", map[string]int{"version": own.Version})
+	own = projectFrom(t, status, response)
+	if own.ReviewRoute != routeDirector {
+		t.Fatal("supervisor filing route under runtime role", own.ReviewRoute)
+	}
+	mustExec(migrator, `UPDATE app_users SET profile_completed_at=NULL,profile_name_source='UNCONFIRMED' WHERE subject='synthetic-a'`)
+	status, response = sales.call("GET", "/api/v1/projects", nil)
+	expect(t, status, 403, response)
+	status, response = sales.call("GET", "/api/v1/me/profile", nil)
+	expect(t, status, 200, response)
+	var prof ownProfile
+	_ = json.Unmarshal(response, &prof)
+	status, response = sales.call("PATCH", "/api/v1/me/profile", map[string]any{"name": "示例销售 A", "reason": "", "version": prof.Version})
+	expect(t, status, 200, response)
+	status, response = sales.call("GET", "/api/v1/projects", nil)
+	expect(t, status, 200, response)
+	deny(runtime, "UPDATE app_users SET display_name='forged'")
+	deny(runtime, "INSERT INTO profile_audit(staff_id,actor_subject,action,old_name,new_name,reason,profile_version) SELECT staff_id,'x','profile.rename','a','b','',1 FROM app_users LIMIT 1")
+	deny(runtime, "SELECT work_phone FROM app_users")
 	var sourceStaff, targetStaff string
 	var sourceVersion int
 	if err := staff.QueryRow(ctx, `SELECT staff_id::text,staff_version FROM app_users WHERE subject='synthetic-b'`).Scan(&sourceStaff, &sourceVersion); err != nil {

@@ -54,6 +54,16 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 	defer cancel()
 	r = r.WithContext(ctx)
 	path, method := r.URL.Path, r.Method
+	// V1.1 R3: until the member confirmed their own name, only the session
+	// (GET /me) and the name confirmation itself are served. Login, password
+	// change and sign-out live under /auth/ and are never gated.
+	if path == "/api/v1/me/profile" {
+		return a.profileHandler(w, r, u)
+	}
+	if !u.ProfileCompleted && !(path == "/api/v1/me" && method == "GET") {
+		fail(w, 403, "PROFILE_INCOMPLETE", "请先确认你的姓名后再使用业务功能")
+		return nil
+	}
 	if path == "/api/v1/staff" || strings.HasPrefix(path, "/api/v1/staff/") || path == "/api/v1/teams" || strings.HasPrefix(path, "/api/v1/teams/") {
 		return a.staff(w, r, u)
 	}

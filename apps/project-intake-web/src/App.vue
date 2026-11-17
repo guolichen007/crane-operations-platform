@@ -21,7 +21,7 @@ import ActionButton from './ActionButton.vue';
 import BrandMark from './BrandMark.vue';
 import Modal from './Modal.vue';
 import { useApp } from './store';
-import { navigation, navGroups, can, workspaceLabel, roleLabel, type NavItem } from './navigation';
+import { navigation, navGroups, can, workspaceLabel, roleLabel, activeEntry, type NavItem } from './navigation';
 const app = useApp(),
   router = useRouter(),
   route = useRoute(),
@@ -50,7 +50,7 @@ const groups = computed(() => {
   return out;
 });
 const active = (path: string) =>
-  path === '/' ? route.path === '/' : route.path === path || route.path.startsWith(path + '/');
+  path === '/' ? route.path === '/' : activeEntry(route.path) === path || route.path.startsWith(path + '/');
 const createLabel = computed(() => (app.user?.role === 'baobei_admin' ? '新建项目' : '新建报备'));
 const accountOpen = ref(false);
 // One sign-out: ends this Baobei session on the server. The next sign-in always
@@ -117,7 +117,7 @@ window.addEventListener('error', showError);
         </form>
         <div class="top-actions">
           <ActionButton
-            v-if="app.user.role === 'baobei_sales' || can(app.user, 'project.create')"
+            v-if="(app.user.role === 'baobei_sales' || can(app.user, 'project.create')) && app.user.profileCompleted !== false"
             :disabled="!can(app.user, 'project.create')"
             reason="当前账号未启用新建报备"
             action-id="project.create"
@@ -152,6 +152,9 @@ window.addEventListener('error', showError);
           <div><dt>角色</dt><dd>{{ roleLabel(app.user.role) }}</dd></div>
           <div><dt>工作空间</dt><dd>{{ workspaceLabel(app.user) }}</dd></div>
         </dl>
+      </section>
+      <section aria-label="姓名">
+        <ActionButton action-id="profile.open" :run="() => { accountOpen = false; return router.push('/profile'); }">修改我的姓名</ActionButton>
       </section>
       <section aria-label="修改密码">
         <h3>修改密码</h3>

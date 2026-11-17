@@ -93,6 +93,10 @@ func TestDatabaseG1Upgrade(t *testing.T) {
 	if err := verifyIdentityEpoch(ctx, db, "development", devIssuer); err != nil {
 		t.Fatal(err)
 	}
+	// A development API seeds its synthetic fixtures after migrating (main()).
+	if err = seed(ctx, db); err != nil {
+		t.Fatal(err)
+	}
 	a := &App{db: db, cfg: Config{Env: "development", Dev: true}}
 	server := httptest.NewServer(a.handler())
 	defer server.Close()

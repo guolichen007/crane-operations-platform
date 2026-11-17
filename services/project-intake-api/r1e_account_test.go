@@ -415,7 +415,11 @@ func TestDatabaseR1EMigrationKeepsHistory(t *testing.T) {
 	if s != 200 || !strings.Contains(string(mb), `"subject":"`+legacy+`"`) {
 		t.Fatal("new login must resolve to the same business subject", string(mb))
 	}
+	// V1.1 R3: a member who never signed in confirms the name first.
 	s, pb := emp.call("GET", "/api/v1/projects/"+projectID, nil)
+	expect(t, s, 403, pb)
+	confirmProfile(t, emp, "")
+	s, pb = emp.call("GET", "/api/v1/projects/"+projectID, nil)
 	expect(t, s, 200, pb)
 	// Account operations address the new realm's user id through the link.
 	s, _, b = f.account(f.admin, staffID, "reset-password", "migrate-reset-00000001", map[string]string{"reason": "迁移后重置"})

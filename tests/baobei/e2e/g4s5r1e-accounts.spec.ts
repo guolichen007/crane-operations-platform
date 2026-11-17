@@ -70,6 +70,11 @@ test('管理员网页开户：一次性初始密码、重置、换手机号、�
   await emp.goto('/login');
   expect(await employeeSignIn(emp, phone)).toBe(200);
   await emp.goto('/');
+  // V1.1 R3 (AC-16): a new member first confirms the own name, then works.
+  await expect(emp).toHaveURL(/\/profile\?first=1/);
+  await expect(emp.getByRole('heading', { name: '请确认你的姓名' })).toBeVisible();
+  await expect(emp.locator('[data-action-id="auth.logout"]:visible')).toBeVisible();
+  await emp.locator('[data-action-id="profile.save"]:visible').click();
   await expect(emp.getByRole('heading', { name: '工作台', exact: true })).toBeVisible();
   await expect(emp.locator('.workspace-label')).toHaveText('销售工作空间');
   await page.reload();

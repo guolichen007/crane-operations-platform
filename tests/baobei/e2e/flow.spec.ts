@@ -57,7 +57,7 @@ test('flow: draft, edit, submit, preview, followup, list, actions', async ({ pag
   await stepOne(page, name, customer);
   await action(page, 'project.save-draft').click();
   await expect(page.getByRole('status').filter({ hasText: '草稿已保存' }).first()).toBeVisible();
-  await page.getByRole('button', { name: '我的报备', exact: true }).click();
+  await page.getByRole('button', { name: '项目中心', exact: true }).click();
   await page.getByRole('textbox', { name: '搜索报备', exact: true }).fill(name);
   await expect(page.locator('h1 small')).toHaveText('1');
   await action(page, 'project.preview').first().click();
@@ -94,7 +94,7 @@ test('flow: draft, edit, submit, preview, followup, list, actions', async ({ pag
   await expect(page.getByText('记录跟进', { exact: true }).last()).toBeVisible();
   await action(page, 'project.tab').filter({ hasText: '项目概要' }).click();
   await expect(page.getByText('发送 synthetic 方案', { exact: true })).toBeVisible();
-  await action(page, 'nav.open').filter({ hasText: '返回我的报备' }).click();
+  await action(page, 'nav.open').filter({ hasText: '返回项目中心' }).click();
   await page.getByRole('textbox', { name: '搜索报备', exact: true }).fill(name);
   await expect(page.locator('h1 small')).toHaveText('1');
   await expect(
@@ -162,13 +162,13 @@ test('guard, readable error, input retained and loading prevents duplicate', asy
   await expect(action(page, 'project.save-draft')).toBeDisabled();
   await expect(page.getByRole('alert')).toContainText('合成测试暂时不可用');
   await expect(page.locator('[name=customer]')).toHaveValue('Synthetic未保存');
-  await page.getByRole('button', { name: '我的报备', exact: true }).click({ noWaitAfter: true });
+  await page.getByRole('button', { name: '项目中心', exact: true }).click({ noWaitAfter: true });
   await expect(page.getByRole('dialog')).toBeVisible();
   await action(page, 'guard.stay').click();
   await expect(page.locator('[name=customer]')).toHaveValue('Synthetic未保存');
-  await page.getByRole('button', { name: '我的报备', exact: true }).click({ noWaitAfter: true });
+  await page.getByRole('button', { name: '项目中心', exact: true }).click({ noWaitAfter: true });
   await action(page, 'guard.leave').click();
-  await expect(page.getByRole('heading', { name: /我的报备/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /项目中心/ })).toBeVisible();
 });
 
 test('pagination and read-only navigation actions', async ({ page }, info) => {
@@ -181,7 +181,7 @@ test('pagination and read-only navigation actions', async ({ page }, info) => {
     });
     expect(r.status).toBe(200);
   }
-  await page.getByRole('button', { name: '我的报备', exact: true }).click();
+  await page.getByRole('button', { name: '项目中心', exact: true }).click();
   await page.getByRole('textbox', { name: '搜索报备', exact: true }).fill(prefix);
   await expect(page.locator('h1 small')).toHaveText('21');
   await action(page, 'project.page-next').click();
@@ -197,11 +197,13 @@ test('pagination and read-only navigation actions', async ({ page }, info) => {
   }
   await page.getByRole('button', { name: '待跟进', exact: true }).click();
   await expect(page.getByRole('heading', { name: /待跟进/ })).toBeVisible();
-  await page.getByRole('button', { name: '项目管道', exact: true }).click();
+  // V1.1: one project-center entry; the board is a view of it.
+  await page.getByRole('button', { name: '项目中心', exact: true }).click();
+  await action(page, 'view.pipeline').click();
   await expect(page.locator('.pipeline-board')).toBeVisible();
-  await page.getByRole('button', { name: '列表视图', exact: true }).click();
-  await expect(page.getByRole('heading', { name: /我的报备/ })).toBeVisible();
-  await page.getByRole('button', { name: '统计', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '统计', exact: true })).toBeVisible();
+  await action(page, 'view.list').click();
+  await expect(page.getByRole('heading', { name: /项目中心/ })).toBeVisible();
+  await page.getByRole('button', { name: '数据分析', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '数据分析', exact: true })).toBeVisible();
   await expect(page.getByTestId('stat-known-total')).toContainText('¥');
 });

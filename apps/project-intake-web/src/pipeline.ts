@@ -68,7 +68,8 @@ export function filterQuery(f: PipelineFilters): URLSearchParams {
 }
 export function columnQuery(f: PipelineFilters, stage: string, page: number, pageSize: number): string {
   const p = filterQuery(f);
-  p.set('stage', stage);
+  // V1.1: a key G1..G6 pages a whole display group, a stage code one stage.
+  p.set(/^G[1-6]$/.test(stage) ? 'group' : 'stage', stage);
   p.set('page', String(page));
   p.set('pageSize', String(pageSize));
   return p.toString();

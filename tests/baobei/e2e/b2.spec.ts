@@ -70,7 +70,7 @@ test('B2 manager approve return reject duplicate comparison and transfer', async
   await action(page, 'auth.logout').click();
   await expect(page).toHaveURL('/login');
   await login(page, 'synthetic-manager');
-  await page.getByRole('button', { name: '报备审核', exact: true }).click();
+  await page.getByRole('button', { name: '审核中心', exact: true }).click();
   for (const [p, op] of [
     [approve, 'review.approve'],
     [returned, 'review.return'],
@@ -158,7 +158,7 @@ for (const failure of ['html502', 'empty504', 'connection', 'timeout'])
     await expect(page.getByRole('alert')).toContainText(message, { timeout: 25000 });
     await expect(page.locator('[name=customer]')).toHaveValue('Synthetic网络故障保留');
     await expect(action(page, 'project.save-draft')).toBeEnabled();
-    await page.getByRole('button', { name: '我的报备', exact: true }).click({ noWaitAfter: true });
+    await page.getByRole('button', { name: '项目中心', exact: true }).click({ noWaitAfter: true });
     await action(page, 'guard.leave').click();
     if (held) await held;
   });

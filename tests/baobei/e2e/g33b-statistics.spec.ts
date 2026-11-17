@@ -67,7 +67,7 @@ for (const vp of [
     await create(sales, `${tag}方案旧零`, 'L4_SOLUTION', 0, false); // unflagged 0 → LEGACY_UNCONFIRMED
     await create(sales, `${tag}成交`, 'L1_REQUIREMENT', 99999999999.99);
     await sales.goto('/statistics');
-    await expect(sales.getByRole('heading', { name: '统计', exact: true })).toBeVisible();
+    await expect(sales.getByRole('heading', { name: '数据分析', exact: true })).toBeVisible();
     await sales.getByRole('textbox', { name: '搜索报备' }).fill(tag);
     const api1 = (await api(sales, '/api/v1/stage-summary?q=' + encodeURIComponent(tag))).body;
     expect(api1.amount).toEqual({ knownTotal: '100000125000.34', knownCount: 4, knownZeroCount: 1, knownImplicitCount: 0, unknownCount: 1, legacyUnconfirmedCount: 1, invalidCount: 0 });
@@ -157,7 +157,7 @@ test('G3-3A 遗留：加载更多没有新项目时停止并提示刷新', async
     pages++;
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items, total: 25, asOf: new Date().toISOString() }) });
   });
-  await p.goto('/pipeline');
+  await p.goto('/pipeline?layout=stages');
   const col = p.locator('section.stage-column[data-stage="L0_LEAD"]');
   await expect(col.locator('.stage-card')).toHaveCount(10);
   await col.locator('[data-action-id="pipeline.load-more"]').click();
@@ -176,7 +176,7 @@ test('G3-3A 遗留：409 后最新阶段已变，目标阶段需重新确认', a
   const tag = uniq('G33B重选');
   const proj = await create(p, tag, 'L2_TECHNICAL', null);
   cleanup.track(proj.id); // G3-4-A1: returned after the test, pass or fail
-  await p.goto('/pipeline');
+  await p.goto('/pipeline?layout=stages');
   await p.getByRole('textbox', { name: '搜索报备' }).fill(tag);
   const l2 = p.locator('section.stage-column[data-stage="L2_TECHNICAL"]');
   await l2.evaluate((el) => (el.parentElement!.scrollLeft = (el as HTMLElement).offsetLeft - el.parentElement!.offsetLeft));

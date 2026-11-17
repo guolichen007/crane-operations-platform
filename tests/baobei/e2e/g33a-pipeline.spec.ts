@@ -47,6 +47,7 @@ async function create(p: Page, name: string, stage: string, extra: Record<string
   expect(r.status).toBe(200);
   return r.body;
 }
+// V1.1: the 12-column layout stays available (layout=stages); the default is six groups.
 const column = (p: Page, code: string) => p.locator(`section.stage-column[data-stage="${code}"]`);
 // Bring a column into view by scrolling the board horizontally only, so the
 // page header (scope, asOf, filters) stays visible in screenshots.
@@ -92,11 +93,11 @@ for (const vp of [
       }
     }
 
-    await sales.goto('/pipeline');
+    await sales.goto('/pipeline?layout=stages');
     const summary = (await api(sales, '/api/v1/stage-summary')).body;
     expect(summary.stages.map((s: { code: string }) => s.code)).toHaveLength(12);
     expect(summary.stages.find((s: { code: string }) => s.code === 'L6_TENDER').count).toBe(base + 23);
-    await expect(sales.getByRole('heading', { name: /项目管道/ })).toContainText(String(summary.total));
+    await expect(sales.getByRole('heading', { name: /项目中心/ })).toContainText(String(summary.total));
     const mobile = vp.width <= 700;
     if (mobile) {
       // One stage at a time; the picker shows every stage with its real count.
@@ -133,7 +134,7 @@ for (const vp of [
     // Filter: all columns reset to page 1 and use the same base filter as the summary.
     await sales.getByRole('textbox', { name: '搜索报备' }).fill(tag);
     const filtered = (await api(sales, '/api/v1/stage-summary?q=' + encodeURIComponent(tag))).body;
-    await expect(sales.getByRole('heading', { name: /项目管道/ })).toContainText(String(filtered.total));
+    await expect(sales.getByRole('heading', { name: /项目中心/ })).toContainText(String(filtered.total));
     await expect(l6.locator('.stage-count')).toHaveText('23');
     await expect(sales.locator('.pipeline-drift')).toHaveCount(0);
     await expect(l6.locator('.stage-loaded')).toHaveText('已加载 10 / 共 23');
@@ -201,12 +202,12 @@ test('G3-3A 四角色范围：主管本组、另一组主管、总监与管理�
   const want: Record<string, number> = { 'synthetic-a': 1, 'synthetic-b': 0, 'synthetic-manager': 1, 'synthetic-manager-other': 1, 'synthetic-director': 2, 'synthetic-admin': 3 };
   for (const [subject, n] of Object.entries(want)) {
     const p = subject === 'synthetic-admin' ? admin : subject === 'synthetic-a' ? a : await session(browser, subject, vp);
-    await p.goto('/pipeline');
+    await p.goto('/pipeline?layout=stages');
     await p.getByRole('textbox', { name: '搜索报备' }).fill(tag);
     const sum = (await api(p, '/api/v1/stage-summary?q=' + encodeURIComponent(tag))).body;
     expect(sum.total, subject).toBe(n);
     // Heading, strip and columns all show the filtered state (no stale counts).
-    await expect(p.getByRole('heading', { name: /项目管道/ })).toContainText(String(n));
+    await expect(p.getByRole('heading', { name: /项目中心/ })).toContainText(String(n));
     await expect(p.getByRole('navigation', { name: '阶段分布' }).locator('[data-action-id="pipeline.jump"]').filter({ hasText: '招投标' })).toContainText('0');
     await expect(p.locator('.pipeline-drift')).toHaveCount(0);
     const l5 = column(p, 'L5_QUOTATION');
@@ -227,7 +228,7 @@ test('G3-3A 快速切换筛选时旧响应不覆盖新结果，栏错误可重�
   const tag = uniq('G33A竞态');
   const p = await session(browser, 'synthetic-a', vp);
   await create(p, `${tag}一`, 'L0_LEAD');
-  await p.goto('/pipeline');
+  await p.goto('/pipeline?layout=stages');
   const l0 = column(p, 'L0_LEAD');
   await expect(l0.locator('.stage-loaded')).toContainText('已加载');
   // Slow down the first filter's requests; the second filter answers first.

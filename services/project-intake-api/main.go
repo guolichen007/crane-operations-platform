@@ -243,6 +243,16 @@ func seed(ctx context.Context, p *pgxpool.Pool) error {
  ('synthetic-staff-desktop','交接销售桌面','baobei_sales','11111111-1111-4111-8111-111111111111'),
  ('synthetic-staff-mobile','交接销售手机','baobei_sales','11111111-1111-4111-8111-111111111111') ON CONFLICT DO NOTHING;
  UPDATE app_users SET work_email=subject||'@example.test' WHERE subject IN ('synthetic-a','synthetic-b','synthetic-c','synthetic-staff-desktop','synthetic-staff-mobile') AND work_email IS NULL`)
+	if e != nil {
+		return e
+	}
+	// V1.1 R3: the fixed synthetic identities are fixtures, not people; mark their
+	// names confirmed (schema 00010+ only; older test schemas have no column).
+	var profile bool
+	if e = p.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='app_users' AND column_name='profile_completed_at')`).Scan(&profile); e != nil || !profile {
+		return e
+	}
+	_, e = p.Exec(ctx, `UPDATE app_users SET profile_completed_at=now(),profile_name_source='DEV_FIXTURE' WHERE subject LIKE 'synthetic-%' AND profile_completed_at IS NULL`)
 	return e
 }
 

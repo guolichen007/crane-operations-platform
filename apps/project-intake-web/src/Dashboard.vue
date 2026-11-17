@@ -198,7 +198,7 @@ const amount = computed(() => stagesData.value?.amount ?? null);
       <section class="home-panel home-stages" aria-labelledby="home-stages-title">
         <div class="section-title">
           <h2 id="home-stages-title">销售阶段分布</h2>
-          <ActionButton action-id="nav.open" :run="() => router.push('/pipeline')">项目管道 <ArrowUpRight :size="14" aria-hidden="true" /></ActionButton>
+          <ActionButton action-id="nav.open" :run="() => router.push('/pipeline')">管道视图 <ArrowUpRight :size="14" aria-hidden="true" /></ActionButton>
         </div>
         <p class="panel-def muted">按销售阶段统计{{ scopeText }}的全部项目（含草稿与退回），与报备状态无关。</p>
         <!-- G3-4-A1: a separate snapshot from the task summary; its own time is shown. -->

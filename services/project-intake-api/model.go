@@ -136,7 +136,9 @@ type User struct {
 	CSRF            string                `json:"csrfToken"`
 	Permissions     []string              `json:"permissions"`
 	BusinessActions map[string]ActionHint `json:"businessActions"`
-	sessionHash     string
+	// V1.1 R3: the member confirmed their own display name (first-login gate).
+	ProfileCompleted bool `json:"profileCompleted"`
+	sessionHash      string
 }
 
 var stages = strings.Fields("L0_LEAD L1_REQUIREMENT L2_TECHNICAL L3_SITE_SURVEY L4_SOLUTION L5_QUOTATION L6_TENDER L7_COMMERCIAL L8_PENDING_CONTRACT WON LOST HOLD")
