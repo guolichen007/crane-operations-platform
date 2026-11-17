@@ -23,6 +23,7 @@ import { PROJECT_CENTER } from './navigation';
 import { nextStages } from './pipeline';
 import { hintReason, recovery } from './reasons';
 import { ApiError } from './api-client';
+import ProjectContacts from './ProjectContacts.vue';
 import ActionButton from './ActionButton.vue';
 import Modal from './Modal.vue';
 import { returnLabel, safeReturn } from './view-state';
@@ -312,6 +313,7 @@ const reviewSummary = computed(() => {
           <dt>关系方</dt><dd>{{ p.parties.map((x) => x.name).join('、') || '暂无' }}</dd>
           <dt>补充说明</dt><dd class="prewrap">{{ p.notes || '暂无' }}</dd>
         </dl>
+        <ProjectContacts :key="p.id + ':' + p.version" :project="p" @changed="load" />
       </template>
       <template v-if="tab === '设备与技术需求'">
         <h2>设备与技术需求</h2>

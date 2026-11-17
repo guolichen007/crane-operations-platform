@@ -50,6 +50,7 @@ export function navigation(u: User | null | undefined): NavItem[] {
     { path: '/followups', label: '跟进中心', icon: 'clock', group: 'workspace' },
     { path: '/projects', label: PROJECT_CENTER, icon: 'folder', group: 'projects' },
   ];
+  items.push({ path: '/customers', label: '客户中心', icon: 'building', group: 'projects' });
   if (can(u, 'project.unassigned'))
     items.push({ path: '/unassigned', label: '待分配草稿', icon: 'inbox', group: 'projects' });
   // Discarded drafts of the people who may discard (own sales drafts, admin).

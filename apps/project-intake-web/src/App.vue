@@ -16,6 +16,7 @@ import {
   ClipboardCheck,
   Copy,
   UserRoundCog,
+  Building2,
 } from '@lucide/vue';
 import ActionButton from './ActionButton.vue';
 import BrandMark from './BrandMark.vue';
@@ -38,6 +39,7 @@ const icons = {
   users: Users,
   settings: Settings,
   trash: Trash2,
+  building: Building2,
 };
 const nav = computed(() => navigation(app.user));
 const groups = computed(() => {

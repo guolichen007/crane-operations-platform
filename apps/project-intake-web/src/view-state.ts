@@ -77,16 +77,18 @@ export function scopeParams(f: Pick<ViewFilters, 'scope' | 'memberId' | 'teamId'
 
 // A detail page remembers where it was opened from (path + query), as a local
 // path only. Anything else falls back to the list.
-const sources = ['/projects', '/pipeline', '/followups', '/unassigned', '/recycle-bin', '/reviews', '/duplicates', '/statistics', '/'];
+const sources = ['/projects', '/pipeline', '/followups', '/customers', '/unassigned', '/recycle-bin', '/reviews', '/duplicates', '/statistics', '/'];
 export function safeReturn(raw: unknown): string {
   if (typeof raw !== 'string' || !raw.startsWith('/') || raw.startsWith('//') || raw.length > 600) return '/projects';
   const path = raw.split('?')[0].split('#')[0];
-  return sources.includes(path) ? raw : '/projects';
+  // V1.1 R5: a customer detail page is a valid origin too.
+  return sources.includes(path) || /^\/customers\/[0-9a-f-]{36}$/.test(path) ? raw : '/projects';
 }
 export function returnLabel(target: string, listLabel: string) {
   const path = target.split('?')[0];
+  if (path.startsWith('/customers/')) return '返回客户详情';
   return ({
-    '/pipeline': '返回项目管道', '/followups': '返回跟进中心', '/unassigned': '返回待分配草稿', '/recycle-bin': '返回草稿回收站', '/reviews': '返回报备审核',
+    '/pipeline': '返回项目管道', '/followups': '返回跟进中心', '/customers': '返回客户中心', '/unassigned': '返回待分配草稿', '/recycle-bin': '返回草稿回收站', '/reviews': '返回报备审核',
     '/duplicates': '返回重复处理', '/statistics': '返回数据分析', '/': '返回工作台',
   } as Record<string, string>)[path] ?? '返回' + listLabel;
 }

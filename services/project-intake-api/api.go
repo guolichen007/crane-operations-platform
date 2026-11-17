@@ -137,6 +137,9 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 	if path == "/api/v1/workspace-summary" && method == "GET" {
 		return a.summaryHandler(w, r, u)
 	}
+	if path == "/api/v1/customers" || strings.HasPrefix(path, "/api/v1/customers/") || strings.HasPrefix(path, "/api/v1/contacts/") {
+		return a.customers(w, r, u)
+	}
 	if path == "/api/v1/followups" && method == "GET" {
 		return a.followupHandler(w, r, u)
 	}
@@ -250,6 +253,8 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 				return e
 			}
 			respond(w, 200, p)
+		case "contacts":
+			return a.projectContacts(w, r, u, p)
 		case "duplicates":
 			ds, e := a.duplicates(ctx, a.db, p.Input, p.ID)
 			if e != nil {
@@ -261,6 +266,17 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 			fail(w, 404, "NOT_FOUND", "接口不存在")
 		}
 		return nil
+	}
+	if method == "POST" && action == "contacts" {
+		p, e := get(ctx, a.db, id, false)
+		if e != nil && !errors.Is(e, pgx.ErrNoRows) {
+			return e
+		}
+		if e != nil || !canRead(u, p) {
+			fail(w, 404, "NOT_FOUND", "项目不存在或无权访问")
+			return nil
+		}
+		return a.projectContacts(w, r, u, p)
 	}
 	if !(method == "PATCH" && action == "" || method == "POST" && contains([]string{"submit", "activities", "discard", "restore"}, action)) {
 		fail(w, 405, "METHOD_NOT_ALLOWED", "操作不支持")

@@ -14,6 +14,7 @@ import StaffMembers from './StaffMembers.vue';
 import StaffTeams from './StaffTeams.vue';
 import Profile from './Profile.vue';
 import Followups from './Followups.vue';
+import Customers from './Customers.vue';
 import { useApp } from './store';
 import { routeAllowed } from './navigation';
 import { loginErrorMessage } from './login-errors';
@@ -35,6 +36,8 @@ const router = createRouter({
     { path: '/unassigned', component: Projects },
     { path: '/recycle-bin', component: Projects },
     { path: '/followups', component: Followups },
+    { path: '/customers', component: Customers },
+    { path: '/customers/:id', component: Customers },
     { path: '/pipeline', component: Pipeline },
     { path: '/statistics', component: Statistics },
     { path: '/profile', component: Profile },

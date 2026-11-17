@@ -2929,3 +2929,20 @@ td.unassigned,
   .sidebar nav button { position: relative; }
   .nav-badge { position: absolute; top: 2px; right: 18%; margin: 0; height: 18px; min-width: 18px; font-size: 11px; }
 }
+
+/* V1.1 R5 customers */
+.customer-list { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+.customer-list > li > button.customer-card { width: 100%; display: flex; flex-direction: column; align-items: stretch; text-align: left; gap: 4px; padding: 12px 14px; min-height: 44px; }
+.customer-card .clamp { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.customer-meta { font-size: 13px; color: var(--ink-3); }
+.plain-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.contact-list { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 8px; }
+.contact-list > li { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 12px; padding: 8px 10px; border: 1px solid var(--rule); border-radius: var(--radius); }
+.contact-list > li.archived { opacity: 0.65; }
+.project-contacts { margin-top: 20px; border-top: 1px solid var(--rule); padding-top: 12px; }
+.project-contacts h3 { font-size: 15px; margin: 0 0 8px; }
+.contact-link { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.contact-link select { min-height: 36px; max-width: 100%; }
+@media (max-width: 700px) {
+  .contact-link select, .contact-link button { min-height: 44px; width: 100%; }
+}

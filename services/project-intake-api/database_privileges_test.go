@@ -282,6 +282,21 @@ func TestDatabaseProductionPrivileges(t *testing.T) {
 	expect(t, status, 200, response)
 	status, response = sales.call("GET", "/api/v1/projects", nil)
 	expect(t, status, 200, response)
+	// V1.1 R4/R5: follow-up center, customers and contacts under the runtime role.
+	status, response = sales.call("GET", "/api/v1/followups?window=today", nil)
+	expect(t, status, 200, response)
+	status, response = sales.call("POST", "/api/v1/customers", map[string]any{"name": "合成权限客户"})
+	expect(t, status, 200, response)
+	var createdCustomer struct {
+		Customer CustomerDetail `json:"customer"`
+	}
+	_ = json.Unmarshal(response, &createdCustomer)
+	status, response = sales.call("POST", "/api/v1/customers/"+createdCustomer.Customer.ID+"/contacts", map[string]any{"name": "合成联系人"})
+	expect(t, status, 200, response)
+	status, response = director.call("GET", "/api/v1/customers?q=合成权限客户", nil)
+	expect(t, status, 200, response)
+	deny(runtime, "DELETE FROM customer_audit")
+	deny(runtime, "DELETE FROM contacts")
 	deny(runtime, "UPDATE app_users SET display_name='forged'")
 	// The staff connection may rename (staff edit); the 00010 trigger records it.
 	mustExec(staff, "SELECT set_config('baobei.actor','synthetic-admin',false)")

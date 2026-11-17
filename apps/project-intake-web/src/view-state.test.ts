@@ -51,3 +51,13 @@ describe('V1.1 scope and group in the URL', () => {
     expect(toList(f)).toEqual({ q: 'a', scope: 'mine' });
   });
 });
+
+describe('V1.1 customer return paths', () => {
+  it('accepts a customer detail page as origin, nothing else under /customers', () => {
+    const id = '11111111-1111-4111-8111-111111111111';
+    expect(safeReturn('/customers/' + id + '?from=/customers')).toBe('/customers/' + id + '?from=/customers');
+    expect(safeReturn('/customers/../settings/users')).toBe('/projects');
+    expect(returnLabel('/customers/' + id, '项目中心')).toBe('返回客户详情');
+    expect(returnLabel('/customers?q=a', '项目中心')).toBe('返回客户中心');
+  });
+});

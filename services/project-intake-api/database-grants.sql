@@ -83,3 +83,9 @@ GRANT SELECT (staff_status) ON app_users TO baobei_runtime;
 GRANT SELECT (id,name,status) ON teams TO baobei_runtime;
 GRANT EXECUTE ON FUNCTION confirm_own_profile(text, text, text, integer) TO baobei_runtime;
 GRANT SELECT (profile_completed_at,profile_name_source,profile_version) ON app_users TO baobei_staff_api;
+-- V1.1 R5 (B2): team customer profiles and contacts. The audit is insert-only.
+GRANT SELECT, INSERT, UPDATE ON organization_team_profiles TO baobei_runtime;
+GRANT SELECT, INSERT, UPDATE ON contacts TO baobei_runtime;
+GRANT SELECT, INSERT, DELETE ON project_contacts TO baobei_runtime;
+GRANT SELECT, INSERT ON customer_audit TO baobei_runtime;
+GRANT SELECT ON organization_team_profiles, contacts, project_contacts, customer_audit TO baobei_maintenance;

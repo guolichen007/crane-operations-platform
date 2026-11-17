@@ -29,7 +29,8 @@ export function recovery(e: unknown): { kind: Recovery; message: string } {
   if (!(e instanceof ApiError)) return { kind: 'retry', message: e instanceof Error ? e.message : '操作未完成，请重试' };
   if (e.status === 401) return { kind: 'auth', message: '登录已失效，请重新登录后继续' };
   if (e.status === 403) return { kind: 'forbidden', message: reasonText[e.code] || '当前账号无权执行此操作，输入已保留' };
-  if (e.status === 404) return { kind: 'missing', message: reasonText.NOT_FOUND };
+  // Specific "not found" codes (customer, contact, member) keep their own text.
+  if (e.status === 404) return { kind: 'missing', message: e.code && e.code !== 'NOT_FOUND' && e.message ? e.message : reasonText.NOT_FOUND };
   if (e.status === 409) return { kind: 'conflict', message: reasonText[e.code] || e.message };
   if (e.status === 400) return { kind: 'input', message: e.message };
   return { kind: 'retry', message: e.status === 0 ? e.message : e.message + '；输入已保留，可重试' };
