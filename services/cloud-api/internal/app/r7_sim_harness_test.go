@@ -618,3 +618,45 @@ func (r *rawClient) publish(ctx context.Context, topic string, payload []byte) (
 func envelopeFor(id, project, kind string, bootID string, bootSeq, seq int64, payload any) contract.Envelope {
 	return contract.WithPayload(contract.Envelope{SchemaVersion: 1, MessageId: platform.ID(), TenantId: "demo", ProjectId: project, DeviceId: id, BootId: bootID, BootSeq: bootSeq, Sequence: seq, SentAt: time.Now().UTC(), Kind: kind}, payload)
 }
+
+// R8: a certificate issued by deploy/scripts/sim-cert.sh (openssl, host only) from the broker's CA
+// connects to the real broker and is scoped by the generated ACL like any Agent identity.
+func TestR8SimCertScriptIssuesUsableIdentity(t *testing.T) {
+	simEnabled(t)
+	if _, err := exec.LookPath("openssl"); err != nil {
+		t.Skip("openssl required")
+	}
+	e := newSimEnv(t, 30*time.Second, 5*time.Second, []simSpec{{project: "R8-C", runtime: "SIM-R8-CERT", source: "SIMULATION"}})
+	caDir := filepath.Join(e.root, "ca")
+	if err := os.MkdirAll(caDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// The harness CA (the broker trusts it) in the layout the script expects.
+	b, _ := os.ReadFile(filepath.Join(e.pki.dir, "ca.crt"))
+	_ = os.WriteFile(filepath.Join(caDir, "ca.crt"), b, 0o600)
+	kb, _ := x509.MarshalPKCS8PrivateKey(e.pki.key)
+	writePEM(t, filepath.Join(caDir, "ca.key"), "PRIVATE KEY", kb)
+	out := filepath.Join(e.root, "sim-out")
+	cmd := exec.Command("bash", "../../../../deploy/scripts/sim-cert.sh", "issue", "--ca-dir", caDir, "--out", out, "--id", "SIM-R8-CERT", "--days", "2")
+	if b, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("sim-cert.sh: %v %s", err, b)
+	}
+	if _, err := os.Stat(filepath.Join(out, "ca.key")); err == nil {
+		t.Fatal("CA key copied into the simulator directory")
+	}
+	c, err := e.raw("SIM-R8-CERT", out)
+	if err != nil {
+		t.Fatal("script-issued certificate rejected by the broker:", err)
+	}
+	defer c.close()
+	own, _ := contract.Topic("demo", "R8-C", "SIM-R8-CERT", "heartbeat")
+	b2, _ := json.Marshal(envelopeFor("SIM-R8-CERT", "R8-C", "HEARTBEAT", "b", 1, 1, contract.HeartbeatPayload{EdgeHealth: "EDGE_HEALTHY", ControllerHealth: "CONTROLLER_HEALTHY", SensorHealth: "HEALTHY"}))
+	if rc, err := c.publish(e.ctx, own, b2); err != nil || rc >= 0x80 {
+		t.Fatalf("own topic publish rc=%d err=%v", rc, err)
+	}
+	other, _ := contract.Topic("demo", "R8-C", "SIM-R8-OTHER", "heartbeat")
+	if rc, _ := c.publish(e.ctx, other, b2); rc != 0x87 {
+		t.Fatalf("foreign topic publish rc=0x%x, want 0x87 not authorized", rc)
+	}
+	simRecord(t, "SIM_CERT_SCRIPT", "openssl-issued SIM certificate accepted by broker; ACL scoped; CA key not in output")
+}

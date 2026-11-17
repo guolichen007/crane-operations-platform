@@ -395,3 +395,41 @@ func Fleet(r Request) contract.FleetManifest {
 	}
 	return m
 }
+
+// MergeFleet adds the requested runtimes to an existing Fleet manifest (the one cloud-api and the
+// broker ACL currently use). Existing entries are kept unchanged; a requested id that already exists
+// must be identical (identities are immutable); the tenant must match. The result is validated like
+// any Fleet (1..100 identities, prefixes match source, no reserved ids).
+func MergeFleet(existing contract.FleetManifest, r Request) (contract.FleetManifest, error) {
+	if existing.TenantId != "" && existing.TenantId != r.TenantId {
+		return existing, fmt.Errorf("%w: fleet tenant %q differs from request tenant %q", ErrRequest, existing.TenantId, r.TenantId)
+	}
+	out := contract.FleetManifest{TenantId: r.TenantId, Devices: append([]contract.RuntimeDescriptor{}, existing.Devices...)}
+	index := map[string]contract.RuntimeDescriptor{}
+	for _, d := range out.Devices {
+		index[d.RuntimeDeviceId] = d
+	}
+	for _, d := range Fleet(r).Devices {
+		if cur, ok := index[d.RuntimeDeviceId]; ok {
+			if cur.ProjectId != d.ProjectId || cur.SourceMode != d.SourceMode || (cur.AssetDeviceId == nil) != (d.AssetDeviceId == nil) || (cur.AssetDeviceId != nil && *cur.AssetDeviceId != *d.AssetDeviceId) {
+				return existing, fmt.Errorf("%w: %s already in the fleet with a different project/asset/source", ErrRequest, d.RuntimeDeviceId)
+			}
+			continue
+		}
+		out.Devices = append(out.Devices, d)
+		index[d.RuntimeDeviceId] = d
+	}
+	return out, nil
+}
+
+// SimulatorFleet is the subset a simulator may run: SIMULATION identities only (the Edge Agent
+// mock runner refuses anything else).
+func SimulatorFleet(m contract.FleetManifest) contract.FleetManifest {
+	out := contract.FleetManifest{TenantId: m.TenantId, Devices: []contract.RuntimeDescriptor{}}
+	for _, d := range m.Devices {
+		if d.SourceMode == "SIMULATION" {
+			out.Devices = append(out.Devices, d)
+		}
+	}
+	return out
+}

@@ -45,3 +45,55 @@ func TestFleetOutputAndRefusals(t *testing.T) {
 		t.Fatalf("plan without password file: %v", err)
 	}
 }
+
+func TestMergeAndACL(t *testing.T) {
+	dir := t.TempDir()
+	cur := filepath.Join(dir, "fleet.json")
+	a := "A0"
+	b, _ := json.Marshal(contract.FleetManifest{TenantId: "demo", Devices: []contract.RuntimeDescriptor{{RuntimeDeviceId: "SIM-OLD", ProjectId: "P0", AssetDeviceId: &a, SourceMode: "SIMULATION"}}})
+	if err := os.WriteFile(cur, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	req := write(t, map[string]any{"tenantId": "demo", "entries": []map[string]any{
+		{"runtimeDeviceId": "SIM-NEW", "projectId": "P1", "assetDeviceId": "A1", "sourceMode": "SIMULATION"},
+		{"runtimeDeviceId": "TEST-NEW", "projectId": "P1", "assetDeviceId": "A2", "sourceMode": "TEST"}}})
+	var out bytes.Buffer
+	if code, err := execute([]string{"merge", "--request", req, "--fleet", cur}, &out); err != nil || code != 0 {
+		t.Fatalf("merge = %d %v", code, err)
+	}
+	var m contract.FleetManifest
+	_ = json.Unmarshal(out.Bytes(), &m)
+	if len(m.Devices) != 3 || m.Devices[0].RuntimeDeviceId != "SIM-OLD" {
+		t.Fatalf("merged = %+v", m)
+	}
+	out.Reset()
+	if _, err := execute([]string{"merge", "--request", req, "--fleet", cur, "--simulator"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	_ = json.Unmarshal(out.Bytes(), &m)
+	if len(m.Devices) != 2 {
+		t.Fatalf("simulator fleet has %d devices, want SIMULATION only", len(m.Devices))
+	}
+	// Conflicting reuse of an existing id is refused.
+	conflict := write(t, map[string]any{"tenantId": "demo", "entries": []map[string]any{{"runtimeDeviceId": "SIM-OLD", "projectId": "P9", "assetDeviceId": "A9", "sourceMode": "SIMULATION"}}})
+	if _, err := execute([]string{"merge", "--request", conflict, "--fleet", cur}, &bytes.Buffer{}); err == nil {
+		t.Fatal("conflicting merge accepted")
+	}
+	fl := filepath.Join(dir, "merged.json")
+	merged := bytes.Buffer{}
+	_, _ = execute([]string{"merge", "--request", req, "--fleet", cur}, &merged)
+	_ = os.WriteFile(fl, merged.Bytes(), 0o600)
+	out.Reset()
+	if code, err := execute([]string{"acl", "--fleet", fl}, &out); err != nil || code != 0 {
+		t.Fatalf("acl = %d %v", code, err)
+	}
+	acl := out.String()
+	for _, want := range []string{"user SIM-NEW\n", "topic write crane/v1/demo/P1/SIM-NEW/alarm", "topic read crane/v1/demo/P1/SIM-NEW/command/watch/start", "user cloud-api\n"} {
+		if !strings.Contains(acl, want) {
+			t.Fatalf("acl missing %q", want)
+		}
+	}
+	if strings.Contains(acl, "crane/v1/demo/P1/SIM-NEW/#") || strings.Contains(acl, "+") {
+		t.Fatal("acl must list exact topics, no wildcards")
+	}
+}

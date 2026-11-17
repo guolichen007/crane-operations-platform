@@ -14,8 +14,8 @@ test('integration job runs the R7 SIM-E2E gate unconditionally', () => {
   assert.equal(job.if, undefined);
 });
 
-test('gate requires all six scenarios and the restore drill, exact, no skip', () => {
-  assert.deepEqual(REQUIRED, ['TestR7Sim1DeviceFullLoop', 'TestR7Sim3DevicesIndependent', 'TestR7SimSpoolAckLossNoDuplicates', 'TestR7SimMQTTAbuseAndOrdering', 'TestR7Sim5DevicesRolesIsolationRevocation', 'TestR7Sim20DevicesSoak', 'TestR7IsolatedRestoreDrill']);
+test('gate requires all six scenarios, the restore drill and the SIM certificate script, exact, no skip', () => {
+  assert.deepEqual(REQUIRED, ['TestR7Sim1DeviceFullLoop', 'TestR7Sim3DevicesIndependent', 'TestR7SimSpoolAckLossNoDuplicates', 'TestR7SimMQTTAbuseAndOrdering', 'TestR7Sim5DevicesRolesIsolationRevocation', 'TestR7Sim20DevicesSoak', 'TestR7IsolatedRestoreDrill', 'TestR8SimCertScriptIssuesUsableIdentity']);
   const src = readFileSync('tools/r7-sim-e2e.mjs', 'utf8');
   assert.match(src, /gateProblems\(output, REQUIRED, \{ exact: true \}\)/);
   assert.match(src, /images\.mosquitto/);

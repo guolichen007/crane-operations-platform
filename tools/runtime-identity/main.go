@@ -6,6 +6,8 @@
 //	runtime-identity apply  --request req.json --approve <plan digest> --actor <admin>
 //	runtime-identity verify --request req.json
 //	runtime-identity fleet  --request req.json        (prints the Fleet manifest; no database)
+//	runtime-identity merge  --request req.json --fleet current.json [--simulator]   (merged Fleet; no database)
+//	runtime-identity acl    --fleet fleet.json        (broker ACL for exactly that Fleet; no database)
 //
 // The database URL is password-free; the password comes only from DATABASE_PASSWORD_FILE.
 package main
@@ -22,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
 	"github.com/guolichen007/crane-operations-platform/internal/fleet"
 	"github.com/guolichen007/crane-operations-platform/internal/platform"
 	"github.com/guolichen007/crane-operations-platform/internal/runtimeidentity"
@@ -35,7 +38,10 @@ func execute(args []string, out io.Writer) (int, error) {
 		return 1, errors.New("usage: runtime-identity plan|apply|verify|fleet --request FILE [--approve DIGEST --actor ID]")
 	}
 	op := args[0]
-	if op != "plan" && op != "apply" && op != "verify" && op != "fleet" {
+	if op == "acl" {
+		return aclCommand(args[1:], out)
+	}
+	if op != "plan" && op != "apply" && op != "verify" && op != "fleet" && op != "merge" {
 		return 1, errors.New("unknown operation")
 	}
 	flags := flag.NewFlagSet("runtime-identity", flag.ContinueOnError)
@@ -43,6 +49,8 @@ func execute(args []string, out io.Writer) (int, error) {
 	path := flags.String("request", "", "explicit registration request (JSON)")
 	approve := flags.String("approve", "", "approved plan digest (apply only)")
 	actor := flags.String("actor", "", "host administrator (apply only)")
+	current := flags.String("fleet", "", "current Fleet manifest (merge only)")
+	simulator := flags.Bool("simulator", false, "merge: output only SIMULATION identities")
 	if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 || *path == "" {
 		return 1, errors.New("invalid arguments")
 	}
@@ -65,6 +73,28 @@ func execute(args []string, out io.Writer) (int, error) {
 		m := runtimeidentity.Fleet(req)
 		if err := fleet.Validate(m, false); err != nil {
 			return 1, err
+		}
+		return 0, enc.Encode(m)
+	}
+	if op == "merge" {
+		var existing contract.FleetManifest
+		if *current != "" {
+			if err := fleet.Read(*current, &existing); err != nil {
+				return 1, errors.New("cannot read current fleet")
+			}
+		}
+		m, err := runtimeidentity.MergeFleet(existing, req)
+		if err != nil {
+			return 1, err
+		}
+		if err := fleet.Validate(m, false); err != nil {
+			return 1, err
+		}
+		if *simulator {
+			m = runtimeidentity.SimulatorFleet(m)
+			if err := fleet.Validate(m, true); err != nil {
+				return 1, err
+			}
 		}
 		return 0, enc.Encode(m)
 	}
@@ -103,6 +133,25 @@ func execute(args []string, out io.Writer) (int, error) {
 	}
 }
 
+func aclCommand(args []string, out io.Writer) (int, error) {
+	flags := flag.NewFlagSet("acl", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	path := flags.String("fleet", "", "Fleet manifest")
+	if err := flags.Parse(args); err != nil || flags.NArg() != 0 || *path == "" {
+		return 1, errors.New("invalid arguments")
+	}
+	var m contract.FleetManifest
+	if err := fleet.Read(*path, &m); err != nil {
+		return 1, errors.New("cannot read fleet")
+	}
+	acl, err := fleet.ACL(m)
+	if err != nil {
+		return 1, err
+	}
+	_, err = io.WriteString(out, acl)
+	return 0, err
+}
+
 func openDB() (*sql.DB, error) {
 	source := os.Getenv("DATABASE_URL")
 	if p := os.Getenv("DATABASE_PASSWORD_FILE"); p != "" {
@@ -130,7 +179,7 @@ func safeReason(err error) string {
 	}
 	msg := err.Error()
 	if strings.HasPrefix(msg, "usage:") || strings.HasPrefix(msg, "unknown") || strings.HasPrefix(msg, "invalid arguments") || strings.HasPrefix(msg, "apply requires") ||
-		strings.HasPrefix(msg, "--approve") || strings.HasPrefix(msg, "cannot read") || strings.Contains(msg, "database unavailable") || strings.Contains(msg, "runtime identity") || strings.Contains(msg, "fleet must") {
+		strings.HasPrefix(msg, "--approve") || strings.HasPrefix(msg, "cannot read") || strings.Contains(msg, "identity") || strings.Contains(msg, "prefix") || strings.Contains(msg, "database unavailable") || strings.Contains(msg, "runtime identity") || strings.Contains(msg, "fleet must") {
 		return msg
 	}
 	return "operation failed (details withheld)"

@@ -18,6 +18,7 @@ export const REQUIRED = [
   'TestR7Sim5DevicesRolesIsolationRevocation',
   'TestR7Sim20DevicesSoak',
   'TestR7IsolatedRestoreDrill',
+  'TestR8SimCertScriptIssuesUsableIdentity',
 ];
 
 function run(command, args, extra = {}, capture = false) {
