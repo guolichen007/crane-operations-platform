@@ -1,0 +1,11 @@
+?   	github.com/guolichen007/crane-operations-platform/services/cloud-api/cmd/cloud-api	[no test files]
+?   	github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/alarm	[no test files]
+ok  	github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/app	17.945s
+?   	github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/audit	[no test files]
+ok  	github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/auth	0.008s
+ok  	github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/device	0.409s
+?   	github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/remote	[no test files]
+ok  	github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/session	0.010s
+ok  	github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/shadow	0.003s
+?   	github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/telemetry	[no test files]
+?   	github.com/guolichen007/crane-operations-platform/services/remote-gateway	[no test files]

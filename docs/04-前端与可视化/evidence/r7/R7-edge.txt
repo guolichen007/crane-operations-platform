@@ -1,0 +1,12 @@
+?   	github.com/guolichen007/crane-operations-platform/edge/agent/adapters/mock	[no test files]
+?   	github.com/guolichen007/crane-operations-platform/edge/agent/cmd/agent	[no test files]
+ok  	github.com/guolichen007/crane-operations-platform/edge/agent/internal/boot	1.015s
+ok  	github.com/guolichen007/crane-operations-platform/edge/agent/internal/domain	1.007s
+ok  	github.com/guolichen007/crane-operations-platform/edge/agent/internal/mapper	1.018s
+ok  	github.com/guolichen007/crane-operations-platform/edge/agent/internal/watch	1.015s
+?   	github.com/guolichen007/crane-operations-platform/edge/agent/runner	[no test files]
+ok  	github.com/guolichen007/crane-operations-platform/edge/agent/spool	1.039s
+?   	github.com/guolichen007/crane-operations-platform/edge/pointcloud-bridge	[no test files]
+?   	github.com/guolichen007/crane-operations-platform/simulators/device-simulator	[no test files]
+ok  	github.com/guolichen007/crane-operations-platform/internal/fleet	1.038s
+ok  	github.com/guolichen007/crane-operations-platform/tools/certs	1.019s

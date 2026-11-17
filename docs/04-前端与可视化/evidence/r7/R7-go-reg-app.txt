@@ -1,0 +1,3 @@
+ok  	github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/app	15.844s
+ok  	github.com/guolichen007/crane-operations-platform/internal/runtimeidentity	0.213s
+ok  	github.com/guolichen007/crane-operations-platform/internal/asset	5.309s

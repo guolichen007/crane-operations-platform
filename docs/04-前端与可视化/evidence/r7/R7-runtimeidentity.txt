@@ -1,0 +1,6 @@
+=== RUN   TestRegisterPlanApplyVerifyAndBinding
+--- PASS: TestRegisterPlanApplyVerifyAndBinding (0.24s)
+=== RUN   TestRegisterRefusals
+--- PASS: TestRegisterRefusals (0.10s)
+PASS
+ok  	github.com/guolichen007/crane-operations-platform/internal/runtimeidentity	0.344s

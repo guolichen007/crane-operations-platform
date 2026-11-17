@@ -117,6 +117,14 @@ const h21aPackages = [
     'TestR6EquipmentTypeDirectoryHTTP',
     'TestR6AssetLocationReadbackHTTP',
     'TestR6LocationParentGuardHTTP',
+    // R7 F-09 / F-10
+    'TestR7AssetCodeDuplicateHTTP',
+    'TestR7AssetTypeConstraintHTTP',
+  ]],
+  // R7 controlled runtime identity registration (SIMULATION/TEST only, plan/apply/verify).
+  ['r7-runtimeidentity', './internal/runtimeidentity', [
+    'TestRegisterPlanApplyVerifyAndBinding',
+    'TestRegisterRefusals',
   ]],
   // D1 synthetic acceptance dataset: exact-id cleanup, ownership refusal, server-side guard.
   ['h3-uatdata', './tools/uatdata', [

@@ -1,0 +1,24 @@
+ok  	github.com/guolichen007/crane-operations-platform/internal/asset	5.833s
+?   	github.com/guolichen007/crane-operations-platform/internal/auditlog	[no test files]
+ok  	github.com/guolichen007/crane-operations-platform/internal/equipment	0.002s
+ok  	github.com/guolichen007/crane-operations-platform/internal/equipmenttypes	0.673s
+ok  	github.com/guolichen007/crane-operations-platform/internal/fleet	0.007s
+ok  	github.com/guolichen007/crane-operations-platform/internal/geo	0.018s
+ok  	github.com/guolichen007/crane-operations-platform/internal/identity	0.325s
+ok  	github.com/guolichen007/crane-operations-platform/internal/inventory	1.563s
+ok  	github.com/guolichen007/crane-operations-platform/internal/operations	1.325s
+ok  	github.com/guolichen007/crane-operations-platform/internal/platform	0.004s
+ok  	github.com/guolichen007/crane-operations-platform/internal/platform/atomicfile	0.001s
+ok  	github.com/guolichen007/crane-operations-platform/internal/portfolio	0.508s
+ok  	github.com/guolichen007/crane-operations-platform/internal/runtimeidentity	0.225s
+ok  	github.com/guolichen007/crane-operations-platform/internal/scheduling	1.053s
+?   	github.com/guolichen007/crane-operations-platform/internal/testsupport	[no test files]
+ok  	github.com/guolichen007/crane-operations-platform/internal/webauth	2.019s
+ok  	github.com/guolichen007/crane-operations-platform/tools/equipment-types	0.132s
+?   	github.com/guolichen007/crane-operations-platform/tools/runtime-identity	[no test files]
+ok  	github.com/guolichen007/crane-operations-platform/tools/uatdata	2.223s
+?   	github.com/guolichen007/crane-operations-platform/tools/identity	[no test files]
+ok  	github.com/guolichen007/crane-operations-platform/tools/astguard	0.002s
+ok  	github.com/guolichen007/crane-operations-platform/deploy/postgres/migrations	0.348s
+ok  	github.com/guolichen007/crane-operations-platform/contracts/go	0.020s
+ok  	github.com/guolichen007/crane-operations-platform/contracts/pointcloud	0.001s

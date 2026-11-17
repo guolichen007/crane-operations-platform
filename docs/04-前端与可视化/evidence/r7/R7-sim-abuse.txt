@@ -1,0 +1,10 @@
+=== RUN   TestR7SimMQTTAbuseAndOrdering
+    r7_sim_e2e_test.go:269: R7_SIM {"at":"2026-11-17T10:04:53.225817568Z","key":"ACL_GHOST_PUBLISH_RC","test":"TestR7SimMQTTAbuseAndOrdering","value":135}
+    r7_sim_e2e_test.go:290: R7_SIM {"at":"2026-11-17T10:04:53.310247043Z","key":"MQTT_REAL_TLS_ACL","test":"TestR7SimMQTTAbuseAndOrdering","value":{"badPayloadRC":0,"crossDeviceAlarmRC":135,"crossDeviceShadowRC":135,"identityMismatchRC":0}}
+{"timestamp":"2026-11-17T18:04:53.310558391+08:00","level":"WARN","message":"invalid MQTT envelope","service":"r7-sim-cloud","version":"0.1.0","traceId":"","deviceId":"","projectId":"","sessionId":"","event":"message_rejected"}
+{"timestamp":"2026-11-17T18:04:53.310620938+08:00","level":"WARN","message":"invalid MQTT envelope","service":"r7-sim-cloud","version":"0.1.0","traceId":"","deviceId":"","projectId":"","sessionId":"","event":"message_rejected"}
+    r7_sim_e2e_test.go:325: R7_SIM {"at":"2026-11-17T10:04:57.413919676Z","key":"ORDERING","test":"TestR7SimMQTTAbuseAndOrdering","value":{"bootSeq":5,"mode":"AUTO","sequence":10}}
+{"timestamp":"2026-11-17T18:05:00.414767516+08:00","level":"WARN","message":"graceful death unavailable","service":"edge-agent","version":"0.1.0","traceId":"","deviceId":"","projectId":"","sessionId":"","deviceId":"SIM-R7-X1","event":"death_unsent"}
+--- PASS: TestR7SimMQTTAbuseAndOrdering (9.81s)
+PASS
+ok  	github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/app	9.811s

@@ -1,0 +1,21 @@
+{"at":"2026-11-17T10:02:08.194505474Z","key":"MQTT_SHADOW_DB","test":"TestR7Sim1DeviceFullLoop","value":{"bootSeq":1,"edgeHealth":"EDGE_HEALTHY","state":"SILENT"}}
+{"at":"2026-11-17T10:02:09.013025615Z","key":"MQTT_LIVE_WATCH_ACK","test":"TestR7Sim1DeviceFullLoop","value":{"generation":1,"lease":"0d4dd3268ed49bed60a70e03"}}
+{"at":"2026-11-17T10:02:23.199116729Z","key":"REAL_WEBSOCKET_E2E","test":"TestR7Sim1DeviceFullLoop","value":{"distinctY":15,"liveFrames":15,"telemetrySamples":2}}
+{"at":"2026-11-17T10:02:23.200170068Z","key":"LATENCY_EDGE_TO_CLOUD_MS","test":"TestR7Sim1DeviceFullLoop","value":{"max":4.796,"p50":3.9655,"p95":4.71295,"samples":2}}
+{"at":"2026-11-17T10:02:29.269738428Z","key":"RUNTIME_BINDING_E2E","test":"TestR7Sim1DeviceFullLoop","value":"registered via runtime-identity, bound PLC, retire refused with active binding"}
+{"at":"2026-11-17T10:03:16.883693712Z","key":"FAULT","test":"TestR7Sim3DevicesIndependent","value":{"kind":"tcp_drop_and_refuse","target":"SIM-R7-O"}}
+{"at":"2026-11-17T10:03:22.12974422Z","key":"ALARM_NONEMPTY_E2E","test":"TestR7Sim3DevicesIndependent","value":{"alarms":5,"duplicates":0}}
+{"at":"2026-11-17T10:03:24.045951347Z","key":"OFFLINE_RECOVERY","test":"TestR7Sim3DevicesIndependent","value":{"bootSeqAfter":1,"bootSeqBefore":1}}
+{"at":"2026-11-17T10:03:24.0559257Z","key":"SUMMARY","test":"TestR7Sim3DevicesIndependent","value":{"alarm":{"devices":{"REAL":0,"SIMULATION":0,"TEST":0},"devicesAll":0,"records":{"cells":{"REAL":{"attributed":0,"unattributed":0},"SIMULATION":{"attributed":6,"unattributed":0},"TEST":{"attributed":0,"unattributed":0}},"total":6,"assets":1,"futureSkew":0}},"bound":{"REAL":0,"SIMULATION":3,"TEST":0},"real":{"connected":0,"pendingReview":0,"pendingReviewAlarm":0,"pendingReviewAssets":[],"stale":0,"unknownTime":0,"offline":0,"live":0}}}
+{"at":"2026-11-17T10:03:58.473980672Z","key":"FAULT","test":"TestR7SimSpoolAckLossNoDuplicates","value":{"kind":"stopped (no EVENT_STORED_ACK)","target":"cloud-runtime"}}
+{"at":"2026-11-17T10:04:11.529757446Z","key":"OFFLINE_SPOOL_ACK","test":"TestR7SimSpoolAckLossNoDuplicates","value":{"queuedWhileCloudDown":3,"storedAfter":3,"storedBefore":0}}
+{"at":"2026-11-17T10:04:11.529853392Z","key":"DUPLICATE_EVENT_COUNT","test":"TestR7SimSpoolAckLossNoDuplicates","value":0}
+{"at":"2026-11-17T10:04:53.225817568Z","key":"ACL_GHOST_PUBLISH_RC","test":"TestR7SimMQTTAbuseAndOrdering","value":135}
+{"at":"2026-11-17T10:04:53.310247043Z","key":"MQTT_REAL_TLS_ACL","test":"TestR7SimMQTTAbuseAndOrdering","value":{"badPayloadRC":0,"crossDeviceAlarmRC":135,"crossDeviceShadowRC":135,"identityMismatchRC":0}}
+{"at":"2026-11-17T10:04:57.413919676Z","key":"ORDERING","test":"TestR7SimMQTTAbuseAndOrdering","value":{"bootSeq":5,"mode":"AUTO","sequence":10}}
+{"at":"2026-11-17T10:05:33.589969509Z","key":"CROSS_PROJECT_ISOLATION","test":"TestR7Sim5DevicesRolesIsolationRevocation","value":{"crossStatuses":[404,404,404],"viewerSees":3}}
+{"at":"2026-11-17T10:05:35.303744669Z","key":"REVOKED_STREAM_CLOSED","test":"TestR7Sim5DevicesRolesIsolationRevocation","value":{"afterMs":1001,"status":1008}}
+{"at":"2026-11-17T10:05:45.299350243Z","key":"REAL_SOURCE_MISCOUNT","test":"TestR7Sim5DevicesRolesIsolationRevocation","value":{"bound":{"REAL":0,"SIMULATION":2,"TEST":1},"realConnected":0}}
+{"at":"2026-11-17T10:07:06.557953171Z","key":"FAULT","test":"TestR7Sim20DevicesSoak","value":{"kind":"restart","target":"cloud-runtime"}}
+{"at":"2026-11-17T10:07:51.628294316Z","key":"SIM_20_DEVICES","test":"TestR7Sim20DevicesSoak","value":{"alarms":35,"cloudRestarted":true,"connectAllMs":1235,"duplicateAlarms":0,"durationSec":90,"latencyMs":{"p50":3.803,"p95":19.24679999999999,"p99":26.64456},"liveSamples":9,"minConnectedDuringFaults":20,"shadows":20}}
+{"at":"2026-11-17T10:16:45.613795869Z","key":"ISOLATED_RESTORE_DRILL","test":"TestR7IsolatedRestoreDrill","value":{"auditContinues":true,"dumpBytes":148465,"elapsedMs":186,"fingerprint":{"Schema":12,"Projects":2,"Assets":1,"Types":43,"ActiveTypes":43,"Users":2,"Memberships":1,"Audits":9,"AuditHash":"23e0a7145a8f9f59e8fadd7db0ea10ed","RevisionHash":"c9246f387534a84bfc3989157205a4a1","InstallHash":"fa0d07556c4c8354d69ede9955bad5ca"},"login":"PASS","target":"crane_drill_*","types":43}}

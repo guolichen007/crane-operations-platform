@@ -9,11 +9,12 @@
 // BUILD SUCCESS ≠ DEPLOYMENT APPROVAL: nothing here touches a server.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { assertSource, buildScanPublish, REPOSITORY } from './release-lib.mjs';
+import { assertSource, buildScanPublish, REPOSITORY, SIMULATOR_SOURCE } from './release-lib.mjs';
 
 export const DEV_TAG = /^dev\/crane-[a-z0-9][a-z0-9.-]{0,40}$/;
 export const DEV_REGISTRY = `ghcr.io/${REPOSITORY}/dev`;
 export const DEV_MANIFEST_KIND = 'crane-dev-candidate';
+export const SIMULATOR_MANIFEST_KIND = 'crane-dev-simulator';
 
 export function checkInputs(env) {
   const problems = [];
@@ -61,6 +62,14 @@ async function main() {
   };
   writeFileSync(resolve(output, 'dev-manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
   console.log('DEV_CANDIDATE_BUILD=PASS SOURCE_SHA=' + sha + ' DEPLOYMENT=NOT_APPROVED');
+  // R7: separate, test-only simulator artifact (own manifest; never part of dev-manifest.json).
+  const simulator = buildScanPublish({ sha, registry: DEV_REGISTRY, output, scanJson: true, sources: [SIMULATOR_SOURCE] });
+  writeFileSync(resolve(output, 'simulator-manifest.json'), JSON.stringify({
+    schema_version: 1, kind: SIMULATOR_MANIFEST_KIND, source_sha: sha, tag: process.env.GITHUB_REF_NAME,
+    ci_run_id: Number(process.env.CI_RUN_ID), candidate_run_id: Number(process.env.GITHUB_RUN_ID || 0),
+    images: simulator, purpose: 'TEST ONLY — SIMULATION identities; never deployed with production images by default',
+  }, null, 2) + '\n');
+  console.log('DEV_SIMULATOR_BUILD=PASS SOURCE_SHA=' + sha + ' DIGEST=' + simulator[0].image_digest + ' PLATFORM=' + simulator[0].platform);
 }
 
 if (import.meta.main) {

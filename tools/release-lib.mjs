@@ -11,6 +11,12 @@ import { resolve } from 'node:path';
 export const REPOSITORY = 'guolichen007/crane-operations-platform';
 export const IMAGE_SOURCES = [['cloud-api', 'deploy/Dockerfile.backend'], ['web-console', 'deploy/Dockerfile.web-production']];
 export const TRIVY = 'aquasec/trivy:0.74.0';
+/**
+ * R7: the test-only device simulator, built from the same reviewed backend Dockerfile with a fixed
+ * TARGET. It is a SEPARATE artifact with its own manifest (simulator-manifest.json); the two-image
+ * release / dev-candidate manifest structure is unchanged and never lists it.
+ */
+export const SIMULATOR_SOURCE = ['device-simulator', 'deploy/Dockerfile.backend', ['TARGET=simulators/device-simulator']];
 
 export function run(command, args, capture = false) {
   const result = spawnSync(command, args, { encoding: 'utf8', stdio: capture ? 'pipe' : 'inherit' });
@@ -29,12 +35,12 @@ export function assertSource(sha, repository) {
  * @param {{ sha: string, registry: string, output: string, scanJson?: boolean }} options
  * @returns manifest image entries (same schema as release-manifest.json).
  */
-export function buildScanPublish({ sha, registry, output, scanJson = false }) {
+export function buildScanPublish({ sha, registry, output, scanJson = false, sources = IMAGE_SOURCES }) {
   const entries = [];
-  for (const [name, file] of IMAGE_SOURCES) {
+  for (const [name, file, buildArgs = []] of sources) {
     const image = `${registry}/${name}`;
     const tag = `${image}:${sha}`;
-    run('docker', ['build', '--build-arg', `SOURCE_SHA=${sha}`, '-f', file, '-t', tag, '.']);
+    run('docker', ['build', '--build-arg', `SOURCE_SHA=${sha}`, ...buildArgs.flatMap((a) => ['--build-arg', a]), '-f', file, '-t', tag, '.']);
     const labels = JSON.parse(run('docker', ['image', 'inspect', tag], true))[0].Config.Labels || {};
     if (labels['org.opencontainers.image.revision'] !== sha) throw Error('Source/image revision mismatch');
     const archive = resolve(output, `${name}.tar`);
@@ -50,7 +56,8 @@ export function buildScanPublish({ sha, registry, output, scanJson = false }) {
     const digests = JSON.parse(run('docker', ['image', 'inspect', tag], true))[0].RepoDigests || [];
     const reference = digests.find(value => value.startsWith(image + '@sha256:'));
     if (!reference || !/@sha256:[a-f0-9]{64}$/.test(reference)) throw Error('Registry did not return the exact published digest');
-    entries.push({ source_sha: sha, image_name: image, image_digest: reference.split('@')[1], sbom_sha256: sbomHash, sbom_file: sbom, build_time: new Date().toISOString(), schema_version: 1 });
+    const platform = JSON.parse(run('docker', ['image', 'inspect', tag], true))[0];
+    entries.push({ source_sha: sha, image_name: image, image_digest: reference.split('@')[1], sbom_sha256: sbomHash, sbom_file: sbom, build_time: new Date().toISOString(), schema_version: 1, ...(sources === IMAGE_SOURCES ? {} : { platform: `${platform.Os}/${platform.Architecture}` }) });
   }
   return entries;
 }

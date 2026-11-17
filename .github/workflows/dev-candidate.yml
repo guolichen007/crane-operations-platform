@@ -63,5 +63,6 @@ jobs:
           retention-days: 90
           path: |
             release/dev-candidate/dev-manifest.json
+            release/dev-candidate/simulator-manifest.json
             release/dev-candidate/*.cdx.json
             release/dev-candidate/*.trivy.json

@@ -11,6 +11,7 @@ import (
 	"github.com/guolichen007/crane-operations-platform/internal/geo"
 	"github.com/guolichen007/crane-operations-platform/internal/operations"
 	"github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/alarm"
+	"log/slog"
 
 	"github.com/guolichen007/crane-operations-platform/internal/fleet"
 	"github.com/guolichen007/crane-operations-platform/internal/inventory"
@@ -104,8 +105,103 @@ func Run(args []string) error {
 		return values
 	}
 	leases := session.New(db, time.Duration(c.TTL)*time.Second, time.Duration(c.Grace)*time.Second)
-	var mqttMessages, dbErrors, wsClients, eventAcks atomic.Int64
-	var mqttUp atomic.Bool
+	var wsClients atomic.Int64
+	rt, e := startRuntime(ctx, c, db, manifest, store, leases, logger)
+	if e != nil {
+		return e
+	}
+	defer rt.broker.CM.Disconnect(context.Background())
+	broker, mqttUp, mqttMessages, dbErrors, eventAcks := rt.broker, &rt.mqttUp, &rt.mqttMessages, &rt.dbErrors, &rt.eventAcks
+	mux := http.NewServeMux()
+	respond := func(w http.ResponseWriter, status int, v any) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(status)
+		_ = json.NewEncoder(w).Encode(v)
+	}
+	mux.HandleFunc("GET /health/live", func(w http.ResponseWriter, r *http.Request) { respond(w, 200, map[string]string{"status": "alive"}) })
+	mux.HandleFunc("GET /health/ready", func(w http.ResponseWriter, r *http.Request) {
+		check, done := context.WithTimeout(r.Context(), 2*time.Second)
+		defer done()
+		if !mqttUp.Load() || db.PingContext(check) != nil {
+			respond(w, 503, map[string]string{"status": "not-ready"})
+			return
+		}
+		checkMQTT, doneMQTT := context.WithTimeout(r.Context(), time.Second)
+		defer doneMQTT()
+		if broker.CM.AwaitConnection(checkMQTT) != nil {
+			respond(w, 503, map[string]string{"status": "mqtt-down"})
+			return
+		}
+		respond(w, 200, map[string]string{"status": "ready"})
+	})
+	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, r *http.Request) {
+		connected := 0
+		for _, v := range listRuntime() {
+			if v.Presence.Connectivity == "MQTT_CONNECTED" {
+				connected++
+			}
+		}
+		alarms, err := alarm.List(r.Context(), db)
+		if err != nil {
+			dbErrors.Add(1)
+		}
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		fmt.Fprintf(w, "mqtt_connected_devices %d\nremote_sessions 0\nmqtt_messages_total %d\nalarms_total %d\npointcloud_frames_total 0\npointcloud_frames_dropped_total 0\nwebsocket_clients %d\ndb_query_errors_total %d\n", connected, mqttMessages.Load(), len(alarms), wsClients.Load(), dbErrors.Load())
+		fmt.Fprint(w, leases.Metrics(r.Context()))
+		fmt.Fprintf(w, "event_application_acks_total %d\nmqtt_reconnects_total %d\n", eventAcks.Load(), platform.MQTTReconnects.Load())
+	})
+	handlers := &apiHandler{config: c, db: db, store: store, leases: leases, active: activeRuntime, list: listRuntime,
+		logger: logger, wsClients: &wsClients, dbErrors: dbErrors, ops: opsConfig}
+	if c.Env == "production" {
+		clientSecret, err := platform.PrivateSecret(c.Production.ClientSecretFile, 32)
+		if err != nil {
+			return err
+		}
+		serverSecret, err := platform.PrivateSecret(c.Production.SessionSecretFile, 32)
+		if err != nil {
+			return err
+		}
+		handlers.web, err = webauth.New(startup, db, webauth.Config{PublicURL: c.Production.PublicURL, Issuer: c.Production.Issuer,
+			ClientID: c.Production.ClientID, ClientSecret: clientSecret, ServerSecret: serverSecret,
+			AbsoluteTTL: time.Duration(c.Production.AbsoluteSeconds) * time.Second, IdleTTL: time.Duration(c.Production.IdleSeconds) * time.Second,
+			TrustedProxies: c.Production.TrustedProxyCIDRs})
+		if err != nil {
+			return err
+		}
+	}
+	if err := handlers.register(mux); err != nil {
+		return err
+	}
+	srv := &http.Server{Addr: c.HTTP, Handler: mux, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
+	go func() {
+		<-ctx.Done()
+		shutdown, done := context.WithTimeout(context.Background(), 5*time.Second)
+		defer done()
+		_ = srv.Shutdown(shutdown)
+	}()
+	logger.Info("cloud API ready", "event", "listening")
+	e = srv.ListenAndServe()
+	if errors.Is(e, http.ErrServerClosed) {
+		return nil
+	}
+	return e
+}
+
+// runtimeLoop is the cloud side of the MQTT runtime chain (R7: extracted unchanged from Run so the
+// SIM-E2E harness drives the exact production ingest): fleet-scoped subscriptions, envelope decode
+// and Fleet authorization, shadow/alarm/event persistence with withheld acknowledgment on database
+// failure, EVENT_STORED_ACK, WATCH ACK fencing by boot identity, LIVE lease acceptance, and the
+// command pump (lease tick, WATCH_START/RENEW/STOP publish, reconnect reconciliation).
+type runtimeLoop struct {
+	broker                            *platform.Broker
+	mqttUp                            atomic.Bool
+	mqttMessages, dbErrors, eventAcks atomic.Int64
+}
+
+func startRuntime(ctx context.Context, c platform.Config, db *sql.DB, manifest contract.FleetManifest, store *device.Store, leases *session.Manager, logger *slog.Logger) (*runtimeLoop, error) {
+	rt := &runtimeLoop{}
+	mqttMessages, dbErrors, eventAcks, mqttUp := &rt.mqttMessages, &rt.dbErrors, &rt.eventAcks, &rt.mqttUp
 	ackQueue := make(chan contract.Envelope, 256)
 	reconcileAll := make(chan struct{}, 1)
 	cloudBoot := platform.ID()
@@ -177,9 +273,9 @@ func Run(args []string) error {
 		}
 	}, func() { mqttUp.Store(false) })
 	if e != nil {
-		return e
+		return nil, e
 	}
-	defer broker.CM.Disconnect(context.Background())
+	rt.broker = broker
 	go func() {
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
@@ -229,78 +325,5 @@ func Run(args []string) error {
 			}
 		}
 	}()
-	mux := http.NewServeMux()
-	respond := func(w http.ResponseWriter, status int, v any) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "no-store")
-		w.WriteHeader(status)
-		_ = json.NewEncoder(w).Encode(v)
-	}
-	mux.HandleFunc("GET /health/live", func(w http.ResponseWriter, r *http.Request) { respond(w, 200, map[string]string{"status": "alive"}) })
-	mux.HandleFunc("GET /health/ready", func(w http.ResponseWriter, r *http.Request) {
-		check, done := context.WithTimeout(r.Context(), 2*time.Second)
-		defer done()
-		if !mqttUp.Load() || db.PingContext(check) != nil {
-			respond(w, 503, map[string]string{"status": "not-ready"})
-			return
-		}
-		checkMQTT, doneMQTT := context.WithTimeout(r.Context(), time.Second)
-		defer doneMQTT()
-		if broker.CM.AwaitConnection(checkMQTT) != nil {
-			respond(w, 503, map[string]string{"status": "mqtt-down"})
-			return
-		}
-		respond(w, 200, map[string]string{"status": "ready"})
-	})
-	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, r *http.Request) {
-		connected := 0
-		for _, v := range listRuntime() {
-			if v.Presence.Connectivity == "MQTT_CONNECTED" {
-				connected++
-			}
-		}
-		alarms, err := alarm.List(r.Context(), db)
-		if err != nil {
-			dbErrors.Add(1)
-		}
-		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-		fmt.Fprintf(w, "mqtt_connected_devices %d\nremote_sessions 0\nmqtt_messages_total %d\nalarms_total %d\npointcloud_frames_total 0\npointcloud_frames_dropped_total 0\nwebsocket_clients %d\ndb_query_errors_total %d\n", connected, mqttMessages.Load(), len(alarms), wsClients.Load(), dbErrors.Load())
-		fmt.Fprint(w, leases.Metrics(r.Context()))
-		fmt.Fprintf(w, "event_application_acks_total %d\nmqtt_reconnects_total %d\n", eventAcks.Load(), platform.MQTTReconnects.Load())
-	})
-	handlers := &apiHandler{config: c, db: db, store: store, leases: leases, active: activeRuntime, list: listRuntime,
-		logger: logger, wsClients: &wsClients, dbErrors: &dbErrors, ops: opsConfig}
-	if c.Env == "production" {
-		clientSecret, err := platform.PrivateSecret(c.Production.ClientSecretFile, 32)
-		if err != nil {
-			return err
-		}
-		serverSecret, err := platform.PrivateSecret(c.Production.SessionSecretFile, 32)
-		if err != nil {
-			return err
-		}
-		handlers.web, err = webauth.New(startup, db, webauth.Config{PublicURL: c.Production.PublicURL, Issuer: c.Production.Issuer,
-			ClientID: c.Production.ClientID, ClientSecret: clientSecret, ServerSecret: serverSecret,
-			AbsoluteTTL: time.Duration(c.Production.AbsoluteSeconds) * time.Second, IdleTTL: time.Duration(c.Production.IdleSeconds) * time.Second,
-			TrustedProxies: c.Production.TrustedProxyCIDRs})
-		if err != nil {
-			return err
-		}
-	}
-	if err := handlers.register(mux); err != nil {
-		return err
-	}
-	srv := &http.Server{Addr: c.HTTP, Handler: mux, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
-	go func() {
-		<-ctx.Done()
-		shutdown, done := context.WithTimeout(context.Background(), 5*time.Second)
-		defer done()
-		_ = srv.Shutdown(shutdown)
-	}()
-	logger.Info("cloud API ready", "event", "listening")
-	e = srv.ListenAndServe()
-	if errors.Is(e, http.ErrServerClosed) {
-		return nil
-	}
-	return e
+	return rt, nil
 }

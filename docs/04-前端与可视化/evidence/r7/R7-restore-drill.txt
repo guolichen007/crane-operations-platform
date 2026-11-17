@@ -1,0 +1,5 @@
+=== RUN   TestR7IsolatedRestoreDrill
+    r7_restore_drill_test.go:233: R7_SIM {"at":"2026-11-17T10:16:45.613795869Z","key":"ISOLATED_RESTORE_DRILL","test":"TestR7IsolatedRestoreDrill","value":{"auditContinues":true,"dumpBytes":148465,"elapsedMs":186,"fingerprint":{"Schema":12,"Projects":2,"Assets":1,"Types":43,"ActiveTypes":43,"Users":2,"Memberships":1,"Audits":9,"AuditHash":"23e0a7145a8f9f59e8fadd7db0ea10ed","RevisionHash":"c9246f387534a84bfc3989157205a4a1","InstallHash":"fa0d07556c4c8354d69ede9955bad5ca"},"login":"PASS","target":"crane_drill_*","types":43}}
+--- PASS: TestR7IsolatedRestoreDrill (0.39s)
+PASS
+ok  	github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/app	0.397s

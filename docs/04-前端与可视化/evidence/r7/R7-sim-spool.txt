@@ -1,0 +1,12 @@
+=== RUN   TestR7SimSpoolAckLossNoDuplicates
+{"timestamp":"2026-11-17T18:03:58.366206717+08:00","level":"WARN","message":"critical event retry","service":"edge-agent","version":"0.1.0","traceId":"","deviceId":"","projectId":"","sessionId":"","deviceId":"SIM-R7-SP","event":"event_retry","messageId":"57757e0996f6fb929522173b"}
+    r7_sim_e2e_test.go:215: R7_SIM {"at":"2026-11-17T10:03:58.473980672Z","key":"FAULT","test":"TestR7SimSpoolAckLossNoDuplicates","value":{"kind":"stopped (no EVENT_STORED_ACK)","target":"cloud-runtime"}}
+{"timestamp":"2026-11-17T18:04:05.468331784+08:00","level":"INFO","message":"critical event stored","service":"edge-agent","version":"0.1.0","traceId":"","deviceId":"","projectId":"","sessionId":"","deviceId":"SIM-R7-SP","event":"event_application_ack","messageId":"57757e0996f6fb929522173b"}
+{"timestamp":"2026-11-17T18:04:06.409410964+08:00","level":"INFO","message":"critical event stored","service":"edge-agent","version":"0.1.0","traceId":"","deviceId":"","projectId":"","sessionId":"","deviceId":"SIM-R7-SP","event":"event_application_ack","messageId":"9a3e86e46542f9cbeb0a029e"}
+{"timestamp":"2026-11-17T18:04:09.369002777+08:00","level":"INFO","message":"critical event stored","service":"edge-agent","version":"0.1.0","traceId":"","deviceId":"","projectId":"","sessionId":"","deviceId":"SIM-R7-SP","event":"event_application_ack","messageId":"89aedb78033032c641a606a0"}
+    r7_sim_e2e_test.go:237: R7_SIM {"at":"2026-11-17T10:04:11.529757446Z","key":"OFFLINE_SPOOL_ACK","test":"TestR7SimSpoolAckLossNoDuplicates","value":{"queuedWhileCloudDown":3,"storedAfter":3,"storedBefore":0}}
+    r7_sim_e2e_test.go:238: R7_SIM {"at":"2026-11-17T10:04:11.529853392Z","key":"DUPLICATE_EVENT_COUNT","test":"TestR7SimSpoolAckLossNoDuplicates","value":0}
+{"timestamp":"2026-11-17T18:04:11.530481609+08:00","level":"WARN","message":"graceful death unavailable","service":"edge-agent","version":"0.1.0","traceId":"","deviceId":"","projectId":"","sessionId":"","deviceId":"SIM-R7-SP","event":"death_unsent"}
+--- PASS: TestR7SimSpoolAckLossNoDuplicates (15.57s)
+PASS
+ok  	github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/app	15.573s
