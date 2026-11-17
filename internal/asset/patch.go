@@ -332,6 +332,22 @@ func PatchAsset(ctx context.Context, db *sql.DB, id string, patch AssetPatch, ex
 	if len(changed) == 0 {
 		return current, nil
 	}
+	// F-10: the type is validated only when it changes, so a legacy non-standard type can still
+	// be read and edited (an old client that re-sends or omits it is unaffected).
+	if merged.AssetType != current.AssetType && !validAssetType(merged.AssetType) {
+		return current, invalid("assetType %q is not an asset type (allowed: %s)", merged.AssetType, strings.Join(AssetTypes, ", "))
+	}
+	// F-09: the per-project code is checked before the write; the unique index stays the
+	// authority for concurrent writers (mapped below).
+	if merged.AssetCode != nil && !sameStr(current.AssetCode, merged.AssetCode) {
+		var exists bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM asset_devices WHERE project_id=$1 AND asset_code=$2 AND id<>$3)`, current.ProjectId, *merged.AssetCode, id).Scan(&exists); err != nil {
+			return current, err
+		}
+		if exists {
+			return current, ErrDuplicateAssetCode
+		}
+	}
 	if merged.ManufacturerId != nil && !sameStr(current.ManufacturerId, merged.ManufacturerId) {
 		var mfrProject sql.NullString
 		if err := tx.QueryRowContext(ctx, `SELECT project_id FROM manufacturers WHERE id=$1`, *merged.ManufacturerId).Scan(&mfrProject); err != nil {
@@ -347,7 +363,7 @@ func PatchAsset(ctx context.Context, db *sql.DB, id string, patch AssetPatch, ex
 	result, err := tx.ExecContext(ctx, `UPDATE asset_devices SET asset_code=$2,display_name=$3,asset_type=$4,manufacturer_id=$5,manufacturer_snapshot=$6,brand_snapshot=$7,model_snapshot=$8,serial_number=$9,manufacture_date=$10::date,installation_date=$11::date,commissioning_date=$12::date,lifting_height_m=$13,application_type=$14,control_mode=$15,special_equipment_code=$16,use_registration_no=$17,asset_status=$18,version=version+1,updated_at=now() WHERE id=$1 AND version=$19`,
 		id, merged.AssetCode, merged.DisplayName, merged.AssetType, merged.ManufacturerId, merged.ManufacturerSnapshot, merged.BrandSnapshot, merged.ModelSnapshot, merged.SerialNumber, merged.ManufactureDate, merged.InstallationDate, merged.CommissioningDate, merged.LiftingHeightM, merged.ApplicationType, merged.ControlMode, merged.SpecialEquipmentCode, merged.UseRegistrationNo, merged.AssetStatus, expectedVersion)
 	if err != nil {
-		return current, err
+		return current, assetCodeConflict(err)
 	}
 	if n, err := result.RowsAffected(); err != nil || n != 1 {
 		return current, ErrVersionConflict

@@ -8,7 +8,7 @@
 //     /api/v1/projects, the operations summary or the national map;
 //   - assets can only be registered after an explicit ProjectGrant with asset_master_write.
 import type { PortfolioProject, ProjectGrant, ProjectIntake, ProjectIntakeInput } from '../../../../contracts/typescript/types.gen';
-import { ApiError } from './client';
+import { ApiError, NetworkWriteError } from './client';
 
 export const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const;
 export const RISK_LEVELS = ['LOW', 'MEDIUM', 'HIGH'] as const;
@@ -123,6 +123,7 @@ export function intakeErrorMessage(error: unknown, action: IntakeAction): string
       default: return `请求失败（${error.status}）：${error.message}`;
     }
   }
+  if (error instanceof NetworkWriteError) return error.message;
   return `网络连接失败或请求超时，请检查网络后重试。${kept}`;
 }
 

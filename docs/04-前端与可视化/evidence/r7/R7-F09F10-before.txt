@@ -1,0 +1,16 @@
+=== RUN   TestR7AssetCodeDuplicateHTTP
+    r7_asset_rules_http_test.go:38: duplicate create = 503 {"error":"database unavailable"}
+        , want 409
+--- FAIL: TestR7AssetCodeDuplicateHTTP (0.35s)
+=== RUN   TestR7AssetTypeConstraintHTTP
+    r7_asset_rules_http_test.go:130: CREATE assetType "MOTOR" = 201, want 422
+    r7_asset_rules_http_test.go:130: CREATE assetType "PLC" = 201, want 422
+    r7_asset_rules_http_test.go:130: CREATE assetType "crane" = 201, want 422
+    r7_asset_rules_http_test.go:130: CREATE assetType "ANYTHING" = 201, want 422
+    r7_asset_rules_http_test.go:130: CREATE assetType "   " = 201, want 422
+    r7_asset_rules_http_test.go:142: CREATE without assetType = 201 {"id":"ae54b75dc29eea552fa274b6","projectId":"P001","displayName":"R7-DEFAULT","assetCode":"R7-DEFAULT","assetType":"","assetStatus":"DRAFT","manufacturerId":null,"manufacturerSnapshot":"","brandSnapshot":"","modelSnapshot":"","serialNumber":null,"manufactureDate":null,"installationDate":null,"commissioningDate":null,"liftingHeightM":null,"applicationType":null,"controlMode":null,"version":1,"specialEquipmentCode":null,"useRegistrationNo":null}
+        , want 201 CRANE
+--- FAIL: TestR7AssetTypeConstraintHTTP (0.15s)
+FAIL
+FAIL	github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/app	0.505s
+FAIL

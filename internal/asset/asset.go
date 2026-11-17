@@ -41,7 +41,38 @@ var (
 	ErrExpectedVersion  = errors.New("expected version is required")
 	ErrRemoved          = errors.New("equipment is already removed")
 	ErrInvalidInput     = errors.New("invalid input")
+	// ErrDuplicateAssetCode: asset_code is unique per project (asset_devices_project_code).
+	ErrDuplicateAssetCode = errors.New("asset code already exists in this project")
 )
+
+// AssetTypes is the single authoritative list of asset (whole-machine) types, R7 F-10. It is
+// deliberately separate from the Equipment type registry (internal/equipment), whose codes are
+// component types and never asset types. The 资产台账 form offers exactly this list
+// (apps/web-console/src/cloud/asset-types.ts, kept equal by tests/contract/asset-types.test.mjs).
+// Rows created before R7 may hold other values; they are kept, read and edited as they are and
+// only refused when a client tries to change the type to a value outside this list.
+var AssetTypes = []string{"CRANE", "GANTRY", "BRIDGE", "PORTAL", "JIB"}
+
+// DefaultAssetType is used when a create request omits assetType (the column default).
+const DefaultAssetType = "CRANE"
+
+func validAssetType(t string) bool {
+	for _, v := range AssetTypes {
+		if v == t {
+			return true
+		}
+	}
+	return false
+}
+
+// assetCodeConflict maps the per-project asset code unique violation (a concurrent writer can
+// still win between the pre-check and the write) to ErrDuplicateAssetCode.
+func assetCodeConflict(err error) error {
+	if isUniqueViolation(err, "asset_devices_project_code") {
+		return ErrDuplicateAssetCode
+	}
+	return err
+}
 
 const maxPageSize = 100
 
@@ -141,6 +172,12 @@ func CreateAsset(ctx context.Context, db *sql.DB, in contract.AssetMasterData, a
 	if err := validDisplayName(strings.TrimSpace(in.DisplayName)); err != nil {
 		return in, err
 	}
+	if in.AssetType == "" {
+		in.AssetType = DefaultAssetType
+	}
+	if !validAssetType(in.AssetType) {
+		return in, invalid("assetType %q is not an asset type (allowed: %s)", in.AssetType, strings.Join(AssetTypes, ", "))
+	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return in, err
@@ -176,10 +213,19 @@ func CreateAsset(ctx context.Context, db *sql.DB, in contract.AssetMasterData, a
 		displayName = in.ProjectId + "-asset"
 	}
 	in.DisplayName = displayName
+	if in.AssetCode != nil {
+		var exists bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM asset_devices WHERE project_id=$1 AND asset_code=$2)`, in.ProjectId, *in.AssetCode).Scan(&exists); err != nil {
+			return in, err
+		}
+		if exists {
+			return in, ErrDuplicateAssetCode
+		}
+	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO asset_devices(id,project_id,asset_code,asset_type,asset_status,display_name,lifecycle,manufacturer_id,manufacturer_snapshot,brand_snapshot,model_snapshot,serial_number,manufacture_date,installation_date,commissioning_date,lifting_height_m,application_type,control_mode,special_equipment_code,use_registration_no,version) VALUES($1,$2,$3,$4,$5,$6,'PLANNED',$7,$8,$9,$10,$11,$12::date,$13::date,$14::date,$15,$16,$17,$18,$19,$20)`,
 		in.Id, in.ProjectId, in.AssetCode, in.AssetType, in.AssetStatus, displayName, in.ManufacturerId, in.ManufacturerSnapshot, in.BrandSnapshot, in.ModelSnapshot, in.SerialNumber, in.ManufactureDate, in.InstallationDate, in.CommissioningDate, in.LiftingHeightM, in.ApplicationType, in.ControlMode, in.SpecialEquipmentCode, in.UseRegistrationNo, in.Version)
 	if err != nil {
-		return in, err
+		return in, assetCodeConflict(err)
 	}
 	if err := revision(ctx, tx, in.ProjectId, in.Id, "asset", in.Id, actor, requestID, []string{"created"}, in); err != nil {
 		return in, err

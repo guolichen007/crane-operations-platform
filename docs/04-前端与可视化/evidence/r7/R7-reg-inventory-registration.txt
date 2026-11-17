@@ -1,0 +1,19 @@
+
+Running 15 tests using 1 worker
+
+[1/15] [premium] › tests/e2e/premium/inventory-registration.spec.ts:83:1 › 项目管理员：登记运营信息 → 项目列表同一 ID → 首页按行政区显示 → 设备面板 → 资产台账
+[2/15] [premium] › tests/e2e/premium/inventory-registration.spec.ts:125:1 › 仅有查看权限：可见待登记项目但不能登记；无授权账号看不到该项目
+[3/15] [premium] › tests/e2e/premium/inventory-registration.spec.ts:138:1 › 失败不显示假数据：待登记 503、行政区清单失败、登记 503 后保留输入并可重试
+[4/15] [premium] › tests/e2e/premium/inventory-registration.spec.ts:166:1 › Q3-R1：登记已提交但响应丢失时，向服务端确认状态并关闭表单，不重复提交
+[5/15] [premium] › tests/e2e/premium/inventory-registration.spec.ts:178:1 › D1-R2：提交期间授权被撤销——pending 不含项目、Inventory 不可读，绝不显示已登记
+[6/15] [premium] › tests/e2e/premium/inventory-registration.spec.ts:191:1 › D1-R2：已由其他操作登记（409）——显示服务端实际行政区，声明本次表单未应用
+[7/15] [premium] › tests/e2e/premium/inventory-registration.spec.ts:209:3 › D1-R2：通用 503 不产生虚假成功提示，保留草稿
+[8/15] [premium] › tests/e2e/premium/inventory-registration.spec.ts:209:3 › D1-R2：403 不产生虚假成功提示，保留草稿
+[9/15] [premium] › tests/e2e/premium/inventory-registration.spec.ts:209:3 › D1-R2：409 但 Inventory 读取失败 不产生虚假成功提示，保留草稿
+[10/15] [premium] › tests/e2e/premium/inventory-registration.spec.ts:209:3 › D1-R2：网络超时 不产生虚假成功提示，保留草稿
+[11/15] [premium] › tests/e2e/premium/inventory-registration.spec.ts:223:1 › D1-R2：401 会话失效——回到登录页，没有任何「已登记」提示，也不重发请求
+[12/15] [premium] › tests/e2e/premium/inventory-registration.spec.ts:233:1 › WebGL 不可用时首页回退二维并仍显示已登记项目的行政区统计
+[13/15] [premium] › tests/e2e/premium/inventory-registration.spec.ts:250:3 › 登记表单在 1280×720 可用
+[14/15] [premium] › tests/e2e/premium/inventory-registration.spec.ts:250:3 › 登记表单在 1366×768 可用
+[15/15] [premium] › tests/e2e/premium/inventory-registration.spec.ts:250:3 › 登记表单在 1920×1080 可用
+  15 passed (35.9s)

@@ -6,7 +6,7 @@
 //   项目权限 (ProjectGrant: viewer / operator / maintainer / platform_admin) — access to ONE
 //     project's assets/devices. Holding a portfolio role gives no project access.
 import type { ProjectMember, ProjectGrantChange } from '../../../../contracts/typescript/types.gen';
-import { ApiError } from './client';
+import { ApiError, NetworkWriteError } from './client';
 
 export const PROJECT_ROLES = ['viewer', 'operator', 'maintainer', 'platform_admin'] as const;
 export type ProjectRole = (typeof PROJECT_ROLES)[number];
@@ -51,6 +51,7 @@ export function grantErrorMessage(error: unknown): string {
       default: return `请求失败（${error.status}）：${error.message}`;
     }
   }
+  if (error instanceof NetworkWriteError) return error.message;
   return '网络连接失败或请求超时，请稍后重试。已输入的内容已保留。';
 }
 

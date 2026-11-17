@@ -30,7 +30,7 @@ test('真实 Keycloak 浏览器：资产与 Equipment 完整业务 CRUD（新建
   // 4. 修改资产：改类型（保留编号供 PG 终态核对），版本递增到 v2。
   await page.getByRole('button', { name: '编辑', exact: true }).click();
   const editForm = page.locator('.workspace-modal');
-  await editForm.getByLabel('类型').fill('GANTRY');
+  await editForm.getByLabel('类型').selectOption('GANTRY');
   await editForm.getByRole('button', { name: '保存' }).click();
   await expect(page.getByTestId('asset-detail')).toContainText('GANTRY');
   await expect(page.getByTestId('asset-detail')).toContainText('v2');

@@ -1,0 +1,8 @@
+
+Running 4 tests using 1 worker
+
+[1/4] [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:42:1 › 断网保存：不排队、不转圈，恢复网络后不自动提交，草稿保留
+[2/4] [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:59:1 › 断网后切换用户再恢复网络：上一身份的写入不会以新身份发出
+[3/4] [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:71:1 › 已发送但响应丢失：显示结果未知并核对服务器版本，不自动重试
+[4/4] [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:85:1 › 核心写操作断网均不排队：新建资产、新建位置
+  4 passed (19.1s)

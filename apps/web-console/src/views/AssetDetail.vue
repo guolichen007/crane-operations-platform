@@ -21,8 +21,9 @@ import {
   locationPathText,
 } from '../cloud/asset';
 import { KIND_TEXT } from '../cloud/location-form';
+import { assetTypeOptions } from '../cloud/asset-types';
 import { formatCloudTime } from '../cloud/format';
-import { ApiError } from '../cloud/client';
+import { ApiError, NetworkWriteError } from '../cloud/client';
 import { assetCodeDisplay } from '../cloud/format';
 import { webSession } from '../cloud/session';
 import { canWriteProject } from '../cloud/auth-state';
@@ -127,6 +128,7 @@ const conflictDiff = computed(() =>
 const discardedDraft = ref('');
 
 function errorText(e: unknown, fallback: string): string {
+  if (e instanceof NetworkWriteError) return e.message;
   if (!(e instanceof ApiError)) return fallback;
   if (e.status === 403) return '没有执行此操作的权限。';
   if (e.status === 404) return '资产不存在或已不在您的授权范围内。';
@@ -188,6 +190,16 @@ const updateMutation = useMutation({
       editConflict.value = true;
       editError.value = '数据已被其他用户修改。您的草稿已保留，可刷新查看最新内容后决定。';
       await refreshForConflict().catch(() => undefined);
+    } else if (e instanceof NetworkWriteError && e.sent) {
+      // Outcome unknown: read the server's current version. The draft stays pinned to its base
+      // version, so resubmitting can never apply twice (the server would answer 409).
+      editError.value = e.message;
+      const pinned = edit.baseVersion.value;
+      const fresh = await refreshForConflict().then(() => edit.latest.value).catch(() => null);
+      if (fresh) {
+        editConflict.value = fresh.version !== pinned;
+        editError.value = `${e.message} 服务器当前为 v${fresh.version}（编辑基于 v${pinned}）${fresh.version !== pinned ? '：版本已变化，修改很可能已生效，请对比后再决定。' : '：版本未变化，修改未生效，可重新提交。'}`;
+      }
     } else {
       editError.value = errorText(e, '更新失败');
     }
@@ -612,7 +624,11 @@ const statusText: Record<string, string> = {
         <h2>编辑资产（基于 v{{ edit.baseVersion.value }}）</h2>
         <label>资产名称<input v-model="edit.draft.value.displayName" required maxlength="160" /></label>
         <label>资产编号<input v-model="edit.draft.value.assetCode" maxlength="160" /></label>
-        <label>类型<input v-model="edit.draft.value.assetType" required maxlength="80" /></label>
+        <label>类型
+          <select v-model="edit.draft.value.assetType" required aria-label="类型">
+            <option v-for="o in assetTypeOptions(edit.base.value?.assetType)" :key="o.value" :value="o.value">{{ o.legacy ? `${o.value}（旧类型，保持不变）` : o.value }}</option>
+          </select>
+        </label>
         <div v-if="editError" class="form-error" role="alert" data-testid="asset-edit-error">
           <p>{{ editError }}</p>
           <template v-if="editConflict">

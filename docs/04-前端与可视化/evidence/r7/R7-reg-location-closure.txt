@@ -1,0 +1,9 @@
+
+Running 5 tests using 1 worker
+
+[1/5] [premium] › tests/e2e/premium/location-closure.spec.ts:47:1 › 项目管理员：资产无可用位置 → 引导去位置中心 → 新建场地/车间（坐标未知）→ 回资产详情移动 → 刷新后版本保持
+[2/5] [premium] › tests/e2e/premium/location-closure.spec.ts:104:1 › 只读账号：位置中心无新建入口；空列表提示需项目管理员创建
+[3/5] [premium] › tests/e2e/premium/location-closure.spec.ts:112:3 › 位置列表 503：显示错误与重试，不显示“暂无位置”；移动对话框同样区分
+[4/5] [premium] › tests/e2e/premium/location-closure.spec.ts:112:3 › 位置列表 403：显示错误与重试，不显示“暂无位置”；移动对话框同样区分
+[5/5] [premium] › tests/e2e/premium/location-closure.spec.ts:125:1 › 未选择项目：提示选择项目而不是“暂无位置”；未授权项目不发请求
+  5 passed (24.6s)

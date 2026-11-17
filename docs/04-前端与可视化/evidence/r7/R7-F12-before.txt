@@ -1,0 +1,144 @@
+
+Running 4 tests using 1 worker
+
+[1/4] [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:42:1 › 断网保存：不排队、不转圈，恢复网络后不自动提交，草稿保留
+  1) [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:42:1 › 断网保存：不排队、不转圈，恢复网络后不自动提交，草稿保留 
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: getByTestId('asset-edit-error')
+    Expected substring: "未发送"
+    Timeout: 20000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toContainText" getByTestId('asset-edit-error') with timeout 20000ms
+      - waiting for getByTestId('asset-edit-error')
+
+
+      45 |   await context.setOffline(true);
+      46 |   await form.getByRole('button', { name: '保存', exact: true }).click();
+    > 47 |   await expect(page.getByTestId('asset-edit-error')).toContainText('未发送');
+         |                                                      ^
+      48 |   await expect(form.getByRole('button', { name: '保存', exact: true })).toBeEnabled();
+      49 |   await context.setOffline(false);
+      50 |   await page.waitForTimeout(1500);
+        at /sessions/intelligent-friendly-goldberg/mnt/行车数字沙盘/tests/e2e/premium/r7-offline-mutations.spec.ts:47:54
+
+    Error Context: test-results/premium-r7-offline-mutations-断网保存：不排队、不转圈，恢复网络后不自动提交，草稿保留-premium/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/premium-r7-offline-mutations-断网保存：不排队、不转圈，恢复网络后不自动提交，草稿保留-premium/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/premium-r7-offline-mutations-断网保存：不排队、不转圈，恢复网络后不自动提交，草稿保留-premium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+[2/4] [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:59:1 › 断网后切换用户再恢复网络：上一身份的写入不会以新身份发出
+  2) [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:59:1 › 断网后切换用户再恢复网络：上一身份的写入不会以新身份发出 
+
+    Error: expect(received).toHaveLength(expected)
+
+    Expected length: 0
+    Received length: 1
+    Received array:  [{"csrf": "alice-xxxxxxxxxxxxxxxxxxxxxxxxxx", "ifMatch": "\"1\"", "method": "PATCH", "path": "/api/v1/assets/A1"}]
+
+      66 |   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+      67 |   await page.waitForTimeout(1500);
+    > 68 |   expect(state.writes).toHaveLength(0);
+         |                        ^
+      69 | });
+      70 |
+      71 | test('已发送但响应丢失：显示结果未知并核对服务器版本，不自动重试', async ({ page }) => {
+        at /sessions/intelligent-friendly-goldberg/mnt/行车数字沙盘/tests/e2e/premium/r7-offline-mutations.spec.ts:68:24
+
+    Error Context: test-results/premium-r7-offline-mutations-断网后切换用户再恢复网络：上一身份的写入不会以新身份发出-premium/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/premium-r7-offline-mutations-断网后切换用户再恢复网络：上一身份的写入不会以新身份发出-premium/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/premium-r7-offline-mutations-断网后切换用户再恢复网络：上一身份的写入不会以新身份发出-premium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+[3/4] [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:71:1 › 已发送但响应丢失：显示结果未知并核对服务器版本，不自动重试
+  3) [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:71:1 › 已发送但响应丢失：显示结果未知并核对服务器版本，不自动重试 
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: getByTestId('asset-edit-error')
+    Expected substring: "结果未知"
+    Received string:    "更新失败"
+    Timeout: 20000ms
+
+    Call log:
+      - Expect "toContainText" getByTestId('asset-edit-error') with timeout 20000ms
+      - waiting for getByTestId('asset-edit-error')
+        44 × locator resolved to <div role="alert" class="form-error" data-testid="asset-edit-error">…</div>
+           - unexpected value "更新失败"
+
+
+      74 |   await form.getByRole('button', { name: '保存', exact: true }).click();
+      75 |   const err = page.getByTestId('asset-edit-error');
+    > 76 |   await expect(err).toContainText('结果未知');
+         |                     ^
+      77 |   await expect(err).toContainText('v2');
+      78 |   await expect(err).not.toContainText('回滚');
+      79 |   expect(state.writes.filter((w) => w.method === 'PATCH')).toHaveLength(1);
+        at /sessions/intelligent-friendly-goldberg/mnt/行车数字沙盘/tests/e2e/premium/r7-offline-mutations.spec.ts:76:21
+
+    Error Context: test-results/premium-r7-offline-mutations-已发送但响应丢失：显示结果未知并核对服务器版本，不自动重试-premium/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/premium-r7-offline-mutations-已发送但响应丢失：显示结果未知并核对服务器版本，不自动重试-premium/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/premium-r7-offline-mutations-已发送但响应丢失：显示结果未知并核对服务器版本，不自动重试-premium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+[4/4] [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:85:1 › 核心写操作断网均不排队：新建资产、新建位置
+  4) [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:85:1 › 核心写操作断网均不排队：新建资产、新建位置 ───────
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: getByTestId('asset-create-form').getByRole('alert')
+    Expected substring: "未发送"
+    Timeout: 20000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toContainText" getByTestId('asset-create-form').getByRole('alert') with timeout 20000ms
+      - waiting for getByTestId('asset-create-form').getByRole('alert')
+
+
+      92 |   await context.setOffline(true);
+      93 |   await create.getByRole('button', { name: '创建', exact: true }).click();
+    > 94 |   await expect(create.getByRole('alert')).toContainText('未发送');
+         |                                           ^
+      95 |   await context.setOffline(false);
+      96 |   await page.waitForTimeout(1000);
+      97 |   expect(state.writes).toHaveLength(0);
+        at /sessions/intelligent-friendly-goldberg/mnt/行车数字沙盘/tests/e2e/premium/r7-offline-mutations.spec.ts:94:43
+
+    Error Context: test-results/premium-r7-offline-mutations-核心写操作断网均不排队：新建资产、新建位置-premium/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/premium-r7-offline-mutations-核心写操作断网均不排队：新建资产、新建位置-premium/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/premium-r7-offline-mutations-核心写操作断网均不排队：新建资产、新建位置-premium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+  4 failed
+    [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:42:1 › 断网保存：不排队、不转圈，恢复网络后不自动提交，草稿保留 ─
+    [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:59:1 › 断网后切换用户再恢复网络：上一身份的写入不会以新身份发出 ─
+    [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:71:1 › 已发送但响应丢失：显示结果未知并核对服务器版本，不自动重试 
+    [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:85:1 › 核心写操作断网均不排队：新建资产、新建位置 ────────

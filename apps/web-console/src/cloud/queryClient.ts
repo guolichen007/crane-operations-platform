@@ -10,7 +10,9 @@ export const queryClient = new QueryClient({
       retry: 1,
       refetchOnWindowFocus: false,
     },
-    mutations: { retry: 0 },
+    // R7 F-12: 'always' — a mutation runs (and fails fast) when invoked instead of being paused
+    // offline and silently resumed later. Writes are never retried automatically.
+    mutations: { retry: 0, networkMode: 'always' },
   },
 });
 
@@ -22,6 +24,8 @@ export const queryClient = new QueryClient({
  * mounted ones under the new identity. Pages render their loading state meanwhile.
  */
 export function resetForIdentityChange() {
+  // No write prepared under the previous identity may run under the next one.
+  queryClient.getMutationCache().clear();
   void queryClient.resetQueries().catch(() => undefined);
 }
 if (typeof window !== 'undefined') window.addEventListener('cloud-identity-changed', resetForIdentityChange);

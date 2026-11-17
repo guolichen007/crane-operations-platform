@@ -1,0 +1,9 @@
+
+Running 5 tests using 1 worker
+
+[1/5] [premium] › tests/e2e/premium/identity-isolation.spec.ts:81:3 › 同一 SPA 内身份 A → 另一账号 B（仅有其他项目权限）：地图、项目列表、全局搜索、资产台账不残留 A 的数据
+[2/5] [premium] › tests/e2e/premium/identity-isolation.spec.ts:81:3 › 同一 SPA 内身份 A → 无任何授权账号：地图、项目列表、全局搜索、资产台账不残留 A 的数据
+[3/5] [premium] › tests/e2e/premium/identity-isolation.spec.ts:108:1 › 授权撤销（同一账号 ProjectGrant 减少）：被撤销项目从地图、搜索、台账消失
+[4/5] [premium] › tests/e2e/premium/identity-isolation.spec.ts:128:1 › 乱序：A 的台账请求在切换后才返回，不覆盖 B 的数据
+[5/5] [premium] › tests/e2e/premium/identity-isolation.spec.ts:141:1 › 乱序：A 的地图数据（Inventory 项目）在切换后才返回，地图与搜索只显示 B
+  5 passed (39.6s)

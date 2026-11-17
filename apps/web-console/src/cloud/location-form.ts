@@ -1,7 +1,7 @@
 // Q4-QA-R1 §4: minimal location create form (pure logic, unit-tested). Mirrors the AssetLocation
 // contract (contracts/model.json); the server validates again and is the authority.
 import type { AssetLocation } from '../../../../contracts/typescript/types.gen';
-import { ApiError } from './client';
+import { ApiError, NetworkWriteError } from './client';
 
 export const LOCATION_KINDS = ['SITE', 'PLANT', 'WORKSHOP', 'BAY', 'RUNWAY', 'OTHER'] as const;
 export const KIND_TEXT: Record<string, string> = {
@@ -48,6 +48,7 @@ export function toNewLocation(projectId: string, f: LocationForm): AssetLocation
 }
 
 export function locationErrorText(e: unknown): string {
+  if (e instanceof NetworkWriteError) return e.sent ? `${e.message}（刷新位置列表核对是否已创建）` : e.message;
   if (!(e instanceof ApiError)) return '网络连接失败或请求超时，请稍后刷新列表确认是否已创建。';
   switch (e.status) {
     case 400: return '请求格式错误，未创建。';

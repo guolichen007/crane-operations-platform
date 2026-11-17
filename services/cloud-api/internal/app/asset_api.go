@@ -211,6 +211,10 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 				respondAPI(w, 409, map[string]string{"error": "idempotency conflict"})
 				return
 			}
+			if errors.Is(err, asset.ErrDuplicateAssetCode) {
+				respondAPI(w, 409, map[string]string{"error": err.Error(), "code": "asset_code_duplicate"})
+				return
+			}
 			if errors.Is(err, asset.ErrInvalidInput) {
 				respondAPI(w, 422, map[string]string{"error": err.Error()})
 				return
@@ -270,6 +274,8 @@ func (h *apiHandler) registerAssets(api *http.ServeMux) {
 				respondAPI(w, 404, map[string]string{"error": "not found"})
 			case errors.Is(err, asset.ErrVersionConflict):
 				respondAPI(w, 409, map[string]string{"error": "version conflict"})
+			case errors.Is(err, asset.ErrDuplicateAssetCode):
+				respondAPI(w, 409, map[string]string{"error": err.Error(), "code": "asset_code_duplicate"})
 			case errors.Is(err, asset.ErrExpectedVersion), errors.Is(err, asset.ErrRetired), errors.Is(err, asset.ErrTerminalStatus):
 				respondAPI(w, 409, map[string]string{"error": err.Error()})
 			case errors.Is(err, asset.ErrInvalidInput):

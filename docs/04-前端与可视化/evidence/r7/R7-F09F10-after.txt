@@ -1,0 +1,6 @@
+=== RUN   TestR7AssetCodeDuplicateHTTP
+--- PASS: TestR7AssetCodeDuplicateHTTP (0.31s)
+=== RUN   TestR7AssetTypeConstraintHTTP
+--- PASS: TestR7AssetTypeConstraintHTTP (0.16s)
+PASS
+ok  	github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/app	0.475s

@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import { ASSET_TYPES } from '../cloud/asset-types';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query';
 import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router';
 import { Search, Plus, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-vue-next';
 import { listAssets, createAsset } from '../cloud/asset';
-import { ApiError } from '../cloud/client';
+import { ApiError, NetworkWriteError } from '../cloud/client';
 import { assetCodeDisplay } from '../cloud/format';
 import { allowClose } from '../cloud/draft';
 import { webSession, productionAuth } from '../cloud/session';
@@ -95,7 +96,9 @@ const createMutation = useMutation({
     await router.push(`/assets/${created.id}`);
   },
   onError: (e) => {
-    formError.value = e instanceof ApiError ? e.message : '创建失败';
+    // Idempotency-Key is kept, so a deliberate resubmit after an unknown outcome replays instead of
+    // creating twice.
+    formError.value = e instanceof NetworkWriteError ? e.message : e instanceof ApiError ? e.message : '创建失败';
   },
 });
 
@@ -140,7 +143,7 @@ onBeforeUnmount(() => {
 onBeforeRouteLeave(() => leavingAfterCreate || allowClose(createDirty.value, createMutation.isPending.value));
 
 const statusOptions = ['DRAFT', 'ACTIVE', 'OUT_OF_SERVICE', 'RETIRED'];
-const typeOptions = ['CRANE', 'GANTRY', 'BRIDGE', 'PORTAL', 'JIB'];
+const typeOptions = ASSET_TYPES;
 
 const statusText: Record<string, string> = {
   DRAFT: '草稿',

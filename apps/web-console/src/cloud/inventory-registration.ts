@@ -6,7 +6,7 @@
 // places the project at ADMINISTRATIVE-REGION precision only.
 import type { InventoryProject, ProjectInventoryRegistration } from '../../../../contracts/typescript/types.gen';
 import type { GeoManifest, GeoManifestEntry } from '../scene/geo-manifest';
-import { ApiError } from './client';
+import { ApiError, NetworkWriteError } from './client';
 
 export const LIFECYCLES = [
   { value: 'PLANNED', label: '计划实施' },
@@ -101,6 +101,7 @@ export function registrationErrorMessage(e: unknown): { text: string; provenUnwr
       default: return { text: `请求失败（${e.status}）：${e.message}`, provenUnwritten: false };
     }
   }
+  if (e instanceof NetworkWriteError) return { text: e.message, provenUnwritten: !e.sent };
   return { text: '网络连接失败或请求超时，结果未知。', provenUnwritten: false };
 }
 
