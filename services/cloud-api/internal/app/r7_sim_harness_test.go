@@ -619,6 +619,27 @@ func envelopeFor(id, project, kind string, bootID string, bootSeq, seq int64, pa
 	return contract.WithPayload(contract.Envelope{SchemaVersion: 1, MessageId: platform.ID(), TenantId: "demo", ProjectId: project, DeviceId: id, BootId: bootID, BootSeq: bootSeq, Sequence: seq, SentAt: time.Now().UTC(), Kind: kind}, payload)
 }
 
+// repoRoot finds the repository root (the directory whose go.mod declares this module) from the
+// working directory upwards. `go test` runs in the package directory, while the CI gate runs the
+// precompiled test binary (`go test -c`) from the repository root: both must resolve the same path.
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for {
+		if b, err := os.ReadFile(filepath.Join(dir, "go.mod")); err == nil && strings.Contains(string(b), "module github.com/guolichen007/crane-operations-platform\n") {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatal("repository root (go.mod of crane-operations-platform) not found above the working directory")
+		}
+		dir = parent
+	}
+}
+
 // R8: a certificate issued by deploy/scripts/sim-cert.sh (openssl, host only) from the broker's CA
 // connects to the real broker and is scoped by the generated ACL like any Agent identity.
 func TestR8SimCertScriptIssuesUsableIdentity(t *testing.T) {
@@ -637,7 +658,8 @@ func TestR8SimCertScriptIssuesUsableIdentity(t *testing.T) {
 	kb, _ := x509.MarshalPKCS8PrivateKey(e.pki.key)
 	writePEM(t, filepath.Join(caDir, "ca.key"), "PRIVATE KEY", kb)
 	out := filepath.Join(e.root, "sim-out")
-	cmd := exec.Command("bash", "../../../../deploy/scripts/sim-cert.sh", "issue", "--ca-dir", caDir, "--out", out, "--id", "SIM-R8-CERT", "--days", "2")
+	script := filepath.Join(repoRoot(t), "deploy", "scripts", "sim-cert.sh")
+	cmd := exec.Command("bash", script, "issue", "--ca-dir", caDir, "--out", out, "--id", "SIM-R8-CERT", "--days", "2")
 	if b, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("sim-cert.sh: %v %s", err, b)
 	}
