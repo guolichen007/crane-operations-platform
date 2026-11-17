@@ -41,7 +41,7 @@ def merge(a, b):
     if isinstance(a, dict) and isinstance(b, dict):
         out = dict(a)
         for k, v in b.items():
-            out[k] = merge(a[k], v) if k in a and k != "secrets" else v
+            out[k] = merge(a[k], v) if k in a and isinstance(v, dict) else v
         return out
     return b
 
@@ -122,6 +122,7 @@ def new_release(state, secrets, realm, contract="contract-00008"):
         "compose_sha256": direct.digest(direct.canonical_json(config)),
         "snapshot_sha256": direct.hash_files(release, direct.SNAPSHOT),
         "database_contract_sha256": contract, "rollback_target": DEPLOYED, "tools_sha256": "t",
+        "web_secret": direct.REALMS[realm]["web_secret"],   # recorded by prepare since CR-08C
     }
     direct.atomic_json(release / "manifest.json", manifest)
     return rid, release, manifest, images

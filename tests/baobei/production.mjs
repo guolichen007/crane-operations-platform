@@ -83,6 +83,8 @@ for (const mutate of [
   (x) => (x.services['baobei-api'].environment.BAOBEI_IDENTITY_REALM = 'master'),
   (x) => { delete x.services['baobei-api'].environment.BAOBEI_ACCOUNT_CLIENT_ID; },
   (x) => (x.services['baobei-api'].environment.BAOBEI_ACCOUNT_CLIENT_SECRET = 'plaintext'),
+  // CR-08C: the dedicated realm must not mount the shared crane Web secret.
+  (x) => (x.secrets.oidc_client_secret.file = x.secrets.oidc_client_secret.file.replace('baobei_oidc_client_secret', 'oidc_client_secret')),
 ]) {
   const x = structuredClone(dedicated);
   mutate(x);

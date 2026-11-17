@@ -69,6 +69,10 @@ export function validateProduction(c) {
     assert(!env.BAOBEI_ACCOUNT_CLIENT_SECRET);
   }
   assert(env.OIDC_CLIENT_SECRET_FILE && !env.OIDC_CLIENT_SECRET);
+  // CR-08C: each realm mounts its own Web client secret file.
+  assert.equal(env.OIDC_CLIENT_SECRET_FILE, '/run/secrets/oidc_client_secret');
+  assert.equal(c.secrets.oidc_client_secret.file.split('/').pop(), realm.account ? 'baobei_oidc_client_secret' : 'oidc_client_secret',
+    'Web client secret file must belong to the selected realm');
   assert(!env.DATABASE_URL);
   assert.equal(env.STAFF_DATABASE_URL_FILE, '/run/secrets/staff_database_url');
   assert.equal(env.DATABASE_URL_FILE, '/run/secrets/runtime_database_url');

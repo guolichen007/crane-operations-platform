@@ -80,6 +80,9 @@ def test():
         assert api["environment"]["BAOBEI_ACCOUNT_CLIENT_ID"] == "baobei-account-service"
         assert any((s["source"] if isinstance(s, dict) else s) == "account_client_secret" for s in api["secrets"])
         assert brendered["secrets"]["account_client_secret"]["file"] == str(secrets_dir / "account_client_secret")
+        # CR-08C: real Compose mounts each realm's own Web client secret file.
+        assert brendered["secrets"]["oidc_client_secret"]["file"] == str(secrets_dir / "baobei_oidc_client_secret")
+        assert rendered["secrets"]["oidc_client_secret"]["file"] == str(secrets_dir / "oidc_client_secret")
         assert "BAOBEI_ACCOUNT_CLIENT_ID" not in rendered["services"]["baobei-api"]["environment"]
         try:
             direct.verify_release(docker, state, secrets_dir, source + "+crane")

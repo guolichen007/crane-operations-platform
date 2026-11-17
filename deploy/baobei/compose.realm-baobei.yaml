@@ -13,5 +13,10 @@ services:
       BAOBEI_ACCOUNT_CLIENT_SECRET_FILE: /run/secrets/account_client_secret
     secrets: [oidc_client_secret, runtime_database_url, staff_database_url, account_client_secret]
 secrets:
+  # CR-08C: the dedicated realm's own baobei-web client secret. The container
+  # path stays /run/secrets/oidc_client_secret; the source is never the shared
+  # crane file, so switching realms needs no manual secret replacement.
+  oidc_client_secret:
+    file: ${BAOBEI_SECRETS_DIR:?External secret directory}/baobei_oidc_client_secret
   account_client_secret:
     file: ${BAOBEI_SECRETS_DIR:?External secret directory}/account_client_secret

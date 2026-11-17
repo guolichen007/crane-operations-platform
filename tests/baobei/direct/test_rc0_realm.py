@@ -61,7 +61,7 @@ def render(realm, secrets="/ext/secrets"):
         if isinstance(a, dict) and isinstance(b, dict):
             out = dict(a)
             for k, v in b.items():
-                out[k] = merge(a[k], v) if k in a and k != "secrets" else v
+                out[k] = merge(a[k], v) if k in a and isinstance(v, dict) else v
             return out
         return b
     files = ["compose.production.yaml", "compose.direct.yaml"]
@@ -125,7 +125,8 @@ class IdentityConfigTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             secrets = Path(tmp).resolve()
             for name in direct.SECRET_NAMES:
-                (secrets / name).touch()
+                (secrets / name).write_text("crane-web")
+            (secrets / "baobei_oidc_client_secret").write_text("baobei-web")
             with patch.object(direct, "WEBROOT", secrets):
                 direct.check_mounts(secrets, "up", None, "crane")
                 with self.assertRaisesRegex(ValueError, "account_client_secret"):
@@ -171,7 +172,7 @@ class ManifestTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             state = Path(tmp).resolve()
             rid, release, manifest = self.make(state, "baobei")
-            with patch.object(direct, "config_hash", side_effect=lambda d, r, s, i, realm, legacy=False: "h-" + realm):
+            with patch.object(direct, "config_hash", side_effect=lambda d, r, s, i, realm, legacy=False, web_secret=None: "h-" + realm):
                 direct.verify_release(self.docker(), state, state, rid)
                 # 1. overlay edited after prepare → snapshot hash mismatch
                 original = (release / "compose.realm-baobei.yaml").read_text()
@@ -205,7 +206,7 @@ class ManifestTests(unittest.TestCase):
             (release / "compose.realm-baobei.yaml").unlink()
             legacy["snapshot_sha256"] = direct.hash_files(release, direct.LEGACY_SNAPSHOT)
             direct.atomic_json(release / "manifest.json", legacy)
-            with patch.object(direct, "config_hash", side_effect=lambda d, r, s, i, realm, legacy=False: "h-" + realm):
+            with patch.object(direct, "config_hash", side_effect=lambda d, r, s, i, realm, legacy=False, web_secret=None: "h-" + realm):
                 with self.assertRaisesRegex(ValueError, "旧版"):
                     direct.verify_release(self.docker(), state, state, rid)
 
