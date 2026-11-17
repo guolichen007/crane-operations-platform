@@ -2867,7 +2867,13 @@ td.unassigned,
 .pipeline-options { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 0 0 8px; }
 .pipeline-options .segmented { margin-bottom: 0; }
 .density-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); }
-.pipeline-board.grouped { grid-auto-columns: minmax(272px, 1fr); }
+/* Groups: flex so an empty (collapsed) group takes a narrow slot and the
+   groups that hold projects stay on screen. */
+.pipeline-board.grouped:not(.mobile) { display: flex; align-items: flex-start; }
+.pipeline-board.grouped:not(.mobile) > .stage-column { flex: 1 0 272px; max-width: 420px; }
+.pipeline-board.grouped:not(.mobile) > .stage-column.collapsed { flex: 0 0 132px; }
+.stage-column.collapsed .stage-head { flex-wrap: wrap; }
+.stage-column.collapsed .stage-head h2 { font-size: 14px; }
 .pipeline-board .stage-column { max-height: max(420px, calc(100vh - 260px)); }
 .pipeline-board .stage-cards { overflow-y: auto; overscroll-behavior: contain; min-height: 0; flex: 1 1 auto; padding-right: 2px; }
 .pipeline-board .stage-column.collapsed { grid-column: span 1; background: transparent; border-style: dashed; }
@@ -2885,4 +2891,11 @@ td.unassigned,
   .pipeline-options { flex-direction: column; align-items: stretch; }
   .pipeline-options .segmented { display: flex; }
   .pipeline-options .segmented button { flex: 1; min-height: 44px; }
+}
+/* V1.1 A7: identity (name · role) stays visible on the first mobile screen. */
+@media (max-width: 700px) {
+  .account-trigger .user-name { display: flex; flex-direction: column; max-width: 64px; font-size: 12px; line-height: 1.2; }
+  .account-trigger .user-name, .account-trigger .user-name small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .account-trigger .user-name small { font-size: 11px; }
+  .account-trigger .avatar { display: none; }
 }
