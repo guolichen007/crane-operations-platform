@@ -1,0 +1,10 @@
+
+Running 6 tests using 1 worker
+
+[1/6] [premium] › tests/e2e/premium/asset-guards.spec.ts:24:1 › 409 后重基：取消确认草稿与版本不变，确认后保留只读副本，表单外状态变化可见
+[2/6] [premium] › tests/e2e/premium/asset-guards.spec.ts:46:1 › 资产编辑提交中禁止 Esc/蒙层/取消/切路由，失败后保留输入并原位提示
+[3/6] [premium] › tests/e2e/premium/asset-guards.spec.ts:66:1 › Equipment 安装：干净关闭不提示、有输入需确认、提交中不可关、失败原位提示且保留输入
+[4/6] [premium] › tests/e2e/premium/asset-guards.spec.ts:94:1 › 新建资产表单：干净关闭不提示，有输入时 Esc/切路由需确认
+[5/6] [premium] › tests/e2e/premium/asset-guards.spec.ts:109:1 › Equipment 列表加载失败显示原位错误与重试，不显示「暂无」
+[6/6] [premium] › tests/e2e/premium/asset-guards.spec.ts:118:1 › 详情返回台账恢复合法项目范围与搜索，丢弃未授权项目
+  6 passed (18.2s)

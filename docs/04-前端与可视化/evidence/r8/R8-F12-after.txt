@@ -1,0 +1,10 @@
+
+Running 6 tests using 1 worker
+
+[1/6] [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:43:1 › 断网保存：不排队、不转圈，恢复网络后不自动提交，草稿保留
+[2/6] [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:60:1 › 断网后切换用户再恢复网络：上一身份的写入不会以新身份发出
+[3/6] [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:72:1 › 已发送但响应丢失：显示结果未知并核对服务器版本，不自动重试
+[4/6] [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:86:1 › 核心写操作断网均不排队：新建资产、新建位置
+[5/6] [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:115:1 › 身份在页面内切换（未刷新）：A 打开的编辑草稿不能以 B 的身份提交
+[6/6] [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:129:1 › 网关 504（请求可能已被处理）：判为结果未知并回读版本，而不是"更新失败"
+  6 passed (24.1s)

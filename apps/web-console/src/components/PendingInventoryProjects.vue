@@ -7,6 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query';
 import { onBeforeRouteLeave } from 'vue-router';
 import { RefreshCw, MapPinned } from 'lucide-vue-next';
 import { listPendingInventoryProjects, registerProjectInventory } from '../cloud/portfolio';
+import { createScopeFence } from '../cloud/scope-fence';
 import { loadGeoManifest } from '../scene/geo-manifest';
 import { listProjects } from '../cloud/api';
 import { allowClose } from '../cloud/draft';
@@ -17,6 +18,7 @@ import {
 } from '../cloud/inventory-registration';
 import { intakeErrorMessage } from '../cloud/intake';
 import type { InventoryProject, PendingInventoryProject } from '../../../../contracts/typescript/types.gen';
+const registerFence = createScopeFence();
 
 const emit = defineEmits<{ registered: [project: InventoryProject] }>();
 const queryClient = useQueryClient();
@@ -42,7 +44,7 @@ function onProvince() { form.value.prefecture = ''; form.value.county = ''; }
 function onPrefecture() { form.value.county = ''; }
 
 const mutation = useMutation({
-  mutationFn: () => registerProjectInventory(target.value!.id, toRegistration(form.value)),
+  mutationFn: () => registerFence.guard(() => registerProjectInventory(target.value!.id, toRegistration(form.value))),
   onSuccess: async (project) => {
     target.value = null;
     form.value = blankRegistration();
@@ -97,6 +99,7 @@ const mutation = useMutation({
 function open(p: PendingInventoryProject) {
   if (!allowClose(dirty.value, mutation.isPending.value)) return;
   target.value = p;
+  registerFence.pin();
   form.value = blankRegistration();
   touched.value = false;
   formError.value = '';

@@ -8,9 +8,11 @@ import { ApiError } from '../cloud/client';
 import { webSession, productionAuth } from '../cloud/session';
 import { canWriteProject } from '../cloud/auth-state';
 import { allowClose } from '../cloud/draft';
+import { createScopeFence } from '../cloud/scope-fence';
 import { isAuthorizedScope } from '../cloud/project-scope';
 import { KIND_TEXT, LOCATION_KINDS, blankLocation, locationDirty, locationErrorText, toNewLocation, validateLocation, type LocationForm } from '../cloud/location-form';
 import type { AssetLocation } from '../../../../contracts/typescript/types.gen';
+const createFence = createScopeFence();
 
 const route = useRoute();
 const router = useRouter();
@@ -107,6 +109,7 @@ function openCreate() {
   formError.value = '';
   created.value = '';
   formProject.value = projectId.value;
+  createFence.pin();
   creating.value = true;
 }
 function closeCreate() {
@@ -114,7 +117,7 @@ function closeCreate() {
   creating.value = false;
 }
 const mutation = useMutation({
-  mutationFn: () => createLocation(toNewLocation(formProject.value, form.value)),
+  mutationFn: () => createFence.guard(() => createLocation(toNewLocation(formProject.value, form.value))),
   onSuccess: async (loc) => {
     creating.value = false;
     created.value = `已创建位置「${loc.name}」（${KIND_TEXT[loc.kind] ?? loc.kind}，坐标未知）。可在资产详情中把资产移动到这里。`;

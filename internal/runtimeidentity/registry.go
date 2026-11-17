@@ -288,6 +288,30 @@ func Apply(ctx context.Context, db *sql.DB, r Request, approvedDigest, actor, re
 	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(7160003)`); err != nil {
 		return Record{}, err
 	}
+	// Terminal-state race protection: lock every referenced asset (sorted, the same parent-first
+	// order as RetireAsset / RemoveEquipment), then every referenced installation, BEFORE the plan
+	// is recomputed. A concurrent retire or removal either commits first (and the re-plan sees it
+	// and refuses) or waits until this registration commits (and then refuses on the binding).
+	assets := []string{}
+	installs := []string{}
+	for _, e := range r.Entries {
+		assets = append(assets, e.AssetDeviceId)
+		if e.EquipmentInstallationId != nil {
+			installs = append(installs, *e.EquipmentInstallationId)
+		}
+	}
+	sort.Strings(assets)
+	sort.Strings(installs)
+	for _, id := range assets {
+		if _, err := tx.ExecContext(ctx, `SELECT 1 FROM asset_devices WHERE id=$1 FOR UPDATE`, id); err != nil {
+			return Record{}, err
+		}
+	}
+	for _, id := range installs {
+		if _, err := tx.ExecContext(ctx, `SELECT 1 FROM asset_equipment_installations WHERE id=$1 FOR UPDATE`, id); err != nil {
+			return Record{}, err
+		}
+	}
 	p, err := classify(ctx, tx, r)
 	if err != nil {
 		return Record{}, err
@@ -303,14 +327,6 @@ func Apply(ctx context.Context, db *sql.DB, r Request, approvedDigest, actor, re
 	rec := Record{Target: p.Target, RequestID: requestID, Actor: "host:" + actor, Digest: approvedDigest, Created: []string{}, Bound: []string{}, Existing: []string{}}
 	for _, it := range p.Items {
 		if it.Status == StatusNew {
-			// Lock the asset so a concurrent retire serializes with the registration.
-			var status string
-			if err := tx.QueryRowContext(ctx, `SELECT asset_status FROM asset_devices WHERE id=$1 FOR UPDATE`, it.AssetDeviceId).Scan(&status); err != nil {
-				return Record{}, err
-			}
-			if status == "RETIRED" {
-				return Record{}, fmt.Errorf("%w: %s asset retired", ErrNotApplicable, it.RuntimeDeviceId)
-			}
 			if _, err := tx.ExecContext(ctx, `INSERT INTO devices(id,project_id,asset_device_id,source_mode) VALUES($1,$2,$3,$4)`, it.RuntimeDeviceId, it.ProjectId, it.AssetDeviceId, it.SourceMode); err != nil {
 				return Record{}, err
 			}

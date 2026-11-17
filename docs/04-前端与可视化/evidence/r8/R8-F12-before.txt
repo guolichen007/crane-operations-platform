@@ -1,0 +1,72 @@
+
+Running 2 tests using 1 worker
+
+[1/2] [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:115:1 › 身份在页面内切换（未刷新）：A 打开的编辑草稿不能以 B 的身份提交
+  1) [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:115:1 › 身份在页面内切换（未刷新）：A 打开的编辑草稿不能以 B 的身份提交 
+
+    Error: expect(received).toHaveLength(expected)
+
+    Expected length: 0
+    Received length: 1
+    Received array:  [{"csrf": "bob-xxxxxxxxxxxxxxxxxxxxxxxxxxxx", "ifMatch": "\"1\"", "method": "PATCH", "path": "/api/v1/assets/A1"}]
+
+      124 |     await page.waitForTimeout(800);
+      125 |   }
+    > 126 |   expect(state.writes.filter((w) => w.method === 'PATCH')).toHaveLength(0);
+          |                                                            ^
+      127 | });
+      128 |
+      129 | test('网关 504（请求可能已被处理）：判为结果未知并回读版本，而不是"更新失败"', async ({ page }) => {
+        at /sessions/intelligent-friendly-goldberg/mnt/行车数字沙盘/tests/e2e/premium/r7-offline-mutations.spec.ts:126:60
+
+    Error Context: test-results/premium-r7-offline-mutatio-3893e-换（未刷新）：A-打开的编辑草稿不能以-B-的身份提交-premium/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/premium-r7-offline-mutatio-3893e-换（未刷新）：A-打开的编辑草稿不能以-B-的身份提交-premium/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/premium-r7-offline-mutatio-3893e-换（未刷新）：A-打开的编辑草稿不能以-B-的身份提交-premium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+[2/2] [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:129:1 › 网关 504（请求可能已被处理）：判为结果未知并回读版本，而不是"更新失败"
+  2) [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:129:1 › 网关 504（请求可能已被处理）：判为结果未知并回读版本，而不是"更新失败" 
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: getByTestId('asset-edit-error')
+    Expected substring: "结果未知"
+    Received string:    "请求失败 (504)"
+    Timeout: 20000ms
+
+    Call log:
+      - Expect "toContainText" getByTestId('asset-edit-error') with timeout 20000ms
+      - waiting for getByTestId('asset-edit-error')
+        44 × locator resolved to <div role="alert" class="form-error" data-testid="asset-edit-error">…</div>
+           - unexpected value "请求失败 (504)"
+
+
+      132 |   await form.getByRole('button', { name: '保存', exact: true }).click();
+      133 |   const err = page.getByTestId('asset-edit-error');
+    > 134 |   await expect(err).toContainText('结果未知');
+          |                     ^
+      135 |   await expect(err).toContainText('v2');
+      136 |   expect(state.server.version).toBe(2);
+      137 | });
+        at /sessions/intelligent-friendly-goldberg/mnt/行车数字沙盘/tests/e2e/premium/r7-offline-mutations.spec.ts:134:21
+
+    Error Context: test-results/premium-r7-offline-mutatio-d465f-已被处理）：判为结果未知并回读版本，而不是-更新失败--premium/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/premium-r7-offline-mutatio-d465f-已被处理）：判为结果未知并回读版本，而不是-更新失败--premium/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/premium-r7-offline-mutatio-d465f-已被处理）：判为结果未知并回读版本，而不是-更新失败--premium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+  2 failed
+    [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:115:1 › 身份在页面内切换（未刷新）：A 打开的编辑草稿不能以 B 的身份提交 
+    [premium] › tests/e2e/premium/r7-offline-mutations.spec.ts:129:1 › 网关 504（请求可能已被处理）：判为结果未知并回读版本，而不是"更新失败" 

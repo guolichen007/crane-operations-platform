@@ -6,12 +6,14 @@ import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router';
 import { Search, Plus, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-vue-next';
 import { listAssets, createAsset } from '../cloud/asset';
 import { ApiError, NetworkWriteError } from '../cloud/client';
+import { createScopeFence, ScopeChangedError } from '../cloud/scope-fence';
 import { assetCodeDisplay } from '../cloud/format';
 import { allowClose } from '../cloud/draft';
 import { webSession, productionAuth } from '../cloud/session';
 import { writableProjects } from '../cloud/auth-state';
 import { scopeFromQuery, projectLabel, scopeKey, scopeState, ledgerQueryFrom, rememberLedgerQuery } from '../cloud/project-scope';
 import type { AssetMasterData } from '../../../../contracts/typescript/types.gen';
+const createFence = createScopeFence();
 
 const router = useRouter();
 const route = useRoute();
@@ -85,7 +87,7 @@ const assetsQuery = useQuery({
 });
 
 const createMutation = useMutation({
-  mutationFn: (input: AssetMasterData) => createAsset(input, idempotencyKey),
+  mutationFn: (input: AssetMasterData) => createFence.guard(() => createAsset(input, idempotencyKey)),
   onSuccess: async (created) => {
     creating.value = false;
     idempotencyKey = crypto.randomUUID();
@@ -98,12 +100,13 @@ const createMutation = useMutation({
   onError: (e) => {
     // Idempotency-Key is kept, so a deliberate resubmit after an unknown outcome replays instead of
     // creating twice.
-    formError.value = e instanceof NetworkWriteError ? e.message : e instanceof ApiError ? e.message : '创建失败';
+    formError.value = e instanceof NetworkWriteError || e instanceof ScopeChangedError ? e.message : e instanceof ApiError ? e.message : '创建失败';
   },
 });
 
 function openCreate() {
   idempotencyKey = crypto.randomUUID();
+  createFence.pin();
   formError.value = '';
   newAsset.value = blankAsset();
   creating.value = true;

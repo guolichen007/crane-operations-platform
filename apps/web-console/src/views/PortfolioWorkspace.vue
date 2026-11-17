@@ -12,12 +12,14 @@ import FormalProjectPanel from '../components/FormalProjectPanel.vue';
 import { ApiError } from '../cloud/client';
 import { resetPortfolioScope } from '../cloud/queryClient';
 import { allowClose } from '../cloud/draft';
+import { createScopeFence } from '../cloud/scope-fence';
 import { webSession, productionAuth } from '../cloud/session';
 import {
   blankIntakeForm, formDirty, validateIntakeForm, toIntakeInput, intakeErrorMessage, listState, intakeStages,
   PRIORITIES, RISK_LEVELS, PRIORITY_TEXT, RISK_TEXT, PROJECT_TYPE_SUGGESTIONS, type IntakeForm,
 } from '../cloud/intake';
 import type { ProjectIntake, ScheduleConflict } from '../../../../contracts/typescript/types.gen';
+const createFence = createScopeFence();
 
 const queryClient = useQueryClient();
 const tab = ref<'intake' | 'formal' | 'resource' | 'schedule' | 'conflict'>('intake');
@@ -106,7 +108,7 @@ const dirty = computed(() => creating.value && formDirty(form.value, initialScop
 const lastCreated = ref<ProjectIntake | null>(null);
 
 const createMutation = useMutation({
-  mutationFn: () => createIntake(toIntakeInput(form.value)),
+  mutationFn: () => createFence.guard(() => createIntake(toIntakeInput(form.value))),
   onSuccess: async (created) => {
     lastCreated.value = created;
     creating.value = false;
@@ -122,6 +124,7 @@ const createMutation = useMutation({
 function openCreate() {
   initialScope.value = scopes.value.length === 1 ? scopes.value[0].id : '';
   form.value = blankIntakeForm(initialScope.value);
+  createFence.pin();
   formError.value = '';
   touched.value = false;
   showMore.value = false;

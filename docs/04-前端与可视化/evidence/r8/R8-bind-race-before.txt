@@ -1,0 +1,9 @@
+=== RUN   TestConcurrentBindingVersusRemoveAndRetire
+    registry_test.go:196: round 1: 1 active bindings on a removed installation / retired asset
+--- FAIL: TestConcurrentBindingVersusRemoveAndRetire (0.14s)
+=== RUN   TestConcurrentBindingVersusRemoveAndRetire
+    registry_test.go:196: round 1: 1 active bindings on a removed installation / retired asset
+--- FAIL: TestConcurrentBindingVersusRemoveAndRetire (0.22s)
+FAIL
+FAIL	github.com/guolichen007/crane-operations-platform/internal/runtimeidentity	0.361s
+FAIL

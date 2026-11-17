@@ -30,7 +30,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -618,14 +617,4 @@ func (r *rawClient) publish(ctx context.Context, topic string, payload []byte) (
 
 func envelopeFor(id, project, kind string, bootID string, bootSeq, seq int64, payload any) contract.Envelope {
 	return contract.WithPayload(contract.Envelope{SchemaVersion: 1, MessageId: platform.ID(), TenantId: "demo", ProjectId: project, DeviceId: id, BootId: bootID, BootSeq: bootSeq, Sequence: seq, SentAt: time.Now().UTC(), Kind: kind}, payload)
-}
-
-func percentile(values []time.Duration, p float64) time.Duration {
-	if len(values) == 0 {
-		return 0
-	}
-	s := append([]time.Duration(nil), values...)
-	sort.Slice(s, func(i, j int) bool { return s[i] < s[j] })
-	idx := int(float64(len(s)-1) * p)
-	return s[idx]
 }

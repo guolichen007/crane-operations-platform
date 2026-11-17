@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"sync"
 	"testing"
 
 	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
@@ -148,4 +150,71 @@ func TestRegisterRefusals(t *testing.T) {
 	if src != "SIMULATION" {
 		t.Fatal("source mode changed")
 	}
+}
+
+// Concurrent terminal transitions: a binding apply races RemoveEquipment and RetireAsset on the
+// same asset. Whatever the interleaving, the database never ends with an active binding on a
+// removed installation or a retired asset.
+func TestConcurrentBindingVersusRemoveAndRetire(t *testing.T) {
+	db := testsupport.Database(t)
+	ctx := context.Background()
+	for round := 0; round < 12; round++ {
+		a1, _, eq := seed2(t, db, round)
+		// The runtime exists first (no binding), so the apply only adds a binding.
+		pre := Request{TenantId: "demo", Entries: []Entry{{RuntimeDeviceId: fmt.Sprintf("SIM-RC-%02d", round), ProjectId: "R7-P1", AssetDeviceId: a1, SourceMode: "SIMULATION"}}}
+		pp, _ := PlanRegistration(ctx, db, pre)
+		if _, err := Apply(ctx, db, pre, pp.Digest, "ops", "pre"); err != nil {
+			t.Fatal(err)
+		}
+		req := Request{TenantId: "demo", Entries: []Entry{{RuntimeDeviceId: fmt.Sprintf("SIM-RC-%02d", round), ProjectId: "R7-P1", AssetDeviceId: a1, SourceMode: "SIMULATION", EquipmentInstallationId: &eq}}}
+		p, err := PlanRegistration(ctx, db, req)
+		if err != nil || p.Items[0].Binding != "NEW" {
+			t.Fatalf("plan = %+v %v", p, err)
+		}
+		var version, eqVersion int64
+		_ = db.QueryRow(`SELECT version FROM asset_devices WHERE id=$1`, a1).Scan(&version)
+		_ = db.QueryRow(`SELECT version FROM asset_equipment_installations WHERE id=$1`, eq).Scan(&eqVersion)
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		wg.Add(2)
+		go func() { defer wg.Done(); <-start; _, _ = Apply(ctx, db, req, p.Digest, "ops", "race") }()
+		go func() {
+			defer wg.Done()
+			<-start
+			if round%2 == 0 {
+				_ = asset.RemoveEquipment(ctx, db, eq, eqVersion, "u", "rm")
+			} else {
+				_ = asset.RetireAsset(ctx, db, a1, version, "u", "ret")
+			}
+		}()
+		close(start)
+		wg.Wait()
+		var bad int
+		_ = db.QueryRow(`SELECT count(*) FROM equipment_runtime_bindings b JOIN asset_equipment_installations e ON e.id=b.equipment_installation_id JOIN asset_devices a ON a.id=b.asset_id
+		  WHERE b.valid_to IS NULL AND (e.valid_to IS NOT NULL OR a.asset_status='RETIRED')`).Scan(&bad)
+		if bad != 0 {
+			t.Fatalf("round %d: %d active bindings on a removed installation / retired asset", round, bad)
+		}
+	}
+}
+
+func seed2(t *testing.T, db *sql.DB, round int) (string, string, string) {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := db.Exec(`INSERT INTO projects(id,tenant_id,name,lifecycle) VALUES('R7-P1','demo','R7-P1','PLANNED') ON CONFLICT DO NOTHING`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO equipment_types(type_code,display_name,domain) VALUES('PLC','PLC 控制器','CONTROL') ON CONFLICT DO NOTHING`); err != nil {
+		t.Fatal(err)
+	}
+	code := fmt.Sprintf("RC-%02d", round)
+	a, err := asset.CreateAsset(ctx, db, contract.AssetMasterData{ProjectId: "R7-P1", AssetType: "CRANE", AssetCode: &code}, "a", "r", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	eq, err := asset.CreateEquipment(ctx, db, contract.EquipmentInstallation{AssetId: a.Id, EquipmentCode: "PLC", TypeCode: "PLC", Criticality: "HIGH"}, json.RawMessage(`{}`), "a", "r", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return a.Id, "", eq.Id
 }

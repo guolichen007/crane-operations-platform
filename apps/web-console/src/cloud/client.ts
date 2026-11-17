@@ -103,7 +103,11 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   }
   if (response.status === 401 && productionAuth) clearWebSession();
   if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as ApiErrorBody;
+    const parsed = (await response.json().catch(() => null)) as ApiErrorBody | null;
+    // A gateway timeout / bad gateway (or any non-JSON 5xx from a proxy) on a write does not prove
+    // the API rejected it: the request may have been processed upstream. Outcome unknown.
+    if (writing && (response.status === 502 || response.status === 504 || (response.status >= 500 && parsed === null))) throw new NetworkWriteError(true);
+    const body = parsed ?? {};
     const code = body.code ?? STATUS_CODE[response.status] ?? 'UNKNOWN_ERROR';
     const message = body.error ?? body.message ?? `请求失败 (${response.status})`;
     throw new ApiError(response.status, code, message);

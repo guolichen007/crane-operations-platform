@@ -7,6 +7,7 @@
 //     project's assets/devices. Holding a portfolio role gives no project access.
 import type { ProjectMember, ProjectGrantChange } from '../../../../contracts/typescript/types.gen';
 import { ApiError, NetworkWriteError } from './client';
+import { ScopeChangedError } from './scope-fence';
 
 export const PROJECT_ROLES = ['viewer', 'operator', 'maintainer', 'platform_admin'] as const;
 export type ProjectRole = (typeof PROJECT_ROLES)[number];
@@ -51,7 +52,7 @@ export function grantErrorMessage(error: unknown): string {
       default: return `请求失败（${error.status}）：${error.message}`;
     }
   }
-  if (error instanceof NetworkWriteError) return error.message;
+  if (error instanceof NetworkWriteError || error instanceof ScopeChangedError) return error.message;
   return '网络连接失败或请求超时，请稍后重试。已输入的内容已保留。';
 }
 

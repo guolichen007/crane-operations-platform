@@ -4,13 +4,13 @@
 // browser network state (context.setOffline), not a mocked response.
 import { test, expect, type Page } from '@playwright/test';
 
-const ses = (user: string) => ({ userId: user, displayName: user, projects: [{ projectId: 'P001', projectName: 'Project-A', role: 'platform_admin' }], csrfToken: `${user}-`.padEnd(32, 'x'), expiresAt: '2099-01-01T00:00:00Z', idleExpiresAt: '2099-01-01T00:00:00Z' });
+const ses = (user: string, idleSoon = false) => ({ userId: user, displayName: user, projects: [{ projectId: 'P001', projectName: 'Project-A', role: 'platform_admin' }], csrfToken: `${user}-`.padEnd(32, 'x'), expiresAt: '2099-01-01T00:00:00Z', idleExpiresAt: idleSoon ? new Date(Date.now() + 2500).toISOString() : '2099-01-01T00:00:00Z' });
 const asset = { id: 'A1', projectId: 'P001', displayName: '原名', assetCode: 'C1', assetType: 'CRANE', assetStatus: 'ACTIVE', manufacturerId: null, manufacturerSnapshot: '', brandSnapshot: '', modelSnapshot: '', serialNumber: null, manufactureDate: null, installationDate: null, commissioningDate: null, liftingHeightM: null, applicationType: null, controlMode: null, version: 1, specialEquipmentCode: null, useRegistrationNo: null };
 
 type Write = { method: string; path: string; csrf: string | undefined; ifMatch: string | undefined };
-async function mock(page: Page, opts: { dropPatchResponse?: boolean } = {}) {
-  const state = { user: 'alice', server: { ...asset }, writes: [] as Write[], posts: [] as Write[] };
-  await page.route('**/auth/session', (r) => r.fulfill({ json: ses(state.user) }));
+async function mock(page: Page, opts: { dropPatchResponse?: boolean; patchStatus?: number } = {}) {
+  const state = { user: 'alice', idleSoon: false, server: { ...asset }, writes: [] as Write[], posts: [] as Write[] };
+  await page.route('**/auth/session', (r) => r.fulfill({ json: ses(state.user, state.idleSoon) }));
   await page.route('**/api/v1/**', async (r) => {
     const u = new URL(r.request().url());
     const m = r.request().method();
@@ -18,6 +18,7 @@ async function mock(page: Page, opts: { dropPatchResponse?: boolean } = {}) {
     if (m !== 'GET') state.writes.push({ method: m, path: u.pathname, csrf: h['x-csrf-token'], ifMatch: h['if-match'] });
     if (u.pathname === '/api/v1/assets/A1' && m === 'PATCH') {
       if (h['if-match'] !== `"${state.server.version}"`) return r.fulfill({ status: 409, json: { error: 'version conflict' } });
+      if (opts.patchStatus) { state.server = { ...state.server, ...(r.request().postDataJSON() as object), version: state.server.version + 1 }; return r.fulfill({ status: opts.patchStatus, body: '<html>gateway</html>' }); }
       state.server = { ...state.server, ...(r.request().postDataJSON() as object), version: state.server.version + 1 };
       if (opts.dropPatchResponse) return r.abort('connectionreset'); // applied on the server, response lost
       return r.fulfill({ json: state.server });
@@ -109,4 +110,28 @@ test('核心写操作断网均不排队：新建资产、新建位置', async ({
   await context.setOffline(false);
   await page.waitForTimeout(1000);
   expect(state.writes).toHaveLength(0);
+});
+
+test('身份在页面内切换（未刷新）：A 打开的编辑草稿不能以 B 的身份提交', async ({ page }) => {
+  const state = await mock(page);
+  state.idleSoon = true; // the AuthGate re-reads the session in place shortly (idle deadline)
+  const form = await openEdit(page);
+  state.user = 'bob';
+  state.idleSoon = false;
+  await expect(page.getByTestId('session-user').first()).toHaveText('bob', { timeout: 15000 });
+  if (await form.isVisible()) {
+    await form.getByRole('button', { name: '保存', exact: true }).click().catch(() => undefined);
+    await page.waitForTimeout(800);
+  }
+  expect(state.writes.filter((w) => w.method === 'PATCH')).toHaveLength(0);
+});
+
+test('网关 504（请求可能已被处理）：判为结果未知并回读版本，而不是"更新失败"', async ({ page }) => {
+  const state = await mock(page, { patchStatus: 504 });
+  const form = await openEdit(page);
+  await form.getByRole('button', { name: '保存', exact: true }).click();
+  const err = page.getByTestId('asset-edit-error');
+  await expect(err).toContainText('结果未知');
+  await expect(err).toContainText('v2');
+  expect(state.server.version).toBe(2);
 });

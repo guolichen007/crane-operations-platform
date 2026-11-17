@@ -125,6 +125,7 @@ const h21aPackages = [
   ['r7-runtimeidentity', './internal/runtimeidentity', [
     'TestRegisterPlanApplyVerifyAndBinding',
     'TestRegisterRefusals',
+    'TestConcurrentBindingVersusRemoveAndRetire',
   ]],
   // D1 synthetic acceptance dataset: exact-id cleanup, ownership refusal, server-side guard.
   ['h3-uatdata', './tools/uatdata', [

@@ -1,0 +1,14 @@
+
+Running 10 tests using 1 worker
+
+[1/10] [premium] › tests/e2e/premium/portfolio-grants.spec.ts:56:1 › 经理：查看正式项目 → 授予 → 调整角色 → 撤销，状态与成员列表随之刷新
+[2/10] [premium] › tests/e2e/premium/portfolio-grants.spec.ts:87:1 › 错误提示：未知账号 422、并发修改 409、服务 503；失败保留输入，保存中防重复提交
+[3/10] [premium] › tests/e2e/premium/portfolio-grants.spec.ts:122:1 › 并发：成员已被他人改动时得到 409 并刷新列表
+[4/10] [premium] › tests/e2e/premium/portfolio-grants.spec.ts:133:1 › 规划者：可查看正式项目，没有授权入口；空状态与失败状态区分
+[5/10] [premium] › tests/e2e/premium/portfolio-grants.spec.ts:158:1 › CI 发现：页面打开后才被批准的正式项目，切到「正式项目」页签即可见（不受缓存影响）
+[6/10] [premium] › tests/e2e/premium/portfolio-grants.spec.ts:170:1 › Q3 修复 A：授权已提交但成员列表读取失败时显示成功，单独重新加载，不重复提交
+[7/10] [premium] › tests/e2e/premium/portfolio-grants.spec.ts:185:1 › Q3 修复 B：授权表单有草稿时切换页签、切换项目、关闭面板都需确认；保存中不可切换
+[8/10] [premium] › tests/e2e/premium/portfolio-grants.spec.ts:214:3 › 正式项目详情与授权表单在 1280×720 可读可用
+[9/10] [premium] › tests/e2e/premium/portfolio-grants.spec.ts:214:3 › 正式项目详情与授权表单在 1366×768 可读可用
+[10/10] [premium] › tests/e2e/premium/portfolio-grants.spec.ts:214:3 › 正式项目详情与授权表单在 1920×1080 可读可用
+  10 passed (28.0s)

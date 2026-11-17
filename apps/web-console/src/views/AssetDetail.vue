@@ -24,6 +24,7 @@ import { KIND_TEXT } from '../cloud/location-form';
 import { assetTypeOptions } from '../cloud/asset-types';
 import { formatCloudTime } from '../cloud/format';
 import { ApiError, NetworkWriteError } from '../cloud/client';
+import { createScopeFence, ScopeChangedError } from '../cloud/scope-fence';
 import { assetCodeDisplay } from '../cloud/format';
 import { webSession } from '../cloud/session';
 import { canWriteProject } from '../cloud/auth-state';
@@ -127,8 +128,10 @@ const conflictDiff = computed(() =>
 // as a read-only, copyable text so nothing typed is lost silently.
 const discardedDraft = ref('');
 
+// One fence per write dialog: pinned when it opens, checked at submit (F-12).
+const fences = { edit: createScopeFence(), move: createScopeFence(), retire: createScopeFence(), eqAdd: createScopeFence(), eqEdit: createScopeFence(), eqRemove: createScopeFence() };
 function errorText(e: unknown, fallback: string): string {
-  if (e instanceof NetworkWriteError) return e.message;
+  if (e instanceof NetworkWriteError || e instanceof ScopeChangedError) return e.message;
   if (!(e instanceof ApiError)) return fallback;
   if (e.status === 403) return '没有执行此操作的权限。';
   if (e.status === 404) return '资产不存在或已不在您的授权范围内。';
@@ -141,6 +144,7 @@ function openEdit() {
   const current = assetQuery.data.value;
   if (!current) return;
   edit.start(current, current.version);
+  fences.edit.pin();
   editTarget.value = current.id;
   editError.value = '';
   editConflict.value = false;
@@ -179,7 +183,7 @@ async function refreshAfterWrite() {
 
 const updateMutation = useMutation({
   // PATCH carries only the fields the user changed, against the pinned version.
-  mutationFn: () => updateAsset(editTarget.value, assetChanges(edit.base.value!, edit.draft.value!), edit.baseVersion.value!),
+  mutationFn: () => fences.edit.guard(() => updateAsset(editTarget.value, assetChanges(edit.base.value!, edit.draft.value!), edit.baseVersion.value!)),
   onSuccess: async () => {
     edit.close();
     await refreshAfterWrite();
@@ -210,6 +214,7 @@ function openMove() {
   const current = assetQuery.data.value;
   if (!current) return;
   move.start({ locationId: '' }, current.version);
+  fences.move.pin();
   moveTarget.value = current.id;
   moveError.value = '';
   // Locations may have been created elsewhere (位置中心) since the list was cached.
@@ -218,7 +223,7 @@ function openMove() {
 const moved = ref('');
 const movedLocationId = ref('');
 const moveMutation = useMutation({
-  mutationFn: () => moveAsset(moveTarget.value, move.draft.value!.locationId, move.baseVersion.value!),
+  mutationFn: () => fences.move.guard(() => moveAsset(moveTarget.value, move.draft.value!.locationId, move.baseVersion.value!)),
   onSuccess: async () => {
     const target = moveTargets.value.find((l) => l.id === move.draft.value?.locationId);
     move.close();
@@ -239,11 +244,12 @@ function openRetire() {
   const current = assetQuery.data.value;
   if (!current) return;
   retire.start({ confirm: true }, current.version);
+  fences.retire.pin();
   retireTarget.value = current.id;
   retireError.value = '';
 }
 const retireMutation = useMutation({
-  mutationFn: () => retireAsset(retireTarget.value, retire.baseVersion.value!),
+  mutationFn: () => fences.retire.guard(() => retireAsset(retireTarget.value, retire.baseVersion.value!)),
   onSuccess: async () => {
     retire.close();
     await refreshAfterWrite();
@@ -391,6 +397,7 @@ function openEquipmentAdd() {
   equipmentSpec.value = {};
   equipmentAddError.value = '';
   equipmentIdemKey = crypto.randomUUID();
+  fences.eqAdd.pin();
   equipmentAddTarget.value = id.value;
   equipmentAdding.value = true;
 }
@@ -405,10 +412,10 @@ const createEquipmentMutation = useMutation({
     if (!equipmentDraft.value.typeCode || !typesQuery.data.value?.some((t) => t.typeCode === equipmentDraft.value.typeCode)) {
       return Promise.reject(new Error('请选择已初始化的设备类型'));
     }
-    return createEquipment(
+    return fences.eqAdd.guard(() => createEquipment(
       { ...equipmentDraft.value, assetId: equipmentAddTarget.value, spec: equipmentSpec.value },
       equipmentIdemKey,
-    );
+    ));
   },
   onSuccess: async () => {
     equipmentAdding.value = false;
@@ -416,7 +423,7 @@ const createEquipmentMutation = useMutation({
     await queryClient.invalidateQueries({ queryKey: ['equipment', id] });
   },
   // The form stays open with every input kept; the error is shown inside it.
-  onError: (e) => (equipmentAddError.value = e instanceof ApiError ? errorText(e, '安装失败') : (e as Error).message || '安装失败'),
+  onError: (e) => (equipmentAddError.value = e instanceof ApiError || e instanceof NetworkWriteError || e instanceof ScopeChangedError ? errorText(e, '安装失败') : (e as Error).message || '安装失败'),
 });
 // The confirmation pins id, code and version when it opens (Q4-QA-R1): the submit sends exactly that
 // version as If-Match, so a background refetch can never make it remove a newer record the user has
@@ -428,10 +435,11 @@ const removeError = ref('');
 function openRemove(e: EquipmentInstallation) {
   if (removeEquipmentMutation.isPending.value) return;
   removeTarget.value = { id: e.id, code: e.equipmentCode, version: e.version };
+  fences.eqRemove.pin();
   removeError.value = '';
 }
 const removeEquipmentMutation = useMutation({
-  mutationFn: (t: RemoveTarget) => removeEquipment(t.id, t.version),
+  mutationFn: (t: RemoveTarget) => fences.eqRemove.guard(() => removeEquipment(t.id, t.version)),
   onSuccess: async () => {
     removeTarget.value = null;
     removeError.value = '';
@@ -454,6 +462,7 @@ const equipmentEditDirty = computed(
 );
 function openEquipmentEdit(e: EquipmentInstallation) {
   equipmentEditBase.value = { ...e };
+  fences.eqEdit.pin();
   equipmentEditing.value = { ...e };
   equipmentEditError.value = '';
 }
@@ -464,7 +473,7 @@ function closeEquipmentEdit() {
 }
 const updateEquipmentMutation = useMutation({
   // The version is the one pinned when the editor opened.
-  mutationFn: (draft: EquipmentInstallation) => updateEquipment(draft.id, draft, equipmentEditBase.value!.version),
+  mutationFn: (draft: EquipmentInstallation) => fences.eqEdit.guard(() => updateEquipment(draft.id, draft, equipmentEditBase.value!.version)),
   onSuccess: async () => {
     equipmentEditing.value = null;
     equipmentEditBase.value = null;
