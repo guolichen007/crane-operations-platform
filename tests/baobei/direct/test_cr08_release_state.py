@@ -702,6 +702,102 @@ class ReviewFindingTests(Case):
             direct.verify_release(h.docker, h.state, h.secrets, rid)
 
 
+class PathAThenPathBTests(Case):
+    """R7-D3 counter-proof: the upgrade window belongs to the release id it was
+    opened for; path A may switch realms afterwards. Path B from the other realm
+    must still find exactly that window and its recorded pre-upgrade backup."""
+
+    def finish_upgrade(self, h, rid):
+        direct.record_phase(h.state, rid, "SMOKE_TEST", "smoke-up")
+        direct.record_phase(h.state, rid, "RELEASE_COMPLETE", "done-up")
+
+    def recover_all(self, h):
+        h.world.connections = 0
+        for step in ("stop", "restore", "verify", "start"):
+            h.recover(step)
+        self.assertEqual((direct.pointer(h.state, "active"), direct.pointer(h.state, "pending")), (OLD, None))
+        self.assertEqual(h.world.ledger, h.world.ledger_of(OLD))
+        direct.record_phase(h.state, OLD, "SMOKE_TEST", "smoke-dr")
+        direct.record_phase(h.state, OLD, "RELEASE_COMPLETE", "done-dr")
+
+    def test_upgrade_on_baobei_path_a_to_crane_then_path_b(self):
+        h = self.host()                                   # upgrade window: NEW+baobei
+        self.finish_upgrade(h, h.baobei_id)
+        lc.realm_switch(self, h.docker, h.world, h.state, h.secrets, h.crane_id, "crane", "CHG-A")
+        self.assertEqual(direct.pointer(h.state, "active"), h.crane_id)
+        direct.record_phase(h.state, OLD, "MAINTENANCE_ENTER", "CHG-DR", kind="disaster-recovery")
+        # Still bound: another backup with the same old schema is refused.
+        other = h.make_backup(h.world.ledger_of(OLD), h.backup_counts, "same-schema-other.dump")
+        with self.assertRaisesRegex(ValueError, "升级窗口中记录的升级前备份"):
+            h.recover("backup", other)
+        window = h.recover("backup", h.backup)
+        m = window["phases"][-1]["measured"]
+        self.assertEqual(m["failed_release"], h.crane_id)
+        self.assertEqual(m["upgrade_releases"], sorted([h.crane_id, h.baobei_id]))
+        upgrade = next(json.loads(p.read_text()) for p in (h.state / "maintenance-history").glob("*.json")
+                       if json.loads(p.read_text())["release"] == h.baobei_id
+                       and json.loads(p.read_text()).get("kind") == "upgrade")
+        self.assertEqual(m["upgrade_window"], upgrade["id"])
+        self.recover_all(h)
+        self.assertEqual(h.world.secret_source, str(h.secrets / "oidc_client_secret"))
+
+    def test_reverse_upgrade_on_crane_path_a_to_baobei_then_path_b(self):
+        h = Host.__new__(Host)
+        tmp = __import__("tempfile").TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        h.__init__(tmp.name, upgrade=False)
+        self.addCleanup(h.close)
+        s, w, rid = h.state, h.world, h.crane_id
+        direct.record_phase(s, rid, "MAINTENANCE_ENTER", "CHG-UP-C")
+        h.backup = h.make_backup(w.ledger, w.counts)
+        direct.record_phase(s, rid, "FRESH_BACKUP_VERIFIED", "backup:sha256-" + direct.digest(h.backup.read_bytes())[:16])
+        direct.record_phase(s, rid, "OLD_API_DRAINED", "drain-1")
+        w.api_state, w.connections = "exited", 0
+        direct.apply(h.docker, s, h.secrets, rid, "migrate", h.secrets / "db_password")
+        w.epoch_issuer = CRANE
+        for phase in ("IDENTITY_EPOCH_INIT", "IDENTITY_PRECHECK", "IDENTITY_SWITCH"):
+            direct.record_phase(s, rid, phase, "evidence-" + phase.lower())
+        w.counts = {"teams": 2, "intake_projects": 5}
+        direct.apply(h.docker, s, h.secrets, rid, "up", None)
+        self.finish_upgrade(h, rid)
+        lc.realm_switch(self, h.docker, w, s, h.secrets, h.baobei_id, "baobei", "CHG-B")
+        self.assertEqual(direct.pointer(s, "active"), h.baobei_id)
+        direct.record_phase(s, OLD, "MAINTENANCE_ENTER", "CHG-DR", kind="disaster-recovery")
+        m = h.recover("backup", h.backup)["phases"][-1]["measured"]
+        self.assertEqual((m["failed_release"], m["upgrade_releases"]), (h.baobei_id, sorted([h.crane_id, h.baobei_id])))
+        self.recover_all(h)
+        # The old release starts with its own (crane) secret, not the baobei one.
+        self.assertEqual(h.world.secret_source, str(h.secrets / "oidc_client_secret"))
+
+    def test_sibling_with_another_rollback_target_does_not_lend_its_window(self):
+        h = self.host()                                   # upgrade window: NEW+baobei (rollback OLD)
+        self.finish_upgrade(h, h.baobei_id)
+        lc.realm_switch(self, h.docker, h.world, h.state, h.secrets, h.crane_id, "crane", "CHG-A")
+        # Re-prepare NEW+baobei while NEW (crane) is active: its rollback target is now NEW.
+        import shutil
+        shutil.rmtree(h.state / "releases" / h.baobei_id)
+        direct.prepare(h.docker, h.state, h.secrets, NEW, "baobei")
+        self.assertEqual(direct.read_json(h.state / "releases" / h.baobei_id / "manifest.json")["rollback_target"], NEW)
+        direct.record_phase(h.state, OLD, "MAINTENANCE_ENTER", "CHG-DR", kind="disaster-recovery")
+        with self.assertRaisesRegex(ValueError, "找不到失败发布的升级维护窗口"):
+            h.recover("backup", h.backup)
+        self.assertEqual(len(direct.read_window(h.state)["phases"]), 1)
+
+    def test_another_commits_upgrade_window_is_never_used(self):
+        h = self.host()
+        self.finish_upgrade(h, h.baobei_id)
+        lc.realm_switch(self, h.docker, h.world, h.state, h.secrets, h.crane_id, "crane", "CHG-A")
+        # Rewrite the archived upgrade window as if it belonged to another commit.
+        for p in (h.state / "maintenance-history").glob("*.json"):
+            window = json.loads(p.read_text())
+            if window.get("kind") == "upgrade":
+                window["release"] = direct.release_id("d" * 40, "baobei")
+                p.write_text(json.dumps(window))
+        direct.record_phase(h.state, OLD, "MAINTENANCE_ENTER", "CHG-DR", kind="disaster-recovery")
+        with self.assertRaisesRegex(ValueError, "找不到失败发布的升级维护窗口"):
+            h.recover("backup", h.backup)
+
+
 class PrivilegeSqlTests(unittest.TestCase):
     def test_privilege_query_covers_the_minimal_set(self):
         sql = direct.privileges_sql("baobei")

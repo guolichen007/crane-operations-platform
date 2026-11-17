@@ -1210,25 +1210,49 @@ def verify_backup(archive, ledger):
     return meta, h.hexdigest()
 
 
-def upgrade_window_of(state, failed):
-    """The (latest) upgrade window of the failed release, current or archived."""
+def upgrade_releases(docker, state, secrets, failed, failed_manifest, rid):
+    """The releases whose upgrade window counts as the failed release's upgrade.
+
+    The failed release itself, plus the same commit prepared for the other
+    approved realm (path A may have switched realms after the upgrade window,
+    which belongs to the release id it was opened for). The sibling only
+    counts when its verified manifest has the same rollback target (this
+    recovery target), database contract and images as the failed release, so
+    it is the same upgrade from the same old release; nothing else is accepted."""
+    source = parse_release(failed)[0]
+    releases = {failed}
+    for realm in REALMS:
+        other = release_id(source, realm)
+        if other == failed or not (state / "releases" / other).is_dir():
+            continue
+        sibling = verify_release(docker, state, secrets, other)[1]
+        if (sibling.get("rollback_target") == rid and failed_manifest.get("rollback_target") == rid and
+                sibling["database_contract_sha256"] == failed_manifest["database_contract_sha256"] and
+                sibling["images"] == failed_manifest["images"]):
+            releases.add(other)
+    return releases
+
+
+def upgrade_window_of(state, releases):
+    """The (latest) upgrade window of the failed upgrade, current or archived."""
+    releases = {releases} if isinstance(releases, str) else set(releases)
     found = []
     for path in [window_path(state), *sorted((state / "maintenance-history").glob("*.json"))]:
         if path.is_file():
             window = read_json(path)
-            if window.get("release") == failed and window_kind(window) == "upgrade" and window.get("phases"):
+            if window.get("release") in releases and window_kind(window) == "upgrade" and window.get("phases"):
                 found.append(window)
     if not found:
         raise ValueError("找不到失败发布的升级维护窗口记录，无法确认升级前备份")
     return max(found, key=lambda w: w["phases"][0]["at"])
 
 
-def check_backup_window(state, failed, meta, checksum):
+def check_backup_window(state, releases, meta, checksum):
     """CR-08B: the pre-upgrade backup is the one recorded in the failed
     release's upgrade window (FRESH_BACKUP_VERIFIED evidence carries its
     checksum) and was created inside that window, after writes stopped and
     before the backup phase; an older backup with the same schema is refused."""
-    window = upgrade_window_of(state, failed)
+    window = upgrade_window_of(state, releases)
     at = {e["phase"]: datetime.fromisoformat(e["at"]) for e in window["phases"]}
     if "FRESH_BACKUP_VERIFIED" not in at:
         raise ValueError("失败发布的升级窗口没有 FRESH_BACKUP_VERIFIED：没有可用的升级前备份")
@@ -1291,10 +1315,11 @@ def recover(docker, state, secrets, rid, step, backup=None, now=None):
         if backup is None:
             raise ValueError("需要 --backup 指定升级前备份文件")
         meta, checksum = verify_backup(backup, ledger)
-        upgrade_window = check_backup_window(state, failed, meta, checksum)
+        upgrade = upgrade_releases(docker, state, secrets, failed, failed_manifest, rid)
+        upgrade_window = check_backup_window(state, upgrade, meta, checksum)
         return record_phase(state, rid, phase, "backup:sha256-" + checksum[:16], {
             "failed_release": failed, "backup": str(backup), "backup_sha256": checksum,
-            "upgrade_window": upgrade_window,
+            "upgrade_window": upgrade_window, "upgrade_releases": sorted(upgrade),
             "backup_created_at": meta.get("created_at"), "ledger_rows": len(ledger),
             "counts_sha256": digest(canonical_json(meta["counts"]))}, kind="disaster-recovery")
     failed = first["failed_release"]
