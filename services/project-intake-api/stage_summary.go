@@ -59,8 +59,30 @@ func projectFilters(u User, params map[string]string, asOf time.Time) (string, [
 	case "upcoming":
 		add(` AND p.next_followup_at>=?::timestamptz`, asOf)
 		add(` AND p.next_followup_at<?::timestamptz`, asOf.Add(7*24*time.Hour))
+	// V1.1 R4 follow-up center windows in business time (disjoint with
+	// overdue): today = [asOf, next 00:00), week = [next 00:00, +7 days),
+	// unscheduled = no planned follow-up.
+	case "today":
+		d := businessDay(asOf)
+		add(` AND p.next_followup_at>=?::timestamptz`, asOf)
+		add(` AND p.next_followup_at<?::timestamptz`, d.Tomorrow)
+	case "week":
+		d := businessDay(asOf)
+		add(` AND p.next_followup_at>=?::timestamptz`, d.Tomorrow)
+		add(` AND p.next_followup_at<?::timestamptz`, d.WeekEnd)
+	case "unscheduled":
+		where += ` AND p.next_followup_at IS NULL`
 	default:
 		return "", nil, listError("跟进时间筛选不正确")
+	}
+	switch params["lifecycle"] {
+	case "":
+	case "open":
+		// Projects that still need follow-up: not closed, rejected, cancelled
+		// or converted (same rule as the staff handoff guard).
+		where += ` AND p.intake_status NOT IN ('REJECTED','CANCELLED','CONVERTED') AND p.sales_stage NOT IN ('WON','LOST')`
+	default:
+		return "", nil, listError("项目状态范围不正确")
 	}
 	switch params["assignment"] {
 	case "":
@@ -159,7 +181,7 @@ func (a *App) stageSummary(ctx context.Context, u User, params map[string]string
 
 // stageSummaryIn: the summary of projectScope ∩ selection ∩ filters on q.
 func (a *App) stageSummaryIn(ctx context.Context, q querier, u User, params map[string]string, sel scopeSel) (StageSummary, error) {
-	asOf := time.Now().UTC().Truncate(time.Microsecond)
+	asOf := a.clock()
 	out := StageSummary{AsOf: asOf, Scope: scopeLabels[u.Role], Filters: map[string]string{}, Stages: make([]StageCount, len(stages)), Amount: zeroAmount(), UnclassifiedAmount: zeroAmount()}
 	for k, v := range params {
 		if !stageSummaryParams[k] {

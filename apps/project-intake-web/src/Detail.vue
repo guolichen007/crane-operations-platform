@@ -155,7 +155,11 @@ async function load() {
     failure.value = recovery(e).message;
   }
 }
-onMounted(load);
+onMounted(async () => {
+  await load();
+  // V1.1 R4: "登记跟进" from the follow-up center opens the dialog directly.
+  if (route.query.followup === '1' && p.value?.actions?.activities?.allowed) activityOpen.value = true;
+});
 async function submit() {
   if (!p.value) return;
   try {

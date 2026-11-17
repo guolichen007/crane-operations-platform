@@ -51,7 +51,7 @@ const jitDefaultSQL = `SET LOCAL jit TO DEFAULT`
 //	reviewQueue         SUBMITTED or UNDER_REVIEW in scope (review roles; 0 for sales)
 //	reviewable          reviewQueue items the caller can independently decide now
 func (a *App) workspaceSummary(ctx context.Context, u User) (WorkspaceSummary, error) {
-	asOf := time.Now().UTC().Truncate(time.Microsecond)
+	asOf := a.clock()
 	s := WorkspaceSummary{AsOf: asOf, Scope: map[string]string{salesRole: "OWN", managerRole: "TEAM", directorRole: "ALL_ASSIGNED", adminRole: "ALL"}[u.Role], Counts: map[string]int{}}
 	// One short read-only transaction so SET LOCAL can apply. READ COMMITTED
 	// keeps the previous per-statement snapshots (the three statements were
@@ -84,6 +84,20 @@ func (a *App) workspaceSummary(ctx context.Context, u User) (WorkspaceSummary, e
 	for k, v := range map[string]int{"total": total, "drafts": drafts, "returned": returned, "unassignedDrafts": unassigned, "submitted": submitted, "underReview": review, "approved": approved, "overdue": overdue, "upcoming7d": upcoming, "reviewQueue": queue, "reviewable": reviewable} {
 		s.Counts[k] = v
 	}
+	// V1.1 R4: the follow-up center's four windows (open projects, business
+	// day), so home reminders and the center always show the same numbers.
+	d := businessDay(asOf)
+	var fo, ft, fw, fu int
+	if err = tx.QueryRow(ctx, `SELECT count(*) FILTER (WHERE p.next_followup_at<$4),
+ count(*) FILTER (WHERE p.next_followup_at>=$4 AND p.next_followup_at<$5),
+ count(*) FILTER (WHERE p.next_followup_at>=$5 AND p.next_followup_at<$6),
+ count(*) FILTER (WHERE p.next_followup_at IS NULL)
+ FROM intake_projects p WHERE p.discarded_at IS NULL AND `+projectScope("p")+`
+ AND p.intake_status NOT IN ('REJECTED','CANCELLED','CONVERTED') AND p.sales_stage NOT IN ('WON','LOST')`,
+		u.Subject, u.Role, u.TeamID, asOf, d.Tomorrow, d.WeekEnd).Scan(&fo, &ft, &fw, &fu); err != nil {
+		return s, err
+	}
+	s.Counts["followupOverdue"], s.Counts["followupToday"], s.Counts["followupWeek"], s.Counts["followupUnscheduled"] = fo, ft, fw, fu
 	recent := func(where, order string, limit int, args ...any) ([]RecentItem, error) {
 		rows, err := tx.Query(ctx, `SELECT p.id::text,p.registration_no,p.project_name,coalesce(p.document->>'customer',''),p.intake_status,p.sales_stage,`+displayName("p.owner_subject")+`,p.updated_at,p.next_followup_at,p.next_action
  FROM intake_projects p WHERE p.discarded_at IS NULL AND `+projectScope("p")+where+` ORDER BY `+order+`,p.id LIMIT `+map[int]string{5: "5", 6: "6"}[limit], append([]any{u.Subject, u.Role, u.TeamID}, args...)...)

@@ -57,8 +57,9 @@ async function ready(p: Page) {
 // The tile → list mapping the home page promises; each entry is the list API
 // with the same filter as the count.
 const listFor: Record<string, { label: string; count: (c: Record<string, number>) => number; api: string; url: RegExp }> = {
-  overdue: { label: '已逾期跟进', count: (c) => c.overdue, api: '/api/v1/projects?followup=overdue&pageSize=1', url: /\/followups\?window=overdue$/ },
-  upcoming7d: { label: '未来 7 天跟进', count: (c) => c.upcoming7d, api: '/api/v1/projects?followup=upcoming&pageSize=1', url: /\/followups\?window=upcoming$/ },
+  // V1.1 R4: follow-up tiles show the follow-up center windows (open projects).
+  followupOverdue: { label: '已逾期跟进', count: (c) => c.followupOverdue, api: '/api/v1/projects?followup=overdue&lifecycle=open&pageSize=1', url: /\/followups\?window=overdue$/ },
+  followupToday: { label: '今天要跟进', count: (c) => c.followupToday, api: '/api/v1/projects?followup=today&lifecycle=open&pageSize=1', url: /\/followups\?window=today$/ },
   returned: { label: '退回补充', count: (c) => c.returned, api: '/api/v1/projects?status=RETURNED&pageSize=1', url: /\/projects\?status=RETURNED$/ },
   drafts: { label: '草稿', count: (c) => c.drafts, api: '/api/v1/projects?status=DRAFT&pageSize=1', url: /\/projects\?status=DRAFT$/ },
   reviewable: { label: '你可独立审核', count: (c) => c.reviewable, api: '/api/v1/reviews?kind=pending&eligibility=reviewable&pageSize=1', url: /\/reviews\?eligibility=reviewable$/ },
@@ -66,10 +67,10 @@ const listFor: Record<string, { label: string; count: (c: Record<string, number>
   unassignedDrafts: { label: '待分配草稿', count: (c) => c.unassignedDrafts, api: '/api/v1/projects?assignment=unassigned&pageSize=1', url: /\/unassigned$/ },
 };
 const expectedTiles: Record<string, string[]> = {
-  sales: ['overdue', 'upcoming7d', 'returned', 'drafts'],
-  manager: ['reviewable', 'blocked', 'overdue', 'upcoming7d'],
-  director: ['reviewable', 'blocked', 'overdue', 'upcoming7d'],
-  admin: ['unassignedDrafts', 'reviewable', 'blocked', 'overdue'],
+  sales: ['followupOverdue', 'followupToday', 'returned', 'drafts'],
+  manager: ['reviewable', 'blocked', 'followupOverdue', 'followupToday'],
+  director: ['reviewable', 'blocked', 'followupOverdue', 'followupToday'],
+  admin: ['unassignedDrafts', 'reviewable', 'blocked', 'followupOverdue'],
 };
 
 // Realistic synthetic data so every role's home has content: sales A

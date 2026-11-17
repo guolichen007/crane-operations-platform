@@ -275,10 +275,13 @@
               "type": "string",
               "enum": [
                 "overdue",
-                "upcoming"
+                "upcoming",
+                "today",
+                "week",
+                "unscheduled"
               ]
             },
-            "description": "overdue: next_followup_at < asOf；upcoming: asOf ≤ next_followup_at < asOf+7天；两者不重叠"
+            "description": "跟进窗口：overdue/upcoming（G2）；V1.1 today/week/unscheduled 为业务日（北京时间）窗口"
           },
           {
             "name": "assignment",
@@ -362,6 +365,17 @@
               ]
             },
             "description": "V1.1 六组展示分组（G1=L0/L1，G2=L2/L3，G3=L4/L5，G4=L6/L7，G5=L8，G6=WON/LOST/HOLD）；仅为 12 码集合筛选"
+          },
+          {
+            "name": "lifecycle",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open"
+              ]
+            },
+            "description": "V1.1：仅进行中项目（同人员交接口径）"
           }
         ],
         "description": "统一ProjectPolicy范围内的列表。仅接受白名单筛选，未知参数或非法取值返回400 INVALID_FILTER。时间窗口共用响应中的asOf。 默认排序 updated_at DESC 后以 id 打破并列，分页稳定。"
@@ -4480,6 +4494,136 @@
           }
         }
       }
+    },
+    "/api/v1/followups": {
+      "get": {
+        "operationId": "followups.center",
+        "summary": "V1.1 跟进中心（已逾期/今天/未来 7 天/未安排）",
+        "description": "只读投影：intake_projects.next_followup_at / next_action（由登记跟进维护），不建任务表、读取不产生任何业务行。业务时区 Asia/Shanghai；四个窗口互不重叠；仅进行中项目（非 WON/LOST，非 REJECTED/CANCELLED/CONVERTED，非回收站）。成员集合与 GET /projects?followup=<window>&lifecycle=open 相同。",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "window",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "overdue",
+                "today",
+                "week",
+                "unscheduled"
+              ],
+              "default": "today"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "客户、项目名称或报备编号"
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "mine",
+                "team",
+                "member",
+                "all"
+              ]
+            },
+            "description": "V1.1 分层范围（服务端白名单）：销售 mine；主管 team/mine/member（仅本团队成员）；总监与管理员 all/team/member。总与 projectScope 取交集，只能缩小。"
+          },
+          {
+            "name": "memberId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "scope=member 时的人员编号（staff id）；不可见或不存在一律 404 SCOPE_NOT_FOUND"
+          },
+          {
+            "name": "teamId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "scope=team 时的团队；主管只能是本团队（可省略），总监/管理员必填"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FollowupCenter"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_FILTER",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "SCOPE_FORBIDDEN / PROFILE_INCOMPLETE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SCOPE_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -6782,6 +6926,78 @@
           "version": {
             "type": "integer",
             "minimum": 1
+          }
+        }
+      },
+      "BusinessDay": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "timezone": {
+            "type": "string",
+            "enum": [
+              "Asia/Shanghai"
+            ]
+          },
+          "todayStart": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "tomorrowStart": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "weekEnd": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "FollowupCenter": {
+        "type": "object",
+        "required": [
+          "asOf",
+          "businessDay",
+          "window",
+          "counts",
+          "items",
+          "total",
+          "selection"
+        ],
+        "properties": {
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "businessDay": {
+            "$ref": "#/components/schemas/BusinessDay"
+          },
+          "window": {
+            "type": "string",
+            "enum": [
+              "overdue",
+              "today",
+              "week",
+              "unscheduled"
+            ]
+          },
+          "selection": {
+            "$ref": "#/components/schemas/ScopeSelection"
+          },
+          "counts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Project"
+            }
+          },
+          "total": {
+            "type": "integer"
           }
         }
       }

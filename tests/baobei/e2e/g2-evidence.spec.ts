@@ -153,7 +153,7 @@ test('E3 seed data then homes with data, list, follow-ups and detail at four wid
   }
   await login(page, 'synthetic-a');
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto('/followups');
+  await page.goto('/followups?window=overdue');
   await expect(page.locator('h1 small')).toHaveText('2');
   await page.screenshot({ path: out('followups-sales-overdue-1440') });
   await action(page, 'followup.window').filter({ hasText: '未来 7 天' }).click();

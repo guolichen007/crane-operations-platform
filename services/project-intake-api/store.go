@@ -138,7 +138,7 @@ func (a *App) duplicates(ctx context.Context, q querier, p Input, exclude string
 
 // listParams are the only accepted project list filters. Unknown keys are
 // rejected so the UI cannot present a filter the server does not apply.
-var listParams = map[string]bool{"q": true, "status": true, "stage": true, "province": true, "updatedAfter": true, "sort": true, "page": true, "pageSize": true, "due": true, "followup": true, "assignment": true, "review": true, "bin": true, "group": true, "scope": true, "memberId": true, "teamId": true}
+var listParams = map[string]bool{"q": true, "status": true, "stage": true, "province": true, "updatedAfter": true, "sort": true, "page": true, "pageSize": true, "due": true, "followup": true, "assignment": true, "review": true, "bin": true, "lifecycle": true, "group": true, "scope": true, "memberId": true, "teamId": true}
 
 type listError string
 
@@ -152,7 +152,7 @@ func (a *App) list(ctx context.Context, u User, params map[string]string) ([]Pro
 // listAt returns the page, the filtered total and the single asOf instant used
 // for every time-window predicate in this request.
 func (a *App) listAt(ctx context.Context, u User, params map[string]string) ([]Project, int, time.Time, error) {
-	asOf := time.Now().UTC().Truncate(time.Microsecond)
+	asOf := a.clock()
 	for k := range params {
 		if !listParams[k] {
 			return nil, 0, asOf, listError("不支持的筛选条件：" + k)

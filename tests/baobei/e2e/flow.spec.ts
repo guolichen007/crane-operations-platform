@@ -195,8 +195,8 @@ test('pagination and read-only navigation actions', async ({ page }, info) => {
     await action(page, 'project.tab').filter({ hasText: tab }).click();
     await expect(page.locator('.detail-body')).toBeVisible();
   }
-  await page.getByRole('button', { name: '待跟进', exact: true }).click();
-  await expect(page.getByRole('heading', { name: /待跟进/ })).toBeVisible();
+  await page.getByRole('button', { name: '跟进中心', exact: true }).click();
+  await expect(page.getByRole('heading', { name: /跟进中心/ })).toBeVisible();
   // V1.1: one project-center entry; the board is a view of it.
   await page.getByRole('button', { name: '项目中心', exact: true }).click();
   await action(page, 'view.pipeline').click();

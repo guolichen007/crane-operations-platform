@@ -13,6 +13,7 @@ import Detail from './Detail.vue';
 import StaffMembers from './StaffMembers.vue';
 import StaffTeams from './StaffTeams.vue';
 import Profile from './Profile.vue';
+import Followups from './Followups.vue';
 import { useApp } from './store';
 import { routeAllowed } from './navigation';
 import { loginErrorMessage } from './login-errors';
@@ -33,7 +34,7 @@ const router = createRouter({
     { path: '/projects', component: Projects },
     { path: '/unassigned', component: Projects },
     { path: '/recycle-bin', component: Projects },
-    { path: '/followups', component: Projects },
+    { path: '/followups', component: Followups },
     { path: '/pipeline', component: Pipeline },
     { path: '/statistics', component: Statistics },
     { path: '/profile', component: Profile },

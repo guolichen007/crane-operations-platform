@@ -101,17 +101,19 @@ test('follow-up windows are computed by the server and do not overlap', async ({
   await make('-逾期', new Date(Date.now() - day).toISOString());
   await make('-三天', new Date(Date.now() + 3 * day).toISOString());
   await make('-十天', new Date(Date.now() + 10 * day).toISOString());
+  // V1.1 R4: the follow-up center (four disjoint server windows).
   const seen: string[] = [];
-  page.on('request', (r) => r.url().includes('/api/v1/projects?') && seen.push(new URL(r.url()).search));
-  await page.getByRole('button', { name: '待跟进', exact: true }).click();
+  page.on('request', (r) => r.url().includes('/api/v1/followups?') && seen.push(new URL(r.url()).search));
+  await page.getByRole('button', { name: '跟进中心', exact: true }).click();
   await page.getByRole('textbox', { name: '搜索报备' }).fill(tag);
+  await action(page, 'followup.window').filter({ hasText: '已逾期' }).click();
   await expect(page.locator('h1 small')).toHaveText('1');
-  await expect(page.locator(info.project.name === 'mobile-390' ? '.mobile-projects' : '.table-wrap')).toContainText('-逾期');
+  await expect(page.locator('.followup-list')).toContainText('-逾期');
   await action(page, 'followup.window').filter({ hasText: '未来 7 天' }).click();
   await expect(page.locator('h1 small')).toHaveText('1');
-  await expect(page.locator(info.project.name === 'mobile-390' ? '.mobile-projects' : '.table-wrap')).toContainText('-三天');
-  expect(seen.some((q) => q.includes('followup=overdue'))).toBe(true);
-  expect(seen.some((q) => q.includes('followup=upcoming'))).toBe(true);
+  await expect(page.locator('.followup-list')).toContainText('-三天');
+  expect(seen.some((q) => q.includes('window=overdue'))).toBe(true);
+  expect(seen.some((q) => q.includes('window=week'))).toBe(true);
   const bad = await api(page, '/api/v1/projects?followup=soon');
   expect(bad.status).toBe(400);
 });

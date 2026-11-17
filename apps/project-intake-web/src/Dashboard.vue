@@ -97,8 +97,10 @@ const blocked = () => Math.max(0, c('reviewQueue') - c('reviewable'));
 // with exactly the same server filter and scope as its number.
 const tiles = computed<Tile[]>(() => {
   const t: Tile[] = [];
-  const overdue: Tile = { key: 'overdue', label: '已逾期跟进', note: '下次跟进时间早于统计时间', to: '/followups?window=overdue', tone: 'risk' };
-  const upcoming: Tile = { key: 'upcoming7d', label: '未来 7 天跟进', note: '统计时间起 7 天内，不含已逾期', to: '/followups?window=upcoming' };
+  // V1.1 R4: the same windows and numbers as the follow-up center (open
+  // projects only, business day in Beijing time).
+  const overdue: Tile = { key: 'followupOverdue', label: '已逾期跟进', note: '计划跟进时间已过的进行中项目', to: '/followups?window=overdue', tone: 'risk' };
+  const upcoming: Tile = { key: 'followupToday', label: '今天要跟进', note: '今天（北京时间）计划跟进，不含已逾期', to: '/followups?window=today' };
   const returned: Tile = { key: 'returned', label: '退回补充', note: '审核退回，需补充后重新提交', to: '/projects?status=RETURNED', tone: 'attention' };
   const drafts: Tile = { key: 'drafts', label: '草稿', note: '尚未正式报备，可继续填写', to: '/projects?status=DRAFT' };
   const reviewable: Tile = { key: 'reviewable', label: '你可独立审核', note: '你未参与、证据完整，可直接决定', to: '/reviews?eligibility=reviewable' };

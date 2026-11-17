@@ -40,6 +40,16 @@ type App struct {
 	linkedOnly bool
 	// fault: test-only fault injection for account operations (nil in production).
 	fault func(point string) error
+	// now: test-only clock for business-day boundaries (nil = time.Now).
+	now func() time.Time
+}
+
+// clock is the instant every time-window predicate of one request uses.
+func (a *App) clock() time.Time {
+	if a.now != nil {
+		return a.now().UTC().Truncate(time.Microsecond)
+	}
+	return time.Now().UTC().Truncate(time.Microsecond)
 }
 
 // businessSubject maps a verified token subject to the Baobei identity.

@@ -47,7 +47,7 @@ export function navigation(u: User | null | undefined): NavItem[] {
   if (!u) return [];
   const items: NavItem[] = [
     { path: '/', label: '工作台', icon: 'dashboard', group: 'workspace' },
-    { path: '/followups', label: '待跟进', icon: 'clock', group: 'workspace' },
+    { path: '/followups', label: '跟进中心', icon: 'clock', group: 'workspace' },
     { path: '/projects', label: PROJECT_CENTER, icon: 'folder', group: 'projects' },
   ];
   if (can(u, 'project.unassigned'))
