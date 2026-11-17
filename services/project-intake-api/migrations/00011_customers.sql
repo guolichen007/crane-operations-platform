@@ -14,6 +14,9 @@
 CREATE TABLE organization_team_profiles (
  organization_id uuid NOT NULL REFERENCES organizations,
  team_id uuid NOT NULL REFERENCES teams,
+ -- The team's own spelling of the customer name; another team's spelling of
+ -- the shared master record is never shown.
+ display_name text NOT NULL DEFAULT '' CHECK (length(display_name) <= 200),
  industry text NOT NULL DEFAULT '' CHECK (length(industry) <= 100),
  region text NOT NULL DEFAULT '' CHECK (length(region) <= 100),
  customer_type text NOT NULL DEFAULT '' CHECK (customer_type IN ('','END_USER','EQUIPMENT_MAKER','DESIGN_INSTITUTE','EPC','INTEGRATOR','AGENT','OTHER')),

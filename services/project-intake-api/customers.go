@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // V1.1 R5 (B2): customers and contacts on the existing master data
@@ -141,7 +142,10 @@ func (a *App) customerVisible(ctx context.Context, q querier, u User, id string)
 	return ok, err
 }
 
-const customerItemColumns = `o.id::text,o.name,coalesce(o.credit_code,''),
+// The shown name is the viewer team's own spelling when it maintains the
+// customer; the master spelling otherwise (then a readable project names it,
+// or the viewer is a director/administrator).
+const customerItemColumns = `o.id::text,coalesce(NULLIF(tp.display_name,''),o.name),coalesce(o.credit_code,''),
  (SELECT count(DISTINCT p.id) FROM project_parties pp JOIN intake_projects p ON p.id=pp.project_id WHERE pp.organization_id=o.id AND p.discarded_at IS NULL AND ` + `PSCOPE` + `),
  (SELECT count(*) FROM contacts c WHERE c.organization_id=o.id AND c.archived_at IS NULL AND ` + `CVIS` + `),
  (SELECT max(p.updated_at) FROM project_parties pp JOIN intake_projects p ON p.id=pp.project_id WHERE pp.organization_id=o.id AND p.discarded_at IS NULL AND ` + `PSCOPE` + `),
@@ -350,8 +354,8 @@ func (a *App) createCustomer(ctx context.Context, tx pgx.Tx, u User, in customer
 	if err := tx.QueryRow(ctx, `INSERT INTO organizations(name,normalized_name) VALUES($1,$2) ON CONFLICT(normalized_name) DO UPDATE SET normalized_name=excluded.normalized_name RETURNING id::text`, in.Name, normalize(in.Name)).Scan(&org); err != nil {
 		return "", false, err
 	}
-	tag, err := tx.Exec(ctx, `INSERT INTO organization_team_profiles(organization_id,team_id,industry,region,customer_type,notes,created_by_subject)
- VALUES($1,$2::uuid,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`, org, u.TeamID, in.Industry, in.Region, in.CustomerType, in.Notes, u.Subject)
+	tag, err := tx.Exec(ctx, `INSERT INTO organization_team_profiles(organization_id,team_id,display_name,industry,region,customer_type,notes,created_by_subject)
+ VALUES($1,$2::uuid,$8,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`, org, u.TeamID, in.Industry, in.Region, in.CustomerType, in.Notes, u.Subject, in.Name)
 	if err != nil {
 		return "", false, err
 	}
@@ -529,13 +533,18 @@ func (a *App) customers(w http.ResponseWriter, r *http.Request, u User) error {
 				if exists || in.Version != 0 {
 					return nil, customerConflict
 				}
-				// First profile of a customer the team reaches through a project.
-				if _, err = tx.Exec(ctx, `INSERT INTO organization_team_profiles(organization_id,team_id,industry,region,customer_type,notes,created_by_subject)
- VALUES($1,$2::uuid,$3,$4,$5,$6,$7)`, parts[1], u.TeamID, in.Industry, in.Region, in.CustomerType, in.Notes, u.Subject); err != nil {
+				// First profile of a customer the team reaches through a project;
+				// two concurrent first edits: the second is a conflict, not a 503.
+				tag, err = tx.Exec(ctx, `INSERT INTO organization_team_profiles(organization_id,team_id,industry,region,customer_type,notes,created_by_subject)
+ VALUES($1,$2::uuid,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`, parts[1], u.TeamID, in.Industry, in.Region, in.CustomerType, in.Notes, u.Subject)
+				if err != nil {
 					return nil, err
 				}
+				if tag.RowsAffected() == 0 {
+					return nil, customerConflict
+				}
 			}
-			if err = customerAudit(ctx, tx, parts[1], u.TeamID, "", "", u, "customer.edit", map[string]any{"industry": in.Industry, "region": in.Region, "customerType": in.CustomerType}); err != nil {
+			if err = customerAudit(ctx, tx, parts[1], u.TeamID, "", "", u, "customer.edit", map[string]any{"industry": in.Industry, "region": in.Region, "customerType": in.CustomerType, "notes": in.Notes}); err != nil {
 				return nil, err
 			}
 			return a.customerDetail(ctx, tx, u, parts[1])
@@ -631,11 +640,27 @@ func (a *App) customers(w http.ResponseWriter, r *http.Request, u User) error {
 				return nil, customerConflict
 			}
 			event := "contact.edit"
+			var editChanges map[string]any
 			switch action {
 			case "":
+				if archived != nil {
+					return nil, staffProblem{409, "INVALID_STATE", "联系人已停用，请先恢复再修改"}
+				}
 				if err = in.valid(); err != nil {
 					return nil, err
 				}
+				var old Contact
+				if err = tx.QueryRow(ctx, `SELECT display_name,title,department,phone,notes FROM contacts WHERE id=$1`, parts[1]).Scan(&old.Name, &old.Title, &old.Department, &old.Phone, &old.Notes); err != nil {
+					return nil, err
+				}
+				changes := map[string]any{}
+				for k, v := range map[string][2]string{"name": {old.Name, in.Name}, "title": {old.Title, in.Title}, "department": {old.Department, in.Department}, "phone": {maskContactPhone(old.Phone), maskContactPhone(in.Phone)}, "notes": {old.Notes, in.Notes}} {
+					if v[0] != v[1] {
+						changes[k] = map[string]string{"from": v[0], "to": v[1]}
+					}
+				}
+				in.Reason = ""
+				editChanges = changes
 				_, err = tx.Exec(ctx, `UPDATE contacts SET display_name=$2,title=$3,department=$4,phone=$5,notes=$6,version=version+1,updated_at=now() WHERE id=$1`, parts[1], in.Name, in.Title, in.Department, in.Phone, in.Notes)
 			case "archive", "restore":
 				if (action == "archive") == (archived != nil) || !reasonOK(in.Reason) {
@@ -647,7 +672,11 @@ func (a *App) customers(w http.ResponseWriter, r *http.Request, u User) error {
 			if err != nil {
 				return nil, err
 			}
-			if err = customerAudit(ctx, tx, org, team, parts[1], "", u, event, map[string]any{"name": in.Name, "reason": in.Reason}); err != nil {
+			details := map[string]any{"name": in.Name, "reason": in.Reason}
+			if editChanges != nil {
+				details["changes"] = editChanges
+			}
+			if err = customerAudit(ctx, tx, org, team, parts[1], "", u, event, details); err != nil {
 				return nil, err
 			}
 			return a.customerDetail(ctx, tx, u, org)
@@ -700,24 +729,41 @@ func (a *App) projectContacts(w http.ResponseWriter, r *http.Request, u User, p 
 	if in.Version != cur.Version {
 		return problem(409, "VERSION_CONFLICT")
 	}
+	if !techOpen(cur) {
+		return problem(409, "INVALID_STATE")
+	}
+	if !uuidPattern.MatchString(in.ContactID) {
+		return contactMissing
+	}
 	var org string
-	err = tx.QueryRow(ctx, `SELECT c.organization_id::text FROM contacts c WHERE c.id=$1 AND c.archived_at IS NULL AND c.team_id::text=$2
+	if in.Unlink {
+		// Unlinking needs only the existing link (an archived contact or one
+		// of a former team can still be removed from the project).
+		err = tx.QueryRow(ctx, `SELECT c.organization_id::text FROM project_contacts pc JOIN contacts c ON c.id=pc.contact_id WHERE pc.project_id=$1 AND pc.contact_id=$2`, cur.ID, in.ContactID).Scan(&org)
+	} else {
+		err = tx.QueryRow(ctx, `SELECT c.organization_id::text FROM contacts c WHERE c.id=$1 AND c.archived_at IS NULL AND c.team_id::text=$2
  AND EXISTS(SELECT 1 FROM project_parties pp WHERE pp.project_id=$3 AND pp.organization_id=c.organization_id)`, in.ContactID, cur.TeamID, cur.ID).Scan(&org)
-	if errors.Is(err, pgx.ErrNoRows) || !uuidPattern.MatchString(in.ContactID) {
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
 		return contactMissing
 	}
 	if err != nil {
 		return err
 	}
 	event := "project-contact.link"
+	var tag pgconn.CommandTag
 	if in.Unlink {
 		event = "project-contact.unlink"
-		_, err = tx.Exec(ctx, `DELETE FROM project_contacts WHERE project_id=$1 AND contact_id=$2`, cur.ID, in.ContactID)
+		tag, err = tx.Exec(ctx, `DELETE FROM project_contacts WHERE project_id=$1 AND contact_id=$2`, cur.ID, in.ContactID)
 	} else {
-		_, err = tx.Exec(ctx, `INSERT INTO project_contacts(project_id,contact_id,linked_by_subject) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, cur.ID, in.ContactID, u.Subject)
+		tag, err = tx.Exec(ctx, `INSERT INTO project_contacts(project_id,contact_id,linked_by_subject) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, cur.ID, in.ContactID, u.Subject)
 	}
 	if err != nil {
 		return err
+	}
+	// Nothing changed (already linked): no audit row, a clear conflict.
+	if tag.RowsAffected() == 0 {
+		return problem(409, "INVALID_STATE")
 	}
 	if err = customerAudit(ctx, tx, org, cur.TeamID, in.ContactID, cur.ID, u, event, map[string]any{}); err != nil {
 		return err

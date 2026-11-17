@@ -83,17 +83,18 @@ func (a *App) followupCenter(ctx context.Context, u User, params map[string]stri
 			delete(list, k)
 		}
 	}
-	items, total, asOf, err := a.listAt(ctx, u, list)
-	if err != nil {
-		return out, err
-	}
-	out.Items, out.Total, out.AsOf, out.Day = items, total, asOf, businessDay(asOf)
-	// Counts of all four windows: one statement at the same asOf.
-	tx, err := a.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
+	// List and counts in one read-only snapshot at one asOf, so the window's
+	// total always equals its count.
+	tx, err := a.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return out, err
 	}
 	defer tx.Rollback(ctx)
+	items, total, asOf, err := a.listIn(ctx, tx, u, list, a.clock())
+	if err != nil {
+		return out, err
+	}
+	out.Items, out.Total, out.AsOf, out.Day = items, total, asOf, businessDay(asOf)
 	base := map[string]string{"lifecycle": "open", "q": params["q"]}
 	for _, k := range scopeKeys {
 		base[k] = params[k]

@@ -152,13 +152,17 @@ func (a *App) list(ctx context.Context, u User, params map[string]string) ([]Pro
 // listAt returns the page, the filtered total and the single asOf instant used
 // for every time-window predicate in this request.
 func (a *App) listAt(ctx context.Context, u User, params map[string]string) ([]Project, int, time.Time, error) {
-	asOf := a.clock()
+	return a.listIn(ctx, a.db, u, params, a.clock())
+}
+
+// listIn: listAt on a given querier (e.g. one read-only snapshot) and instant.
+func (a *App) listIn(ctx context.Context, db querier, u User, params map[string]string, asOf time.Time) ([]Project, int, time.Time, error) {
 	for k := range params {
 		if !listParams[k] {
 			return nil, 0, asOf, listError("不支持的筛选条件：" + k)
 		}
 	}
-	sel, err := resolveScope(ctx, a.db, u, params)
+	sel, err := resolveScope(ctx, db, u, params)
 	if err != nil {
 		return nil, 0, asOf, err
 	}
@@ -168,7 +172,7 @@ func (a *App) listAt(ctx context.Context, u User, params map[string]string) ([]P
 	}
 	where, args = sel.narrow(where, args)
 	var total int
-	if e := a.db.QueryRow(ctx, `SELECT count(*) FROM intake_projects p`+where, args...).Scan(&total); e != nil {
+	if e := db.QueryRow(ctx, `SELECT count(*) FROM intake_projects p`+where, args...).Scan(&total); e != nil {
 		return nil, 0, asOf, e
 	}
 	sort := `p.updated_at DESC`
@@ -190,7 +194,7 @@ func (a *App) listAt(ctx context.Context, u User, params map[string]string) ([]P
 		size = 20
 	}
 	args = append(args, size, (page-1)*size)
-	rows, e := a.db.Query(ctx, `SELECT `+columns+` FROM intake_projects p`+where+` ORDER BY `+sort+`,p.id LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
+	rows, e := db.Query(ctx, `SELECT `+columns+` FROM intake_projects p`+where+` ORDER BY `+sort+`,p.id LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
 	if e != nil {
 		return nil, 0, asOf, e
 	}
@@ -212,7 +216,7 @@ func (a *App) listAt(ctx context.Context, u User, params map[string]string) ([]P
 	for i := range out {
 		ptrs[i] = &out[i]
 	}
-	if err = a.batchHints(ctx, a.db, u, ptrs); err != nil {
+	if err = a.batchHints(ctx, db, u, ptrs); err != nil {
 		return nil, 0, asOf, err
 	}
 	return out, total, asOf, nil

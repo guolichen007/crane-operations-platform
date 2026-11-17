@@ -230,6 +230,11 @@ func (a *App) technicalHandler(w http.ResponseWriter, r *http.Request, u User, i
 	if p, err = get(ctx, tx, id, true); err != nil {
 		return err
 	}
+	// Re-check access on the locked row (ownership or team may have changed).
+	if !canRead(u, p) {
+		fail(w, 404, "NOT_FOUND", "项目不存在或无权访问")
+		return nil
+	}
 	if !techOpen(p) {
 		return problem(409, "INVALID_STATE")
 	}

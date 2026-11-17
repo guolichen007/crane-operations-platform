@@ -92,6 +92,13 @@ func TestDatabaseV11Customers(t *testing.T) {
 	if !strings.Contains(string(b), contact.Name) {
 		t.Fatal(string(b))
 	}
+	// Linking the same contact again changes nothing: 409, no audit row.
+	audits := countRows(t, f.db, `SELECT count(*) FROM customer_audit WHERE action LIKE 'project-contact.%'`)
+	s, b = a1.call("POST", "/api/v1/projects/"+sp.ID+"/contacts", map[string]any{"contactId": contact.ID, "version": sp.Version})
+	expect(t, s, 409, b)
+	if countRows(t, f.db, `SELECT count(*) FROM customer_audit WHERE action LIKE 'project-contact.%'`) != audits {
+		t.Fatal("no-op link audited")
+	}
 	s, b = ma.call("POST", "/api/v1/projects/"+sp.ID+"/contacts", map[string]any{"contactId": contact.ID, "version": sp.Version, "unlink": true})
 	expect(t, s, 403, b)
 	s, b = a1.call("GET", "/api/v1/projects/"+sp.ID+"/contacts", nil)
@@ -129,15 +136,18 @@ func TestDatabaseV11Customers(t *testing.T) {
 	if !strings.Contains(string(b), "CUSTOMER_SIMILAR_RESTRICTED") || strings.Contains(string(b), cust) || strings.Contains(string(b), "钢铁") {
 		t.Fatal("similar notice", string(b))
 	}
-	s, b = c1.call("POST", "/api/v1/customers", map[string]any{"name": custName, "industry": "冶金"})
+	// Team two types its own spelling (same normalized name): the response
+	// carries team two's spelling, never team one's.
+	spelling := custName + "。" // normalizes to the same master name
+	s, b = c1.call("POST", "/api/v1/customers", map[string]any{"name": spelling, "industry": "冶金"})
 	expect(t, s, 200, b)
 	var created struct {
 		Customer CustomerDetail `json:"customer"`
 		Existed  bool           `json:"existed"`
 	}
 	_ = json.Unmarshal(b, &created)
-	if created.Customer.ID != cust || created.Existed || len(created.Customer.Projects) != 0 || len(created.Customer.Contacts) != 0 || created.Customer.Profile.Industry != "冶金" {
-		t.Fatalf("second team view %s", b)
+	if created.Customer.ID != cust || created.Existed || created.Customer.Name != spelling || len(created.Customer.Projects) != 0 || len(created.Customer.Contacts) != 0 || created.Customer.Profile.Industry != "冶金" {
+		t.Fatalf("second team view id=%v existed=%v name=%q want %q projects=%d contacts=%d %s", created.Customer.ID == cust, created.Existed, created.Customer.Name, spelling, len(created.Customer.Projects), len(created.Customer.Contacts), b)
 	}
 	if strings.Contains(string(b), "重点客户") || strings.Contains(string(b), "张工") || strings.Contains(string(b), "钢铁\"") {
 		t.Fatal("team one data leaked", string(b))
@@ -183,6 +193,23 @@ func TestDatabaseV11Customers(t *testing.T) {
 	expect(t, s, 200, b)
 	s, b = a1.call("POST", "/api/v1/contacts/"+c0.ID+"/archive", map[string]any{"name": c0.Name, "version": c0.Version, "reason": "重放"})
 	expect(t, s, 409, b)
+	// An archived contact cannot be edited, but can still be unlinked.
+	s, b = a1.call("PATCH", "/api/v1/contacts/"+c0.ID, map[string]any{"name": "改名", "version": c0.Version + 1})
+	expect(t, s, 409, b)
+	cur := v11Get(t, a1, sp.ID)
+	s, b = a1.call("POST", "/api/v1/projects/"+sp.ID+"/contacts", map[string]any{"contactId": c0.ID, "version": cur.Version})
+	expect(t, s, 404, b)
+	// The linked contact is archived later; it can still be unlinked.
+	var linked Contact
+	for _, c := range customerOf(t, a1, cust).Contacts {
+		if c.ID == contact.ID {
+			linked = c
+		}
+	}
+	s, b = a1.call("POST", "/api/v1/contacts/"+linked.ID+"/archive", map[string]any{"name": linked.Name, "version": linked.Version, "reason": "离职"})
+	expect(t, s, 200, b)
+	s, b = a1.call("POST", "/api/v1/projects/"+sp.ID+"/contacts", map[string]any{"contactId": linked.ID, "version": cur.Version, "unlink": true})
+	expect(t, s, 200, b)
 	// Audit is immutable; existing project parties unchanged.
 	if _, err := f.db.Exec(ctx, `DELETE FROM customer_audit`); !isCode(err, "BB002") {
 		t.Fatal("customer audit deletable", err)

@@ -84,13 +84,18 @@ GRANT SELECT (id,name,status) ON teams TO baobei_runtime;
 GRANT EXECUTE ON FUNCTION confirm_own_profile(text, text, text, integer) TO baobei_runtime;
 GRANT SELECT (profile_completed_at,profile_name_source,profile_version) ON app_users TO baobei_staff_api;
 -- V1.1 R5 (B2): team customer profiles and contacts. The audit is insert-only.
-GRANT SELECT, INSERT, UPDATE ON organization_team_profiles TO baobei_runtime;
-GRANT SELECT, INSERT, UPDATE ON contacts TO baobei_runtime;
+GRANT SELECT, INSERT ON organization_team_profiles TO baobei_runtime;
+GRANT UPDATE (industry,region,customer_type,notes,version,updated_at) ON organization_team_profiles TO baobei_runtime;
+GRANT SELECT, INSERT ON contacts TO baobei_runtime;
+GRANT UPDATE (display_name,title,department,phone,notes,version,updated_at,archived_at) ON contacts TO baobei_runtime;
 GRANT SELECT, INSERT, DELETE ON project_contacts TO baobei_runtime;
 GRANT SELECT, INSERT ON customer_audit TO baobei_runtime;
 GRANT SELECT ON organization_team_profiles, contacts, project_contacts, customer_audit TO baobei_maintenance;
 -- V1.1 R6 (B3): technical brief, revisions and clarification events
 -- (revisions and events are insert-only).
-GRANT SELECT, INSERT, UPDATE ON project_technical_briefs, project_technical_questions TO baobei_runtime;
+GRANT SELECT, INSERT ON project_technical_briefs, project_technical_questions TO baobei_runtime;
+GRANT UPDATE (version,status,project_nature,scenario,workshop,production_line,site_constraints,parameters,equipment,updated_by_subject,updated_at)
+ ON project_technical_briefs TO baobei_runtime;
+GRANT UPDATE (answer,answered_by_subject,status,version,updated_at) ON project_technical_questions TO baobei_runtime;
 GRANT SELECT, INSERT ON project_technical_brief_revisions, project_technical_question_events TO baobei_runtime;
 GRANT SELECT ON project_technical_briefs, project_technical_questions, project_technical_brief_revisions, project_technical_question_events TO baobei_maintenance;
