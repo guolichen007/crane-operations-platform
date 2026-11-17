@@ -154,6 +154,11 @@ func TestDatabaseV11SupervisorFiling(t *testing.T) {
 	if p.IntakeStatus != "APPROVED" {
 		t.Fatal(p.IntakeStatus)
 	}
+	var decided string
+	_ = f.db.QueryRow(ctx, `SELECT details->>'reviewRoute'||'/'||(details->>'deciderRole') FROM audit_events WHERE project_id=$1 AND action='review.approve'`, p.ID).Scan(&decided)
+	if decided != "DIRECTOR/baobei_director" {
+		t.Fatal("review audit route", decided)
+	}
 	// Replay with the old version is a version conflict, never a second approval.
 	s, b = g1Decision(d1, dp, "approve", nil)
 	v11Code(t, s, b, 409, "VERSION_CONFLICT")

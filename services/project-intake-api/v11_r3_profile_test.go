@@ -77,7 +77,9 @@ func TestDatabaseV11ProfileConfirmation(t *testing.T) {
 	expect(t, s, 409, body)
 	before := countRows(t, f.db, `SELECT count(*) FROM profile_audit`)
 	p = confirmProfile(t, b, "王小二")
-	if !p.Completed || p.Source != "SELF_CONFIRMED" || p.Name != "王小二" || len(p.History) != 1 || p.History[0].OldName != "占位-UAT-07" || p.History[0].Action != "profile.confirm" {
+	// History: the fixture's direct rename (recorded by the 00010 trigger as a
+	// staff edit by the database role) and the member's confirmation.
+	if !p.Completed || p.Source != "SELF_CONFIRMED" || p.Name != "王小二" || len(p.History) != 2 || p.History[0].OldName != "占位-UAT-07" || p.History[0].Action != "profile.confirm" || p.History[1].Action != "profile.staff-edit" {
 		t.Fatalf("%+v", p)
 	}
 	var role, team, subject string
@@ -96,11 +98,25 @@ func TestDatabaseV11ProfileConfirmation(t *testing.T) {
 	}
 	// A later correction is a rename with its own audit row; history is immutable.
 	p = confirmProfile(t, b, "王晓二")
-	if len(p.History) != 2 || p.History[0].Action != "profile.rename" || countRows(t, f.db, `SELECT count(*) FROM profile_audit`) != before+2 {
+	if len(p.History) != 3 || p.History[0].Action != "profile.rename" || countRows(t, f.db, `SELECT count(*) FROM profile_audit`) != before+2 {
 		t.Fatalf("%+v", p.History)
 	}
 	if _, err := f.db.Exec(ctx, `UPDATE profile_audit SET new_name='x'`); !isCode(err, "BB002") {
 		t.Fatal("profile audit mutable", err)
+	}
+	// The definer function only acts for a live session: a forged token hash or
+	// a subject string is refused (no caller-chosen target).
+	if _, err := f.db.Exec(ctx, `SELECT confirm_own_profile('synthetic-a','伪造','',1)`); !isCode(err, "BB011") {
+		t.Fatal("confirm_own_profile accepted a non-session argument", err)
+	}
+	// A name change through staff management is audited with old/new and actor.
+	var staffVersion int
+	_ = f.db.QueryRow(ctx, `SELECT staff_version FROM app_users WHERE subject='synthetic-b'`).Scan(&staffVersion)
+	s, body = f.manager.call("PATCH", "/api/v1/staff/"+staffIDOf(t, f.db, "synthetic-b"), map[string]any{"name": "王晓二（主管更正）", "phone": "", "email": "synthetic-b@example.test", "teamId": syntheticTeam, "role": salesRole, "reason": "主管更正姓名", "version": staffVersion})
+	expect(t, s, 200, body)
+	var actor, oldName, newName string
+	if err := f.db.QueryRow(ctx, `SELECT actor_subject,old_name,new_name FROM profile_audit WHERE action='profile.staff-edit' ORDER BY at DESC LIMIT 1`).Scan(&actor, &oldName, &newName); err != nil || actor != "synthetic-manager" || oldName != "王晓二" || newName != "王晓二（主管更正）" {
+		t.Fatal("staff rename audit", actor, oldName, newName, err)
 	}
 	// Someone else's profile cannot be touched: the endpoint has no target.
 	s, body = f.manager.call("PATCH", "/api/v1/me/profile", map[string]any{"name": "示例主管", "reason": "", "version": 1, "staffId": staffIDOf(t, f.db, "synthetic-b")})

@@ -17,7 +17,7 @@ CREATE TABLE profile_audit (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
  staff_id uuid NOT NULL REFERENCES app_users(staff_id),
  actor_subject text NOT NULL,
- action text NOT NULL CHECK (action IN ('profile.confirm','profile.rename','profile.backfill')),
+ action text NOT NULL CHECK (action IN ('profile.confirm','profile.rename','profile.backfill','profile.staff-edit')),
  old_name text NOT NULL,
  new_name text NOT NULL,
  reason text NOT NULL CHECK (length(reason) <= 600),
@@ -43,10 +43,11 @@ INSERT INTO profile_audit(staff_id, actor_subject, action, old_name, new_name, r
 UPDATE app_users u SET profile_completed_at = now(), profile_name_source = 'BACKFILL_VERIFIED'
  WHERE EXISTS (SELECT 1 FROM profile_audit p WHERE p.staff_id = u.staff_id AND p.action = 'profile.backfill');
 
--- The only way the business API changes a name: the caller's own row, a valid
--- name, the expected profile version, one audit row. Role, team, subject and
--- staff id are not parameters.
-CREATE FUNCTION confirm_own_profile(p_subject text, p_name text, p_reason text, p_version integer)
+-- The only way the business API changes a name: the member of a live session
+-- (resolved here from the session token hash, never from a caller-supplied
+-- subject), a valid name, the expected profile version, one audit row. Role,
+-- team, subject and staff id are not parameters.
+CREATE FUNCTION confirm_own_profile(p_token_hash text, p_name text, p_reason text, p_version integer)
  RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path FROM CURRENT AS $$
 DECLARE
  u app_users%ROWTYPE;
@@ -58,20 +59,43 @@ BEGIN
  IF p_reason IS NULL OR length(p_reason) > 600 THEN
   RAISE EXCEPTION 'invalid reason' USING ERRCODE = 'BB010';
  END IF;
- SELECT * INTO u FROM app_users WHERE subject = p_subject AND active FOR UPDATE;
+ SELECT a.* INTO u FROM app_users a
+  JOIN app_sessions s ON s.subject = a.subject
+  JOIN identity_epoch i ON i.issuer = s.issuer AND i.epoch = s.identity_epoch
+  WHERE s.token_hash = p_token_hash AND s.expires_at > now() AND a.active
+  FOR UPDATE OF a;
  IF NOT FOUND THEN
-  RAISE EXCEPTION 'inactive member' USING ERRCODE = 'BB011';
+  RAISE EXCEPTION 'no live session' USING ERRCODE = 'BB011';
  END IF;
  IF u.profile_version <> p_version THEN
   RAISE EXCEPTION 'profile version conflict' USING ERRCODE = 'BB012';
  END IF;
+ PERFORM set_config('baobei.profile_self', '1', true);
  UPDATE app_users SET display_name = p_name, profile_completed_at = coalesce(profile_completed_at, now()),
   profile_name_source = CASE WHEN profile_name_source = 'UNCONFIRMED' THEN 'SELF_CONFIRMED' ELSE profile_name_source END,
   profile_version = profile_version + 1
   WHERE staff_id = u.staff_id;
+ PERFORM set_config('baobei.profile_self', '', true);
  INSERT INTO profile_audit(staff_id, actor_subject, action, old_name, new_name, reason, profile_version)
-  VALUES (u.staff_id, p_subject, CASE WHEN u.profile_completed_at IS NULL THEN 'profile.confirm' ELSE 'profile.rename' END,
+  VALUES (u.staff_id, u.subject, CASE WHEN u.profile_completed_at IS NULL THEN 'profile.confirm' ELSE 'profile.rename' END,
    u.display_name, p_name, coalesce(p_reason, ''), u.profile_version + 1);
  RETURN u.profile_version + 1;
 END $$;
 REVOKE EXECUTE ON FUNCTION confirm_own_profile(text, text, text, integer) FROM PUBLIC;
+
+-- Every other change of a display name (staff management, identity manifest,
+-- maintenance) is recorded too: the trigger writes the old and new name with
+-- the actor the writer declared (baobei.actor) or the database role.
+CREATE FUNCTION profile_name_audit() RETURNS trigger LANGUAGE plpgsql
+ SECURITY DEFINER SET search_path FROM CURRENT AS $$
+BEGIN
+ IF NEW.display_name IS DISTINCT FROM OLD.display_name AND coalesce(current_setting('baobei.profile_self', true), '') <> '1' THEN
+  INSERT INTO profile_audit(staff_id, actor_subject, action, old_name, new_name, reason, profile_version)
+   VALUES (NEW.staff_id, coalesce(nullif(current_setting('baobei.actor', true), ''), 'db:' || session_user),
+    'profile.staff-edit', OLD.display_name, NEW.display_name, '', NEW.profile_version);
+ END IF;
+ RETURN NULL;
+END $$;
+REVOKE EXECUTE ON FUNCTION profile_name_audit() FROM PUBLIC;
+CREATE TRIGGER profile_name_audit AFTER UPDATE OF display_name ON app_users
+ FOR EACH ROW EXECUTE FUNCTION profile_name_audit();

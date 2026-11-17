@@ -283,6 +283,14 @@ func TestDatabaseProductionPrivileges(t *testing.T) {
 	status, response = sales.call("GET", "/api/v1/projects", nil)
 	expect(t, status, 200, response)
 	deny(runtime, "UPDATE app_users SET display_name='forged'")
+	// The staff connection may rename (staff edit); the 00010 trigger records it.
+	mustExec(staff, "SELECT set_config('baobei.actor','synthetic-admin',false)")
+	mustExec(staff, "UPDATE app_users SET display_name='示例销售 A（更正）' WHERE subject='synthetic-a'")
+	var staffEdits int
+	if err := migrator.QueryRow(ctx, `SELECT count(*) FROM profile_audit WHERE action='profile.staff-edit' AND new_name='示例销售 A（更正）' AND actor_subject='synthetic-admin'`).Scan(&staffEdits); err != nil || staffEdits != 1 {
+		t.Fatal("staff rename not audited", staffEdits, err)
+	}
+	deny(staff, "DELETE FROM profile_audit")
 	deny(runtime, "INSERT INTO profile_audit(staff_id,actor_subject,action,old_name,new_name,reason,profile_version) SELECT staff_id,'x','profile.rename','a','b','',1 FROM app_users LIMIT 1")
 	deny(runtime, "SELECT work_phone FROM app_users")
 	var sourceStaff, targetStaff string

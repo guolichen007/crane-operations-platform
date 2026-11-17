@@ -105,7 +105,7 @@ func (a *App) profileHandler(w http.ResponseWriter, r *http.Request, u User) err
 		return err
 	}
 	var version int
-	err = tx.QueryRow(ctx, `SELECT confirm_own_profile($1,$2,$3,$4)`, u.Subject, in.Name, in.Reason, in.Version).Scan(&version)
+	err = tx.QueryRow(ctx, `SELECT confirm_own_profile($1,$2,$3,$4)`, u.sessionHash, in.Name, in.Reason, in.Version).Scan(&version)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
 		switch pgErr.Code {

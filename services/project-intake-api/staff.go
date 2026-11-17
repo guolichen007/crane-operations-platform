@@ -608,6 +608,11 @@ func editStaff(ctx context.Context, tx pgx.Tx, actor User, at *time.Time, m staf
 		next = staffPending
 	}
 	version := m.Version + 1
+	// V1.1: a name change by staff management is recorded in profile_audit
+	// (00010 trigger) with this actor.
+	if _, err := tx.Exec(ctx, `SELECT set_config('baobei.actor',$1,true)`, actor.Subject); err != nil {
+		return nil, err
+	}
 	_, err := tx.Exec(ctx, `UPDATE app_users SET display_name=$2,work_email=NULLIF($3,''),role=$4,team_id=NULLIF($5,'')::uuid,
  staff_note=$6,staff_version=$7,staff_status=$8,active=($8='ACTIVE'),staff_managed=true,work_phone=NULLIF($9,'')
  WHERE staff_id=$1`, m.ID, in.Name, in.Email, in.Role, in.TeamID, in.Note, version, next, in.Phone)
@@ -745,9 +750,10 @@ type transferResult struct {
 func transferStaffProjects(ctx context.Context, tx pgx.Tx, actor User, from staffMember, in staffTransferInput) (any, error) {
 	// G2: admin manages all legal business projects, so it may hand off a sales
 	// member's projects. manager() keeps its manager/director meaning.
-	// V1.1: a supervisor may hold their own projects; administrators and
-	// directors hand those off too (a supervisor never manages another
-	// supervisor). The target is always an active sales member.
+	// V1.1: a supervisor may hold their own projects. Staff routes let only an
+	// administrator manage a non-sales member (staffWritable), so in practice an
+	// administrator hands those off; directors move a supervisor's project one
+	// by one (project ownership-transfer). The target is always active sales.
 	if !(manager(actor) || actor.Role == adminRole) || from.Role != salesRole && !(from.Role == managerRole && actor.Role != managerRole) {
 		return nil, staffDenied
 	}

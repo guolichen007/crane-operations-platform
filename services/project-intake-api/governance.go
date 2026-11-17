@@ -377,6 +377,13 @@ func (a *App) governance(w http.ResponseWriter, r *http.Request, u User) (bool, 
 	}
 	event := "review." + action
 	details := map[string]any{"reason": in.Reason}
+	// V1.1: every review decision records the route it was decided under and
+	// the decider's role, so a governance decision by an administrator on a
+	// director-routed filing is explicit in the audit trail.
+	if contains(reviewActions, action) {
+		details["reviewRoute"] = p.ReviewRoute
+		details["deciderRole"] = u.Role
+	}
 	switch action {
 	case "stage-change":
 		if !canWrite(u, p) {
