@@ -2946,3 +2946,19 @@ td.unassigned,
 @media (max-width: 700px) {
   .contact-link select, .contact-link button { min-height: 44px; width: 100%; }
 }
+
+/* V1.1 R6 technical brief */
+.technical { margin-top: 24px; border-top: 1px solid var(--rule); padding-top: 16px; }
+.technical-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.technical-head h2 { margin: 0; font-size: 17px; }
+.technical h3 { font-size: 15px; margin: 18px 0 8px; }
+.question-list { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 8px; }
+.question-list > li { border: 1px solid var(--rule); border-radius: var(--radius); padding: 10px 12px; display: grid; gap: 4px; }
+.question-list > li.q-open { border-left: 3px solid var(--amber); }
+.question-list > li.q-closed { opacity: 0.7; }
+.tech-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto; gap: 6px; margin-bottom: 6px; }
+.technical-form fieldset { border: 1px solid var(--rule); border-radius: var(--radius); padding: 8px 10px; }
+@media (max-width: 700px) {
+  .tech-row { grid-template-columns: 1fr 1fr; }
+  .tech-row input { min-height: 44px; }
+}

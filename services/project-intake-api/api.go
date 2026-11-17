@@ -193,6 +193,10 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 	if len(parts) > 1 {
 		action = parts[1]
 	}
+	// V1.1 R6: /projects/{id}/technical-brief[/questions[/{qid}/{action}]].
+	if action == "technical-brief" {
+		return a.technicalHandler(w, r, u, id, strings.Join(parts[2:], "/"))
+	}
 	if len(parts) > 2 {
 		fail(w, 404, "NOT_FOUND", "接口不存在")
 		return nil

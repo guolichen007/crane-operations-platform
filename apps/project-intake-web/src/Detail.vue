@@ -23,6 +23,7 @@ import { PROJECT_CENTER } from './navigation';
 import { nextStages } from './pipeline';
 import { hintReason, recovery } from './reasons';
 import { ApiError } from './api-client';
+import TechnicalBrief from './TechnicalBrief.vue';
 import ProjectContacts from './ProjectContacts.vue';
 import ActionButton from './ActionButton.vue';
 import Modal from './Modal.vue';
@@ -338,6 +339,7 @@ const reviewSummary = computed(() => {
           </tbody>
         </table>
         <p class="muted small">计划设备仅用于报备，不生成正式设备档案。</p>
+        <TechnicalBrief :key="p.id" :project-id="p.id" />
       </template>
       <template v-if="tab === '跟进时间线'">
         <h2>跟进时间线</h2>

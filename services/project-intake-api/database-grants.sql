@@ -89,3 +89,8 @@ GRANT SELECT, INSERT, UPDATE ON contacts TO baobei_runtime;
 GRANT SELECT, INSERT, DELETE ON project_contacts TO baobei_runtime;
 GRANT SELECT, INSERT ON customer_audit TO baobei_runtime;
 GRANT SELECT ON organization_team_profiles, contacts, project_contacts, customer_audit TO baobei_maintenance;
+-- V1.1 R6 (B3): technical brief, revisions and clarification events
+-- (revisions and events are insert-only).
+GRANT SELECT, INSERT, UPDATE ON project_technical_briefs, project_technical_questions TO baobei_runtime;
+GRANT SELECT, INSERT ON project_technical_brief_revisions, project_technical_question_events TO baobei_runtime;
+GRANT SELECT ON project_technical_briefs, project_technical_questions, project_technical_brief_revisions, project_technical_question_events TO baobei_maintenance;
