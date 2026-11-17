@@ -5,10 +5,10 @@ import { onBeforeRouteLeave } from 'vue-router';
 import { FolderKanban, Check, Plus, RefreshCw } from 'lucide-vue-next';
 import {
   listScopes, listIntakes, createIntake, transitionIntake, approveIntake,
-  listResources, listScheduleItems, listConflicts, overrideConflict,
   listPortfolioProjects,
 } from '../cloud/portfolio';
 import FormalProjectPanel from '../components/FormalProjectPanel.vue';
+import ScheduleBoard from '../components/ScheduleBoard.vue';
 import { ApiError } from '../cloud/client';
 import { resetPortfolioScope } from '../cloud/queryClient';
 import { allowClose } from '../cloud/draft';
@@ -18,11 +18,12 @@ import {
   blankIntakeForm, formDirty, validateIntakeForm, toIntakeInput, intakeErrorMessage, listState, intakeStages,
   PRIORITIES, RISK_LEVELS, PRIORITY_TEXT, RISK_TEXT, PROJECT_TYPE_SUGGESTIONS, type IntakeForm,
 } from '../cloud/intake';
-import type { ProjectIntake, ScheduleConflict } from '../../../../contracts/typescript/types.gen';
+import type { ProjectIntake } from '../../../../contracts/typescript/types.gen';
 const createFence = createScopeFence();
 
+type Tab = 'intake' | 'formal' | 'resource' | 'schedule' | 'conflict' | 'history';
 const queryClient = useQueryClient();
-const tab = ref<'intake' | 'formal' | 'resource' | 'schedule' | 'conflict'>('intake');
+const tab = ref<Tab>('intake');
 const selectedProject = ref('');
 const actionError = ref('');
 const notice = ref('');
@@ -37,9 +38,6 @@ function scopeMayHaveChanged(e: unknown) {
 void resetPortfolioScope();
 const scopesQuery = useQuery({ queryKey: ['portfolio-scopes'], queryFn: listScopes });
 const intakesQuery = useQuery({ queryKey: ['intakes'], queryFn: listIntakes });
-const resourcesQuery = useQuery({ queryKey: ['resources'], queryFn: listResources });
-const scheduleQuery = useQuery({ queryKey: ['schedule-items'], queryFn: listScheduleItems });
-const conflictsQuery = useQuery({ queryKey: ['conflicts'], queryFn: listConflicts });
 // Formal projects of the caller's portfolios (server facts: members, Inventory, map).
 const formalQuery = useQuery({ queryKey: ['portfolio-projects'], queryFn: listPortfolioProjects });
 const formalState = computed(() => listState({ isLoading: formalQuery.isLoading.value, isError: formalQuery.isError.value, data: formalQuery.data.value }));
@@ -48,9 +46,6 @@ const formalById = computed(() => new Map((formalQuery.data.value ?? []).map((p)
 const stateOf = (q: { isLoading: { value: boolean }; isError: { value: boolean }; data: { value: readonly unknown[] | undefined } }) =>
   computed(() => listState({ isLoading: q.isLoading.value, isError: q.isError.value, data: q.data.value }));
 const intakeState = stateOf(intakesQuery);
-const resourceState = stateOf(resourcesQuery);
-const scheduleState = stateOf(scheduleQuery);
-const conflictState = stateOf(conflictsQuery);
 const errorText = (e: unknown) => intakeErrorMessage(e, 'load');
 
 // The create entry is shown only when the caller has at least one portfolio scope (the scope
@@ -65,7 +60,6 @@ const canApprove = (scopeId: string) => scopesQuery.data.value?.find((s) => s.id
 // switching project or closing the panel asks the panel first; an in-flight change blocks.
 const formalPanel = ref<{ canLeave: () => boolean } | null>(null);
 const panelAllowsLeave = () => !formalPanel.value || formalPanel.value.canLeave();
-type Tab = 'intake' | 'formal' | 'resource' | 'schedule' | 'conflict';
 function switchTab(next: Tab) {
   if (next === tab.value) return;
   if (tab.value === 'formal' && !panelAllowsLeave()) return;
@@ -177,12 +171,6 @@ const approveMutation = useMutation({
     await Promise.all([queryClient.invalidateQueries({ queryKey: ['intakes'] }), queryClient.invalidateQueries({ queryKey: ['portfolio-projects'] })]);
   },
 });
-const overrideMutation = useMutation({
-  mutationFn: (v: { id: number; reason: string }) => overrideConflict(v.id, v.reason),
-  onSuccess: () => queryClient.invalidateQueries({ queryKey: ['conflicts'] }),
-  onError: (e) => { actionError.value = e instanceof ApiError ? e.message : '覆盖失败'; scopeMayHaveChanged(e); },
-});
-
 function advance(intake: ProjectIntake, status: string) {
   if (busyId.value) return;
   if (status === 'APPROVED' && !window.confirm(`批准「${intake.projectName}」将生成正式项目。\n批准不会自动授予任何人项目访问权限，也不会进入运营地图。确定批准吗？`)) return;
@@ -191,21 +179,6 @@ function advance(intake: ProjectIntake, status: string) {
   busyId.value = intake.id;
   if (status === 'APPROVED') approveMutation.mutate(intake.id);
   else transitionMutation.mutate({ id: intake.id, status });
-}
-// Conflict override (Q4-QA-R1 §5): the server requires schedule_override on the conflict's owning
-// portfolio scope (portfolio_manager only) and refuses a hard conflict on a resource without
-// overrideAllowed. The conflict contract carries no scope id, so the button is offered only when the
-// caller manages EVERY portfolio it belongs to (then each listed conflict is in a managed scope); a
-// mixed planner/manager caller gets no executable button. The server still decides.
-const managesAllScopes = computed(() => {
-  const mine = (scopesQuery.data.value ?? []).filter((s) => s.myRole !== null);
-  return mine.length > 0 && mine.every((s) => s.myRole === 'portfolio_manager');
-});
-const hardConflict = (c: ScheduleConflict) =>
-  !!c.resourceId && resourcesQuery.data.value?.find((r) => r.id === c.resourceId)?.overrideAllowed === false;
-function override(id: number) {
-  const reason = window.prompt('覆盖原因（至少 8 字）');
-  if (reason) overrideMutation.mutate({ id, reason });
 }
 const fmtDate = (v: string | null) => (v ? new Date(v).toLocaleDateString('zh-CN') : '—');
 </script>
@@ -229,6 +202,7 @@ const fmtDate = (v: string | null) => (v ? new Date(v).toLocaleDateString('zh-CN
       <button :class="{ active: tab === 'resource' }" @click="switchTab('resource')">资源</button>
       <button :class="{ active: tab === 'schedule' }" @click="switchTab('schedule')">排期</button>
       <button :class="{ active: tab === 'conflict' }" @click="switchTab('conflict')">冲突</button>
+      <button :class="{ active: tab === 'history' }" data-testid="tab-history" @click="switchTab('history')">排期历史</button>
     </div>
 
     <p v-if="actionError" class="form-error" role="alert" data-testid="portfolio-action-error">{{ actionError }}</p>
@@ -335,87 +309,7 @@ const fmtDate = (v: string | null) => (v ? new Date(v).toLocaleDateString('zh-CN
       </div>
     </template>
 
-    <template v-else-if="tab === 'resource'">
-      <div v-if="resourceState === 'loading'" class="skeleton table-skeleton" aria-busy="true"></div>
-      <div v-else-if="resourceState === 'error'" class="workspace-error" role="alert" data-testid="resource-error">
-        资源加载失败：{{ errorText(resourcesQuery.error.value) }}
-        <button class="ghost-action" @click="resourcesQuery.refetch()"><RefreshCw :size="13" />重试</button>
-      </div>
-      <p v-else-if="resourceState === 'empty'" class="workspace-empty">暂无资源。</p>
-      <div v-else class="data-table-wrap">
-        <p v-if="resourceState === 'stale'" class="workspace-error" role="alert">刷新失败，以下为上次成功加载的数据。</p>
-        <table class="data-table">
-          <thead><tr><th>名称</th><th>类型</th><th>容量</th><th>独占</th><th>时区</th><th>状态</th></tr></thead>
-          <tbody>
-            <tr v-for="r in resourcesQuery.data.value" :key="r.id" class="data-row">
-              <td>{{ r.name }}</td>
-              <td>{{ r.resourceType }}</td>
-              <td>{{ r.capacity }}</td>
-              <td>{{ r.exclusive ? '是' : '否' }}</td>
-              <td>{{ r.homeTimezone }}</td>
-              <td>{{ r.status }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </template>
-
-    <template v-else-if="tab === 'schedule'">
-      <div v-if="scheduleState === 'loading'" class="skeleton table-skeleton" aria-busy="true"></div>
-      <div v-else-if="scheduleState === 'error'" class="workspace-error" role="alert" data-testid="schedule-error">
-        排期加载失败：{{ errorText(scheduleQuery.error.value) }}
-        <button class="ghost-action" @click="scheduleQuery.refetch()"><RefreshCw :size="13" />重试</button>
-      </div>
-      <p v-else-if="scheduleState === 'empty'" class="workspace-empty">暂无排期项。</p>
-      <div v-else class="data-table-wrap">
-        <p v-if="scheduleState === 'stale'" class="workspace-error" role="alert">刷新失败，以下为上次成功加载的数据。</p>
-        <table class="data-table">
-          <thead><tr><th>名称</th><th>类型</th><th>开始</th><th>结束</th><th>时区</th><th>状态</th><th>优先级</th></tr></thead>
-          <tbody>
-            <tr v-for="s in scheduleQuery.data.value" :key="s.id" class="data-row">
-              <td>{{ s.name }}</td>
-              <td>{{ s.sourceType }}</td>
-              <td>{{ s.startAt }}</td>
-              <td>{{ s.endAt }}</td>
-              <td>{{ s.timezone }}</td>
-              <td>{{ s.status }}</td>
-              <td>{{ s.priority }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </template>
-
-    <template v-else>
-      <div v-if="conflictState === 'loading'" class="skeleton table-skeleton" aria-busy="true"></div>
-      <div v-else-if="conflictState === 'error'" class="workspace-error" role="alert" data-testid="conflict-error">
-        冲突加载失败：{{ errorText(conflictsQuery.error.value) }}
-        <button class="ghost-action" @click="conflictsQuery.refetch()"><RefreshCw :size="13" />重试</button>
-      </div>
-      <p v-else-if="conflictState === 'empty'" class="workspace-empty">无未解决冲突。</p>
-      <div v-else class="data-table-wrap">
-        <p v-if="conflictState === 'stale'" class="workspace-error" role="alert">刷新失败，以下为上次成功加载的数据。</p>
-        <table class="data-table" data-testid="conflict-table">
-          <thead><tr><th>类型</th><th>严重度</th><th>左项</th><th>资源</th><th>状态</th><th>操作</th></tr></thead>
-          <tbody>
-            <tr v-for="c in conflictsQuery.data.value" :key="c.id" class="data-row">
-              <td>{{ c.conflictType }}</td>
-              <td>
-                <span class="status-pill" :data-status="c.severity === 'BLOCKING' ? 'OUT_OF_SERVICE' : 'DRAFT'">{{ c.severity }}</span>
-              </td>
-              <td>{{ c.leftItemId }}</td>
-              <td>{{ c.resourceId ?? '—' }}</td>
-              <td>{{ c.status }}</td>
-              <td>
-                <span v-if="hardConflict(c)" class="muted small" data-testid="override-hard">硬冲突，不可覆盖</span>
-                <button v-else-if="managesAllScopes" class="ghost-action" data-testid="conflict-override" :disabled="overrideMutation.isPending.value" @click="override(c.id)">覆盖</button>
-                <span v-else class="muted small" data-testid="override-not-allowed">需项目组合经理覆盖</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </template>
+    <ScheduleBoard v-else :key="tab" :view="tab" :scopes="scopesQuery.data.value ?? []" />
 
     <div v-if="creating" class="modal-backdrop" @click.self="closeCreate">
       <form class="workspace-modal intake-form" data-testid="intake-create-form" novalidate @submit.prevent="submit">

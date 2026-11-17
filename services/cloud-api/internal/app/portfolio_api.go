@@ -7,13 +7,32 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
 	"github.com/guolichen007/crane-operations-platform/internal/identity"
 	"github.com/guolichen007/crane-operations-platform/internal/portfolio"
 	"github.com/guolichen007/crane-operations-platform/internal/scheduling"
 )
+
+// schedulingError maps scheduling-kernel errors: input 422, state/version 409, missing 404, else 503.
+func schedulingError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, scheduling.ErrInvalid), errors.Is(err, scheduling.ErrShortReason), errors.Is(err, scheduling.ErrInvalidTimezone):
+		respondAPI(w, 422, map[string]string{"error": err.Error()})
+	case errors.Is(err, scheduling.ErrVersionConflict):
+		respondAPI(w, 409, map[string]string{"error": "version conflict", "code": "version_conflict"})
+	case errors.Is(err, scheduling.ErrInvalidTransition):
+		respondAPI(w, 409, map[string]string{"error": err.Error(), "code": "invalid_transition"})
+	case errors.Is(err, scheduling.ErrCrossPortfolio), errors.Is(err, scheduling.ErrScopeMismatch), errors.Is(err, scheduling.ErrProjectNotManaged), errors.Is(err, scheduling.ErrDependencyCycle):
+		respondAPI(w, 409, map[string]string{"error": err.Error()})
+	case errors.Is(err, scheduling.ErrHardOverride):
+		respondAPI(w, 409, map[string]string{"error": "hard conflict cannot be overridden"})
+	case errors.Is(err, scheduling.ErrNotFound), errors.Is(err, sql.ErrNoRows):
+		respondAPI(w, 404, map[string]string{"error": "not found"})
+	default:
+		respondAPI(w, 503, map[string]string{"error": "database unavailable"})
+	}
+}
 
 // authorizePortfolio checks one explicit portfolio capability. The scope is
 // resolved from the child object, never trusted from the request body.
@@ -292,7 +311,7 @@ func (h *apiHandler) registerPortfolio(api *http.ServeMux) {
 		}
 		out, err := scheduling.CreateResource(r.Context(), h.db, in)
 		if err != nil {
-			respondAPI(w, 503, map[string]string{"error": "database unavailable"})
+			schedulingError(w, err)
 			return
 		}
 		respondAPI(w, 201, out)
@@ -353,16 +372,12 @@ func (h *apiHandler) registerPortfolio(api *http.ServeMux) {
 		if !h.authorizePortfolioObject(w, r, scope, identity.CapResourceCalendarRead) {
 			return
 		}
-		var calID, tz string
-		if err := h.db.QueryRowContext(r.Context(), `SELECT id,timezone FROM resource_calendars WHERE resource_id=$1`, resourceID).Scan(&calID, &tz); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				respondAPI(w, 200, map[string]any{"timezone": "UTC", "rules": []any{}, "exceptions": []any{}})
-				return
-			}
+		cal, err := scheduling.GetCalendar(r.Context(), h.db, resourceID)
+		if err != nil {
 			respondAPI(w, 503, map[string]string{"error": "database unavailable"})
 			return
 		}
-		respondAPI(w, 200, map[string]string{"id": calID, "timezone": tz})
+		respondAPI(w, 200, cal)
 	})
 
 	api.HandleFunc("PUT /api/v1/portfolio/resources/{id}/calendar", func(w http.ResponseWriter, r *http.Request) {
@@ -384,15 +399,16 @@ func (h *apiHandler) registerPortfolio(api *http.ServeMux) {
 			respondAPI(w, 400, map[string]string{"error": "invalid body"})
 			return
 		}
-		if _, err := time.LoadLocation(in.Timezone); err != nil {
-			respondAPI(w, 400, map[string]string{"error": "invalid timezone"})
+		if err := scheduling.ReplaceCalendar(r.Context(), h.db, resourceID, in.Timezone, in.Rules, in.Version); err != nil {
+			schedulingError(w, err)
 			return
 		}
-		if err := scheduling.ReplaceCalendar(r.Context(), h.db, resourceID, in.Timezone, in.Rules, in.Version); err != nil {
+		cal, err := scheduling.GetCalendar(r.Context(), h.db, resourceID)
+		if err != nil {
 			respondAPI(w, 503, map[string]string{"error": "database unavailable"})
 			return
 		}
-		respondAPI(w, 200, map[string]string{"status": "updated"})
+		respondAPI(w, 200, cal)
 	})
 
 	api.HandleFunc("POST /api/v1/portfolio/schedule/dependencies", func(w http.ResponseWriter, r *http.Request) {
@@ -403,6 +419,24 @@ func (h *apiHandler) registerPortfolio(api *http.ServeMux) {
 		}
 		if in.DependencyType != "FS" {
 			respondAPI(w, 422, map[string]string{"error": "unsupported dependency type"})
+			return
+		}
+		if in.LagMinutes < 0 || in.PredecessorItemId == in.SuccessorItemId {
+			respondAPI(w, 422, map[string]string{"error": "invalid dependency"})
+			return
+		}
+		// Both ends must be in one portfolio the caller can write; resolved from the DB.
+		predScope, err1 := portfolioScopeOfScheduleItem(r, h.db, in.PredecessorItemId)
+		succScope, err2 := portfolioScopeOfScheduleItem(r, h.db, in.SuccessorItemId)
+		if err1 != nil || err2 != nil {
+			respondAPI(w, 404, map[string]string{"error": "not found"})
+			return
+		}
+		if predScope != succScope {
+			respondAPI(w, 409, map[string]string{"error": "dependency crosses portfolios"})
+			return
+		}
+		if !h.authorizePortfolioObject(w, r, succScope, identity.CapProjectScheduleWrite) {
 			return
 		}
 		if err := scheduling.CreateDependency(r.Context(), h.db, in); err != nil {
@@ -417,7 +451,12 @@ func (h *apiHandler) registerPortfolio(api *http.ServeMux) {
 	})
 
 	api.HandleFunc("GET /api/v1/portfolio/schedule/dependencies", func(w http.ResponseWriter, r *http.Request) {
-		rows, err := h.db.QueryContext(r.Context(), `SELECT id,predecessor_item_id,successor_item_id,dependency_type,lag_minutes FROM schedule_dependencies ORDER BY id`)
+		scopes, err := h.portfolioScopes(r)
+		if err != nil {
+			respondAPI(w, 503, map[string]string{"error": "authorization unavailable"})
+			return
+		}
+		rows, err := h.db.QueryContext(r.Context(), `SELECT d.id,d.predecessor_item_id,d.successor_item_id,d.dependency_type,d.lag_minutes,s.portfolio_scope_id FROM schedule_dependencies d JOIN schedule_items s ON s.id=d.successor_item_id ORDER BY d.id`)
 		if err != nil {
 			respondAPI(w, 503, map[string]string{"error": "database unavailable"})
 			return
@@ -426,9 +465,13 @@ func (h *apiHandler) registerPortfolio(api *http.ServeMux) {
 		values := []contract.ScheduleDependency{}
 		for rows.Next() {
 			var v contract.ScheduleDependency
-			if err := rows.Scan(&v.Id, &v.PredecessorItemId, &v.SuccessorItemId, &v.DependencyType, &v.LagMinutes); err != nil {
+			var scope string
+			if err := rows.Scan(&v.Id, &v.PredecessorItemId, &v.SuccessorItemId, &v.DependencyType, &v.LagMinutes, &scope); err != nil {
 				respondAPI(w, 503, map[string]string{"error": "database unavailable"})
 				return
+			}
+			if scopes != nil && !scopes[scope] {
+				continue
 			}
 			values = append(values, v)
 		}
@@ -452,7 +495,7 @@ func (h *apiHandler) registerPortfolio(api *http.ServeMux) {
 		}
 		out, err := scheduling.CreateScheduleItem(r.Context(), h.db, in)
 		if err != nil {
-			respondAPI(w, 503, map[string]string{"error": "database unavailable"})
+			schedulingError(w, err)
 			return
 		}
 		respondAPI(w, 201, out)
@@ -519,16 +562,93 @@ func (h *apiHandler) registerPortfolio(api *http.ServeMux) {
 			return
 		}
 		in.ScheduleItemId = itemID
-		out, err := scheduling.CreateReservation(r.Context(), h.db, in)
+		out, err := scheduling.CreateReservationBy(r.Context(), h.db, in, currentPrincipal(r).user)
 		if err != nil {
 			if errors.Is(err, scheduling.ErrCrossPortfolio) {
 				respondAPI(w, 409, map[string]string{"error": "cross portfolio reservation"})
 				return
 			}
-			respondAPI(w, 503, map[string]string{"error": "database unavailable"})
+			schedulingError(w, err)
 			return
 		}
 		respondAPI(w, 201, out)
+	})
+
+	api.HandleFunc("GET /api/v1/portfolio/schedule/items/{id}/reservations", func(w http.ResponseWriter, r *http.Request) {
+		itemID := r.PathValue("id")
+		scope, err := portfolioScopeOfScheduleItem(r, h.db, itemID)
+		if err != nil {
+			respondAPI(w, 404, map[string]string{"error": "not found"})
+			return
+		}
+		if !h.authorizePortfolioObject(w, r, scope, identity.CapProjectScheduleRead) {
+			return
+		}
+		out, err := scheduling.ListReservations(r.Context(), h.db, itemID)
+		if err != nil {
+			respondAPI(w, 503, map[string]string{"error": "database unavailable"})
+			return
+		}
+		respondAPI(w, 200, out)
+	})
+
+	api.HandleFunc("POST /api/v1/portfolio/reservations/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
+		resID := r.PathValue("id")
+		var scope string
+		if err := h.db.QueryRowContext(r.Context(), `SELECT portfolio_scope_id FROM resource_reservations WHERE id=$1`, resID).Scan(&scope); err != nil {
+			respondAPI(w, 404, map[string]string{"error": "not found"})
+			return
+		}
+		if !h.authorizePortfolioObject(w, r, scope, identity.CapProjectScheduleWrite) {
+			return
+		}
+		expected, ok := ifMatchVersion(r)
+		if !ok {
+			respondAPI(w, 428, map[string]string{"error": "precondition required"})
+			return
+		}
+		if err := scheduling.CancelReservation(r.Context(), h.db, resID, expected, currentPrincipal(r).user, requestID(r)); err != nil {
+			schedulingError(w, err)
+			return
+		}
+		respondAPI(w, 200, map[string]string{"status": "cancelled"})
+	})
+
+	api.HandleFunc("POST /api/v1/portfolio/schedule/items/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
+		itemID := r.PathValue("id")
+		scope, err := portfolioScopeOfScheduleItem(r, h.db, itemID)
+		if err != nil {
+			respondAPI(w, 404, map[string]string{"error": "not found"})
+			return
+		}
+		var in struct {
+			Reason string `json:"reason"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			respondAPI(w, 400, map[string]string{"error": "invalid body"})
+			return
+		}
+		// Cancelling an APPROVED schedule releases approved capacity: manager-only (schedule_override);
+		// a PLANNED item can be withdrawn by anyone who can write the schedule.
+		var status string
+		_ = h.db.QueryRowContext(r.Context(), `SELECT status FROM schedule_items WHERE id=$1`, itemID).Scan(&status)
+		need := identity.CapProjectScheduleWrite
+		if status == "APPROVED" {
+			need = identity.CapScheduleOverride
+		}
+		if !h.authorizePortfolioObject(w, r, scope, need) {
+			return
+		}
+		expected, ok := ifMatchVersion(r)
+		if !ok {
+			respondAPI(w, 428, map[string]string{"error": "precondition required"})
+			return
+		}
+		if err := scheduling.CancelScheduleItem(r.Context(), h.db, itemID, expected, in.Reason, currentPrincipal(r).user, requestID(r)); err != nil {
+			schedulingError(w, err)
+			return
+		}
+		respondAPI(w, 200, map[string]string{"status": "cancelled"})
 	})
 
 	api.HandleFunc("POST /api/v1/portfolio/schedule/approve", func(w http.ResponseWriter, r *http.Request) {
@@ -549,13 +669,13 @@ func (h *apiHandler) registerPortfolio(api *http.ServeMux) {
 				return
 			}
 		}
-		conflicts, err := scheduling.ApproveSchedule(r.Context(), h.db, in.ItemIds, currentPrincipal(r).user, "")
+		conflicts, err := scheduling.ApproveSchedule(r.Context(), h.db, in.ItemIds, currentPrincipal(r).user, requestID(r))
 		if err != nil {
 			if errors.Is(err, scheduling.ErrHardConflict) {
-				respondAPI(w, 409, conflicts)
+				respondAPI(w, 409, map[string]any{"error": "schedule has unresolved blocking conflicts", "code": "schedule_conflict", "conflicts": conflicts})
 				return
 			}
-			respondAPI(w, 503, map[string]string{"error": "database unavailable"})
+			schedulingError(w, err)
 			return
 		}
 		respondAPI(w, 200, map[string]string{"status": "approved"})
@@ -629,12 +749,8 @@ func (h *apiHandler) registerPortfolio(api *http.ServeMux) {
 			respondAPI(w, 400, map[string]string{"error": "invalid conflict id"})
 			return
 		}
-		if err := scheduling.OverrideConflict(r.Context(), h.db, id, in.Reason, currentPrincipal(r).user, ""); err != nil {
-			if errors.Is(err, scheduling.ErrHardOverride) {
-				respondAPI(w, 409, map[string]string{"error": "hard conflict cannot be overridden"})
-				return
-			}
-			respondAPI(w, 503, map[string]string{"error": "database unavailable"})
+		if err := scheduling.OverrideConflict(r.Context(), h.db, id, in.Reason, currentPrincipal(r).user, requestID(r)); err != nil {
+			schedulingError(w, err)
 			return
 		}
 		respondAPI(w, 200, map[string]string{"status": "overridden"})

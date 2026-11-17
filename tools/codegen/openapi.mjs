@@ -73,6 +73,10 @@ add('/api/v1/portfolio/schedule/items', 'post', 'createScheduleItem', scheduleIt
 add('/api/v1/portfolio/schedule/items/{id}', 'get', 'getScheduleItem', scheduleItem);
 add('/api/v1/portfolio/schedule/items/{id}/reservations', 'post', 'createReservation', { $ref: '#/components/schemas/ResourceReservation' }, '201');
 add('/api/v1/portfolio/schedule/approve', 'post', 'approveSchedule', null);
+// R8: reservations of an item, cancel reservation / cancel schedule item (If-Match, history kept).
+add('/api/v1/portfolio/schedule/items/{id}/reservations', 'get', 'listReservations', { type: 'array', items: { $ref: '#/components/schemas/ResourceReservation' } });
+add('/api/v1/portfolio/reservations/{id}/cancel', 'post', 'cancelReservation', null);
+add('/api/v1/portfolio/schedule/items/{id}/cancel', 'post', 'cancelScheduleItem', null);
 add('/api/v1/portfolio/conflicts', 'get', 'listConflicts', { type: 'array', items: scheduleConflict });
 add('/api/v1/portfolio/conflicts/{id}', 'get', 'getConflict', scheduleConflict);
 add('/api/v1/portfolio/conflicts/{id}/override', 'post', 'overrideConflict', null);

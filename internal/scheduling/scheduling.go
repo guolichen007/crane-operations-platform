@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 	_ "time/tzdata"
 
@@ -33,6 +34,9 @@ var (
 	ErrCrossPortfolio    = errors.New("schedule item cannot reserve a resource of another portfolio")
 	ErrScopeMismatch     = errors.New("schedule scope mismatch")
 	ErrProjectNotManaged = errors.New("project is not portfolio-managed")
+	// ErrInvalid is a client input error (HTTP 422), never a database outage.
+	ErrInvalid  = errors.New("invalid scheduling input")
+	ErrNotFound = errors.New("scheduling object not found")
 )
 
 // ResolveScheduleScope derives the authoritative portfolio scope for a schedule
@@ -66,15 +70,15 @@ func ResolveScheduleScope(ctx context.Context, db *sql.DB, projectID, clientScop
 // conflict that can never be overridden (e.g. exclusive resource with
 // override_allowed=false).
 type Conflict struct {
-	Type     string
-	Severity string
-	Left     string
-	Right    string
-	Resource string
-	Detail   string
-	Start    time.Time
-	End      time.Time
-	Hard     bool
+	Type     string    `json:"conflictType"`
+	Severity string    `json:"severity"`
+	Left     string    `json:"leftItemId"`
+	Right    string    `json:"rightItemId,omitempty"`
+	Resource string    `json:"resourceId,omitempty"`
+	Detail   string    `json:"detail,omitempty"`
+	Start    time.Time `json:"startAt"`
+	End      time.Time `json:"endAt"`
+	Hard     bool      `json:"hard"`
 }
 
 // Fingerprint returns a stable identity including the conflict interval, so a
@@ -129,12 +133,27 @@ func capacityPeak(existing []quantityWindow, start, end time.Time, qty int) int 
 // CreateResource inserts a resource. exclusive resources are forced to capacity
 // 1 by the DB CHECK.
 func CreateResource(ctx context.Context, db *sql.DB, in contract.Resource) (contract.Resource, error) {
-	if in.Id == "" {
-		in.Id = platform.ID()
+	in.Id = platform.ID()
+	in.Name = strings.TrimSpace(in.Name)
+	if in.Name == "" || len([]rune(in.Name)) > 200 {
+		return in, fmt.Errorf("%w: name is required (max 200)", ErrInvalid)
 	}
-	if in.Capacity <= 0 {
-		return in, errors.New("resource capacity must be positive")
+	if !resourceTypes[in.ResourceType] {
+		return in, fmt.Errorf("%w: unknown resourceType %q", ErrInvalid, in.ResourceType)
 	}
+	if in.Capacity <= 0 || in.Capacity > 10000 {
+		return in, fmt.Errorf("%w: capacity must be 1..10000", ErrInvalid)
+	}
+	if in.Exclusive && in.Capacity != 1 {
+		return in, fmt.Errorf("%w: an exclusive resource has capacity 1", ErrInvalid)
+	}
+	if in.HomeTimezone == "" {
+		in.HomeTimezone = "Asia/Shanghai"
+	}
+	if _, err := time.LoadLocation(in.HomeTimezone); err != nil {
+		return in, fmt.Errorf("%w: invalid timezone", ErrInvalid)
+	}
+	in.Status, in.Version = "ACTIVE", 1
 	_, err := db.ExecContext(ctx, `INSERT INTO resources(id,portfolio_scope_id,resource_type,reference_id,name,capacity,exclusive,override_allowed,home_timezone,status,version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
 		in.Id, in.PortfolioScopeId, in.ResourceType, in.ReferenceId, in.Name, in.Capacity, in.Exclusive, in.OverrideAllowed, in.HomeTimezone, in.Status, in.Version)
 	return in, err
@@ -144,12 +163,36 @@ func CreateResource(ctx context.Context, db *sql.DB, in contract.Resource) (cont
 // The portfolio scope is resolved authoritatively, never trusted from the
 // client body.
 func CreateScheduleItem(ctx context.Context, db *sql.DB, in contract.ScheduleItem) (contract.ScheduleItem, error) {
-	if in.Id == "" {
-		in.Id = platform.ID()
+	in.Id = platform.ID()
+	in.Name = strings.TrimSpace(in.Name)
+	if in.Name == "" || len([]rune(in.Name)) > 200 {
+		return in, fmt.Errorf("%w: name is required (max 200)", ErrInvalid)
 	}
-	if !in.StartAt.Before(in.EndAt) {
-		return in, errors.New("schedule item start_at must be before end_at")
+	if !sourceTypes[in.SourceType] {
+		return in, fmt.Errorf("%w: unknown sourceType %q", ErrInvalid, in.SourceType)
 	}
+	if in.Priority == "" {
+		in.Priority = "MEDIUM"
+	}
+	if !priorities[in.Priority] {
+		return in, fmt.Errorf("%w: unknown priority %q", ErrInvalid, in.Priority)
+	}
+	if in.Timezone == "" {
+		in.Timezone = "Asia/Shanghai"
+	}
+	if _, err := time.LoadLocation(in.Timezone); err != nil {
+		return in, fmt.Errorf("%w: invalid timezone", ErrInvalid)
+	}
+	if in.StartAt.IsZero() || in.EndAt.IsZero() || !in.StartAt.Before(in.EndAt) {
+		return in, fmt.Errorf("%w: startAt must be before endAt", ErrInvalid)
+	}
+	if in.EndAt.Sub(in.StartAt) > 366*24*time.Hour {
+		return in, fmt.Errorf("%w: a schedule item spans at most one year", ErrInvalid)
+	}
+	if strings.TrimSpace(in.SourceId) == "" {
+		in.SourceId = in.Id
+	}
+	in.Status, in.Version = "PLANNED", 1
 	scope, err := ResolveScheduleScope(ctx, db, in.ProjectId, in.PortfolioScopeId)
 	if err != nil {
 		return in, err
@@ -164,32 +207,164 @@ func CreateScheduleItem(ctx context.Context, db *sql.DB, in contract.ScheduleIte
 // lie within its schedule item range, and its portfolio scope must equal both
 // the item's and the resource's scope (DB composite FKs enforce this too).
 func CreateReservation(ctx context.Context, db *sql.DB, in contract.ResourceReservation) (contract.ResourceReservation, error) {
-	if in.Id == "" {
-		in.Id = platform.ID()
+	return CreateReservationBy(ctx, db, in, "")
+}
+
+// CreateReservationBy is CreateReservation with the acting user recorded. Only a PLANNED item can
+// take reservations (an approved schedule is history; change it by cancelling and re-planning).
+func CreateReservationBy(ctx context.Context, db *sql.DB, in contract.ResourceReservation, actor string) (contract.ResourceReservation, error) {
+	in.Id = platform.ID()
+	if in.StartAt.IsZero() || in.EndAt.IsZero() || !in.StartAt.Before(in.EndAt) {
+		return in, fmt.Errorf("%w: reservation startAt must be before endAt", ErrInvalid)
 	}
-	if !in.StartAt.Before(in.EndAt) {
-		return in, errors.New("reservation start_at must be before end_at")
+	if in.Quantity <= 0 {
+		return in, fmt.Errorf("%w: quantity must be positive", ErrInvalid)
 	}
-	var itemStart, itemEnd time.Time
-	var itemScope sql.NullString
-	if err := db.QueryRowContext(ctx, `SELECT start_at,end_at,portfolio_scope_id FROM schedule_items WHERE id=$1`, in.ScheduleItemId).Scan(&itemStart, &itemEnd, &itemScope); err != nil {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
 		return in, err
 	}
-	if in.StartAt.Before(itemStart) || in.EndAt.After(itemEnd) {
-		return in, errors.New("reservation range is outside its schedule item range")
+	defer tx.Rollback()
+	var itemStart, itemEnd time.Time
+	var itemScope sql.NullString
+	var itemStatus string
+	if err := tx.QueryRowContext(ctx, `SELECT start_at,end_at,portfolio_scope_id,status FROM schedule_items WHERE id=$1 FOR UPDATE`, in.ScheduleItemId).Scan(&itemStart, &itemEnd, &itemScope, &itemStatus); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return in, ErrNotFound
+		}
+		return in, err
 	}
-	var resScope string
-	if err := db.QueryRowContext(ctx, `SELECT portfolio_scope_id FROM resources WHERE id=$1`, in.ResourceId).Scan(&resScope); err != nil {
+	if itemStatus != "PLANNED" {
+		return in, fmt.Errorf("%w: only a PLANNED schedule item takes reservations (status %s)", ErrInvalidTransition, itemStatus)
+	}
+	if in.StartAt.Before(itemStart) || in.EndAt.After(itemEnd) {
+		return in, fmt.Errorf("%w: reservation range is outside its schedule item range", ErrInvalid)
+	}
+	var resScope, resStatus string
+	var capacity int
+	if err := tx.QueryRowContext(ctx, `SELECT portfolio_scope_id,status,capacity FROM resources WHERE id=$1`, in.ResourceId).Scan(&resScope, &resStatus, &capacity); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return in, fmt.Errorf("%w: resource not found", ErrInvalid)
+		}
 		return in, err
 	}
 	if itemScope.Valid && itemScope.String != resScope {
 		return in, ErrCrossPortfolio
 	}
-	_, err := db.ExecContext(ctx, `INSERT INTO resource_reservations(id,schedule_item_id,resource_id,portfolio_scope_id,start_at,end_at,quantity,status,created_by,version) VALUES($1,$2,$3,$4,$5,$6,$7,'PENDING',$8,$9)`,
-		in.Id, in.ScheduleItemId, in.ResourceId, resScope, in.StartAt, in.EndAt, in.Quantity, "", in.Version)
-	in.Status = "PENDING"
-	return in, err
+	if resStatus != "ACTIVE" {
+		return in, fmt.Errorf("%w: resource is disabled", ErrInvalid)
+	}
+	if in.Quantity > capacity {
+		return in, fmt.Errorf("%w: quantity %d exceeds resource capacity %d", ErrInvalid, in.Quantity, capacity)
+	}
+	in.Status, in.Version = "PENDING", 1
+	if _, err := tx.ExecContext(ctx, `INSERT INTO resource_reservations(id,schedule_item_id,resource_id,portfolio_scope_id,start_at,end_at,quantity,status,created_by,version) VALUES($1,$2,$3,$4,$5,$6,$7,'PENDING',$8,1)`,
+		in.Id, in.ScheduleItemId, in.ResourceId, resScope, in.StartAt, in.EndAt, in.Quantity, actor); err != nil {
+		return in, err
+	}
+	return in, tx.Commit()
 }
+
+// ListReservations returns the reservations of one schedule item (all statuses, oldest first).
+func ListReservations(ctx context.Context, db *sql.DB, itemID string) ([]contract.ResourceReservation, error) {
+	rows, err := db.QueryContext(ctx, `SELECT id,schedule_item_id,resource_id,start_at,end_at,quantity,status,version FROM resource_reservations WHERE schedule_item_id=$1 ORDER BY created_at,id`, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []contract.ResourceReservation{}
+	for rows.Next() {
+		var v contract.ResourceReservation
+		if err := rows.Scan(&v.Id, &v.ScheduleItemId, &v.ResourceId, &v.StartAt, &v.EndAt, &v.Quantity, &v.Status, &v.Version); err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+// CancelReservation cancels a PENDING reservation of a PLANNED item (If-Match version). The row is
+// kept as CANCELLED; nothing is deleted.
+func CancelReservation(ctx context.Context, db *sql.DB, reservationID string, expectedVersion int64, actor, requestID string) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var itemID, status string
+	var version int64
+	if err := tx.QueryRowContext(ctx, `SELECT schedule_item_id,status,version FROM resource_reservations WHERE id=$1`, reservationID).Scan(&itemID, &status, &version); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	var itemStatus string
+	if err := tx.QueryRowContext(ctx, `SELECT status FROM schedule_items WHERE id=$1 FOR UPDATE`, itemID).Scan(&itemStatus); err != nil {
+		return err
+	}
+	if itemStatus != "PLANNED" || status != "PENDING" {
+		return fmt.Errorf("%w: only a PENDING reservation of a PLANNED item can be cancelled here", ErrInvalidTransition)
+	}
+	res, err := tx.ExecContext(ctx, `UPDATE resource_reservations SET status='CANCELLED',version=version+1,updated_at=now() WHERE id=$1 AND version=$2 AND status='PENDING'`, reservationID, expectedVersion)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		return ErrVersionConflict
+	}
+	if err := auditlog.Write(ctx, tx, auditlog.Event{Actor: actor, Action: "reservation_cancelled", Result: "success", RequestID: requestID}); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// CancelScheduleItem moves a PLANNED or APPROVED item to CANCELLED (If-Match version), cancels its
+// reservations (releasing approved capacity) and resolves its open conflicts. The approved history
+// stays: the item row is kept with status CANCELLED and the approval baselines are immutable.
+func CancelScheduleItem(ctx context.Context, db *sql.DB, itemID string, expectedVersion int64, reason, actor, requestID string) error {
+	if len([]rune(strings.TrimSpace(reason))) < 4 {
+		return fmt.Errorf("%w: a cancellation reason is required", ErrInvalid)
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var status string
+	if err := tx.QueryRowContext(ctx, `SELECT status FROM schedule_items WHERE id=$1 FOR UPDATE`, itemID).Scan(&status); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if status != "PLANNED" && status != "APPROVED" {
+		return fmt.Errorf("%w: %s cannot be cancelled", ErrInvalidTransition, status)
+	}
+	res, err := tx.ExecContext(ctx, `UPDATE schedule_items SET status='CANCELLED',version=version+1,updated_at=now() WHERE id=$1 AND version=$2`, itemID, expectedVersion)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		return ErrVersionConflict
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE resource_reservations SET status='CANCELLED',version=version+1,updated_at=now() WHERE schedule_item_id=$1 AND status IN ('PENDING','ACTIVE')`, itemID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE schedule_conflicts SET status='RESOLVED',resolved_at=now(),updated_at=now() WHERE (left_item_id=$1 OR right_item_id=$1) AND status='OPEN'`, itemID); err != nil {
+		return err
+	}
+	if err := auditlog.Write(ctx, tx, auditlog.Event{Actor: actor, Action: "schedule_cancelled", Result: "success", RequestID: requestID}); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+var (
+	resourceTypes = map[string]bool{"PERSON": true, "TEAM": true, "SITE": true, "WORKSHOP": true, "BAY": true, "RUNWAY": true, "ASSET": true, "TEST_EQUIPMENT": true, "TOOL": true, "VEHICLE": true, "COMMISSIONING_SLOT": true, "NETWORK_CUTOVER_SLOT": true, "OTHER": true}
+	sourceTypes   = map[string]bool{"PROJECT_ACTIVITY": true, "WORK_ORDER": true, "INSPECTION": true, "CALIBRATION": true, "COMMISSIONING": true, "SITE_WINDOW": true, "NETWORK_CUTOVER": true}
+	priorities    = map[string]bool{"LOW": true, "MEDIUM": true, "HIGH": true, "CRITICAL": true}
+)
 
 // timeInterval is a half-open local-time interval within one calendar day.
 type timeInterval struct {
@@ -516,6 +691,33 @@ func ReconcileConflicts(ctx context.Context, tx *sql.Tx, itemID string, current 
 	return nil
 }
 
+// recordConflicts re-detects and persists the conflicts of PLANNED items under the same resource
+// locks, without changing any item or reservation state.
+func recordConflicts(ctx context.Context, db *sql.DB, itemIDs []string) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	ids, err := resourceIDsForItems(ctx, tx, itemIDs)
+	if err != nil {
+		return err
+	}
+	if err := lockResources(ctx, tx, ids); err != nil {
+		return err
+	}
+	for _, id := range itemIDs {
+		conflicts, err := DetectConflicts(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if err := ReconcileConflicts(ctx, tx, id, conflicts); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func lockResources(ctx context.Context, tx *sql.Tx, resourceIDs []string) error {
 	sorted := append([]string(nil), resourceIDs...)
 	sort.Strings(sorted)
@@ -575,6 +777,9 @@ func ApproveSchedule(ctx context.Context, db *sql.DB, itemIDs []string, actor, r
 		var st string
 		var v int64
 		if err := tx.QueryRowContext(ctx, `SELECT status,version FROM schedule_items WHERE id=$1 FOR UPDATE`, id).Scan(&st, &v); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, ErrNotFound
+			}
 			return nil, err
 		}
 		if st != "PLANNED" {
@@ -614,6 +819,12 @@ func ApproveSchedule(ctx context.Context, db *sql.DB, itemIDs []string, actor, r
 		}
 	}
 	if len(hard) > 0 {
+		// The approval is refused; the detected conflicts are still recorded (in their own committed
+		// transaction) so planners and managers can see, override or re-plan them.
+		_ = tx.Rollback()
+		if err := recordConflicts(ctx, db, itemIDs); err != nil {
+			return hard, err
+		}
 		return hard, ErrHardConflict
 	}
 	for _, id := range itemIDs {
@@ -629,6 +840,9 @@ func ApproveSchedule(ctx context.Context, db *sql.DB, itemIDs []string, actor, r
 			return nil, err
 		}
 	}
+	if err := approvalBaselines(ctx, tx, itemIDs, actor); err != nil {
+		return nil, err
+	}
 	if err := auditlog.Write(ctx, tx, auditlog.Event{Actor: actor, Action: "schedule_approved", Result: "success", RequestID: requestID}); err != nil {
 		return nil, err
 	}
@@ -636,6 +850,77 @@ func ApproveSchedule(ctx context.Context, db *sql.DB, itemIDs []string, actor, r
 		return nil, err
 	}
 	return nil, nil
+}
+
+// approvalBaselines writes one immutable baseline per portfolio scope for an approval: the exact
+// approved items and their (now ACTIVE) reservations, with a sha256 of the snapshot. Baselines are
+// append-only; a later cancellation never edits them.
+func approvalBaselines(ctx context.Context, tx *sql.Tx, itemIDs []string, actor string) error {
+	type res struct {
+		Id         string    `json:"id"`
+		ResourceId string    `json:"resourceId"`
+		StartAt    time.Time `json:"startAt"`
+		EndAt      time.Time `json:"endAt"`
+		Quantity   int       `json:"quantity"`
+	}
+	type item struct {
+		Id           string    `json:"id"`
+		ProjectId    *string   `json:"projectId"`
+		Name         string    `json:"name"`
+		StartAt      time.Time `json:"startAt"`
+		EndAt        time.Time `json:"endAt"`
+		Version      int64     `json:"version"`
+		Reservations []res     `json:"reservations"`
+	}
+	byScope := map[string][]item{}
+	var scopes []string
+	for _, id := range itemIDs {
+		var it item
+		var scope string
+		if err := tx.QueryRowContext(ctx, `SELECT id,project_id,name,start_at,end_at,version,portfolio_scope_id FROM schedule_items WHERE id=$1`, id).Scan(&it.Id, &it.ProjectId, &it.Name, &it.StartAt, &it.EndAt, &it.Version, &scope); err != nil {
+			return err
+		}
+		rows, err := tx.QueryContext(ctx, `SELECT id,resource_id,start_at,end_at,quantity FROM resource_reservations WHERE schedule_item_id=$1 AND status='ACTIVE' ORDER BY id`, id)
+		if err != nil {
+			return err
+		}
+		it.Reservations = []res{}
+		for rows.Next() {
+			var r res
+			if err := rows.Scan(&r.Id, &r.ResourceId, &r.StartAt, &r.EndAt, &r.Quantity); err != nil {
+				rows.Close()
+				return err
+			}
+			it.Reservations = append(it.Reservations, r)
+		}
+		rows.Close()
+		if _, ok := byScope[scope]; !ok {
+			scopes = append(scopes, scope)
+		}
+		byScope[scope] = append(byScope[scope], it)
+	}
+	sort.Strings(scopes)
+	for _, scope := range scopes {
+		var next int
+		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(max(baseline_version),0)+1 FROM schedule_baselines WHERE portfolio_scope_id=$1`, scope).Scan(&next); err != nil {
+			return err
+		}
+		snapshot, err := json.Marshal(map[string]any{"items": byScope[scope]})
+		if err != nil {
+			return err
+		}
+		sum := sha256.Sum256(snapshot)
+		var project *string
+		if items := byScope[scope]; len(items) == 1 {
+			project = items[0].ProjectId
+		}
+		name := fmt.Sprintf("审批 %d 项排期", len(byScope[scope]))
+		if _, err := tx.ExecContext(ctx, `INSERT INTO schedule_baselines(id,portfolio_scope_id,project_id,name,baseline_version,approved_by,approved_at,snapshot_json,snapshot_sha256) VALUES($1,$2,$3,$4,$5,$6,now(),$7,$8)`,
+			platform.ID(), scope, project, name, next, actor, snapshot, hex.EncodeToString(sum[:])); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // CreateBaseline writes an immutable snapshot; adjustments create a new
@@ -653,50 +938,95 @@ func CreateBaseline(ctx context.Context, db *sql.DB, in contract.ScheduleBaselin
 // conflict (override_allowed=false) can never be overridden. The caller has
 // already checked the schedule_override capability.
 func OverrideConflict(ctx context.Context, db *sql.DB, conflictID int64, reason, actor, requestID string) error {
-	if len(reason) < 8 {
+	if len([]rune(strings.TrimSpace(reason))) < 8 {
 		return ErrShortReason
 	}
-	var resourceID sql.NullString
-	if err := db.QueryRowContext(ctx, `SELECT resource_id FROM schedule_conflicts WHERE id=$1`, conflictID).Scan(&resourceID); err != nil {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
 		return err
+	}
+	defer tx.Rollback()
+	var resourceID sql.NullString
+	var conflictType string
+	if err := tx.QueryRowContext(ctx, `SELECT resource_id,conflict_type FROM schedule_conflicts WHERE id=$1 FOR UPDATE`, conflictID).Scan(&resourceID, &conflictType); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if conflictType == "DEPENDENCY_VIOLATION" {
+		// A dependency violation is fixed by re-planning, never overridden.
+		return ErrHardOverride
 	}
 	if resourceID.Valid {
 		var overrideAllowed bool
-		if err := db.QueryRowContext(ctx, `SELECT override_allowed FROM resources WHERE id=$1`, resourceID.String).Scan(&overrideAllowed); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT override_allowed FROM resources WHERE id=$1`, resourceID.String).Scan(&overrideAllowed); err != nil {
 			return err
 		}
-		if !overrideAllowed {
+		if !overrideAllowed && conflictType != "CALENDAR_UNAVAILABLE" {
 			return ErrHardOverride
 		}
 	}
-	if _, err := db.ExecContext(ctx, `UPDATE schedule_conflicts SET status='OVERRIDDEN',resolved_at=now(),updated_at=now() WHERE id=$1 AND status='OPEN'`, conflictID); err != nil {
+	res, err := tx.ExecContext(ctx, `UPDATE schedule_conflicts SET status='OVERRIDDEN',resolved_at=now(),updated_at=now() WHERE id=$1 AND status='OPEN'`, conflictID)
+	if err != nil {
 		return err
 	}
-	if _, err := db.ExecContext(ctx, `INSERT INTO schedule_conflict_overrides(conflict_id,reason,overridden_by,overridden_at,request_id) VALUES($1,$2,$3,now(),$4)`, conflictID, reason, actor, requestID); err != nil {
+	if n, _ := res.RowsAffected(); n != 1 {
+		return fmt.Errorf("%w: conflict is no longer open", ErrInvalidTransition)
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO schedule_conflict_overrides(conflict_id,reason,overridden_by,overridden_at,request_id) VALUES($1,$2,$3,now(),$4)`, conflictID, strings.TrimSpace(reason), actor, requestID); err != nil {
 		return err
 	}
-	return auditlog.Write(ctx, db, auditlog.Event{Actor: actor, Action: "conflict_override", Result: "success", RequestID: requestID})
+	if err := auditlog.Write(ctx, tx, auditlog.Event{Actor: actor, Action: "conflict_override", Result: "success", RequestID: requestID}); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // CalendarRule is a weekly availability rule expressed as local wall-clock time.
 type CalendarRule struct {
-	Weekday      int
-	StartLocal   string
-	EndLocal     string
-	Availability string
+	Weekday      int    `json:"weekday"`
+	StartLocal   string `json:"startLocal"`
+	EndLocal     string `json:"endLocal"`
+	Availability string `json:"availability"`
 }
 
 // ReplaceCalendar atomically replaces a resource calendar's timezone and weekly
 // rules. The expected version provides optimistic concurrency.
 func ReplaceCalendar(ctx context.Context, db *sql.DB, resourceID, timezone string, rules []CalendarRule, expectedVersion int64) error {
+	if _, err := time.LoadLocation(timezone); err != nil || timezone == "" {
+		return fmt.Errorf("%w: invalid timezone", ErrInvalid)
+	}
+	seen := map[int]bool{}
+	for i, r := range rules {
+		if r.Weekday < 0 || r.Weekday > 6 || seen[r.Weekday] {
+			return fmt.Errorf("%w: rule %d: weekday 0..6, at most one rule per weekday", ErrInvalid, i+1)
+		}
+		seen[r.Weekday] = true
+		s, e1 := time.Parse("15:04", r.StartLocal)
+		e, e2 := time.Parse("15:04", r.EndLocal)
+		if e1 != nil || e2 != nil || !e.After(s) {
+			return fmt.Errorf("%w: rule %d: HH:MM times with end after start", ErrInvalid, i+1)
+		}
+		if r.Availability != "AVAILABLE" && r.Availability != "UNAVAILABLE" {
+			return fmt.Errorf("%w: rule %d: availability AVAILABLE or UNAVAILABLE", ErrInvalid, i+1)
+		}
+	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	var calID string
+	// Serialize calendar writers per resource (the first write has no row to lock yet).
+	if _, err := tx.ExecContext(ctx, `SELECT 1 FROM resources WHERE id=$1 FOR UPDATE`, resourceID); err != nil {
+		return err
+	}
 	err = tx.QueryRowContext(ctx, `SELECT id FROM resource_calendars WHERE resource_id=$1`, resourceID).Scan(&calID)
 	if errors.Is(err, sql.ErrNoRows) {
+		if expectedVersion != 0 {
+			return ErrVersionConflict
+		}
 		calID = platform.ID()
 		if _, err := tx.ExecContext(ctx, `INSERT INTO resource_calendars(id,resource_id,timezone,version) VALUES($1,$2,$3,1)`, calID, resourceID, timezone); err != nil {
 			return err
@@ -704,8 +1034,12 @@ func ReplaceCalendar(ctx context.Context, db *sql.DB, resourceID, timezone strin
 	} else if err != nil {
 		return err
 	} else {
-		if _, err := tx.ExecContext(ctx, `UPDATE resource_calendars SET timezone=$2,version=version+1,updated_at=now() WHERE id=$1 AND version=$3`, calID, timezone, expectedVersion); err != nil {
+		res, err := tx.ExecContext(ctx, `UPDATE resource_calendars SET timezone=$2,version=version+1,updated_at=now() WHERE id=$1 AND version=$3`, calID, timezone, expectedVersion)
+		if err != nil {
 			return err
+		}
+		if n, _ := res.RowsAffected(); n != 1 {
+			return ErrVersionConflict
 		}
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM resource_calendar_rules WHERE calendar_id=$1`, calID); err != nil {
@@ -740,4 +1074,36 @@ func CreateDependency(ctx context.Context, db *sql.DB, in contract.ScheduleDepen
 		return err
 	}
 	return tx.Commit()
+}
+
+// Calendar is the read model of a resource calendar: version 0 and no rules when none exists yet.
+type Calendar struct {
+	Id       string         `json:"id"`
+	Timezone string         `json:"timezone"`
+	Version  int64          `json:"version"`
+	Rules    []CalendarRule `json:"rules"`
+}
+
+func GetCalendar(ctx context.Context, db *sql.DB, resourceID string) (Calendar, error) {
+	c := Calendar{Timezone: "Asia/Shanghai", Rules: []CalendarRule{}}
+	err := db.QueryRowContext(ctx, `SELECT id,timezone,version FROM resource_calendars WHERE resource_id=$1`, resourceID).Scan(&c.Id, &c.Timezone, &c.Version)
+	if errors.Is(err, sql.ErrNoRows) {
+		return c, nil
+	}
+	if err != nil {
+		return c, err
+	}
+	rows, err := db.QueryContext(ctx, `SELECT weekday,to_char(start_local,'HH24:MI'),to_char(end_local,'HH24:MI'),availability FROM resource_calendar_rules WHERE calendar_id=$1 ORDER BY weekday`, c.Id)
+	if err != nil {
+		return c, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var r CalendarRule
+		if err := rows.Scan(&r.Weekday, &r.StartLocal, &r.EndLocal, &r.Availability); err != nil {
+			return c, err
+		}
+		c.Rules = append(c.Rules, r)
+	}
+	return c, rows.Err()
 }

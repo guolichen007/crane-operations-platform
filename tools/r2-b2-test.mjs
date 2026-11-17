@@ -120,6 +120,8 @@ const h21aPackages = [
     // R7 F-09 / F-10
     'TestR7AssetCodeDuplicateHTTP',
     'TestR7AssetTypeConstraintHTTP',
+    // R8 resource & schedule workflow (create/calendar/reserve/approve/conflict/override/cancel/history)
+    'TestR8ScheduleWorkflowHTTP',
   ]],
   // R7 controlled runtime identity registration (SIMULATION/TEST only, plan/apply/verify).
   ['r7-runtimeidentity', './internal/runtimeidentity', [

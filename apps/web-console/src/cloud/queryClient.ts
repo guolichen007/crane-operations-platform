@@ -37,7 +37,7 @@ if (typeof window !== 'undefined') window.addEventListener('cloud-identity-chang
  * on a portfolio action, or entering the portfolio page), every cached portfolio result is reset —
  * the previous data is dropped, not kept as stale — and re-read under the caller's current scope.
  */
-export const PORTFOLIO_QUERY_KEYS = ['portfolio-scopes', 'intakes', 'resources', 'schedule-items', 'conflicts', 'portfolio-projects', 'project-members'] as const;
+export const PORTFOLIO_QUERY_KEYS = ['portfolio-scopes', 'intakes', 'resources', 'schedule-items', 'conflicts', 'baselines', 'reservations', 'portfolio-projects', 'project-members'] as const;
 export function resetPortfolioScope() {
   return queryClient
     .resetQueries({ predicate: (q) => (PORTFOLIO_QUERY_KEYS as readonly string[]).includes(String(q.queryKey[0])) })

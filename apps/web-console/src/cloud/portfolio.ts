@@ -35,10 +35,11 @@ export const approveIntake = (id: string) =>
 export const listResources = () => api<Resource[]>('portfolio/resources');
 export const createResource = (input: Resource) =>
   api<Resource>('portfolio/resources', { method: 'POST', body: input });
-export const getResourceCalendar = (id: string) =>
-  api<{ timezone: string; rules: unknown[] }>(`portfolio/resources/${encodeURIComponent(id)}/calendar`);
-export const putResourceCalendar = (id: string, timezone: string, version: number, rules: unknown[]) =>
-  api<{ status: string }>(`portfolio/resources/${encodeURIComponent(id)}/calendar`, {
+export type CalendarRule = { weekday: number; startLocal: string; endLocal: string; availability: 'AVAILABLE' | 'UNAVAILABLE' };
+export type ResourceCalendar = { id: string; timezone: string; version: number; rules: CalendarRule[] };
+export const getResourceCalendar = (id: string) => api<ResourceCalendar>(`portfolio/resources/${encodeURIComponent(id)}/calendar`);
+export const putResourceCalendar = (id: string, timezone: string, version: number, rules: CalendarRule[]) =>
+  api<ResourceCalendar>(`portfolio/resources/${encodeURIComponent(id)}/calendar`, {
     method: 'PUT',
     body: { timezone, version, rules },
   });
@@ -53,6 +54,12 @@ export const createReservation = (itemId: string, input: ResourceReservation) =>
   });
 export const approveSchedule = (itemIds: string[]) =>
   api<{ status: string }>('portfolio/schedule/approve', { method: 'POST', body: { itemIds } });
+export const listReservations = (itemId: string) =>
+  api<ResourceReservation[]>(`portfolio/schedule/items/${encodeURIComponent(itemId)}/reservations`);
+export const cancelReservation = (id: string, version: number) =>
+  api<{ status: string }>(`portfolio/reservations/${encodeURIComponent(id)}/cancel`, { method: 'POST', body: {}, ifMatch: version });
+export const cancelScheduleItem = (id: string, version: number, reason: string) =>
+  api<{ status: string }>(`portfolio/schedule/items/${encodeURIComponent(id)}/cancel`, { method: 'POST', body: { reason }, ifMatch: version });
 
 export const listDependencies = () => api<ScheduleDependency[]>('portfolio/schedule/dependencies');
 export const createDependency = (input: ScheduleDependency) =>
