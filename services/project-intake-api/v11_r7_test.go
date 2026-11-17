@@ -171,8 +171,10 @@ func TestDatabaseV11R7ProfileVersion(t *testing.T) {
 	if read().Name != "主管更正的姓名" {
 		t.Fatal("stale submission overwrote the correction")
 	}
-	// Reverse: the supervisor works from a stale staff version after the
-	// member's own change.
+	// Reverse: the supervisor reads the staff version BEFORE the member's own
+	// change and submits with it afterwards (the real stale page).
+	_ = f.db.QueryRow(ctx, `SELECT staff_version FROM app_users WHERE subject='synthetic-b'`).Scan(&staffVersion)
+	stalePage := staffVersion
 	cur := read()
 	s, body = b.call("PATCH", "/api/v1/me/profile", map[string]any{"name": "本人新姓名", "reason": "", "version": cur.Version})
 	expect(t, s, 200, body)
@@ -180,8 +182,7 @@ func TestDatabaseV11R7ProfileVersion(t *testing.T) {
 	if self.Version != cur.Version+1 {
 		t.Fatal("own change must advance exactly once", cur.Version, self.Version)
 	}
-	_ = f.db.QueryRow(ctx, `SELECT staff_version FROM app_users WHERE subject='synthetic-b'`).Scan(&staffVersion)
-	s, body = f.manager.call("PATCH", "/api/v1/staff/"+staffIDOf(t, f.db, "synthetic-b"), map[string]any{"name": "主管覆盖", "phone": "", "email": "synthetic-b@example.test", "teamId": syntheticTeam, "role": salesRole, "reason": "旧页面", "version": staffVersion - 1})
+	s, body = f.manager.call("PATCH", "/api/v1/staff/"+staffIDOf(t, f.db, "synthetic-b"), map[string]any{"name": "主管覆盖", "phone": "", "email": "synthetic-b@example.test", "teamId": syntheticTeam, "role": salesRole, "reason": "旧页面", "version": stalePage})
 	expect(t, s, 409, body)
 	if read().Name != "本人新姓名" {
 		t.Fatal("stale staff edit overwrote the member's change")
@@ -361,5 +362,69 @@ func TestDatabaseV11R7BackupTableList(t *testing.T) {
 	}
 	if n < 40 {
 		t.Fatal("schema too small", n)
+	}
+}
+
+// R7-D2: the reverse race with a real staff-managed member (as created by
+// staff management): the supervisor reads staff version S0 BEFORE the member
+// renames, then submits the original name with S0. Must be 409; the member's
+// name stays. And the forward direction with the member's real P0.
+func TestDatabaseV11R7ProfileVersionManaged(t *testing.T) {
+	f := g1FixtureFor(t)
+	ctx := context.Background()
+	g1Exec(t, f.db, `UPDATE app_users SET staff_managed=true WHERE subject='synthetic-b'`)
+	b := login(t, f.server, "synthetic-b")
+	member := staffIDOf(t, f.db, "synthetic-b")
+	versions := func() (staff, profile int, name string) {
+		_ = f.db.QueryRow(ctx, `SELECT staff_version,profile_version,display_name FROM app_users WHERE subject='synthetic-b'`).Scan(&staff, &profile, &name)
+		return
+	}
+	edit := func(name string, version int) (int, []byte) {
+		return f.manager.call("PATCH", "/api/v1/staff/"+member, map[string]any{"name": name, "phone": "", "email": "synthetic-b@example.test", "teamId": syntheticTeam, "role": salesRole, "reason": "主管编辑", "version": version})
+	}
+	own := func(name string, version int) (int, []byte) {
+		return b.call("PATCH", "/api/v1/me/profile", map[string]any{"name": name, "reason": "", "version": version})
+	}
+	auditRows := func() int {
+		return countRows(t, f.db, `SELECT count(*) FROM profile_audit a JOIN app_users u ON u.staff_id=a.staff_id WHERE u.subject='synthetic-b'`)
+	}
+	// Reverse: supervisor page S0, member renames, supervisor submits S0.
+	s0, p0, original := versions()
+	s, body := own("本人改名甲", p0)
+	expect(t, s, 200, body)
+	s1, p1, _ := versions()
+	if s1 != s0+1 || p1 != p0+1 {
+		t.Fatalf("own rename must advance both versions once: staff %d->%d profile %d->%d", s0, s1, p0, p1)
+	}
+	s, body = edit(original, s0)
+	expect(t, s, 409, body)
+	if _, _, n := versions(); n != "本人改名甲" {
+		t.Fatal("stale supervisor edit overwrote the member's name", n)
+	}
+	// Forward: member page P (current), supervisor renames with the real
+	// current staff version, member submits the old P.
+	_, pPage, _ := versions()
+	sNow, _, _ := versions()
+	s, body = edit("主管更正乙", sNow)
+	expect(t, s, 200, body)
+	s2, p2, _ := versions()
+	if s2 != sNow+1 || p2 != pPage+1 {
+		t.Fatalf("staff rename must advance both versions once: staff %d->%d profile %d->%d", sNow, s2, pPage, p2)
+	}
+	s, body = own("本人旧页面", pPage)
+	expect(t, s, 409, body)
+	if _, _, n := versions(); n != "主管更正乙" {
+		t.Fatal("stale own edit overwrote the correction", n)
+	}
+	// Non-name staff edit: staff version only.
+	_, pBefore, _ := versions()
+	sBefore, _, _ := versions()
+	s, body = f.manager.call("PATCH", "/api/v1/staff/"+member, map[string]any{"name": "主管更正乙", "phone": "", "email": "synthetic-b@example.test", "teamId": syntheticTeam, "role": salesRole, "note": "仅备注", "reason": "备注", "version": sBefore})
+	expect(t, s, 200, body)
+	if s3, p3, _ := versions(); s3 != sBefore+1 || p3 != pBefore {
+		t.Fatal("note edit versions", s3, p3)
+	}
+	if auditRows() != 2 {
+		t.Fatal("audit rows", auditRows())
 	}
 }

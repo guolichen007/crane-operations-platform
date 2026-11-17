@@ -16,6 +16,7 @@ import Profile from './Profile.vue';
 import Followups from './Followups.vue';
 import Customers from './Customers.vue';
 import { useApp } from './store';
+import { rememberScroll } from './scroll-memory';
 import { routeAllowed } from './navigation';
 import { loginErrorMessage } from './login-errors';
 import { clearStaffDraft, draftPath, readStaffDraft } from './staff-role-draft';
@@ -45,6 +46,10 @@ const router = createRouter({
     { path: '/projects/:id/edit', component: Wizard },
     { path: '/projects/:id', component: Detail },
   ],
+});
+// AC-13: the list's scroll position is remembered when leaving it.
+router.beforeEach((to, from) => {
+  if (from.path === '/projects' && to.path !== from.path) rememberScroll(from.fullPath);
 });
 router.beforeEach(async (to) => {
   const app = useApp(pinia);

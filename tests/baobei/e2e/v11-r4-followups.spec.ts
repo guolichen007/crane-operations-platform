@@ -74,7 +74,13 @@ test('V1.1 R4 跟进中心：四个时间窗口、登记跟进后移动、首页
   // In-app reminder badge on the navigation: overdue + today, from the server.
   await page.goto('/');
   const badge = page.getByTestId('followup-reminder');
-  if (center.overdue + center.today > 0) await expect(badge).toHaveText(String(center.overdue + center.today));
+  if (center.overdue + center.today > 0) {
+    await expect(badge).toHaveText(String(center.overdue + center.today));
+    // The badge never changes the entry's accessible name (CI 44038625800:
+    // exact-name navigation broke once the shared database had reminders).
+    if ((page.viewportSize()?.width ?? 1440) > 700)
+      await expect(page.getByRole('button', { name: '跟进中心', exact: true })).toBeVisible();
+  }
   else await expect(badge).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect(errors).toEqual([]);

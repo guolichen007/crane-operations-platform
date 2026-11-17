@@ -116,17 +116,21 @@ window.addEventListener('error', showError);
             :class="{ active: active(item.path) }"
             :aria-current="active(item.path) ? 'page' : undefined"
             :title="item.label"
+            :aria-label="item.label"
+            :aria-describedby="item.path === '/followups' && reminderText ? 'followup-reminder-text' : undefined"
             :run="() => router.push(item.path)"
           >
             <component :is="icons[item.icon as keyof typeof icons]" :size="17" aria-hidden="true" />{{ item.label }}<span
               v-if="item.path === '/followups' && reminderText"
               :class="['nav-badge', { late: (reminder?.overdue ?? 0) > 0 }]"
               data-testid="followup-reminder"
-              :aria-label="'已逾期 ' + reminder?.overdue + ' 项，今天 ' + reminder?.today + ' 项'"
+              aria-hidden="true"
             >{{ reminderText }}</span>
           </ActionButton>
         </template>
       </nav>
+      <!-- V1.1 R4: the reminder is a description of the nav entry; its name stays "跟进中心". -->
+      <span v-if="reminderText" id="followup-reminder-text" class="sr-only">已逾期 {{ reminder?.overdue }} 项，今天 {{ reminder?.today }} 项</span>
       <div class="sidebar-footer">
         <span class="account-role">{{ roleLabel(app.user.role) }}</span>
         <span>{{ app.user.name }}</span>

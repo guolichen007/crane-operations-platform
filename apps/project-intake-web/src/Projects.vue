@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, watch, computed, onBeforeUnmount } from 'vue';
+import { ref, watch, computed, onBeforeUnmount, nextTick } from 'vue';
+import { restoreScroll } from './scroll-memory';
 import { useRouter, useRoute } from 'vue-router';
 import { Search, SlidersHorizontal, ArrowUpRight, List, Columns3 } from '@lucide/vue';
 import { readFilters, writeFilters, toPipeline, scopeParams } from './view-state';
@@ -38,6 +39,7 @@ const app = useApp(),
   failure = ref(''),
   followup = ref<'overdue' | 'upcoming'>(route.query.window === 'upcoming' ? 'upcoming' : 'overdue');
 let generation = 0;
+let restored = false;
 const view = computed(() =>
   route.path === '/followups' ? 'followups' : route.path === '/unassigned' ? 'unassigned' : route.path === '/recycle-bin' ? 'bin' : 'projects'
 );
@@ -90,6 +92,14 @@ async function load() {
       items.value = b.items;
       total.value = b.total;
       asOf.value = b.asOf;
+      // AC-13: back from a project restores where the user was in this list.
+      if (!restored) {
+        restored = true;
+        await nextTick();
+        // Two frames: let late layout (scope picker, badges) settle first.
+        const at = route.fullPath;
+        requestAnimationFrame(() => requestAnimationFrame(() => restoreScroll(at)));
+      }
     }
   } catch (e) {
     if (n === generation) failure.value = recovery(e).message;

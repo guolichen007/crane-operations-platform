@@ -113,7 +113,22 @@ func TestDatabaseV11TechnicalBrief(t *testing.T) {
 	q = briefOf(t, ma, p.ID).Questions[0]
 	s, b = ma.call("POST", "/api/v1/projects/"+p.ID+"/technical-brief/questions/"+q.ID+"/close", map[string]any{"version": q.Version})
 	expect(t, s, 200, b)
-	if n := countRows(t, f.db, `SELECT count(*) FROM project_technical_question_events WHERE question_id='`+q.ID+`'`); n != 3 {
+	// Reopen by the owner, answer again is possible, close again.
+	q = briefOf(t, a1, p.ID).Questions[0]
+	if q.Status != "CLOSED" {
+		t.Fatal("closed", q.Status)
+	}
+	s, b = a1.call("POST", "/api/v1/projects/"+p.ID+"/technical-brief/questions/"+q.ID+"/reopen", map[string]any{"version": q.Version})
+	expect(t, s, 200, b)
+	q = briefOf(t, a1, p.ID).Questions[0]
+	if q.Status != "OPEN" || q.Answer == "" {
+		t.Fatal("reopen must keep the earlier answer", q.Status, q.Answer)
+	}
+	s, b = c1.call("POST", "/api/v1/projects/"+p.ID+"/technical-brief/questions/"+q.ID+"/close", map[string]any{"version": q.Version})
+	expect(t, s, 404, b)
+	s, b = ma.call("POST", "/api/v1/projects/"+p.ID+"/technical-brief/questions/"+q.ID+"/close", map[string]any{"version": q.Version})
+	expect(t, s, 200, b)
+	if n := countRows(t, f.db, `SELECT count(*) FROM project_technical_question_events WHERE question_id='`+q.ID+`'`); n != 5 {
 		t.Fatal("question events", n)
 	}
 	if _, err := f.db.Exec(ctx, `DELETE FROM project_technical_question_events`); !isCode(err, "BB002") {
