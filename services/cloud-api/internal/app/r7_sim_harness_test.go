@@ -91,7 +91,7 @@ func writePEM(t *testing.T, path, kind string, der []byte) {
 func newSimPKI(t *testing.T, root string) *simPKI {
 	t.Helper()
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	tmpl := &x509.Certificate{SerialNumber: big.NewInt(time.Now().UnixNano()), Subject: pkix.Name{CommonName: "R7 SIM-E2E Development CA"}, NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(24 * time.Hour), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(time.Now().UnixNano()), Subject: pkix.Name{CommonName: "R7 SIM-E2E Development CA"}, NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(72 * time.Hour), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
 	if err != nil {
 		t.Fatal(err)
@@ -213,6 +213,7 @@ type simProxy struct {
 	conns    []net.Conn
 	refusing atomic.Bool
 	drops    atomic.Int64
+	accepts  atomic.Int64 // TCP connections relayed to the broker (each reconnect is one more)
 }
 
 func newSimProxy(t *testing.T, target string) *simProxy {
@@ -240,6 +241,7 @@ func newSimProxy(t *testing.T, target string) *simProxy {
 			p.mu.Lock()
 			p.conns = append(p.conns, c, up)
 			p.mu.Unlock()
+			p.accepts.Add(1)
 			go func() { _, _ = io.Copy(up, c); _ = up.Close() }()
 			go func() { _, _ = io.Copy(c, up); _ = c.Close() }()
 		}

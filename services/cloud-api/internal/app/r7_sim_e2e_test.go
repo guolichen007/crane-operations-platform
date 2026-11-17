@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	goruntime "runtime"
 	"strconv"
-	"sync"
 	"testing"
 	"time"
 
@@ -16,6 +16,7 @@ import (
 	"github.com/guolichen007/crane-operations-platform/internal/auditlog"
 	"github.com/guolichen007/crane-operations-platform/internal/identity"
 	"github.com/guolichen007/crane-operations-platform/internal/platform"
+	"github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/telemetry"
 )
 
 // R7 SIM-E2E scenarios. Each asserts against PostgreSQL and the real BFF/WebSocket; nothing here
@@ -442,10 +443,21 @@ func TestR7Sim5DevicesRolesIsolationRevocation(t *testing.T) {
 	}
 }
 
+// R7/R8 LIVE latency target (Edge sentAt → Cloud receive, P95). No separate document fixes an
+// edge→cloud number; the protocol does: LIVE is sampled at exactly 1 Hz (docs/02-云边协议/实时会话协议.md),
+// so a sample must reach the cloud within one sampling period — otherwise the live view lags a full
+// sample behind. Measured in R7: P95 19.2 ms.
+const simLiveP95TargetMs = 1000.0
+
 // 20 devices: capacity and (optionally) a long soak. R7_SIM_SOAK_MINUTES=60 runs the 60-minute
-// soak (local/manual evidence); the default CI run holds 20 devices for R7_SIM_SOAK_SECONDS (90).
+// soak (manual / server evidence); the default CI run holds 20 devices for R7_SIM_SOAK_SECONDS (90).
 // During the run: every device stays registered, a rolling WATCH keeps one device LIVE, two
-// devices drop/reconnect on schedule, and the cloud runtime restarts once.
+// devices drop/reconnect every 30 s, the cloud runtime restarts once, one device runs alarm-storm.
+// Hard assertions (R8): every SQL read succeeds; the run really lasted the requested time; the
+// faults really happened (drops counted per proxy, a reconnect after each drop, one cloud restart);
+// persisted LIVE samples exist only for the watched device and match the sampling policy
+// (telemetry.SampleInterval) for the duration; P95 latency within simLiveP95TargetMs; alarms
+// present with zero duplicates; all 20 reconnected. Resource trend is recorded every minute.
 func TestR7Sim20DevicesSoak(t *testing.T) {
 	specs := []simSpec{}
 	for i := 1; i <= 20; i++ {
@@ -480,15 +492,34 @@ func TestR7Sim20DevicesSoak(t *testing.T) {
 	if v, err := strconv.Atoi(os.Getenv("R7_SIM_SOAK_MINUTES")); err == nil && v > 0 {
 		duration = time.Duration(v) * time.Minute
 	}
+	q := func(label string, query string, args []any, dest ...any) {
+		t.Helper()
+		if err := e.db.QueryRow(query, args...).Scan(dest...); err != nil {
+			t.Fatalf("soak query %s: %v", label, err)
+		}
+	}
+	resources := func(phase string) map[string]any {
+		var ms goruntime.MemStats
+		goruntime.ReadMemStats(&ms)
+		var conns, alarmsNow, samplesNow int
+		q("pg connections", `SELECT count(*) FROM pg_stat_activity WHERE datname=current_database()`, nil, &conns)
+		q("alarms so far", `SELECT count(*) FROM alarms WHERE device_id LIKE 'SIM-R7-C%'`, nil, &alarmsNow)
+		q("samples so far", `SELECT count(*) FROM telemetry_samples WHERE device_id LIKE 'SIM-R7-C%'`, nil, &samplesNow)
+		v := map[string]any{"phase": phase, "elapsedSec": int(time.Since(start).Seconds()), "goroutines": goruntime.NumGoroutine(), "heapMB": ms.HeapAlloc / (1 << 20), "pgConnections": conns, "alarms": alarmsNow, "liveSamples": samplesNow, "connected": all()}
+		simRecord(t, "SOAK_RESOURCES", v)
+		return v
+	}
+	baseline := resources("start")
 	var lease contract.LiveSession
 	if e.call(admin, "POST", "/api/v1/devices/SIM-R7-C01/live-sessions", &lease) != 201 {
 		t.Fatal("watch")
 	}
-	end := time.Now().Add(duration)
+	watchStart := time.Now()
+	end := watchStart.Add(duration)
 	var minConnected = 20
 	var cloudRestarted bool
-	var mu sync.Mutex
-	ticks := 0
+	ticks, scheduledDrops := 0, 0
+	nextTrend := time.Now().Add(time.Minute)
 	for time.Now().Before(end) {
 		time.Sleep(5 * time.Second)
 		ticks++
@@ -499,6 +530,7 @@ func TestR7Sim20DevicesSoak(t *testing.T) {
 			for _, id := range []string{"SIM-R7-C07", "SIM-R7-C13"} {
 				e.proxies[id].dropAll()
 			}
+			scheduledDrops++
 		}
 		if !cloudRestarted && time.Until(end) < duration/2 {
 			e.stopCloud()
@@ -506,26 +538,81 @@ func TestR7Sim20DevicesSoak(t *testing.T) {
 			cloudRestarted = true
 			simRecord(t, "FAULT", map[string]any{"target": "cloud-runtime", "kind": "restart"})
 		}
-		mu.Lock()
 		if c := all(); c < minConnected {
 			minConnected = c
 		}
-		mu.Unlock()
+		if time.Now().After(nextTrend) {
+			resources("running")
+			nextTrend = nextTrend.Add(time.Minute)
+		}
+	}
+	held := time.Since(watchStart)
+	// Recovery is bounded: every drop must be followed by a new broker connection within 60 s (the
+	// shadow alone cannot show it — a short drop stays within the delayed Will and never goes offline).
+	for _, id := range []string{"SIM-R7-C07", "SIM-R7-C13"} {
+		p := e.proxies[id]
+		e.until(id+" reconnected after every drop", 60*time.Second, func() bool { return p.accepts.Load()-1 >= p.drops.Load() })
 	}
 	e.until("all 20 reconnected at the end", 60*time.Second, func() bool { return all() == 20 })
+	final := resources("end")
+
+	// Faults really happened and every dropped device reconnected after each drop.
+	faults := map[string]any{}
+	for _, id := range []string{"SIM-R7-C07", "SIM-R7-C13"} {
+		p := e.proxies[id]
+		drops, accepts := p.drops.Load(), p.accepts.Load()
+		faults[id] = map[string]int64{"drops": drops, "reconnects": accepts - 1}
+		if scheduledDrops == 0 || drops < int64(scheduledDrops) {
+			t.Fatalf("%s: %d drops recorded, %d scheduled — fault injection did not happen", id, drops, scheduledDrops)
+		}
+		// the first accept is the initial connection; every drop must be followed by a new one
+		if accepts-1 < int64(scheduledDrops) {
+			t.Fatalf("%s: %d reconnects after %d drops — connection not recovered", id, accepts-1, scheduledDrops)
+		}
+	}
+	if !cloudRestarted {
+		t.Fatal("cloud runtime restart did not happen")
+	}
+	if held < duration {
+		t.Fatalf("soak held %s, requested %s", held, duration)
+	}
+
+	// LIVE samples: only the watched device, persisted per the sampling policy for the whole run.
+	var samples, sampleDevices, otherDevices int
 	var p50, p95, p99 float64
-	var samples int
-	_ = e.db.QueryRow(`SELECT count(*), coalesce(percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM cloud_received_at-source_sent_at)*1000),0),
+	q("latency", `SELECT count(*), coalesce(percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM cloud_received_at-source_sent_at)*1000),0),
 	  coalesce(percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM cloud_received_at-source_sent_at)*1000),0),
 	  coalesce(percentile_cont(0.99) WITHIN GROUP (ORDER BY extract(epoch FROM cloud_received_at-source_sent_at)*1000),0)
-	  FROM telemetry_samples WHERE device_id LIKE 'SIM-R7-C%'`).Scan(&samples, &p50, &p95, &p99)
-	var dupes, alarms, shadows int
-	_ = e.db.QueryRow(`SELECT count(*) FROM (SELECT payload_json->>'messageId' FROM alarms GROUP BY 1 HAVING count(*)>1) x`).Scan(&dupes)
-	_ = e.db.QueryRow(`SELECT count(*) FROM alarms WHERE device_id='SIM-R7-C20'`).Scan(&alarms)
-	_ = e.db.QueryRow(`SELECT count(*) FROM device_shadow WHERE device_id LIKE 'SIM-R7-C%'`).Scan(&shadows)
-	simRecord(t, "SIM_20_DEVICES", map[string]any{"durationSec": int(duration.Seconds()), "connectAllMs": connectAll.Milliseconds(), "minConnectedDuringFaults": minConnected, "shadows": shadows, "alarms": alarms, "duplicateAlarms": dupes, "cloudRestarted": cloudRestarted, "liveSamples": samples, "latencyMs": map[string]float64{"p50": p50, "p95": p95, "p99": p99}})
-	if dupes != 0 || shadows != 20 || alarms == 0 {
-		t.Fatalf("soak invariants: dupes=%d shadows=%d alarms=%d", dupes, shadows, alarms)
+	  FROM telemetry_samples WHERE device_id LIKE 'SIM-R7-C%'`, nil, &samples, &p50, &p95, &p99)
+	q("sample devices", `SELECT count(DISTINCT device_id), count(DISTINCT device_id) FILTER (WHERE device_id<>'SIM-R7-C01') FROM telemetry_samples WHERE device_id LIKE 'SIM-R7-C%'`, nil, &sampleDevices, &otherDevices)
+	interval := telemetry.SampleInterval
+	expected := int(held / interval)
+	// lower bound: half of the ideal count (start-up of LIVE, the cloud restart gap and the reconnect
+	// windows of the run); upper bound: the policy never stores more than one sample per interval
+	// (+1 at the start and +1 after the cloud restart resets the in-memory sampler).
+	minSamples, maxSamples := max(1, expected/2), expected+2
+	if samples < minSamples || samples > maxSamples || sampleDevices != 1 || otherDevices != 0 {
+		t.Fatalf("LIVE samples=%d (want %d..%d for %s at one per %s) devices=%d others=%d", samples, minSamples, maxSamples, held.Round(time.Second), interval, sampleDevices, otherDevices)
+	}
+	if p95 <= 0 || p95 > simLiveP95TargetMs {
+		t.Fatalf("LIVE latency P95 %.1f ms, target ≤ %.0f ms", p95, simLiveP95TargetMs)
+	}
+
+	// Alarms: present (alarm-storm), never duplicated (critical-event dedupe by messageId).
+	var dupes, alarms, distinctAlarms, shadows, extraDevices int
+	q("duplicate alarms", `SELECT count(*) FROM (SELECT payload_json->>'messageId' FROM alarms GROUP BY 1 HAVING count(*)>1) x`, nil, &dupes)
+	q("alarms", `SELECT count(*), count(DISTINCT payload_json->>'messageId') FROM alarms WHERE device_id='SIM-R7-C20'`, nil, &alarms, &distinctAlarms)
+	q("shadows", `SELECT count(*) FROM device_shadow WHERE device_id LIKE 'SIM-R7-C%'`, nil, &shadows)
+	q("alarms of other devices", `SELECT count(*) FROM alarms WHERE device_id LIKE 'SIM-R7-C%' AND device_id<>'SIM-R7-C20'`, nil, &extraDevices)
+	// alarm-storm emits one alarm per 2 s; spool + application ACK may hold some back during faults.
+	minAlarms := max(1, int(held/(2*time.Second))/4)
+	simRecord(t, "SIM_20_DEVICES", map[string]any{"durationSec": int(duration.Seconds()), "heldSec": int(held.Seconds()), "connectAllMs": connectAll.Milliseconds(),
+		"minConnectedDuringFaults": minConnected, "faults": faults, "scheduledDropRounds": scheduledDrops, "cloudRestarted": cloudRestarted, "shadows": shadows,
+		"alarms": alarms, "distinctAlarms": distinctAlarms, "duplicateAlarms": dupes, "alarmsOtherDevices": extraDevices,
+		"liveSamples": samples, "liveSamplesExpected": map[string]int{"min": minSamples, "max": maxSamples}, "latencyMs": map[string]float64{"p50": p50, "p95": p95, "p99": p99, "p95Target": simLiveP95TargetMs},
+		"resources": map[string]any{"start": baseline, "end": final}})
+	if dupes != 0 || alarms != distinctAlarms || shadows != 20 || alarms < minAlarms || extraDevices != 0 {
+		t.Fatalf("soak invariants: dupes=%d alarms=%d distinct=%d (min %d) shadows=%d otherDeviceAlarms=%d", dupes, alarms, distinctAlarms, minAlarms, shadows, extraDevices)
 	}
 	_ = platform.ID
 }
