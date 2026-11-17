@@ -1,0 +1,323 @@
+{
+  "project": "Baobei V1.1",
+  "approved_scope": [
+    "A1-A8",
+    "B1",
+    "B2",
+    "B3"
+  ],
+  "source_baseline_sha": "e7fbcbcdb5870c31161360e830ca320886cd3282",
+  "final_sha": "",
+  "ci": {
+    "run_id": "",
+    "attempt": null,
+    "head_sha": "",
+    "jobs": {
+      "baobei-contract": "NOT_RUN",
+      "baobei-web-quality": "NOT_RUN",
+      "baobei-build": "NOT_RUN",
+      "baobei-security": "NOT_RUN",
+      "baobei-api-test": "NOT_RUN",
+      "baobei-db-test": "NOT_RUN",
+      "baobei-compose": "NOT_RUN",
+      "baobei-e2e": "NOT_RUN"
+    }
+  },
+  "gates": {
+    "R0_CONTRACT": "NOT_RUN",
+    "R1_MANAGER_OWNERSHIP": "NOT_RUN",
+    "R2_STATS_ISOLATION": "NOT_RUN",
+    "R3_IA_PIPELINE_PROFILE": "NOT_RUN",
+    "R4_FOLLOWUPS": "NOT_RUN",
+    "R5_CUSTOMERS": "NOT_RUN",
+    "R6_TECHNICAL": "NOT_RUN",
+    "R7_INDEPENDENT_UAT": "NOT_RUN",
+    "REAL_PG18_4": "NOT_RUN",
+    "REAL_KEYCLOAK": "NOT_RUN",
+    "OWNER_VISUAL_UAT": "NOT_RUN",
+    "ZERO_PERMISSION_LEAKS": "NOT_RUN",
+    "MIGRATION_DATA_FINGERPRINT": "NOT_RUN",
+    "UNPATCHED_UP": "NOT_RUN",
+    "PATH_A": "NOT_RUN",
+    "PATH_B": "NOT_RUN",
+    "SHARED_HOST_SECURITY": "NOT_RUN",
+    "PRODUCTION_MUTATION_THIS_RELEASE": "NOT_RUN"
+  },
+  "cases": [
+    {
+      "id": "AC-01",
+      "batch": "R2",
+      "scenario": "销售 A1 打开项目列表/管道/统计",
+      "expected": "仅 A1 当前 owner 的项目；计数及金额一致",
+      "status": "NOT_RUN",
+      "evidence_files": [],
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "id": "AC-02",
+      "batch": "R2",
+      "scenario": "销售 A1 用 URL/API 指定 A2 或 B1",
+      "expected": "403/404 或明确不可见，不返回对方项目及客户敏感信息",
+      "status": "NOT_RUN",
+      "evidence_files": [],
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "id": "AC-03",
+      "batch": "R2",
+      "scenario": "MA 团队统计选“本人”",
+      "expected": "只显示 owner=MA 的项目，不混入 A1/A2",
+      "status": "NOT_RUN",
+      "evidence_files": [],
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "id": "AC-04",
+      "batch": "R2",
+      "scenario": "MA 按成员 A1/A2 分别查看统计",
+      "expected": "各人项目独立；团队总计=MA+A1+A2 唯一项目集合",
+      "status": "NOT_RUN",
+      "evidence_files": [],
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "id": "AC-05",
+      "batch": "R2",
+      "scenario": "MB 尝试读取 T-A 成员统计",
+      "expected": "被拒绝，不因查询参数或排序暴露数量和姓名",
+      "status": "NOT_RUN",
+      "evidence_files": [],
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "id": "AC-06",
+      "batch": "R1",
+      "scenario": "MA 创建并提交自己获取的项目",
+      "expected": "owner=MA、team=T-A，提交版本证据完整，待审路由至 D1",
+      "status": "NOT_RUN",
+      "evidence_files": [],
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "id": "AC-07",
+      "batch": "R1",
+      "scenario": "MA 审批自己创建/提交/负责的项目",
+      "expected": "403 REVIEW_CONFLICT，不新增审批记录",
+      "status": "NOT_RUN",
+      "evidence_files": [],
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "id": "AC-08",
+      "batch": "R1",
+      "scenario": "D1 审批 MA 项目",
+      "expected": "授权通过；撤销/重复请求按版本或幂等契约处理",
+      "status": "NOT_RUN",
+      "evidence_files": [],
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "id": "AC-09",
+      "batch": "R1",
+      "scenario": "MA 审批 A1 的正常销售报备",
+      "expected": "允许；MA 的个人报备不会进入 MA 自己可审队列",
+      "status": "NOT_RUN",
+      "evidence_files": [],
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "id": "AC-10",
+      "batch": "R1",
+      "scenario": "MA 审批 T-B 项目、销售 A1 审批项目",
+      "expected": "不允许，返回稳定错误并记安全证据",
+      "status": "NOT_RUN",
+      "evidence_files": [],
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "id": "AC-11",
+      "batch": "R1",
+      "scenario": "MA 降职/换团队仍有开放项目",
+      "expected": "先移交或按明确策略处理，禁止出现无人负责的项目",
+      "status": "NOT_RUN",
+      "evidence_files": [],
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "id": "AC-12",
+      "batch": "R1",
+      "scenario": "项目从 A1 移交 A2",
+      "expected": "创建/审批历史不变，当前项目统计从 A1 转至 A2，无双计",
+      "status": "NOT_RUN",
+      "evidence_files": [],
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "id": "AC-13",
+      "batch": "R3",
+      "scenario": "列表→六组管道→详情→返回",
+      "expected": "查询与滚动恢复，原 `stage=` URL 仍可用",
+      "status": "NOT_RUN",
+      "evidence_files": [],
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "id": "AC-14",
+      "batch": "R3",
+      "scenario": "同一个六组内 500 张卡片",
+      "expected": "独立分页和滚动、空组折叠，无重复/遗漏/整页超长",
+      "status": "NOT_RUN",
+      "evidence_files": [],
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "id": "AC-15",
+      "batch": "R3",
+      "scenario": "浏览器 1440/768/390/375",
+      "expected": "无横向溢出；移动单组可用；操作焦点/按钮尺寸合格",
+      "status": "NOT_RUN",
+      "evidence_files": [],
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "id": "AC-16",
+      "batch": "R3",
+      "scenario": "新账号首次登录未确认姓名",
+      "expected": "强制完善但允许退出/改密；未确认前不能提交报备",
+      "status": "NOT_RUN",
+      "evidence_files": [],
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "id": "AC-17",
+      "batch": "R3",
+      "scenario": "修改姓名尝试修改 role/team/subject",
+      "expected": "禁止；审计只记录合法姓名变更",
+      "status": "NOT_RUN",
+      "evidence_files": [],
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "id": "AC-18",
+      "batch": "R4",
+      "scenario": "跟进逾期/今日/未来七天/未安排",
+      "expected": "时区边界一致；数量与项目列表对应，不重复",
+      "status": "NOT_RUN",
+      "evidence_files": [],
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "id": "AC-19",
+      "batch": "R5",
+      "scenario": "A1 查看本团队客户多项目、联系人",
+      "expected": "仅授权范围；不能查看 B1 的联系人电话和客户信息",
+      "status": "NOT_RUN",
+      "evidence_files": [],
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "id": "AC-20",
+      "batch": "R5",
+      "scenario": "同名客户跨团队",
+      "expected": "仅显示安全重复提示，不自动合并、不泄漏其它团队身份",
+      "status": "NOT_RUN",
+      "evidence_files": [],
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "id": "AC-21",
+      "batch": "R6",
+      "scenario": "技术交流补录设备与参数",
+      "expected": "初次报备不被迫填写全部；合法修改留版本与审计",
+      "status": "NOT_RUN",
+      "evidence_files": [],
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "id": "AC-22",
+      "batch": "R6",
+      "scenario": "已提交项目的技术需求变更",
+      "expected": "不改历史 `project_submissions`，产生新版本/补充记录",
+      "status": "NOT_RUN",
+      "evidence_files": [],
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "id": "AC-23",
+      "batch": "R7",
+      "scenario": "错误前端参数、并发操作与幂等重放",
+      "expected": "保持版本、CSRF、Idempotency-Key 与审计一致",
+      "status": "NOT_RUN",
+      "evidence_files": [],
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "id": "AC-24",
+      "batch": "R7",
+      "scenario": "原有 12 阶段历史值与已确认金额",
+      "expected": "数据迁移前后逐项相等；未知金额不能被当作 0",
+      "status": "NOT_RUN",
+      "evidence_files": [],
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "id": "AC-25",
+      "batch": "R7",
+      "scenario": "旧生产镜像 + 扩展后的 DB 契约",
+      "expected": "若不兼容必须 fail-closed，不能因发布成功而偷偷启动",
+      "status": "NOT_RUN",
+      "evidence_files": [],
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "id": "AC-26",
+      "batch": "R7",
+      "scenario": "独立 Realm 升级及路径 A/B",
+      "expected": "无补丁真实镜像/Compose、真实登录、审计指纹与 RPO 有证据",
+      "status": "NOT_RUN",
+      "evidence_files": [],
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "id": "AC-27",
+      "batch": "R7",
+      "scenario": "生产与实验 Docker/Keycloak、私钥、8443",
+      "expected": "访问与权限隔离，历史风险逐条闭环",
+      "status": "NOT_RUN",
+      "evidence_files": [],
+      "reviewer": "",
+      "reviewed_at": ""
+    }
+  ],
+  "provenance": {
+    "generated_from": "Baobei-V1.1-PRD-设计审查稿.md §9.2",
+    "generated_date": "2026-11-16",
+    "note": "所有初始状态 NOT_RUN。此模板不是测试结果。"
+  }
+}

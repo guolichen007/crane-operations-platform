@@ -413,3 +413,92 @@ func reviewQueueOf(t *testing.T, c testClient, eligibility string) ReviewQueue {
 	}
 	return q
 }
+
+// V1.1 R7-D (OWNER ruling): only a sales director decides a director-routed
+// filing through the ordinary review actions; administrators and supervisors
+// are refused on every review action and nothing changes. Without an eligible
+// director the filing stays pending. Sales filings keep their review chain.
+func TestDatabaseV11R7DirectorOnlyRoute(t *testing.T) {
+	ctx := context.Background()
+	f := g1FixtureFor(t)
+	// Two supervisor filings that are duplicates of each other so the
+	// duplicate-decision path is exercised too.
+	in := sample("V11R7总监路由")
+	in.Customer = "V11R7总监路由客户"
+	s, b := f.manager.call("POST", "/api/v1/projects", in)
+	first := g1Submit(t, f.manager, projectFrom(t, s, b))
+	s, b = f.manager.call("POST", "/api/v1/projects", in)
+	dup := g1Submit(t, f.manager, projectFrom(t, s, b))
+	if dup.IntakeStatus != "UNDER_REVIEW" || first.ReviewRoute != routeDirector {
+		t.Fatal("fixture", dup.IntakeStatus, first.ReviewRoute)
+	}
+	state := func(id string) string {
+		var v string
+		if err := f.db.QueryRow(ctx, `SELECT p.version||'/'||p.intake_status||'/'||p.document_hash
+ ||'/'||(SELECT count(*) FROM approvals WHERE project_id=p.id)
+ ||'/'||(SELECT count(*) FROM duplicate_cases WHERE project_id=p.id AND decision<>'PENDING')
+ ||'/'||(SELECT count(*) FROM project_submissions WHERE project_id=p.id)
+ ||'/'||(SELECT count(*) FROM audit_events WHERE project_id=p.id)
+ ||'/'||(SELECT count(*) FROM project_participations WHERE project_id=p.id) FROM intake_projects p WHERE p.id=$1`, id).Scan(&v); err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	for _, target := range []Project{first, dup} {
+		before := state(target.ID)
+		for _, actor := range []testClient{f.admin, f.manager} {
+			cur := v11Get(t, actor, target.ID)
+			for _, a := range []string{"approve", "return", "reject", "duplicate-decisions"} {
+				if cur.Actions[a].Allowed {
+					t.Fatalf("hint allows %s", a)
+				}
+				extra := map[string]any{}
+				if a == "duplicate-decisions" {
+					extra = map[string]any{"caseId": "00000000-0000-4000-8000-000000000000", "decision": "DISTINCT_APPROVED"}
+				}
+				s, b = g1Decision(actor, cur, a, extra)
+				if s != 403 || !strings.Contains(string(b), "REVIEW_") {
+					t.Fatalf("%s %s: %d %s", a, target.ID, s, b)
+				}
+			}
+			if cur.Review == nil || cur.Review.Eligible {
+				t.Fatal("review hint eligible")
+			}
+		}
+		if after := state(target.ID); after != before {
+			t.Fatal("refused decisions changed state", before, after)
+		}
+	}
+	// Admin queue, home counts: director-routed filings are never reviewable.
+	for _, c := range []testClient{f.admin, f.manager} {
+		for _, item := range reviewQueueOf(t, c, "reviewable").Items {
+			if item.ID == first.ID || item.ID == dup.ID {
+				t.Fatal("director-routed filing in a non-director queue")
+			}
+		}
+	}
+	s, b = f.admin.call("GET", "/api/v1/workspace-summary", nil)
+	expect(t, s, 200, b)
+	var adminHome WorkspaceSummary
+	_ = jsonUnmarshal(b, &adminHome)
+	if adminHome.Counts["reviewable"] != len(reviewQueueOf(t, f.admin, "reviewable").Items) {
+		t.Fatal("admin home reviewable differs from queue")
+	}
+	// No eligible director: the filing stays pending, nobody else can decide.
+	g1Exec(t, f.db, `UPDATE app_users SET active=false,staff_status='SUSPENDED' WHERE subject='synthetic-director'`)
+	if p := v11Get(t, f.admin, first.ID); p.IntakeStatus != "SUBMITTED" || p.Actions["approve"].Allowed {
+		t.Fatal("pending filing without director")
+	}
+	g1Exec(t, f.db, `UPDATE app_users SET active=true,staff_status='ACTIVE' WHERE subject='synthetic-director'`)
+	d1 := login(t, f.server, "synthetic-director")
+	s, b = g1Decision(d1, v11Get(t, d1, first.ID), "approve", nil)
+	if projectFrom(t, s, b).IntakeStatus != "APPROVED" {
+		t.Fatal("director approval")
+	}
+	// Sales filings: administrator governance on the TEAM_MANAGER route is unchanged.
+	sp := g1Submit(t, f.sales, g1Create(t, f.sales, "V11R7销售报备"))
+	s, b = g1Decision(f.admin, v11Get(t, f.admin, sp.ID), "approve", nil)
+	if projectFrom(t, s, b).IntakeStatus != "APPROVED" {
+		t.Fatal("admin governance on sales filing changed")
+	}
+}

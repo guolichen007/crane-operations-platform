@@ -30,6 +30,18 @@ import { merge, unresolved, type Side } from './merge';
 import ActionButton from './ActionButton.vue';
 import NumberField from './NumberField.vue';
 
+// V1.1 R5: choose an existing customer of the team (server-scoped list; only
+// fills the customer text, the server links the shared master record).
+const customerOptions = ref<string[]>([]);
+let customerTimer: ReturnType<typeof setTimeout>;
+async function loadCustomerOptions(q: string) {
+  try {
+    const b = await useApp().api<{ items: { name: string }[] }>('/api/v1/customers?pageSize=20' + (q ? '&q=' + encodeURIComponent(q) : ''));
+    customerOptions.value = [...new Set(b.items.map((x) => x.name))];
+  } catch {
+    customerOptions.value = [];
+  }
+}
 const app = useApp(),
   route = useRoute(),
   router = useRouter(),
@@ -290,6 +302,11 @@ function runDuplicateCheck(delay = 450) {
     }
   }, delay);
 }
+watch(() => form.customer, (q) => {
+  clearTimeout(customerTimer);
+  customerTimer = setTimeout(() => void loadCustomerOptions(q.trim()), 250);
+});
+onMounted(() => void loadCustomerOptions(''));
 watch(() => [form.customer, form.projectName, form.location.province, form.location.city, form.location.factoryName, form.location.workshop, form.tenderNo], () => runDuplicateCheck());
 watch(step, (s) => s === 4 && runDuplicateCheck(0));
 const dupMessage = computed(
@@ -480,7 +497,8 @@ onBeforeUnmount(() => {
         <h2>客户与项目</h2>
         <p class="muted">客户、项目名称和省市用于识别重复报备。暂不清楚可以留空。</p>
         <div class="form-grid">
-          <label class="wide">终端客户<input v-model="form.customer" name="customer" autocomplete="organization" maxlength="200" placeholder="客户企业全称" /></label>
+          <label class="wide">终端客户<input v-model="form.customer" name="customer" autocomplete="organization" list="team-customers" maxlength="200" placeholder="客户企业全称，可从本团队客户中选择" /></label>
+          <datalist id="team-customers"><option v-for="c in customerOptions" :key="c" :value="c" /></datalist>
           <label class="wide">项目名称<input v-model="form.projectName" name="projectName" maxlength="200" placeholder="例如：二号车间桥式行车防摇改造" /></label>
           <label>省<input v-model="form.location.province" name="province" maxlength="100" /></label>
           <label>市<input v-model="form.location.city" name="city" maxlength="100" /></label>

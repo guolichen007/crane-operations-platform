@@ -1570,7 +1570,8 @@
               }
             }
           }
-        }
+        },
+        "description": "V1.1 R7-D：reviewRoute=DIRECTOR 的报备只有销售总监可以处理；主管与管理员返回 403 REVIEW_ROUTE_DIRECTOR，审批记录、证据与版本不变。"
       }
     },
     "/api/v1/projects/{id}/return": {
@@ -1691,7 +1692,8 @@
               }
             }
           }
-        }
+        },
+        "description": "V1.1 R7-D：reviewRoute=DIRECTOR 的报备只有销售总监可以处理；主管与管理员返回 403 REVIEW_ROUTE_DIRECTOR，审批记录、证据与版本不变。"
       }
     },
     "/api/v1/projects/{id}/reject": {
@@ -1812,7 +1814,8 @@
               }
             }
           }
-        }
+        },
+        "description": "V1.1 R7-D：reviewRoute=DIRECTOR 的报备只有销售总监可以处理；主管与管理员返回 403 REVIEW_ROUTE_DIRECTOR，审批记录、证据与版本不变。"
       }
     },
     "/api/v1/projects/{id}/ownership-transfer": {
@@ -2359,7 +2362,8 @@
               }
             }
           }
-        }
+        },
+        "description": "V1.1 R7-D：reviewRoute=DIRECTOR 的报备只有销售总监可以处理；主管与管理员返回 403 REVIEW_ROUTE_DIRECTOR，审批记录、证据与版本不变。"
       }
     },
     "/api/v1/projects/{id}/duplicate-comparison": {
@@ -6432,7 +6436,7 @@
               "TEAM_MANAGER",
               "DIRECTOR"
             ],
-            "description": "当前报备的审核路由：TEAM_MANAGER=本团队主管或总监；DIRECTOR=仅销售总监（主管本人报备，或负责人非销售）。只升不降。"
+            "description": "当前报备的审核路由：TEAM_MANAGER=本团队主管或总监（管理员治理权限不变）；DIRECTOR=仅合格销售总监通过普通审核动作处理（主管本人报备，或负责人非销售）；主管与管理员的 approve/return/reject/duplicate-decisions 一律 403 REVIEW_ROUTE_DIRECTOR；无合格总监时保持待审。只升不降。"
           }
         }
       },

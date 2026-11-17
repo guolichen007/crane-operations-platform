@@ -171,7 +171,12 @@ func (s ProjectPolicy) Action(p Project, action string) string {
 		if u.Subject == p.CreatedBySubject || u.Subject == p.OwnerSubject || u.Subject == p.SubmittedBySubject {
 			return "REVIEW_CONFLICT"
 		}
-		if u.Role == managerRole && effectiveRoute(p) == routeDirector {
+		// V1.1 R7-D (OWNER ruling): a director-routed filing (supervisor's own,
+		// or owner no longer a sales member) is decided only by a sales
+		// director through the ordinary review actions — never by a
+		// supervisor and never by an administrator. Without an eligible
+		// director the filing stays pending.
+		if u.Role != directorRole && effectiveRoute(p) == routeDirector {
 			return "REVIEW_ROUTE_DIRECTOR"
 		}
 	default:

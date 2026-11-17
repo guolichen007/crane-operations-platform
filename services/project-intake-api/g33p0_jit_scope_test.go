@@ -112,17 +112,25 @@ func g33Data(t *testing.T) g1Fixture {
 	g1Submit(t, c, g1Create(t, c, "合成JIT范围"))
 	g1Submit(t, f.other, g1Create(t, f.other, "合成JIT范围"))
 	scaleData(t, f, 300)
+	return f
+}
+
+// requireJIT: only the JIT scope test needs an LLVM-enabled server; the
+// equivalence oracle runs everywhere (V1.1 R7: it was silently skipped on
+// servers without JIT, hiding a count change from local runs).
+func requireJIT(t *testing.T, f g1Fixture) {
+	t.Helper()
 	var jitAvailable bool
 	_ = f.db.QueryRow(context.Background(), `SELECT pg_jit_available()`).Scan(&jitAvailable)
 	if !jitAvailable {
 		t.Skip("NOT_RUN: server has no JIT provider")
 	}
-	return f
 }
 
 func TestDatabaseG33P0JITScope(t *testing.T) {
 	ctx := context.Background()
 	f := g33Data(t)
+	requireJIT(t, f)
 	users := jitUsers(t, f.db)
 
 	t.Run("targets-run-without-jit-and-default-is-restored", func(t *testing.T) {
@@ -447,6 +455,17 @@ func TestDatabaseG33P0Equivalence(t *testing.T) {
 		got, err := app.workspaceSummary(ctx, u)
 		if err != nil {
 			t.Fatal(err)
+		}
+		// V1.1 R4 added the follow-up center counts (followup*; proved in
+		// TestDatabaseV11FollowupCenter). Every pre-existing key must stay
+		// identical; the added keys are compared to the center separately.
+		for k := range got.Counts {
+			if _, old := want.Counts[k]; !old {
+				if !strings.HasPrefix(k, "followup") {
+					t.Fatal("unexpected new summary count", k)
+				}
+				delete(got.Counts, k)
+			}
 		}
 		if a, b := norm(want), norm(got); a != b {
 			t.Fatalf("%s summary differs\nwant %s\ngot  %s", u.Subject, a, b)

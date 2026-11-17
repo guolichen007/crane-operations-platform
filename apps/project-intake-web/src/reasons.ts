@@ -12,7 +12,7 @@ export const reasonText: Record<string, string> = {
   INVALID_STATE: '项目当前状态不允许此操作',
   NOT_FOUND: '项目不存在或不在你的范围内',
   REVIEW_CONFLICT: '你参与过此项目，需由其他独立审核人处理',
-  REVIEW_ROUTE_DIRECTOR: '这是主管本人报备，只能由销售总监审核',
+  REVIEW_ROUTE_DIRECTOR: '这是主管本人报备，只能由销售总监审核（管理员与主管均不能代审）',
   REVIEW_EVIDENCE_INCOMPLETE: '历史提交证据不完整，需走独立核验流程',
   REVIEW_RELATED_PROJECT_RESTRICTED: RESTRICTED_RELATED_MESSAGE,
   DUPLICATE_DECISION_REQUIRED: '请先完成重复裁决',

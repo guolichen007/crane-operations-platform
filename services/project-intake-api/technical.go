@@ -287,6 +287,15 @@ func (a *App) technicalHandler(w http.ResponseWriter, r *http.Request, u User, i
 		if in.Question == "" || !textOK(in.Question, 2000) {
 			return fieldProblem{staffProblem{400, "TECH_QUESTION_INVALID", "请填写待澄清问题（2000 字内）"}, "question"}
 		}
+		// AC-23: the project row is locked; the same open question by the same
+		// asker (a retry after a timeout or a double click) is not recorded twice.
+		var dup bool
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM project_technical_questions WHERE project_id=$1 AND asked_by_subject=$2 AND status='OPEN' AND question=$3)`, p.ID, u.Subject, in.Question).Scan(&dup); err != nil {
+			return err
+		}
+		if dup {
+			break
+		}
 		var qid string
 		if err = tx.QueryRow(ctx, `INSERT INTO project_technical_questions(project_id,question,status,asked_by_subject,brief_version)
  VALUES($1,$2,'OPEN',$3,coalesce((SELECT version FROM project_technical_briefs WHERE project_id=$1),0)) RETURNING id::text`, p.ID, in.Question, u.Subject).Scan(&qid); err != nil {

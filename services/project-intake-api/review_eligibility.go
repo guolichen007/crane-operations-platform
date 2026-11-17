@@ -50,7 +50,7 @@ func pendingCasesSQL(p string) string {
 func reviewableSQL(p string) string {
 	return `(` + p + `.intake_status IN ('SUBMITTED','UNDER_REVIEW') AND $2 IN ('baobei_manager','baobei_director','baobei_admin')
  AND ` + projectScope(p) + ` AND ` + primaryCompleteSQL(p) + ` AND NOT ` + primaryConflictSQL(p, "$1") + `
- AND NOT ($2='baobei_manager' AND ` + reviewRouteSQL(p) + `='DIRECTOR')
+ AND NOT ($2<>'baobei_director' AND ` + reviewRouteSQL(p) + `='DIRECTOR')
  AND (` + pendingCasesSQL(p) + `=0 OR (NOT EXISTS(` + relatedCandidatesSQL(p) + ` AND NOT ` + projectScope("c") + `)
  AND NOT EXISTS(` + relatedCandidatesSQL(p) + ` AND ` + candidateConflictSQL("c", "$1") + `))))`
 }

@@ -142,28 +142,57 @@ func (a *App) customerVisible(ctx context.Context, q querier, u User, id string)
 	return ok, err
 }
 
-// The shown name is the viewer team's own spelling when it maintains the
-// customer; the master spelling otherwise (then a readable project names it,
-// or the viewer is a director/administrator).
-const customerItemColumns = `o.id::text,coalesce(NULLIF(tp.display_name,''),o.name),coalesce(o.credit_code,''),
+// V1.1 R7-D team-safe name. The shared master spelling (organizations.name) is
+// only shown to directors and administrators. A sales member or supervisor
+// sees the team's own spelling (team profile); without one, the spelling of a
+// project the viewer may read that names the customer (chosen in Go by the
+// same normalization); never another team's spelling.
+func teamSafeNameSQL(o string) string {
+	return `CASE WHEN $2 IN ('baobei_admin','baobei_director') THEN ` + o + `.name ELSE NULLIF(tp.display_name,'') END,` + o + `.normalized_name,
+ CASE WHEN $2 IN ('baobei_admin','baobei_director') OR coalesce(tp.display_name,'')<>'' THEN '[]'::jsonb ELSE coalesce((SELECT jsonb_agg(x.n) FROM (
+  SELECT CASE WHEN pp.role='END_CUSTOMER' THEN p.document->>'customer' ELSE e->>'name' END AS n
+  FROM project_parties pp JOIN intake_projects p ON p.id=pp.project_id
+  LEFT JOIN LATERAL jsonb_array_elements(CASE WHEN pp.role<>'END_CUSTOMER' AND jsonb_typeof(p.document->'parties')='array' THEN p.document->'parties' ELSE '[]'::jsonb END) e ON e->>'role'=pp.role
+  WHERE pp.organization_id=` + o + `.id AND p.discarded_at IS NULL AND ` + projectScope("p") + ` ORDER BY p.created_at,p.id LIMIT 20) x WHERE x.n IS NOT NULL),'[]'::jsonb) END`
+}
+
+// pickName returns the viewer-safe name from the projection above.
+func pickName(shown *string, normalized string, candidates []byte) string {
+	if shown != nil && *shown != "" {
+		return *shown
+	}
+	var names []string
+	_ = json.Unmarshal(candidates, &names)
+	for _, n := range names {
+		if normalize(n) == normalized {
+			return n
+		}
+	}
+	return normalized
+}
+
+const customerItemColumns = `o.id::text,NAMES,coalesce(o.credit_code,''),
  (SELECT count(DISTINCT p.id) FROM project_parties pp JOIN intake_projects p ON p.id=pp.project_id WHERE pp.organization_id=o.id AND p.discarded_at IS NULL AND ` + `PSCOPE` + `),
  (SELECT count(*) FROM contacts c WHERE c.organization_id=o.id AND c.archived_at IS NULL AND ` + `CVIS` + `),
  (SELECT max(p.updated_at) FROM project_parties pp JOIN intake_projects p ON p.id=pp.project_id WHERE pp.organization_id=o.id AND p.discarded_at IS NULL AND ` + `PSCOPE` + `),
  tp.team_id::text,coalesce(t.name,''),tp.industry,tp.region,tp.customer_type,tp.notes,tp.version,tp.updated_at`
 
 func customerColumns() string {
-	return strings.NewReplacer("PSCOPE", projectScope("p"), "CVIS", contactVisibleSQL("c")).Replace(customerItemColumns)
+	return strings.NewReplacer("NAMES", teamSafeNameSQL("o"), "PSCOPE", projectScope("p"), "CVIS", contactVisibleSQL("c")).Replace(customerItemColumns)
 }
 
 func scanCustomer(row interface{ Scan(...any) error }, u User) (CustomerItem, error) {
 	var c CustomerItem
-	var team, teamName, industry, region, ctype, notes *string
+	var team, teamName, industry, region, ctype, notes, shown *string
+	var normalized string
+	var candidates []byte
 	var version *int
 	var updated *time.Time
-	err := row.Scan(&c.ID, &c.Name, &c.CreditCode, &c.ProjectCount, &c.ContactCount, &c.LastProjectAt, &team, &teamName, &industry, &region, &ctype, &notes, &version, &updated)
+	err := row.Scan(&c.ID, &shown, &normalized, &candidates, &c.CreditCode, &c.ProjectCount, &c.ContactCount, &c.LastProjectAt, &team, &teamName, &industry, &region, &ctype, &notes, &version, &updated)
 	if err != nil {
 		return c, err
 	}
+	c.Name = pickName(shown, normalized, candidates)
 	if team != nil {
 		c.Profile = &CustomerProfile{TeamID: *team, TeamName: *teamName, Industry: *industry, Region: *region, CustomerType: *ctype, Notes: *notes, Version: *version, UpdatedAt: *updated}
 	}
@@ -199,13 +228,18 @@ func (a *App) listCustomers(ctx context.Context, u User, params map[string]strin
 		return nil, listError("搜索内容过长")
 	}
 	where := ` FROM organizations o LEFT JOIN organization_team_profiles tp ON tp.organization_id=o.id AND tp.team_id::text=$3 LEFT JOIN teams t ON t.id=tp.team_id
- WHERE ` + orgVisibleSQL("o") + ` AND ($4='' OR o.normalized_name LIKE '%'||$5||'%' OR o.name ILIKE '%'||$4||'%')`
-	args := []any{u.Subject, u.Role, u.TeamID, q, normalize(q)}
+ WHERE ` + orgVisibleSQL("o") + ` AND ($4='' OR ($5<>'' AND strpos(o.normalized_name,$5)>0)
+  OR tp.display_name ILIKE '%'||$4||'%' ESCAPE '\'
+  OR ($2 IN ('baobei_admin','baobei_director') AND o.name ILIKE '%'||$4||'%' ESCAPE '\'))`
+	// Search never probes another team's spelling: the normalized name (the
+	// same for every spelling) and the team's own spelling only; LIKE
+	// wildcards in the input are literal.
+	args := []any{u.Subject, u.Role, u.TeamID, likeEscape(q), normalize(q)}
 	var total int
 	if err := a.db.QueryRow(ctx, `SELECT count(*)`+where, args...).Scan(&total); err != nil {
 		return nil, err
 	}
-	rows, err := a.db.Query(ctx, `SELECT `+customerColumns()+where+` ORDER BY o.name,o.id LIMIT $6 OFFSET $7`, append(args, size, (page-1)*size)...)
+	rows, err := a.db.Query(ctx, `SELECT `+customerColumns()+where+` ORDER BY coalesce(NULLIF(tp.display_name,''),o.normalized_name),o.id LIMIT $6 OFFSET $7`, append(args, size, (page-1)*size)...)
 	if err != nil {
 		return nil, err
 	}
@@ -598,7 +632,21 @@ func (a *App) customers(w http.ResponseWriter, r *http.Request, u User) error {
 			if err := in.valid(); err != nil {
 				return nil, err
 			}
+			// AC-23: a retried or double-submitted create (same customer, team,
+			// name and phone, still active) returns the existing contact and
+			// writes nothing; creates of one customer and team are serialized.
+			if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,11))`, parts[1]+"|"+u.TeamID); err != nil {
+				return nil, err
+			}
 			var id string
+			err := tx.QueryRow(ctx, `SELECT id::text FROM contacts WHERE organization_id=$1 AND team_id=$2::uuid AND archived_at IS NULL
+ AND lower(btrim(display_name))=lower($3) AND phone=$4 LIMIT 1`, parts[1], u.TeamID, in.Name, in.Phone).Scan(&id)
+			if err == nil {
+				return a.customerDetail(ctx, tx, u, parts[1])
+			}
+			if !errors.Is(err, pgx.ErrNoRows) {
+				return nil, err
+			}
 			if err := tx.QueryRow(ctx, `INSERT INTO contacts(organization_id,display_name,team_id,title,department,phone,notes,created_by_subject)
  VALUES($1,$2,$3::uuid,$4,$5,$6,$7,$8) RETURNING id::text`, parts[1], in.Name, u.TeamID, in.Title, in.Department, in.Phone, in.Notes, u.Subject).Scan(&id); err != nil {
 				return nil, err
@@ -686,6 +734,10 @@ func (a *App) customers(w http.ResponseWriter, r *http.Request, u User) error {
 	return nil
 }
 
+func likeEscape(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
+}
+
 func firstErr(err error, fallback error) error {
 	if err != nil {
 		return err
@@ -741,8 +793,10 @@ func (a *App) projectContacts(w http.ResponseWriter, r *http.Request, u User, p 
 		// of a former team can still be removed from the project).
 		err = tx.QueryRow(ctx, `SELECT c.organization_id::text FROM project_contacts pc JOIN contacts c ON c.id=pc.contact_id WHERE pc.project_id=$1 AND pc.contact_id=$2`, cur.ID, in.ContactID).Scan(&org)
 	} else {
+		// FOR SHARE: a concurrent archive of this contact waits (or this link
+		// sees the archived state); never a link to a just-archived contact.
 		err = tx.QueryRow(ctx, `SELECT c.organization_id::text FROM contacts c WHERE c.id=$1 AND c.archived_at IS NULL AND c.team_id::text=$2
- AND EXISTS(SELECT 1 FROM project_parties pp WHERE pp.project_id=$3 AND pp.organization_id=c.organization_id)`, in.ContactID, cur.TeamID, cur.ID).Scan(&org)
+ AND EXISTS(SELECT 1 FROM project_parties pp WHERE pp.project_id=$3 AND pp.organization_id=c.organization_id) FOR SHARE OF c`, in.ContactID, cur.TeamID, cur.ID).Scan(&org)
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return contactMissing
@@ -804,21 +858,26 @@ func (a *App) linkedContacts(ctx context.Context, q querier, u User, project str
 // only for customers the caller may open) plus the team's linkable contacts.
 func (a *App) projectCustomers(ctx context.Context, u User, project string) []map[string]any {
 	out := []map[string]any{}
-	rows, err := a.db.Query(ctx, `SELECT o.id::text,o.name,pp.role,`+orgVisibleSQL("o")+`,
+	// The name is the spelling in this project's own document (the caller may
+	// read the project); never the shared master spelling.
+	rows, err := a.db.Query(ctx, `SELECT o.id::text,o.normalized_name,coalesce((SELECT jsonb_agg(n) FROM (SELECT CASE WHEN pp.role='END_CUSTOMER' THEN p.document->>'customer' END AS n
+   FROM intake_projects p WHERE p.id=$4 UNION ALL SELECT e->>'name' FROM intake_projects p,
+   jsonb_array_elements(CASE WHEN jsonb_typeof(p.document->'parties')='array' THEN p.document->'parties' ELSE '[]'::jsonb END) e WHERE p.id=$4 AND e->>'role'=pp.role) z WHERE n IS NOT NULL),'[]'::jsonb),pp.role,`+orgVisibleSQL("o")+`,
  coalesce((SELECT json_agg(json_build_object('id',c.id,'name',c.display_name,'title',c.title) ORDER BY c.display_name)
   FROM contacts c JOIN intake_projects p ON p.id=$4 WHERE c.organization_id=o.id AND c.archived_at IS NULL AND c.team_id=p.team_id AND `+contactVisibleSQL("c")+`),'[]')
- FROM project_parties pp JOIN organizations o ON o.id=pp.organization_id WHERE pp.project_id=$4 ORDER BY pp.role,o.name`, u.Subject, u.Role, u.TeamID, project)
+ FROM project_parties pp JOIN organizations o ON o.id=pp.organization_id WHERE pp.project_id=$4 ORDER BY pp.role,o.normalized_name`, u.Subject, u.Role, u.TeamID, project)
 	if err != nil {
 		return out
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var id, name, role string
+		var id, normalized, role string
 		var visible bool
-		var contacts []byte
-		if rows.Scan(&id, &name, &role, &visible, &contacts) != nil {
+		var contacts, candidates []byte
+		if rows.Scan(&id, &normalized, &candidates, &role, &visible, &contacts) != nil {
 			return out
 		}
+		name := pickName(nil, normalized, candidates)
 		item := map[string]any{"name": name, "role": role}
 		if visible {
 			item["id"] = id

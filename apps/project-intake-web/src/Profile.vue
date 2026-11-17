@@ -56,8 +56,13 @@ async function save() {
     profile.value = await app.api<Profile>('/api/v1/me/profile', 'PATCH', { name: name.value.trim(), reason: reason.value.trim(), version: profile.value.version });
   } catch (e) {
     const r = recovery(e);
-    error.value = r.message;
-    if (r.kind === 'conflict') await load();
+    // A stale page: someone (e.g. an administrator) changed the name meanwhile.
+    error.value = r.kind === 'conflict' ? '姓名已在其他页面更新，已重新读取最新姓名，请核对后再保存' : r.message;
+    if (r.kind === 'conflict') {
+      const typed = name.value;
+      await load();
+      name.value = typed;
+    }
     return;
   }
   await app.loadUser();

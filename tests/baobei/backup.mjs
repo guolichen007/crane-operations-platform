@@ -93,6 +93,16 @@ const productTables = [
   'identity_epoch',
   'identity_links',
   'account_operations',
+  // V1.1: 00009 review routes, 00010 profile audit, 00011 customers,
+  // 00012 technical brief (00013 adds a trigger only, no table).
+  'project_review_routes',
+  'profile_audit',
+  'organization_team_profiles',
+  'customer_audit',
+  'project_technical_briefs',
+  'project_technical_brief_revisions',
+  'project_technical_questions',
+  'project_technical_question_events',
 ].sort();
 const tables = (environment === 'preview' ? [...productTables, 'baobei_environment'] : productTables).sort();
 const markerSQL = `(SELECT jsonb_agg(name) FROM baobei_environment)`;
