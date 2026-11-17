@@ -71,6 +71,11 @@ test('V1.1 R4 跟进中心：四个时间窗口、登记跟进后移动、首页
   const home = (await api(page, '/api/v1/workspace-summary')).body.counts;
   expect(home.followupOverdue).toBe(center.overdue);
   expect(home.followupToday).toBe(center.today);
+  // In-app reminder badge on the navigation: overdue + today, from the server.
+  await page.goto('/');
+  const badge = page.getByTestId('followup-reminder');
+  if (center.overdue + center.today > 0) await expect(badge).toHaveText(String(center.overdue + center.today));
+  else await expect(badge).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect(errors).toEqual([]);
 });

@@ -2919,3 +2919,13 @@ td.unassigned,
   .followup-actions { justify-content: stretch; }
   .followup-actions button { flex: 1; min-height: 44px; }
 }
+.nav-badge { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--blue); color: #fff; font-size: 12px; font-weight: 650; display: inline-grid; place-items: center; }
+.nav-badge.late { background: var(--risk); }
+@media (max-width: 1100px) and (min-width: 701px) {
+  .sidebar nav button { position: relative; }
+  .nav-badge { position: absolute; top: 2px; right: 2px; margin: 0; }
+}
+@media (max-width: 700px) {
+  .sidebar nav button { position: relative; }
+  .nav-badge { position: absolute; top: 2px; right: 18%; margin: 0; height: 18px; min-width: 18px; font-size: 11px; }
+}

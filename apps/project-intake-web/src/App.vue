@@ -66,6 +66,30 @@ function changePassword() {
   accountOpen.value = false;
   window.location.assign('/auth/login?action=password');
 }
+// V1.1 R4 in-app reminder: overdue + today follow-ups of the own default scope,
+// from the server (same numbers as the follow-up center). Re-read on
+// navigation at most once a minute; never creates anything.
+const reminder = ref<{ overdue: number; today: number } | null>(null);
+let reminderAt = 0;
+async function loadReminder(force = false) {
+  if (!app.user || app.user.profileCompleted === false) return;
+  if (!force && Date.now() - reminderAt < 60_000) return;
+  reminderAt = Date.now();
+  try {
+    const b = await app.api<{ counts: { overdue: number; today: number } }>('/api/v1/followups?window=today&pageSize=1');
+    reminder.value = { overdue: b.counts.overdue, today: b.counts.today };
+  } catch {
+    reminder.value = null;
+  }
+}
+// The home page and the follow-up center always show fresh numbers.
+watch(() => route.fullPath, () => void loadReminder(route.path === '/' || route.path === '/followups'), { immediate: true });
+watch(() => app.user?.subject, () => void loadReminder(true));
+const reminderText = computed(() => {
+  const r = reminder.value;
+  if (!r || r.overdue + r.today === 0) return '';
+  return String(r.overdue + r.today);
+});
 watch(() => app.user, (user, previous) => {
   if (previous && !user && app.sessionIssue && route.path !== '/login')
     void router.replace('/login');
@@ -92,7 +116,12 @@ window.addEventListener('error', showError);
             :title="item.label"
             :run="() => router.push(item.path)"
           >
-            <component :is="icons[item.icon as keyof typeof icons]" :size="17" aria-hidden="true" />{{ item.label }}
+            <component :is="icons[item.icon as keyof typeof icons]" :size="17" aria-hidden="true" />{{ item.label }}<span
+              v-if="item.path === '/followups' && reminderText"
+              :class="['nav-badge', { late: (reminder?.overdue ?? 0) > 0 }]"
+              data-testid="followup-reminder"
+              :aria-label="'已逾期 ' + reminder?.overdue + ' 项，今天 ' + reminder?.today + ' 项'"
+            >{{ reminderText }}</span>
           </ActionButton>
         </template>
       </nav>
