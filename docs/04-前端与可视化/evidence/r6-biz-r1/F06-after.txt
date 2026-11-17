@@ -1,0 +1,4 @@
+=== RUN   TestMoveAssetTraceability
+--- PASS: TestMoveAssetTraceability (0.14s)
+PASS
+ok  	github.com/guolichen007/crane-operations-platform/internal/asset	0.145s

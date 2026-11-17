@@ -1,0 +1,18 @@
+=== RUN   TestLocationParentGuards
+    location_tree_test.go:79: self parent: err = <nil>, want ErrInvalidInput
+    location_tree_test.go:79: cycle A→B→C→A: err = <nil>, want ErrInvalidInput
+    location_tree_test.go:79: two-node cycle: err = <nil>, want ErrInvalidInput
+    location_tree_test.go:79: parent of another proj: err = ERROR: insert or update on table "asset_locations" violates foreign key constraint "asset_locations_parent_project_fk" (SQLSTATE 23503), want ErrInvalidInput
+    location_tree_test.go:79: unknown parent: err = ERROR: insert or update on table "asset_locations" violates foreign key constraint "asset_locations_parent_project_fk" (SQLSTATE 23503), want ErrInvalidInput
+    location_tree_test.go:79: disabled new parent: err = <nil>, want ErrInvalidInput
+    location_tree_test.go:89: blank name: err = <nil>, want ErrInvalidInput
+    location_tree_test.go:93: unknown kind: err = version conflict, want ErrInvalidInput
+--- FAIL: TestLocationParentGuards (0.20s)
+=== RUN   TestLocationLegalUpdatesAndInstalledAssetPath
+--- PASS: TestLocationLegalUpdatesAndInstalledAssetPath (0.15s)
+=== RUN   TestConcurrentReparentCannotBuildCycle
+    location_tree_test.go:172: round 0: 2 re-parentings succeeded (errs=[<nil> <nil>]), want exactly 1
+--- FAIL: TestConcurrentReparentCannotBuildCycle (0.24s)
+FAIL
+FAIL	github.com/guolichen007/crane-operations-platform/internal/asset	0.592s
+FAIL

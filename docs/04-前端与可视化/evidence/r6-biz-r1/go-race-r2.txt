@@ -1,0 +1,2 @@
+ok  	github.com/guolichen007/crane-operations-platform/internal/asset	3.217s
+ok  	github.com/guolichen007/crane-operations-platform/internal/equipmenttypes	1.985s

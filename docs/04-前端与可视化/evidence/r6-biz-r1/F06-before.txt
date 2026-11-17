@@ -1,0 +1,6 @@
+=== RUN   TestMoveAssetTraceability
+    move_trace_test.go:45: mv-1 revision: sql: no rows in result set
+--- FAIL: TestMoveAssetTraceability (0.14s)
+FAIL
+FAIL	github.com/guolichen007/crane-operations-platform/internal/asset	0.140s
+FAIL

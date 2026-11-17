@@ -1,0 +1,44 @@
+=== RUN   TestLocationMultipleNullCodeAndDuplicateReject
+--- PASS: TestLocationMultipleNullCodeAndDuplicateReject (0.16s)
+=== RUN   TestLocationParentCrossProjectRejected
+--- PASS: TestLocationParentCrossProjectRejected (0.13s)
+=== RUN   TestLocationPaginationStableAndComplete
+--- PASS: TestLocationPaginationStableAndComplete (0.26s)
+=== RUN   TestAssetLocationReadbackAndHistory
+--- PASS: TestAssetLocationReadbackAndHistory (0.23s)
+=== RUN   TestLocationParentGuards
+--- PASS: TestLocationParentGuards (0.18s)
+=== RUN   TestLocationLegalUpdatesAndInstalledAssetPath
+--- PASS: TestLocationLegalUpdatesAndInstalledAssetPath (0.13s)
+=== RUN   TestConcurrentReparentCannotBuildCycle
+--- PASS: TestConcurrentReparentCannotBuildCycle (0.15s)
+=== RUN   TestLocationMultipleNullCodeAndDuplicateReject
+--- PASS: TestLocationMultipleNullCodeAndDuplicateReject (0.11s)
+=== RUN   TestLocationParentCrossProjectRejected
+--- PASS: TestLocationParentCrossProjectRejected (0.11s)
+=== RUN   TestLocationPaginationStableAndComplete
+--- PASS: TestLocationPaginationStableAndComplete (0.25s)
+=== RUN   TestAssetLocationReadbackAndHistory
+--- PASS: TestAssetLocationReadbackAndHistory (0.14s)
+=== RUN   TestLocationParentGuards
+--- PASS: TestLocationParentGuards (0.22s)
+=== RUN   TestLocationLegalUpdatesAndInstalledAssetPath
+--- PASS: TestLocationLegalUpdatesAndInstalledAssetPath (0.22s)
+=== RUN   TestConcurrentReparentCannotBuildCycle
+--- PASS: TestConcurrentReparentCannotBuildCycle (0.15s)
+=== RUN   TestLocationMultipleNullCodeAndDuplicateReject
+--- PASS: TestLocationMultipleNullCodeAndDuplicateReject (0.11s)
+=== RUN   TestLocationParentCrossProjectRejected
+--- PASS: TestLocationParentCrossProjectRejected (0.11s)
+=== RUN   TestLocationPaginationStableAndComplete
+--- PASS: TestLocationPaginationStableAndComplete (0.26s)
+=== RUN   TestAssetLocationReadbackAndHistory
+--- PASS: TestAssetLocationReadbackAndHistory (0.14s)
+=== RUN   TestLocationParentGuards
+--- PASS: TestLocationParentGuards (0.12s)
+=== RUN   TestLocationLegalUpdatesAndInstalledAssetPath
+--- PASS: TestLocationLegalUpdatesAndInstalledAssetPath (0.13s)
+=== RUN   TestConcurrentReparentCannotBuildCycle
+--- PASS: TestConcurrentReparentCannotBuildCycle (0.15s)
+PASS
+ok  	github.com/guolichen007/crane-operations-platform/internal/asset	3.464s

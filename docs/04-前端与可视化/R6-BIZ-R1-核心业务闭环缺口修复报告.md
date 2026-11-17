@@ -132,15 +132,59 @@ B4 夹具变更：`a1fixture` 不再预置类型；`tools/a1-production-test.mjs
 
 不需要。初始化在现有 Schema 12 内通过受控命令完成，没有放松任何安全门禁。若将来要求"部署即自带类型目录"，可再评估用迁移写入，但那会把业务目录变更与 Schema 版本绑定，并影响 Down 治理与恢复演练，本轮不采用。
 
-## 9. CI（待补）
+## 9. CI
+
+### 9.1 第一轮：5e853e10e5561af5191b75af7cf027acd646ad4f（Run 44006669957 / Attempt 1）
+
+九项 Job 全部 `completed/success`，head_sha 一致（jobs API 核验）：backend、a1-security、integration、edge、frontend、r2-db-test、repository-contract、security、b4-business-acceptance。b4 Job 的「真实 Keycloak + PostgreSQL 浏览器业务验收」步骤 03:00:04–03:08:40 成功；check-run 注解显示 Playwright 三段运行 3 passed（auth）、1 passed（`@r6-empty-types` 单独一段）、39 passed（其余 B4）。
+
+原始 Job 日志与 artifact（`b4-business-evidence-5e853e1…`，id 14294479549，5,097,519 字节）对匿名访问返回 403/401，**未能直接读到** `R6_EQUIPMENT_TYPES_BOOTSTRAP=PASS`、`R2_R6_BIZ_DB_TEST=PASS`、`B4_BUSINESS_ACCEPTANCE=PASS` 三行原文。可确认的间接事实：这三行均由脚本在其前置断言全部通过后才打印，脚本任一断言失败即以非 0 退出，而对应步骤结论为 success；`@r6-empty-types` 单独一段 1 passed 证明空目录段确实执行。**请 OWNER 在 Run 页面展开两步日志确认三行原文并截图**（或下载 artifact 查看 `test-results-r6/equipment-types-*.json`），本报告据此记为 INDIRECT_PASS。
+
+5e853e1 已被 R6-BIZ-R1-R1 新提交取代，最终封板以新 SHA 的九项 CI 为准，不复用本轮结果。
+
+### 9.2 最终 SHA（待推送）
 
 | 字段 | 值 |
 |---|---|
 | 提交 SHA | 待 OWNER 推送 |
-| CI Run | 待补 |
-| 九项结论 | 待补 |
-| b4-business-acceptance：`R6_EQUIPMENT_TYPES_BOOTSTRAP=PASS` 行 | 待补 |
-| r2-db-test：`R2_R6_BIZ_DB_TEST=PASS` 行 | 待补 |
+| CI Run / Attempt | 待补 |
+| 三行标记 | 待补 |
+
+## 9A. R6-BIZ-R1-R1 最终独立反证与最小修复
+
+### F-08 位置父节点约束（确认缺陷，已修复）
+
+`UpdateLocation`（`PATCH /api/v1/locations/{id}`）原先不做任何校验，直接写 `parent_id`。在隔离真实 PostgreSQL 上用旧实现运行新测试（`F08-before.txt`）：
+
+| 反证 | 旧实现 |
+|---|---|
+| 位置自身为父节点 | 成功写入（自环） |
+| A→B→C→A | 成功写入（三节点环） |
+| B↔C 两节点环 | 成功写入 |
+| 新父节点属于其他项目 / 不存在 | 复合外键拦截，但返回原始 23503（HTTP 503） |
+| 新父节点已停用 | 成功写入 |
+| 名称为空 / kind 非法 | 空名成功写入；非法 kind 被 CHECK 拦截后误报为 version conflict |
+| 并发：X 挂到 Y、Y 挂到 X | 两个都成功，形成环 |
+
+已安装资产所在树被改成环后，F-03 的路径读取依赖深度上限才能终止，证明这是实际可达的数据损坏。
+
+修复（`internal/asset/asset.go`，不改 Schema）：更新时按新建同样规则校验字段；新父节点必须同项目存在，**新引用**的父节点必须 ACTIVE（保留原父节点即使它后来被停用仍合法）；自环拒绝；在项目级事务咨询锁（`pg_advisory_xact_lock`，锁序：项目树锁→行锁）内从新父节点向上遍历，遇到自身即拒绝。HTTP 映射：输入/父节点错误 422，编号重复 409。修复后（`F08-after.txt`，`-count=3`）全部通过；并发测试 10 轮×3 次每轮恰好 1 个成功、全库无环；`-race` 通过。合法更新不受影响：同父改名、父节点后被停用时修改地址、改挂到另一 ACTIVE 场地、解除为根节点均成功，已安装资产的当前位置路径随之正确变化，安装记录不变。BFF 层 `TestR6LocationParentGuardHTTP`：自环/环/未知父节点 422，合法改挂 200。
+
+### F-06 资产移动追溯一致性（确认缺口，范围受控补强）
+
+旧实现移动资产只写 `audit_logs(asset_moved)` 并把资产 version+1，不写 `entity_revisions`、不写 `asset_timeline_events`（`F06-before.txt`：`mv-1 revision: no rows`）。资产版本前进却没有对应修订，与创建/编辑/退役不一致。另外版本更新未检查影响行数。
+
+补强：同一事务内额外写入一条资产修订（`changed_fields={moved}`，与审计相同 request_id，快照为移动后资产 + `move.from/to` 两个安装记录 ID 与位置 ID）和一条 `LOCATION` 时间线事件（引用新安装记录）；版本更新检查影响行数。**不回填、不改写既有历史**；被拒绝的移动（旧版本、跨项目、停用位置）不写任何审计/修订/时间线/安装行。`TestMoveAssetTraceability` 通过（`F06-after.txt`）。`verify-b4-state` 的 "资产修订 ≥3" 断言仍成立（移动后修订更多）。完整的时间线读取与展示不在本轮范围，列为已知 P2。
+
+### F-09 类型初始化手册（已修订）
+
+`R6-Equipment设备类型目录初始化操作手册.md` 修订：`set -euo pipefail` + `umask 077` + `0700` 工作目录、所有记录文件 0600；数据库身份保护（只用 `crane_app` 角色与容器内 `/run/secrets/app_db_password`，不改用超级用户，plan 输出 `target` 必须为 crane_app/crane_app/schema 12）；`verify --expect-installable 43` 检查可安装数量；区分 `success`（真正新增）与 `noop`（仅审计，不代表本次完成初始化）；明确同一旧 digest 只能成功使用一次，再次使用被拒绝，这不是幂等；类型数量统一为 43。
+
+配套的最小工具变更：plan/record 增加不含密钥的目标库身份（库名、角色、库 OID、Schema 版本）并计入 digest，在另一库上算出的计划不能应用（`TestPlanDigestBoundToDatabase`）；`verify --expect-installable N`；`TestRegistryCountMatchesRunbook` 锁定 43。B4 runner 增加：plan 目标身份断言、旧 digest 二次 apply 必须退出 1、verify 带 `--expect-installable 2`。
+
+### 本轮本地验证
+
+asset / equipmenttypes / inventory / operations / uatdata / equipment-types / migrations 全包（`go-reg-r2a.txt`）、cloud-api app 全包（`go-reg-r2-app.txt`）、`-race` 并发相关（`go-race-r2.txt`）、契约 63/63、codegen check、astguard、gofmt、go vet 均通过。前端本轮未改动。R2 DB 门禁新增 5 个必过测试。
 
 ## 10. 封板状态
 
@@ -153,9 +197,13 @@ LOCATION_HISTORY_PASS              = LOCAL_PASS；CI 待补
 CROSS_PROJECT_ISOLATION_PASS       = LOCAL_PASS（HTTP 404 + 审计）；B4 真实浏览器待 CI
 EXISTING_BUSINESS_REGRESSION_PASS  = LOCAL_PASS（Go 全包 / vitest / 选定 premium）；B4 与完整 e2e 待 CI
 MIGRATION_REQUIRED                 = NO（Schema 仍为 12）
-CI_9_OF_9                          = PENDING（待 OWNER 推送）
+CI_9_OF_9                          = 5e853e1 为 9/9；最终 SHA 待 OWNER 推送
 OPEN_P0                            = 0
 OPEN_BLOCKING_P1                   = 0（部署后必须执行一次类型初始化，已写入操作手册，属发布步骤而非缺陷）
+F08_LOCATION_TREE                  = FIXED（旧实现可成环，已修复，含并发）
+F06_MOVE_TRACE                     = FIXED（新移动写修订+时间线；历史不回填）
+F09_RUNBOOK                        = FIXED
+KNOWN_P2                           = 资产时间线读取/展示；R6 前的历史移动无修订（不回填）
 ```
 
 封板判定须等同一完整 SHA 九项 CI SUCCESS 后由独立审查确认。
