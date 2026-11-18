@@ -188,7 +188,8 @@ node $D reset-business "$ENV" apply --approve <plan digest> --actor <管理员> 
   COMMIT;
   ```
 
-- Keycloak 中的 UAT 临时账号在 Keycloak 管理台单独停用。这一步不影响 Crane 数据库。
+- UAT 临时账号：由系统管理员在「人员与账号」中按名单停用（同时停用 Keycloak 账号、结束会话并写审计，见《P1-人员账号与权限管理部署与开通手册》）。未纳管的旧测试账号（早于本专项、没有登录用户名的）可在页面停用平台访问；其 Keycloak 账号仍需在 Keycloak 管理台停用。
+- reset-business 保留人员、部门、系统角色、开户记录和账号审计（Schema 13 起），重置后系统管理员仍可登录与开户。
 
 ### 3A.5 窗口结束前的验收
 

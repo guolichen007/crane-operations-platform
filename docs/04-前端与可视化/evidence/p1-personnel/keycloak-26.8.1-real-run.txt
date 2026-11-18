@@ -1,0 +1,37 @@
+KC_READY after 30s
+Keycloak realm/client provisioned; no users or project grants created.
+Keycloak realm/client provisioned; no users or project grants created.
+PASS service account obtains a token (client credentials)
+PASS create disabled managed user
+PASS duplicate username refused with conflict (409)
+PASS managed attribute persisted by the user profile
+PASS set temporary password
+PASS temporary password requires UPDATE_PASSWORD
+PASS enable
+PASS logout all sessions
+PASS disable
+PASS delete unbound disabled user
+PASS cannot change realm settings
+PASS cannot create clients
+PASS BFF client not visible to the account service (cannot modify it)
+PASS cannot create realm roles
+PASS cannot read the master realm
+PASS cannot create realms
+PASS cannot list or change identity providers
+PASS package refuses to manage the service-account user
+PASS cannot grant itself realm-admin
+PASS cannot grant itself manage-realm
+PASS cannot grant itself manage-clients
+PASS cannot grant realm-admin to a user it created
+PASS cannot grant manage-realm to a user it created
+PASS cannot grant manage-clients to a user it created
+PASS after escalation attempts a fresh token still cannot create clients
+--- PASS: TestRealKeycloakLeastPrivilege (0.52s)
+PASS
+PASS web account create (real Keycloak user enabled after grants)
+PASS first login password change
+PASS password reset invalidates old password
+PASS disable blocks identity-provider login; enable restores it
+PASS provision crash recovery (Keycloak success, DB not yet bound) and retry
+--- PASS: TestRealKeycloakAccountLifecycle (13.69s)
+PASS
