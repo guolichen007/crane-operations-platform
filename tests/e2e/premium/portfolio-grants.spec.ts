@@ -26,6 +26,12 @@ async function mock(page: Page, opts: { role?: 'portfolio_manager' | 'portfolio_
     if (p === 'portfolio/scopes') return r.fulfill({ json: [{ id: 'PS-A', tenantId: 'demo', code: 'PS-A', name: '华东项目组合', status: 'ACTIVE', version: 1, myRole: role }] });
     if (p === 'portfolio/intakes') return r.fulfill({ json: [{ id: 'I1', portfolioScopeId: 'PS-A', tenantId: 'demo', intakeCode: 'INT-Q2', projectName: 'Q2 华东新装项目', customerName: null, projectType: 'NEW', priority: 'MEDIUM', riskLevel: 'MEDIUM', scopeSummary: '', siteReference: null, registeredAt: '2026-11-10T00:00:00Z', registeredBy: 'u', requestedStart: null, requestedHandover: null, plannedStart: null, plannedEnd: null, status: 'APPROVED', projectManagerUserId: null, technicalLeadUserId: null, siteLeadUserId: null, formalProjectId: 'FP-1', version: 3 }] });
     if (p === 'portfolio/projects') return r.fulfill({ json: opts.projects ?? [formal({ canManageGrants: role === 'portfolio_manager', memberCount: members.length, grantStatus: members.length ? 'MEMBERS_CONFIGURED' : 'NO_MEMBERS' })] });
+    if (p === 'portfolio/projects/FP-1/member-candidates') {
+      const term = new URL(r.request().url()).searchParams.get('q') ?? '';
+      if (role !== 'portfolio_manager') return r.fulfill({ status: 403, json: { error: 'Forbidden' } });
+      const all = ['user-new', 'user-two', 'user-pm', 'nobody'].map((id) => ({ userId: id, displayName: 'Anonymous ' + id, username: id, departmentName: '运维部', jobTitle: '工程师' }));
+      return r.fulfill({ json: all.filter((c) => c.userId.includes(term) || c.displayName.includes(term)) });
+    }
     if (p === 'portfolio/projects/FP-1/members' && m === 'GET') return role === 'portfolio_manager' ? r.fulfill({ json: members }) : r.fulfill({ status: 403, json: { error: 'Forbidden' } });
     if (p === 'portfolio/projects/FP-1/members' && m === 'POST') {
       if (opts.delayMs) await new Promise((x) => setTimeout(x, opts.delayMs));
@@ -44,6 +50,13 @@ async function mock(page: Page, opts: { role?: 'portfolio_manager' | 'portfolio_
     return r.fulfill({ json: [] });
   });
   return { members, posts, session };
+}
+
+// P1: the grant form uses the controlled person picker (search → select), never a typed raw id.
+async function pickMember(form: ReturnType<Page['getByTestId']>, userId: string) {
+  await form.getByTestId('member-search').fill(userId);
+  await form.locator(`[data-candidate="${userId}"]`).click();
+  await expect(form.getByTestId('member-search')).toHaveValue(`Anonymous ${userId}（${userId}）`);
 }
 
 async function openFormal(page: Page) {
@@ -65,7 +78,7 @@ test('经理：查看正式项目 → 授予 → 调整角色 → 撤销，状�
   await expect(panel).toContainText('未进入运营地图');
   await page.screenshot({ path: shot('1-formal-no-members') });
   const form = panel.getByTestId('grant-form');
-  await form.getByLabel('平台账号 ID').fill('user-new');
+  await pickMember(form, 'user-new');
   await form.getByLabel('项目角色').selectOption('platform_admin');
   await expect(form.getByTestId('role-detail')).toContainText('不含设备控制');
   await form.getByTestId('grant-submit').click();
@@ -92,30 +105,30 @@ test('错误提示：未知账号 422、并发修改 409、服务 503；失败�
   await form.getByTestId('grant-submit').click();
   await expect(form.locator('.field-error')).toHaveCount(2);
   expect(api.posts).toHaveLength(0);
-  await form.getByLabel('平台账号 ID').fill('user-pm');
+  await pickMember(form, 'user-pm');
   await form.getByTestId('grant-submit').click();
   await expect(form.locator('.field-error').first()).toContainText('自己');
-  await form.getByLabel('平台账号 ID').fill('nobody');
+  await pickMember(form, 'nobody');
   await form.getByLabel('项目角色').selectOption('viewer');
   await form.getByTestId('grant-submit').click();
   await expect(form.getByRole('button', { name: '保存中…' })).toBeDisabled();
   await form.getByRole('button', { name: '保存中…' }).click({ force: true }).catch(() => {});
   await expect(panel.getByTestId('grant-error')).toContainText('已停用');
   expect(api.posts).toHaveLength(1);
-  await expect(form.getByLabel('平台账号 ID')).toHaveValue('nobody');
+  await expect(form.getByTestId('member-search')).toHaveValue('Anonymous nobody（nobody）');
   // Someone else granted user-two after our list was loaded: our request still carries
   // expectedRole=null, so the server answers 409 (no silent overwrite) and the list refreshes.
   api.members.push({ userId: 'user-two', displayName: 'two', role: 'operator', enabled: true });
-  await form.getByLabel('平台账号 ID').fill('user-two');
+  await pickMember(form, 'user-two');
   await form.getByTestId('grant-submit').click();
   await expect(panel.getByTestId('grant-error')).toContainText('已被他人修改');
   expect(api.posts.at(-1)).toEqual({ userId: 'user-two', role: 'viewer', expectedRole: null });
   await expect(panel.locator('[data-member="user-two"]')).toBeVisible();
   fail.add('POST portfolio/projects/FP-1/members');
-  await form.getByLabel('平台账号 ID').fill('user-new');
+  await pickMember(form, 'user-new');
   await form.getByTestId('grant-submit').click();
   await expect(panel.getByTestId('grant-error')).toContainText('已保留');
-  await expect(form.getByLabel('平台账号 ID')).toHaveValue('user-new');
+  await expect(form.getByTestId('member-search')).toHaveValue('Anonymous user-new（user-new）');
   await page.screenshot({ path: shot('3-errors') });
 });
 
@@ -123,7 +136,7 @@ test('并发：成员已被他人改动时得到 409 并刷新列表', async ({ 
   const api = await mock(page);
   const panel = await openFormal(page);
   api.members.push({ userId: 'user-new', displayName: 'n', role: 'viewer', enabled: true });
-  await panel.getByTestId('grant-form').getByLabel('平台账号 ID').fill('user-new');
+  await pickMember(panel.getByTestId('grant-form'), 'user-new');
   await panel.getByTestId('grant-form').getByLabel('项目角色').selectOption('operator');
   await panel.getByTestId('grant-submit').click();
   await expect(panel.getByTestId('grant-error')).toContainText('已被他人修改');
@@ -171,7 +184,7 @@ test('Q3 修复 A：授权已提交但成员列表读取失败时显示成功，
   const api = await mock(page, { readFailsAfterCommit: true });
   const panel = await openFormal(page);
   const form = panel.getByTestId('grant-form');
-  await form.getByLabel('平台账号 ID').fill('user-new');
+  await pickMember(form, 'user-new');
   await form.getByLabel('项目角色').selectOption('viewer');
   await form.getByTestId('grant-submit').click();
   await expect(panel.getByTestId('grant-notice')).toContainText('授权本身已生效');
@@ -179,13 +192,13 @@ test('Q3 修复 A：授权已提交但成员列表读取失败时显示成功，
   // The separate reload (GET) shows the committed member; exactly one POST was sent.
   await expect(panel.locator('[data-member="user-new"]')).toBeVisible();
   expect(api.posts).toHaveLength(1);
-  await expect(form.getByLabel('平台账号 ID')).toHaveValue('');
+  await expect(form.getByTestId('member-search')).toHaveValue('');
 });
 
 test('Q3 修复 B：授权表单有草稿时切换页签、切换项目、关闭面板都需确认；保存中不可切换', async ({ page }) => {
   const api = await mock(page, { delayMs: 1500, projects: [formal(), formal({ id: 'FP-2', name: '第二个正式项目', intakeId: 'I2', intakeCode: 'INT-2' })] });
   const panel = await openFormal(page);
-  await panel.getByTestId('grant-form').getByLabel('平台账号 ID').fill('user-new');
+  await pickMember(panel.getByTestId('grant-form'), 'user-new');
   const prompts: string[] = [];
   page.on('dialog', (d) => { prompts.push(d.message()); void d.dismiss(); });
   await page.locator('.tabs button', { hasText: '项目登记' }).click();
@@ -194,7 +207,7 @@ test('Q3 修复 B：授权表单有草稿时切换页签、切换项目、关闭
   expect(prompts).toHaveLength(3);
   await expect(page.getByTestId('tab-formal')).toHaveClass(/active/);
   await expect(panel).toContainText('Q2 华东新装项目');
-  await expect(panel.getByTestId('grant-form').getByLabel('平台账号 ID')).toHaveValue('user-new');
+  await expect(panel.getByTestId('grant-form').getByTestId('member-search')).toHaveValue('Anonymous user-new（user-new）');
   // In-flight: switching is refused outright (no prompt), exactly one POST, then success.
   await panel.getByTestId('grant-form').getByLabel('项目角色').selectOption('viewer');
   await panel.getByTestId('grant-submit').click();

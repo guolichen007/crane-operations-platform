@@ -27,7 +27,7 @@ export type GrantForm = { userId: string; role: ProjectRole | '' };
 export function validateGrantForm(form: GrantForm, selfId: string | null): Partial<Record<keyof GrantForm, string>> {
   const e: Partial<Record<keyof GrantForm, string>> = {};
   const id = form.userId.trim();
-  if (!id) e.userId = '必填：被授权人的平台账号 ID（精确值）';
+  if (!id) e.userId = '请搜索并选择被授权人员';
   else if (!USER_ID.test(id)) e.userId = '账号 ID 只能包含字母、数字、- 和 _（不超过 80 位）';
   else if (selfId && id === selfId) e.userId = '不能为自己授予项目权限，请由另一位项目组合经理操作';
   if (!(PROJECT_ROLES as readonly string[]).includes(form.role)) e.role = '请选择项目角色';

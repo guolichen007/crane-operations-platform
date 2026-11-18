@@ -11,11 +11,14 @@ import {
   Gauge,
   TriangleAlert,
   ChartColumn,
+  UsersRound,
   ChevronDown,
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-vue-next';
-import { productionAuth } from '../cloud/session';
+import { productionAuth, webSession } from '../cloud/session';
+import { useQuery } from '@tanstack/vue-query';
+import { getSystemAccess } from '../cloud/personnel';
 
 type NavItem = { path: string; name: string; icon: typeof Map };
 const route = useRoute();
@@ -37,6 +40,19 @@ const after: NavItem[] = [
   { path: '/alarms', name: '告警', icon: TriangleAlert },
   ...(productionAuth ? [] : [{ path: '/analytics', name: '分析', icon: ChartColumn }] as NavItem[]),
 ];
+
+// 系统管理 is shown only to holders of a system role (system_admin / account_manager). The entry is
+// a convenience; every /api/v1/admin route re-checks the system capability server-side.
+const systemAccess = useQuery({
+  queryKey: computed(() => ['system-access', webSession.value?.userId ?? 'dev']),
+  queryFn: getSystemAccess,
+  enabled: computed(() => !productionAuth || !!webSession.value),
+  retry: false,
+  staleTime: 60_000,
+});
+const system = computed<NavItem[]>(() =>
+  systemAccess.data.value?.capabilities?.personnel_read ? [{ path: '/system/people', name: '人员与账号', icon: UsersRound }] : [],
+);
 
 const STORAGE_KEY = 'crane.rail.collapsed';
 const collapsedPref = ref(localStorage.getItem(STORAGE_KEY) === '1');
@@ -116,6 +132,9 @@ const showChildren = computed(() => collapsed.value || assetsOpen.value);
         </div>
       </div>
       <RouterLink v-for="n in after" :key="n.path" :to="n.path" active-class="active" :title="n.name" :aria-label="n.name"
+        ><component :is="n.icon" :size="19" :stroke-width="1.7" /><span>{{ n.name }}</span></RouterLink
+      >
+      <RouterLink v-for="n in system" :key="n.path" :to="n.path" active-class="active" :title="n.name" :aria-label="n.name" data-testid="rail-system"
         ><component :is="n.icon" :size="19" :stroke-width="1.7" /><span>{{ n.name }}</span></RouterLink
       >
     </nav>

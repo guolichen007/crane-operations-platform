@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query';
 import { onBeforeRouteLeave } from 'vue-router';
 import { RefreshCw, UserPlus, X } from 'lucide-vue-next';
 import { listProjectMembers, changeProjectMember } from '../cloud/portfolio';
+import { searchMemberCandidates, type Candidate } from '../cloud/personnel';
 import { allowClose } from '../cloud/draft';
 import { createScopeFence } from '../cloud/scope-fence';
 import { ApiError } from '../cloud/client';
@@ -31,12 +32,36 @@ const membersQuery = useQuery({
 const members = computed<ProjectMember[]>(() => membersQuery.data.value ?? []);
 
 const form = ref<GrantForm>({ userId: '', role: '' });
+// Controlled person picker (P1): search by name / username / department; the server returns at most
+// 20 enabled people with minimal fields, only to managers of this project's portfolio.
+const search = ref('');
+const picked = ref<Candidate | null>(null);
+const searchTerm = ref('');
+let searchTimer: ReturnType<typeof setTimeout> | undefined;
+function onSearch() {
+  picked.value = null;
+  form.value.userId = '';
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => (searchTerm.value = search.value.trim()), 250);
+}
+const candidates = useQuery({
+  queryKey: computed(() => ['member-candidates', props.project.id, searchTerm.value]),
+  queryFn: () => searchMemberCandidates(props.project.id, searchTerm.value),
+  enabled: computed(() => props.project.canManageGrants && searchTerm.value.length > 0),
+  staleTime: 10_000,
+});
+function pick(c: Candidate) {
+  picked.value = c;
+  form.value.userId = c.userId;
+  search.value = c.displayName ? `${c.displayName}（${c.username || c.userId}）` : c.userId;
+  searchTerm.value = '';
+}
 const touched = ref(false);
 const formError = ref('');
 const notice = ref('');
 const errors = computed(() => validateGrantForm(form.value, selfId.value));
 const shown = computed(() => (touched.value ? errors.value : {}));
-const dirty = computed(() => form.value.userId.trim() !== '' || form.value.role !== '');
+const dirty = computed(() => form.value.userId.trim() !== '' || form.value.role !== '' || search.value.trim() !== '');
 // The parent must ask canLeave() before switching tab / project or closing the panel, so a
 // typed draft or an in-flight change is never silently discarded (DirtyGuard, Q3 fix B).
 defineExpose({ canLeave: () => allowClose(dirty.value, grantMutation.isPending.value) });
@@ -62,6 +87,8 @@ const grantMutation = useMutation({
     notice.value = v.role ? `已将 ${v.userId} 设为「${PROJECT_ROLE_TEXT[v.role].label}」，立即生效。` : `已撤销 ${v.userId} 的项目权限，其现有会话的下一次请求即失效。`;
     if (!result.membersRefreshed) notice.value += '（成员列表刷新失败，正在重新加载；授权本身已生效）';
     form.value = { userId: '', role: '' };
+    search.value = '';
+    picked.value = null;
     touched.value = false;
     await refreshAfterChange(result);
   },
@@ -155,9 +182,17 @@ onBeforeRouteLeave(() => allowClose(dirty.value, grantMutation.isPending.value))
       <form class="grant-form" data-testid="grant-form" novalidate @submit.prevent="submit">
         <h3><UserPlus :size="14" />授予项目权限</h3>
         <div class="form-row">
-          <label>平台账号 ID *
-            <input v-model="form.userId" aria-label="平台账号 ID" maxlength="80" autocomplete="off" placeholder="被授权人的精确账号 ID" :aria-invalid="!!shown.userId" />
-            <span v-if="shown.userId" class="field-error">{{ shown.userId }}</span>
+          <label class="picker">被授权人员 *
+            <input v-model="search" aria-label="搜索人员" data-testid="member-search" maxlength="40" autocomplete="off" placeholder="输入姓名、用户名或部门搜索" :aria-invalid="!!shown.userId" role="combobox" :aria-expanded="!!searchTerm && !picked" @input="onSearch" />
+            <ul v-if="searchTerm && !picked" class="picker-list" role="listbox" data-testid="member-candidates">
+              <li v-if="candidates.isLoading.value" class="cell-sub">搜索中…</li>
+              <li v-else-if="candidates.isError.value" class="field-error">{{ grantErrorMessage(candidates.error.value) }}</li>
+              <li v-else-if="!candidates.data.value?.length" class="cell-sub">没有匹配的启用人员</li>
+              <li v-for="c in candidates.data.value ?? []" v-else :key="c.userId" role="option" tabindex="0" :data-candidate="c.userId" @click="pick(c)" @keyup.enter="pick(c)">
+                <strong>{{ c.displayName || c.userId }}</strong><small>{{ c.username || c.userId }}{{ c.departmentName ? ' · ' + c.departmentName : '' }}{{ c.jobTitle ? ' · ' + c.jobTitle : '' }}</small>
+              </li>
+            </ul>
+            <span v-if="shown.userId" class="field-error">{{ picked || !search ? shown.userId : '请从搜索结果中选择人员' }}</span>
           </label>
           <label>项目角色 *
             <select v-model="form.role" aria-label="项目角色" :aria-invalid="!!shown.role">
@@ -168,7 +203,7 @@ onBeforeRouteLeave(() => allowClose(dirty.value, grantMutation.isPending.value))
           </label>
         </div>
         <p v-if="form.role" class="form-hint" data-testid="role-detail">{{ PROJECT_ROLE_TEXT[form.role].label }}：{{ PROJECT_ROLE_TEXT[form.role].detail }}</p>
-        <p class="form-hint">只能授权已在本平台登录过的启用账号；不提供账号搜索。服务端会核对账号、角色与项目归属。</p>
+        <p class="form-hint">只能选择启用状态的平台人员（由系统管理员开户）。搜索仅返回姓名、用户名、部门与岗位；服务端会核对账号、角色与项目归属。</p>
         <p v-if="formError" class="form-error" role="alert" data-testid="grant-error">{{ formError }}</p>
         <p v-if="notice" class="workspace-notice" role="status" data-testid="grant-notice">{{ notice }}</p>
         <div class="modal-actions">
@@ -203,4 +238,9 @@ onBeforeRouteLeave(() => allowClose(dirty.value, grantMutation.isPending.value))
 .workspace-notice { color: #6fd39b; font-size: 13px; margin: 0; }
 .workspace-hint { color: var(--text-3); font-size: 13px; margin: 0; }
 .cell-sub { font-size: 11px; color: var(--text-3); margin: 0; }
+.picker { position: relative; }
+.picker-list { position: absolute; z-index: 5; top: 100%; left: 0; right: 0; margin: 4px 0 0; padding: 4px; list-style: none; max-height: 240px; overflow: auto; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--surface-900); }
+.picker-list li[role='option'] { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border-radius: 6px; cursor: pointer; color: var(--text-1); }
+.picker-list li[role='option']:hover, .picker-list li[role='option']:focus { background: rgba(74, 163, 255, 0.15); outline: none; }
+.picker-list small { color: var(--text-3); font-size: 11px; }
 </style>

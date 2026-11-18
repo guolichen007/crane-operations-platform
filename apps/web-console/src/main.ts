@@ -15,6 +15,8 @@ const AssetDetail = () => import('./views/AssetDetail.vue');
 const LocationCenter = () => import('./views/LocationCenter.vue');
 const CatalogCenter = () => import('./views/CatalogCenter.vue');
 const PortfolioWorkspace = () => import('./views/PortfolioWorkspace.vue');
+const PersonnelCenter = () => import('./views/PersonnelCenter.vue');
+const PersonDetail = () => import('./views/PersonDetail.vue');
 const cloudMode = import.meta.env.VITE_DATA_MODE === 'api';
 const productionAuth = import.meta.env.VITE_AUTH_MODE === 'oidc';
 import './styles.css';
@@ -49,6 +51,8 @@ createApp(App)
         { path: '/portfolio', component: PortfolioWorkspace },
         { path: '/locations', component: LocationCenter },
         { path: '/catalog', component: CatalogCenter },
+        { path: '/system/people', component: PersonnelCenter },
+        { path: '/system/people/:id', component: PersonDetail },
         ...(productionAuth ? [] : [{ path: '/system', component: Workspace }]),
         { path: '/:pathMatch(.*)*', redirect: '/overview' },
       ],
