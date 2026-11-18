@@ -210,7 +210,7 @@ func protectedDigest(ctx context.Context, c client) (map[string]string, error) {
 		return v, nil
 	}
 	sum := func(v any) string {
-		b, _ := json.Marshal(v) // encoding/json sorts map keys: stable
+		b, _ := json.Marshal(canonical(v)) // map keys sorted by encoding/json; arrays canonicalized
 		h := sha256.Sum256(b)
 		return hex.EncodeToString(h[:])
 	}
@@ -263,4 +263,38 @@ func protectedDigest(ctx context.Context, c client) (map[string]string, error) {
 	sort.Slice(list, func(i, j int) bool { return list[i].ID < list[j].ID })
 	out["users+credentials"] = sum(list)
 	return out, nil
+}
+
+// canonical makes a Keycloak representation order-independent where order carries no meaning:
+// Keycloak returns sets (e.g. a client's default / optional client scopes, realm event types)
+// as JSON arrays whose order varies between reads on a PostgreSQL-backed server. Every array is
+// sorted by the JSON encoding of its canonicalized elements; any value change is still detected.
+func canonical(v any) any {
+	switch x := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, e := range x {
+			out[k] = canonical(e)
+		}
+		return out
+	case []any:
+		items := make([]any, len(x))
+		keys := make([]string, len(x))
+		for i, e := range x {
+			items[i] = canonical(e)
+			b, _ := json.Marshal(items[i])
+			keys[i] = string(b)
+		}
+		idx := make([]int, len(x))
+		for i := range idx {
+			idx[i] = i
+		}
+		sort.SliceStable(idx, func(a, b int) bool { return keys[idx[a]] < keys[idx[b]] })
+		out := make([]any, len(x))
+		for i, j := range idx {
+			out[i] = items[j]
+		}
+		return out
+	}
+	return v
 }

@@ -1,0 +1,14 @@
+# PostgreSQL-backed Keycloak 26.8.1 (kc.sh start --db postgres, same as CI/server): full provisioner twice, then
+# provision-keycloak --account-service-only three times. Before the canonical-digest fix the first account-only run failed with
+# 'protected Keycloak configuration changed: client:crane-bff' (optionalClientScopes returned in a different order).
+KC_READY after 69s
+Keycloak realm/client provisioned; no users or project grants created.
+rc=0
+Keycloak realm/client provisioned; no users or project grants created.
+rc=0
+crane-account-service converged; realm, crane-bff, users and policies unchanged; no credential printed.
+rc=0
+crane-account-service converged; realm, crane-bff, users and policies unchanged; no credential printed.
+rc=0
+crane-account-service converged; realm, crane-bff, users and policies unchanged; no credential printed.
+rc=0
