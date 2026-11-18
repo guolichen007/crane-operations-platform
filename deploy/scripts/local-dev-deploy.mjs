@@ -13,6 +13,7 @@
 //   node deploy/scripts/local-dev-deploy.mjs fleet    <private.env> --fleet <new fleet.json> --acl <new acl>
 //   node deploy/scripts/local-dev-deploy.mjs reset-business <private.env> plan
 //   node deploy/scripts/local-dev-deploy.mjs reset-business <private.env> apply --approve <digest> --actor <admin> --confirm crane-dev
+//   node deploy/scripts/local-dev-deploy.mjs reset-business <private.env> finish --actor <admin> --confirm crane-dev   (only after DB_RESET_FILES_PENDING)
 //            ONE-OFF crane-dev business reset (OWNER-approved): database business data (one transaction,
 //            guarded, audited), Inventory/Fleet/ACL to explicit empty documents, simulator stopped and
 //            its spool volume removed, broker ACL reloaded, cloud-api recreated; keeps Keycloak, CA,
@@ -523,11 +524,31 @@ export function resetBusiness(environmentArgument, mode, { approve, actor, confi
       ctx.log(`LOCAL_DEV_RESET_PLAN digest=${out.plan.digest} real=${out.plan.realRuntimes} delete=${JSON.stringify(out.plan.delete)} keep=${JSON.stringify(out.plan.keep)}`);
       return out.plan;
     }
-    if (mode !== 'apply' || !approve || !actor || confirm !== devEnvironment) throw Error('apply requires --approve <plan digest> --actor <admin> --confirm crane-dev');
+    const finish = mode === 'finish';
+    if (finish) {
+      // Recovery after "DB reset OK, file steps failed": the database must already be empty (a new
+      // apply is impossible — the digest changed); repeat only the idempotent file/spool/broker/
+      // cloud-api steps and their verification.
+      const state = readState(dir, 'reset-state.json');
+      if (state?.status !== 'DB_RESET_FILES_PENDING' || !actor || confirm !== devEnvironment) throw Error('finish requires reset-state DB_RESET_FILES_PENDING, --actor <admin> and --confirm crane-dev');
+      const now = JSON.parse(tool('plan'));
+      const left = Object.entries(now.plan.delete).filter(([, n]) => n !== 0);
+      if (left.length) throw new Stop('database still holds business rows; this is not a file-step recovery: ' + JSON.stringify(Object.fromEntries(left)));
+    } else if (mode !== 'apply' || !approve || !actor || confirm !== devEnvironment) throw Error('apply requires --approve <plan digest> --actor <admin> --confirm crane-dev');
     const tenant = readFleet(environment.CRANE_FLEET_FILE).tenantId;
-    // 1. Simulator off first (its spool would replay old events), then the database (one transaction).
+    // 1. Maintenance window: simulator off (its spool would replay old events) and cloud-api stopped
+    //    (no MQTT ingest or web write can race the reset); then the database (one transaction).
     if (docker(ctx, ['ps', '-q', '--filter', `name=^${SIM_CONTAINER}$`]).trim()) docker(ctx, ['stop', '--time', '10', SIM_CONTAINER]);
-    const applied = JSON.parse(tool('apply', '--approve', approve, '--actor', actor));
+    docker(ctx, [...args, 'stop', '--timeout', '20', 'cloud-api']);
+    let applied;
+    if (finish) applied = { deleted: readState(dir, 'reset-state.json').deleted, kept: {} };
+    else {
+      writeState(dir, 'reset-state.json', { status: 'WRITES_STOPPED', at: ctx.now().toISOString(), actor, digest: approve });
+      applied = JSON.parse(tool('apply', '--approve', approve, '--actor', actor));
+    }
+    // From here the database is reset but the platform is NOT clean until the files, spool, broker
+    // and cloud-api steps below verified. A failure leaves reset-state.json = DB_RESET_FILES_PENDING.
+    writeState(dir, 'reset-state.json', { status: 'DB_RESET_FILES_PENDING', at: ctx.now().toISOString(), actor, digest: approve, deleted: applied.deleted });
     // 2. Startup documents become explicit empty ones (in place: bind mounts keep their inode).
     const stamp = ctx.now().toISOString().replace(/[:.]/g, '-');
     writeInPlace(environment.CRANE_INVENTORY_FILE, EMPTY_INVENTORY(tenant), stamp);
@@ -549,6 +570,7 @@ export function resetBusiness(environmentArgument, mode, { approve, actor, confi
     ctx.log('LOCAL_DEV_SMOKE ' + s.checks.join(' '));
     if (!s.ok) throw Object.assign(Error('smoke failed after the reset; previous files kept as *.bak-' + stamp), { code: 3 });
     writeState(dir, `reset-${stamp}.json`, { kind: 'crane-business-reset', at: ctx.now().toISOString(), actor, digest: approve, deleted: applied.deleted, kept: applied.kept, backups: `*.bak-${stamp}` });
+    writeState(dir, 'reset-state.json', { status: 'COMPLETE', at: ctx.now().toISOString(), actor, digest: approve, record: `reset-${stamp}.json` });
     ctx.log(`LOCAL_DEV_RESET=PASS deleted=${JSON.stringify(applied.deleted)} inventory=EMPTY fleet=EMPTY acl=EMPTY spool=REMOVED cloud_api=recreated`);
     return applied;
   });
@@ -566,7 +588,7 @@ if (import.meta.main) {
     else if (mode === 'status') status(envFile);
     else if (mode === 'compose') composeMaintenance(envFile, rest[0] === '--' ? rest.slice(1) : rest);
     else if (mode === 'fleet') updateFleet(envFile, flag('--fleet'), flag('--acl'));
-    else if (mode === 'reset-business') resetBusiness(envFile, rest[0], { approve: flag('--approve'), actor: flag('--actor'), confirm: flag('--confirm') });
+    else if (mode === 'reset-business') resetBusiness(envFile, rest[0], { approve: flag('--approve'), actor: flag('--actor'), confirm: flag('--confirm') });  // plan | apply | finish
     else throw Error('unknown mode');
   } catch (error) { console.error(error.message); process.exitCode = error.code || 1; }
 }

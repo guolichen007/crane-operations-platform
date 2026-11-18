@@ -76,13 +76,14 @@ function fakeDocker(r, { buildId = (tag) => 'sha256:' + Buffer.from(tag).toStrin
       if (ov) state.lastOverride = ov;
       if (args.includes('psql')) return { status: 0, stdout: state.schema + '\n' };
       if (args.includes('config')) return { status: 0, stdout: JSON.stringify(devConfig(imgs)) };
-      if (args.includes('kill')) { state.hup++; return { status: 0, stdout: '' }; }
+      if (args.includes('kill')) { if (state.failHup) return { status: 1, stdout: '' }; state.hup++; return { status: 0, stdout: '' }; }
+      if (args.includes('stop') && args.at(-1) === 'cloud-api') { state.apiStopped = true; return { status: 0, stdout: '' }; }
       if (args.includes('exec')) { const path = args.at(-1); return { status: 0, stdout: readFileSync(path === '/mosquitto/acl' ? r.acl : path === '/inventory/inventory.json' ? r.inventory : r.fleet, 'utf8') }; }
       if (args.includes('run') && args.includes('reset-business')) {
         state.resetCalls.push(args.slice(args.indexOf('reset-business')).join(' '));
         const counts = (n) => ({ projects: n, devices: n, alarms: n * 3 });
         if (args.includes('plan')) return { status: 0, stdout: JSON.stringify({ plan: { digest: 'd'.repeat(64), realRuntimes: 0, delete: counts(state.businessRows), keep: { portfolio_scopes: 1, equipment_types: 43 } } }) };
-        if (args.at(-1) && args.includes('apply')) { if (!state.simStopped && state.simRunning) throw Error('database reset while the simulator runs'); state.businessRows = 0; return { status: 0, stdout: JSON.stringify({ deleted: counts(2), kept: { portfolio_scopes: 1, equipment_types: 43 } }) }; }
+        if (args.at(-1) && args.includes('apply')) { if (!state.simStopped && state.simRunning) throw Error('database reset while the simulator runs'); if (!state.apiStopped) throw Error('database reset while cloud-api writes'); state.businessRows = 0; return { status: 0, stdout: JSON.stringify({ deleted: counts(2), kept: { portfolio_scopes: 1, equipment_types: 43 } }) }; }
       }
       if (args.includes('up')) {
         assert.ok(args.includes('--no-build') && args.includes('never') && args.includes('--no-deps'));
@@ -255,12 +256,38 @@ test('crane-dev business reset: guarded plan/apply, simulator stopped before DB,
   assert.ok(d.state.calls.some((c) => /--force-recreate --wait cloud-api/.test(c) && c.includes(ACTIVE_OVERRIDE)));
   assert.equal(d.state.running['cloud-api'], localTag('cloud-api', r.sha()));
   assert.ok(d.state.resetCalls.some((c) => c === `reset-business apply --approve ${p.digest} --actor admin`));
+  assert.equal(JSON.parse(readFileSync(join(r.state, 'reset-state.json'), 'utf8')).status, 'COMPLETE');
   // Normal Fleet updates still refuse to remove identities; the empty Fleet is a legal base for growth.
   const nf = join(r.dir, 'f2.json'), na = join(r.dir, 'a2');
   writeFileSync(nf, fleetDoc(['SIM-UAT-0001'])); writeFileSync(na, aclDoc(['SIM-UAT-0001']));
   assert.deepEqual(updateFleet(r.env, nf, na, d.opts), { added: 1 });
   writeFileSync(nf, JSON.stringify({ tenantId: 'demo', devices: [] })); writeFileSync(na, aclDoc([]));
   assert.throws(() => updateFleet(r.env, nf, na, d.opts), /would be removed/);
+});
+
+test('reset-business: DB committed but a file step fails → state DB_RESET_FILES_PENDING (not complete); finish repeats only the file steps', (t) => {
+  const r = repo(t); const d = fakeDocker(r);
+  build(r.env, ['cloud-api', 'web-console'], d.opts);
+  apply(r.env, undefined, d.opts);
+  const p = resetBusiness(r.env, 'plan', {}, d.opts);
+  d.state.failHup = true; // broker reload fails after the DB reset
+  assert.throws(() => resetBusiness(r.env, 'apply', { approve: p.digest, actor: 'admin', confirm: 'crane-dev' }, d.opts), /Docker step failed/);
+  assert.equal(d.state.businessRows, 0, 'database step committed');
+  const st = JSON.parse(readFileSync(join(r.state, 'reset-state.json'), 'utf8'));
+  assert.equal(st.status, 'DB_RESET_FILES_PENDING', 'a DB-only success is never recorded as a complete reset');
+  // apply again is impossible (digest single use on the server) — finish is the recovery path.
+  assert.throws(() => resetBusiness(r.env, 'finish', { actor: 'admin' }, d.opts), /--confirm crane-dev/);
+  d.state.failHup = false;
+  const calls = d.state.resetCalls.length;
+  resetBusiness(r.env, 'finish', { actor: 'admin', confirm: 'crane-dev' }, d.opts);
+  assert.ok(!d.state.resetCalls.slice(calls).some((c) => c.includes('apply')), 'finish never re-runs the database step');
+  assert.equal(JSON.parse(readFileSync(join(r.state, 'reset-state.json'), 'utf8')).status, 'COMPLETE');
+  assert.equal(d.state.hup, 1);
+  assert.deepEqual(readFleet(r.fleet), { tenantId: 'demo', devices: [] });
+  // finish refuses when the database still has business rows (that is not a file-step recovery).
+  writeFileSync(join(r.state, 'reset-state.json'), JSON.stringify({ status: 'DB_RESET_FILES_PENDING', deleted: {} }));
+  d.state.businessRows = 3;
+  assert.throws(() => resetBusiness(r.env, 'finish', { actor: 'admin', confirm: 'crane-dev' }, d.opts), /still holds business rows/);
 });
 
 test('local images only for crane-dev; production validation keeps requiring digests', () => {

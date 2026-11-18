@@ -126,41 +126,86 @@ deploy/scripts/sim-control.sh stop "$ENV"          # Agent 收到 SIGTERM 后发
 
 ## 3A. 最终零业务初始化（一次性，OWNER 已批准删除全部 Crane 历史测试业务数据）
 
-前提：已经按第 1 节部署了包含本节的版本（`current.json` 的 kind 为 `crane-local-deploy`）；当天已有 `crane-backup-*` 备份集；REAL 运行身份数量为 0。
+### 3A.1 维护窗口准备（全部完成后才能执行 apply）
+
+1. 公告维护窗口。窗口期间不允许任何人使用网站做业务操作。
+2. 停止专用 SIM：`deploy/scripts/sim-control.sh stop "$ENV"`，再用 `deploy/scripts/sim-control.sh status "$ENV"` 确认它不在运行。apply 自己也会先停模拟器，然后停 cloud-api，cloud-api 停下后才执行数据库删除，因此窗口内不会有 MQTT 入库或网页写入与重置并发。
+3. 核对目标实例：在部署检出目录确认 `node $D status "$ENV"` 显示 `current.kind = crane-local-deploy`，并且 `git rev-parse HEAD` 是本次要部署的 SHA。plan 会再自动核对 compose 项目 `u-dao-crane-ops`、哨兵 `crane-dev`、域名、`APP_ENV=production` 和数据库 `crane_app`。
+4. 准备**新鲜备份**：在窗口开始时执行一次 `crane-backup-*` 备份（应用库和 Keycloak 库都要包含），并核对 `metadata.sha256`。这份备份只用于审计和应急，**不授权覆盖恢复**数据库；如需恢复，必须另行批准。
+5. 确认 REAL=0：plan 输出中的 `realRuntimes` 必须是 0。只要不为 0，工具就拒绝执行；不要试图绕过这一检查。
+6. 生成**最新** plan：必须在第 1–5 步完成之后执行。digest 绑定当时的数据库和行数，因此窗口外生成的 plan 不能使用。
 
 ```bash
 node $D reset-business "$ENV" plan
-#   只读。检查项：当前实例必须是 crane-dev（compose 项目 u-dao-crane-ops、哨兵 crane-dev、
-#   域名 https://crane.youdaozd.com、APP_ENV=production、数据库 crane_app、REAL=0）。
-#   输出每张表的删除行数、保留行数和 digest，并写入 reset-plan.json。
+#   只读。输出每张表的删除行数、保留行数和 digest，并写入 reset-plan.json。由批准人核对后执行：
 node $D reset-business "$ENV" apply --approve <plan digest> --actor <管理员> --confirm crane-dev
 ```
 
-apply 按以下顺序执行，每一步都校验，任何一步失败即停止：
+### 3A.2 apply 的执行顺序与状态（reset-state.json）
 
-1. 停止模拟器容器。
-2. 在**单个事务**内删除全部业务数据：项目、登记、正式项目成员、位置、资产、Equipment、运行身份、影子、告警、事件、遥测、资源、日历、排期、预约、冲突、基线、幂等键。只要 digest 不一致、出现 REAL 身份或环境不符，就整体回滚。同时写入一条审计 `business_data_reset`。
-3. 把 Inventory、Fleet、ACL 就地改写为**显式空文档**（bind mount 的 inode 不变，旧文件另存为 `*.bak-<时间>`）。其中 ACL 只保留 `user cloud-api`，不含任何主题，也不含任何通配。
-4. 删除模拟器 spool 卷，避免旧事件被重放。
-5. 向 mosquitto 发送 SIGHUP，使其重读空 ACL。
-6. 用当前生效的 override 强制重建 cloud-api（镜像不变）；核对容器内文件内容，确认业务行数为 0，然后跑冒烟。
+| 步骤 | 内容 | 完成后的状态 |
+|---|---|---|
+| 1 | 停止模拟器容器，停止 cloud-api | `WRITES_STOPPED` |
+| 2 | 在**单个事务**内删除全部业务数据：项目、登记、正式项目成员、位置、资产、Equipment、运行身份、影子、告警、事件、遥测、资源、日历、排期、预约、冲突、基线、幂等键。同时写入审计 `business_data_reset`。只要 digest 不一致、出现 REAL 或环境不符，事务就整体回滚，数据库不变 | `DB_RESET_FILES_PENDING` |
+| 3 | 把 Inventory、Fleet、ACL 就地改写为显式空文档（inode 不变，旧文件另存为 `*.bak-<时间>`）；ACL 只保留 `user cloud-api` | 同上 |
+| 4 | 删除模拟器 spool 卷 | 同上 |
+| 5 | 向 mosquitto 发送 SIGHUP；用当前生效的 override 重建并启动 cloud-api（镜像不变） | 同上 |
+| 6 | 核对容器内三个文件与写入内容一致，确认 cloud-api 运行的是已确认的镜像、业务行数为 0，冒烟通过 | `COMPLETE`，并生成 `reset-<时间>.json` |
 
-保留的内容：Keycloak 数据库、CA 和证书目录、OIDC、正式账号与角色（users / user_roles / roles）、租户、项目组合范围及其成员、43 类设备类型目录、全局厂商与型号目录、审计日志、web 会话。其他平台和共享入口都不会被触碰。
+**只有 `reset-state.json` 的 status 为 `COMPLETE`，才算完整清理成功。** 数据库删除成功（`DB_RESET_FILES_PENDING`）不等于清理完成。此时 Inventory/Fleet/ACL 可能仍是旧内容，cloud-api 也可能处于停止状态，不能对外宣布环境已就绪。
 
-重置之后的启动规则：
+### 3A.3 数据库已提交但后续步骤失败时的恢复
 
-- Cloud 启动时只接受显式空 Inventory，此时数据库是唯一的业务事实来源。
-- 如果之后有人把旧的示例 Inventory 放回去，Cloud 会**拒绝启动**（`startup Inventory import refused`），旧示例项目不会复活。
-- 普通 `fleet` 增量更新仍然只允许新增身份，不允许删除。
+现象：apply 报错退出，且 `reset-state.json` 的 status 为 `DB_RESET_FILES_PENDING`。
+
+1. 不要再次执行 apply。digest 只能使用一次，数据库已变化，再执行也会被拒绝。也不要从备份覆盖恢复。
+2. 按报错信息找到原因并处理，例如文件属主或权限、磁盘空间、mosquitto 或 Docker 状态。三个配置文件的旧版本保存在同目录的 `*.bak-<时间>`，**不要**把它们拷回去：数据库已经清空，旧 Fleet 和 Inventory 与之不再一致，而旧 Inventory 在重置之后会被启动规则直接拒绝。
+3. 执行收尾。它只重复第 3–6 步，这些步骤都是幂等的；执行前会先确认数据库中确实已没有业务行，否则拒绝：
+
+   ```bash
+   node $D reset-business "$ENV" finish --actor <管理员> --confirm crane-dev
+   ```
+
+4. 确认 status 变为 `COMPLETE`，再执行 `node $D compose "$ENV" -- ps` 确认 cloud-api 是 healthy 状态。
+5. 如果 finish 仍然失败，cloud-api 会保持停止，网站登录返回 502，这是安全的停机状态。此时保留现场并上报，不要手工改数据库。
+
+### 3A.4 授权清理（重置之后、窗口结束之前）
+
+- **项目授权**（project_memberships）随项目一起被删除，不会残留。
+- **项目组合成员**（portfolio_memberships）默认保留。窗口结束前，按 OWNER 确认的正式名单清理 UAT 临时成员（例如 `b4-*`、`uat-*` 测试账号），只保留正式用户和必要的组合角色。先查看：
+
+  ```bash
+  node $D compose "$ENV" -- exec -T --user postgres postgres psql -d crane_app -c \
+    "SELECT m.portfolio_scope_id, m.user_id, u.display_name, m.role FROM portfolio_memberships m JOIN users u ON u.id=m.user_id ORDER BY 1,2"
+  ```
+
+  再按名单删除。删除时用精确的 user_id 列表，必须在一个事务内完成，并同时写入审计：
+
+  ```sql
+  BEGIN;
+  DELETE FROM portfolio_memberships WHERE user_id IN ('<临时账号1>','<临时账号2>');
+  INSERT INTO audit_logs(user_id,action,result,request_id) VALUES('<管理员>','uat_portfolio_grants_removed','success','<窗口编号>');
+  COMMIT;
+  ```
+
+- Keycloak 中的 UAT 临时账号在 Keycloak 管理台单独停用。这一步不影响 Crane 数据库。
+
+### 3A.5 窗口结束前的验收
+
+1. 用一名正式的项目组合经理账号登录。确认首页统计为 0，资产、运行状态、位置和项目组合各页都显示空态，没有错误提示。
+2. 在「项目组合 → 项目登记」中确认「新建项目登记」按钮可用，打开表单即可，不必提交。确认之后才结束维护窗口。
+3. 确认 cloud-api 日志中有 `inventory_startup imported=false`，并且没有导入错误。
+
+重置之后的启动规则：Cloud 只接受显式空 Inventory，数据库是唯一的业务事实来源。如果把旧的示例 Inventory 放回去，Cloud 会拒绝启动（`startup Inventory import refused`）。普通 `fleet` 增量更新仍然只允许新增身份。
 
 从零开始的业务流程（全部在网页上完成）：
 
 1. 项目登记：评审 → 规划 → 经理批准，生成正式项目。
 2. 经理为正式项目授权项目管理员（不能给自己授权）。
 3. 运营登记（行政区）。
-4. 新建资源和排期，完成预约并批准。
-5. 新建位置、资产和 Equipment。
-6. 按第 2 节登记第一台 SIM。此时 `merge --fleet` 以空 Fleet 为基础，然后执行 `fleet` 更新、签发证书、启动模拟器。
+4. 新建资源和排期并完成预约（规划员或经理均可），由**经理**批准排期。
+5. 新建位置、资产和 Equipment。资产的名称和编号至少填写一项。
+6. 按第 2 节登记第一台 SIM，`merge --fleet` 以空 Fleet 为基础。
 
 以上整个链路已在真实 PostgreSQL、Mosquitto 和 BFF 上验证，对应测试 `TestR8ZeroBusinessStartToFirstSimulatedCrane`。
 
