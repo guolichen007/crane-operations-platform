@@ -124,6 +124,46 @@ deploy/scripts/sim-control.sh stop "$ENV"          # Agent 收到 SIGTERM 后发
 - alarm-storm 场景下，告警页非空。
 - 其他项目的用户看不到该设备。
 
+## 3A. 最终零业务初始化（一次性，OWNER 已批准删除全部 Crane 历史测试业务数据）
+
+前提：已经按第 1 节部署了包含本节的版本（`current.json` 的 kind 为 `crane-local-deploy`）；当天已有 `crane-backup-*` 备份集；REAL 运行身份数量为 0。
+
+```bash
+node $D reset-business "$ENV" plan
+#   只读。检查项：当前实例必须是 crane-dev（compose 项目 u-dao-crane-ops、哨兵 crane-dev、
+#   域名 https://crane.youdaozd.com、APP_ENV=production、数据库 crane_app、REAL=0）。
+#   输出每张表的删除行数、保留行数和 digest，并写入 reset-plan.json。
+node $D reset-business "$ENV" apply --approve <plan digest> --actor <管理员> --confirm crane-dev
+```
+
+apply 按以下顺序执行，每一步都校验，任何一步失败即停止：
+
+1. 停止模拟器容器。
+2. 在**单个事务**内删除全部业务数据：项目、登记、正式项目成员、位置、资产、Equipment、运行身份、影子、告警、事件、遥测、资源、日历、排期、预约、冲突、基线、幂等键。只要 digest 不一致、出现 REAL 身份或环境不符，就整体回滚。同时写入一条审计 `business_data_reset`。
+3. 把 Inventory、Fleet、ACL 就地改写为**显式空文档**（bind mount 的 inode 不变，旧文件另存为 `*.bak-<时间>`）。其中 ACL 只保留 `user cloud-api`，不含任何主题，也不含任何通配。
+4. 删除模拟器 spool 卷，避免旧事件被重放。
+5. 向 mosquitto 发送 SIGHUP，使其重读空 ACL。
+6. 用当前生效的 override 强制重建 cloud-api（镜像不变）；核对容器内文件内容，确认业务行数为 0，然后跑冒烟。
+
+保留的内容：Keycloak 数据库、CA 和证书目录、OIDC、正式账号与角色（users / user_roles / roles）、租户、项目组合范围及其成员、43 类设备类型目录、全局厂商与型号目录、审计日志、web 会话。其他平台和共享入口都不会被触碰。
+
+重置之后的启动规则：
+
+- Cloud 启动时只接受显式空 Inventory，此时数据库是唯一的业务事实来源。
+- 如果之后有人把旧的示例 Inventory 放回去，Cloud 会**拒绝启动**（`startup Inventory import refused`），旧示例项目不会复活。
+- 普通 `fleet` 增量更新仍然只允许新增身份，不允许删除。
+
+从零开始的业务流程（全部在网页上完成）：
+
+1. 项目登记：评审 → 规划 → 经理批准，生成正式项目。
+2. 经理为正式项目授权项目管理员（不能给自己授权）。
+3. 运营登记（行政区）。
+4. 新建资源和排期，完成预约并批准。
+5. 新建位置、资产和 Equipment。
+6. 按第 2 节登记第一台 SIM。此时 `merge --fleet` 以空 Fleet 为基础，然后执行 `fleet` 更新、签发证书、启动模拟器。
+
+以上整个链路已在真实 PostgreSQL、Mosquitto 和 BFF 上验证，对应测试 `TestR8ZeroBusinessStartToFirstSimulatedCrane`。
+
 ## 3. 60 分钟容量测试（隔离运行，不碰现场）
 
 ```bash
@@ -143,6 +183,8 @@ R7_SIM_SOAK_MINUTES=60 R7_SIM_ONLY=TestR7Sim20DevicesSoak \
   - 告警数量达到下限，且按 messageId 无重复。
   - 结束时 20 台全部在线。
 - 证据：`test-results-r7/sim-evidence.jsonl`。其中包括每分钟一条 `SOAK_RESOURCES`（goroutine、堆、PG 连接、告警数、样本数、在线数），以及汇总 `SIM_20_DEVICES`。
+- 每次运行写入独立目录 `test-results-r7/run-<时间>-<pid>/`，其中 `test.log` 是测试进程 stdout/stderr 直接落盘的完整日志（数据库密码已脱敏），`meta.json` 记录 SHA、起止时间、退出码、信号和是否超时，`sim-evidence.jsonl` 为证据记录。
+- 测试会话有效期为测试时长加 30 分钟，60 分钟测试结尾续租不会因会话过期返回 401。
 - 输出 `R7_SIM_E2E_SUBSET=PASS tests=TestR7Sim20DevicesSoak sha=<SHA>` 才算通过。也可以在 GitHub 上手动触发 `Crane R7 SIM Soak` 工作流（minutes=60）。
 
 ## 4. 安全不变量

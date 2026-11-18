@@ -64,7 +64,7 @@ const sources = computed(() => {
       <p v-if="inventoryMode">
         项目位置来自Inventory行政区配置；未配置时不生成地图点。历史/测试运行源不计作真实接入。
       </p>
-      <p v-else>空间分布：匿名登记 / DEMO 资产，与 Cloud 运行统计分开展示。</p>
+      <p v-else>空间分布来自已授权项目的行政区登记，与 Cloud 运行统计分开展示。</p>
     </component>
   </section>
 </template>
