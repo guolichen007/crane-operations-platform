@@ -252,7 +252,7 @@ console.log('Preview topology, isolation, secret-file, digest, OIDC and negative
 const nginxTest = spawnSync('docker', [...(process.env.BAOBEI_DOCKER_CONTEXT ? ['--context', process.env.BAOBEI_DOCKER_CONTEXT] : []), 'run', '--rm', '--entrypoint', 'nginx',
   '-v', process.cwd() + '/deploy/baobei/nginx.preview.conf:/etc/nginx/conf.d/default.conf:ro',
   '-v', process.cwd() + '/deploy/baobei/nginx.proxy.preview.conf:/etc/nginx/baobei-proxy.conf:ro',
-  'nginx:1.30.4-alpine', '-t'], { encoding: 'utf8' });
+  'nginx:1.30.6-alpine3.24@sha256:901e593c95dc85f5a729f5765516321366ef4ac401821431d408897e95287d0a', '-t'], { encoding: 'utf8' });
 if (!nginxTest.error && nginxTest.status !== null) {
   assert.equal(nginxTest.status, 0, 'Preview Nginx syntax validation failed: ' + nginxTest.stderr);
   console.log('Preview nginx syntax PASS');

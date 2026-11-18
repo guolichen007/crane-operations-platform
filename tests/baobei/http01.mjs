@@ -6,7 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
 
 const context = process.env.BAOBEI_DOCKER_CONTEXT;
-const nginx = 'nginx:1.30.4-alpine';
+const nginx = 'nginx:1.30.6-alpine3.24@sha256:901e593c95dc85f5a729f5765516321366ef4ac401821431d408897e95287d0a';
 const tools = 'baobei-cert-test:local';
 const domain = 'baobei.youdaozd.com';
 const prefix = '/.well-known/acme-challenge/';

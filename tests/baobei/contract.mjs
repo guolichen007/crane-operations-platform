@@ -53,3 +53,20 @@ assert.equal(
   payloadHash(fixture),
   payloadHash(Object.fromEntries(Object.entries(fixture).reverse()))
 );
+
+// Web runtime image: digest-pinned official nginx base, same-series security upgrade with a
+// fail-closed minimum-version gate, and the Nginx syntax tests use the same pinned base.
+{
+  const df = readFileSync('deploy/baobei/web.Dockerfile', 'utf8');
+  const froms = [...df.matchAll(/^FROM\s+(\S+)/gm)].map((m) => m[1]);
+  const runtime = froms.at(-1);
+  assert.match(runtime, /^nginx:[0-9.]+-alpine3\.24@sha256:[0-9a-f]{64}$/, 'web runtime base must be digest-pinned');
+  const tail = df.slice(df.lastIndexOf('FROM '));
+  assert.match(tail, /apk upgrade --no-cache/, 'web runtime must apply same-series apk security upgrades');
+  assert.match(tail, /apk info -e 'libxslt>=1\.1\.43-r4' 'zlib>=1\.4-r0'/, 'web runtime fixed-package gate missing');
+  for (const f of ['tests/baobei/http01.mjs', 'tests/baobei/preview.mjs', 'tests/baobei/production.mjs']) {
+    const refs = [...readFileSync(f, 'utf8').matchAll(/'(nginx:[^']+)'/g)].map((m) => m[1]);
+    assert(refs.length && refs.every((r) => r === runtime), f + ' must test Nginx with the pinned web runtime base');
+  }
+  console.log('Web runtime base pin and security upgrade gate PASS');
+}
