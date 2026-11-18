@@ -142,7 +142,7 @@ func execute(ctx context.Context) error {
 	} else {
 		return errors.New("realm lookup rejected")
 	}
-	return nil
+	return provisionAccountService(ctx, c)
 }
 
 func main() {

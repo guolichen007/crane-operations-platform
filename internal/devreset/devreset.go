@@ -1,5 +1,6 @@
 // Package devreset removes ALL Crane business data of the crane-dev environment in one transaction,
-// keeping the platform foundation: tenants, users/roles (accounts), portfolio scopes and their
+// keeping the platform foundation: tenants, users/roles (accounts), departments, system roles and
+// account provisioning records (Schema 13), portfolio scopes and their
 // memberships, the equipment type directory, global (project-less) manufacturers and catalog items,
 // the audit log, web sessions and the schema version. It is a one-off, explicitly approved
 // operation (OWNER 2026-11-18: historical Crane test data may be deleted); normal Fleet updates
@@ -56,7 +57,10 @@ var steps = []struct{ table, where string }{
 }
 
 // Kept tables reported in the plan (never written).
-var kept = []string{"tenants", "users", "roles", "user_roles", "portfolio_scopes", "portfolio_memberships", "equipment_types", "manufacturers", "equipment_catalog_items", "audit_logs"}
+// Schema 13: personnel (users incl. profile, departments, system roles, account provisioning records)
+// and the account audit trail are part of the kept foundation — after the reset a legitimate system
+// administrator can still log in, open accounts and manage people.
+var kept = []string{"tenants", "users", "roles", "user_roles", "departments", "system_memberships", "account_provisions", "portfolio_scopes", "portfolio_memberships", "equipment_types", "manufacturers", "equipment_catalog_items", "audit_logs"}
 
 // Plan is read-only.
 type Plan struct {

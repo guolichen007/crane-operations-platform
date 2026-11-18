@@ -359,6 +359,9 @@ func (m *Manager) createSession(ctx context.Context, user identity.User, old str
 VALUES($1,$2,$3,$4,$4,$5,$6)`, s.Hash, user.ID, s.CSRFHash, now, s.ExpiresAt, s.IdleExpiresAt); err != nil {
 		return "", s, err
 	}
+	if _, err = tx.ExecContext(ctx, `UPDATE users SET last_login_at=$2 WHERE id=$1`, user.ID, now); err != nil {
+		return "", s, err
+	}
 	if err = auditlog.Write(ctx, tx, meta.Event(user.ID, "", "", "login_success", "success")); err != nil {
 		return "", s, err
 	}

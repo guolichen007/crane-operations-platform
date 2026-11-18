@@ -189,6 +189,58 @@ func (m *Manager) Close(ctx context.Context, id, user string, now time.Time) err
 	return auditlog.Commit(ctx, tx)
 }
 
+// RevokeUser ends every live-view lease of a user (account disabled, password reset, sessions
+// revoked). Each affected device's desired deadline is recomputed from the REMAINING leases, so a
+// device nobody else watches is stopped by the next Tick (WATCH_STOP) instead of streaming until
+// the revoked lease would have expired. Returns the number of leases removed.
+func (m *Manager) RevokeUser(ctx context.Context, user string, now time.Time) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	tx, e := m.DB.BeginTx(ctx, nil)
+	if e != nil {
+		return 0, e
+	}
+	defer tx.Rollback()
+	rows, e := tx.QueryContext(ctx, `DELETE FROM live_sessions WHERE user_id=$1 RETURNING device_id`, user)
+	if e != nil {
+		return 0, e
+	}
+	devices := map[string]bool{}
+	n := 0
+	for rows.Next() {
+		var d string
+		if e = rows.Scan(&d); e != nil {
+			rows.Close()
+			return 0, e
+		}
+		devices[d] = true
+		n++
+	}
+	rows.Close()
+	if e = rows.Err(); e != nil {
+		return 0, e
+	}
+	for device := range devices {
+		s, e := load(ctx, tx, device)
+		if e != nil {
+			return 0, e
+		}
+		if s.Generation == 0 {
+			continue
+		}
+		// No remaining lease → desired ends now (Tick issues WATCH_STOP); otherwise the remaining
+		// viewers' latest expiry + grace, exactly as Open/Close compute it.
+		s.Desired = now
+		if e = m.desired(ctx, tx, &s); e != nil {
+			return 0, e
+		}
+		if e = save(ctx, tx, s); e != nil {
+			return 0, e
+		}
+	}
+	return n, tx.Commit()
+}
+
 // Reconcile runs after BIRTH and after Cloud's MQTT reconnect. PostgreSQL is the
 // authority; a fresh generation fences all queued commands from the old connection.
 func (m *Manager) Reconcile(ctx context.Context, device string, now time.Time) error {

@@ -89,8 +89,8 @@ func TestMigrationUpFromEmptyAppliesSpec(t *testing.T) {
 	if !specColumnPresent(t, db) {
 		t.Fatal("spec_json column missing after up from empty")
 	}
-	if v := currentVersion(t, db); v != 12 {
-		t.Fatalf("version = %d, want 12", v)
+	if v := currentVersion(t, db); v != 13 {
+		t.Fatalf("version = %d, want 13", v)
 	}
 }
 
@@ -108,8 +108,8 @@ func TestMigrationDownRefusedKeepsVersionConsistent(t *testing.T) {
 	if !specColumnPresent(t, db) {
 		t.Fatal("spec_json column lost after refused down")
 	}
-	if v := currentVersion(t, db); v != 12 {
-		t.Fatalf("version after refused down = %d, want 12 (record must stay consistent with schema)", v)
+	if v := currentVersion(t, db); v != 13 {
+		t.Fatalf("version after refused down = %d, want 13 (record must stay consistent with schema)", v)
 	}
 }
 
@@ -129,7 +129,7 @@ func TestMigrationUpFromOldDatabase(t *testing.T) {
 	if !specColumnPresent(t, db) {
 		t.Fatal("spec_json column missing after upgrade")
 	}
-	if v := currentVersion(t, db); v != 12 {
-		t.Fatalf("version = %d, want 12", v)
+	if v := currentVersion(t, db); v != 13 {
+		t.Fatalf("version = %d, want 13", v)
 	}
 }

@@ -16,15 +16,20 @@ import (
 type ProductionConfig struct {
 	PublicURL, Issuer, ClientID                         string
 	ClientSecretFile, SessionSecretFile, DBPasswordFile string
-	TrustedProxyCIDRs                                   []string
-	AbsoluteSeconds, IdleSeconds                        int
+	// P1 personnel: the realm-scoped account service (client credentials). Optional: without it
+	// personnel data stays readable and account operations answer 503 (not configured).
+	AccountClientID, AccountSecretFile, KeycloakInternalURL string
+	TrustedProxyCIDRs                                       []string
+	AbsoluteSeconds, IdleSeconds                            int
 }
 
 func loadProduction(c *ProductionConfig) {
 	for key, value := range map[string]*string{
 		"PUBLIC_URL": &c.PublicURL, "OIDC_ISSUER": &c.Issuer, "OIDC_CLIENT_ID": &c.ClientID,
 		"OIDC_CLIENT_SECRET_FILE": &c.ClientSecretFile, "SESSION_SECRET_FILE": &c.SessionSecretFile,
-		"DATABASE_PASSWORD_FILE": &c.DBPasswordFile,
+		"DATABASE_PASSWORD_FILE":    &c.DBPasswordFile,
+		"ACCOUNT_SERVICE_CLIENT_ID": &c.AccountClientID, "ACCOUNT_SERVICE_SECRET_FILE": &c.AccountSecretFile,
+		"KEYCLOAK_INTERNAL_URL": &c.KeycloakInternalURL,
 	} {
 		if v, ok := os.LookupEnv(key); ok {
 			*value = v

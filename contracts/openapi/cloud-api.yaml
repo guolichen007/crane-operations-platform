@@ -3373,6 +3373,2167 @@
           }
         ]
       }
+    },
+    "/api/v1/admin/me": {
+      "get": {
+        "operationId": "getSystemAccess",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "userId": {
+                      "type": "string"
+                    },
+                    "systemRoles": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "capabilities": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "boolean"
+                      }
+                    },
+                    "accountServiceConfigured": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Duplicate username, stale version, or last enabled system administrator"
+          },
+          "422": {
+            "description": "Invalid input or self-change"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "x-system-permission-domain": true
+      }
+    },
+    "/api/v1/admin/people": {
+      "get": {
+        "operationId": "listPeople",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "username",
+                          "displayName",
+                          "enabled",
+                          "systemRoles",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "username": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "departmentId": {
+                            "type": "string"
+                          },
+                          "departmentName": {
+                            "type": "string"
+                          },
+                          "jobTitle": {
+                            "type": "string"
+                          },
+                          "phone": {
+                            "type": "string"
+                          },
+                          "email": {
+                            "type": "string"
+                          },
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "managed": {
+                            "type": "boolean"
+                          },
+                          "identitySync": {
+                            "type": "string",
+                            "enum": [
+                              "SYNCED",
+                              "PENDING"
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "createdBy": {
+                            "type": "string"
+                          },
+                          "lastLoginAt": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "systemRoles": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "system_admin",
+                                "account_manager"
+                              ]
+                            }
+                          },
+                          "projectCount": {
+                            "type": "integer"
+                          },
+                          "portfolioCount": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Duplicate username, stale version, or last enabled system administrator"
+          },
+          "422": {
+            "description": "Invalid input or self-change"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "x-system-permission-domain": true
+      },
+      "post": {
+        "operationId": "provisionPerson",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 32
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "provisionId",
+                    "state",
+                    "person",
+                    "passwordDelivered",
+                    "replayed"
+                  ],
+                  "properties": {
+                    "provisionId": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "COMPLETED"
+                      ]
+                    },
+                    "person": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "username",
+                        "displayName",
+                        "enabled",
+                        "systemRoles",
+                        "version"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "username": {
+                          "type": "string"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "departmentId": {
+                          "type": "string"
+                        },
+                        "departmentName": {
+                          "type": "string"
+                        },
+                        "jobTitle": {
+                          "type": "string"
+                        },
+                        "phone": {
+                          "type": "string"
+                        },
+                        "email": {
+                          "type": "string"
+                        },
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "managed": {
+                          "type": "boolean"
+                        },
+                        "identitySync": {
+                          "type": "string",
+                          "enum": [
+                            "SYNCED",
+                            "PENDING"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "createdBy": {
+                          "type": "string"
+                        },
+                        "lastLoginAt": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "version": {
+                          "type": "integer"
+                        },
+                        "systemRoles": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "system_admin",
+                              "account_manager"
+                            ]
+                          }
+                        },
+                        "projectCount": {
+                          "type": "integer"
+                        },
+                        "portfolioCount": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "temporaryPassword": {
+                      "type": "string",
+                      "description": "Present only on the response that set it"
+                    },
+                    "passwordDelivered": {
+                      "type": "boolean"
+                    },
+                    "replayed": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Duplicate username, stale version, or last enabled system administrator"
+          },
+          "422": {
+            "description": "Invalid input or self-change"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "x-audit": true,
+        "x-system-permission-domain": true,
+        "x-project-scope-first": true
+      }
+    },
+    "/api/v1/admin/people/{id}": {
+      "get": {
+        "operationId": "getPerson",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,80}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "username",
+                    "displayName",
+                    "enabled",
+                    "systemRoles",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "username": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "departmentId": {
+                      "type": "string"
+                    },
+                    "departmentName": {
+                      "type": "string"
+                    },
+                    "jobTitle": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "managed": {
+                      "type": "boolean"
+                    },
+                    "identitySync": {
+                      "type": "string",
+                      "enum": [
+                        "SYNCED",
+                        "PENDING"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "createdBy": {
+                      "type": "string"
+                    },
+                    "lastLoginAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "systemRoles": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "system_admin",
+                          "account_manager"
+                        ]
+                      }
+                    },
+                    "projectCount": {
+                      "type": "integer"
+                    },
+                    "portfolioCount": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Duplicate username, stale version, or last enabled system administrator"
+          },
+          "422": {
+            "description": "Invalid input or self-change"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "x-system-permission-domain": true
+      },
+      "patch": {
+        "operationId": "updatePerson",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,80}$"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 32
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "person": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "username",
+                        "displayName",
+                        "enabled",
+                        "systemRoles",
+                        "version"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "username": {
+                          "type": "string"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "departmentId": {
+                          "type": "string"
+                        },
+                        "departmentName": {
+                          "type": "string"
+                        },
+                        "jobTitle": {
+                          "type": "string"
+                        },
+                        "phone": {
+                          "type": "string"
+                        },
+                        "email": {
+                          "type": "string"
+                        },
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "managed": {
+                          "type": "boolean"
+                        },
+                        "identitySync": {
+                          "type": "string",
+                          "enum": [
+                            "SYNCED",
+                            "PENDING"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "createdBy": {
+                          "type": "string"
+                        },
+                        "lastLoginAt": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "version": {
+                          "type": "integer"
+                        },
+                        "systemRoles": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "system_admin",
+                              "account_manager"
+                            ]
+                          }
+                        },
+                        "projectCount": {
+                          "type": "integer"
+                        },
+                        "portfolioCount": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "identitySync": {
+                      "type": "string",
+                      "enum": [
+                        "SYNCED",
+                        "PENDING",
+                        "UNMANAGED"
+                      ]
+                    },
+                    "sessionsRevoked": {
+                      "type": "integer"
+                    },
+                    "liveLeasesRevoked": {
+                      "type": "integer"
+                    },
+                    "temporaryPassword": {
+                      "type": "string",
+                      "description": "Shown once; never stored"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Duplicate username, stale version, or last enabled system administrator"
+          },
+          "422": {
+            "description": "Invalid input or self-change"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "x-audit": true,
+        "x-system-permission-domain": true,
+        "x-project-scope-first": true
+      }
+    },
+    "/api/v1/admin/people/{id}/disable": {
+      "post": {
+        "operationId": "disablePerson",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,80}$"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 32
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "person": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "username",
+                        "displayName",
+                        "enabled",
+                        "systemRoles",
+                        "version"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "username": {
+                          "type": "string"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "departmentId": {
+                          "type": "string"
+                        },
+                        "departmentName": {
+                          "type": "string"
+                        },
+                        "jobTitle": {
+                          "type": "string"
+                        },
+                        "phone": {
+                          "type": "string"
+                        },
+                        "email": {
+                          "type": "string"
+                        },
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "managed": {
+                          "type": "boolean"
+                        },
+                        "identitySync": {
+                          "type": "string",
+                          "enum": [
+                            "SYNCED",
+                            "PENDING"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "createdBy": {
+                          "type": "string"
+                        },
+                        "lastLoginAt": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "version": {
+                          "type": "integer"
+                        },
+                        "systemRoles": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "system_admin",
+                              "account_manager"
+                            ]
+                          }
+                        },
+                        "projectCount": {
+                          "type": "integer"
+                        },
+                        "portfolioCount": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "identitySync": {
+                      "type": "string",
+                      "enum": [
+                        "SYNCED",
+                        "PENDING",
+                        "UNMANAGED"
+                      ]
+                    },
+                    "sessionsRevoked": {
+                      "type": "integer"
+                    },
+                    "liveLeasesRevoked": {
+                      "type": "integer"
+                    },
+                    "temporaryPassword": {
+                      "type": "string",
+                      "description": "Shown once; never stored"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Duplicate username, stale version, or last enabled system administrator"
+          },
+          "422": {
+            "description": "Invalid input or self-change"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "x-audit": true,
+        "x-system-permission-domain": true,
+        "x-project-scope-first": true
+      }
+    },
+    "/api/v1/admin/people/{id}/enable": {
+      "post": {
+        "operationId": "enablePerson",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,80}$"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 32
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "person": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "username",
+                        "displayName",
+                        "enabled",
+                        "systemRoles",
+                        "version"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "username": {
+                          "type": "string"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "departmentId": {
+                          "type": "string"
+                        },
+                        "departmentName": {
+                          "type": "string"
+                        },
+                        "jobTitle": {
+                          "type": "string"
+                        },
+                        "phone": {
+                          "type": "string"
+                        },
+                        "email": {
+                          "type": "string"
+                        },
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "managed": {
+                          "type": "boolean"
+                        },
+                        "identitySync": {
+                          "type": "string",
+                          "enum": [
+                            "SYNCED",
+                            "PENDING"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "createdBy": {
+                          "type": "string"
+                        },
+                        "lastLoginAt": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "version": {
+                          "type": "integer"
+                        },
+                        "systemRoles": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "system_admin",
+                              "account_manager"
+                            ]
+                          }
+                        },
+                        "projectCount": {
+                          "type": "integer"
+                        },
+                        "portfolioCount": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "identitySync": {
+                      "type": "string",
+                      "enum": [
+                        "SYNCED",
+                        "PENDING",
+                        "UNMANAGED"
+                      ]
+                    },
+                    "sessionsRevoked": {
+                      "type": "integer"
+                    },
+                    "liveLeasesRevoked": {
+                      "type": "integer"
+                    },
+                    "temporaryPassword": {
+                      "type": "string",
+                      "description": "Shown once; never stored"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Duplicate username, stale version, or last enabled system administrator"
+          },
+          "422": {
+            "description": "Invalid input or self-change"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "x-audit": true,
+        "x-system-permission-domain": true,
+        "x-project-scope-first": true
+      }
+    },
+    "/api/v1/admin/people/{id}/reset-password": {
+      "post": {
+        "operationId": "resetPersonPassword",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,80}$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 32
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "person": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "username",
+                        "displayName",
+                        "enabled",
+                        "systemRoles",
+                        "version"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "username": {
+                          "type": "string"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "departmentId": {
+                          "type": "string"
+                        },
+                        "departmentName": {
+                          "type": "string"
+                        },
+                        "jobTitle": {
+                          "type": "string"
+                        },
+                        "phone": {
+                          "type": "string"
+                        },
+                        "email": {
+                          "type": "string"
+                        },
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "managed": {
+                          "type": "boolean"
+                        },
+                        "identitySync": {
+                          "type": "string",
+                          "enum": [
+                            "SYNCED",
+                            "PENDING"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "createdBy": {
+                          "type": "string"
+                        },
+                        "lastLoginAt": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "version": {
+                          "type": "integer"
+                        },
+                        "systemRoles": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "system_admin",
+                              "account_manager"
+                            ]
+                          }
+                        },
+                        "projectCount": {
+                          "type": "integer"
+                        },
+                        "portfolioCount": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "identitySync": {
+                      "type": "string",
+                      "enum": [
+                        "SYNCED",
+                        "PENDING",
+                        "UNMANAGED"
+                      ]
+                    },
+                    "sessionsRevoked": {
+                      "type": "integer"
+                    },
+                    "liveLeasesRevoked": {
+                      "type": "integer"
+                    },
+                    "temporaryPassword": {
+                      "type": "string",
+                      "description": "Shown once; never stored"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Duplicate username, stale version, or last enabled system administrator"
+          },
+          "422": {
+            "description": "Invalid input or self-change"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "x-audit": true,
+        "x-system-permission-domain": true,
+        "x-project-scope-first": true
+      }
+    },
+    "/api/v1/admin/people/{id}/revoke-sessions": {
+      "post": {
+        "operationId": "revokePersonSessions",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,80}$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 32
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "person": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "username",
+                        "displayName",
+                        "enabled",
+                        "systemRoles",
+                        "version"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "username": {
+                          "type": "string"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "departmentId": {
+                          "type": "string"
+                        },
+                        "departmentName": {
+                          "type": "string"
+                        },
+                        "jobTitle": {
+                          "type": "string"
+                        },
+                        "phone": {
+                          "type": "string"
+                        },
+                        "email": {
+                          "type": "string"
+                        },
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "managed": {
+                          "type": "boolean"
+                        },
+                        "identitySync": {
+                          "type": "string",
+                          "enum": [
+                            "SYNCED",
+                            "PENDING"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "createdBy": {
+                          "type": "string"
+                        },
+                        "lastLoginAt": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "version": {
+                          "type": "integer"
+                        },
+                        "systemRoles": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "system_admin",
+                              "account_manager"
+                            ]
+                          }
+                        },
+                        "projectCount": {
+                          "type": "integer"
+                        },
+                        "portfolioCount": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "identitySync": {
+                      "type": "string",
+                      "enum": [
+                        "SYNCED",
+                        "PENDING",
+                        "UNMANAGED"
+                      ]
+                    },
+                    "sessionsRevoked": {
+                      "type": "integer"
+                    },
+                    "liveLeasesRevoked": {
+                      "type": "integer"
+                    },
+                    "temporaryPassword": {
+                      "type": "string",
+                      "description": "Shown once; never stored"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Duplicate username, stale version, or last enabled system administrator"
+          },
+          "422": {
+            "description": "Invalid input or self-change"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "x-audit": true,
+        "x-system-permission-domain": true,
+        "x-project-scope-first": true
+      }
+    },
+    "/api/v1/admin/people/{id}/system-roles": {
+      "put": {
+        "operationId": "setPersonSystemRoles",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,80}$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 32
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "username",
+                    "displayName",
+                    "enabled",
+                    "systemRoles",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "username": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "departmentId": {
+                      "type": "string"
+                    },
+                    "departmentName": {
+                      "type": "string"
+                    },
+                    "jobTitle": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "managed": {
+                      "type": "boolean"
+                    },
+                    "identitySync": {
+                      "type": "string",
+                      "enum": [
+                        "SYNCED",
+                        "PENDING"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "createdBy": {
+                      "type": "string"
+                    },
+                    "lastLoginAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "systemRoles": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "system_admin",
+                          "account_manager"
+                        ]
+                      }
+                    },
+                    "projectCount": {
+                      "type": "integer"
+                    },
+                    "portfolioCount": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Duplicate username, stale version, or last enabled system administrator"
+          },
+          "422": {
+            "description": "Invalid input or self-change"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "x-audit": true,
+        "x-system-permission-domain": true,
+        "x-project-scope-first": true
+      }
+    },
+    "/api/v1/admin/people/{id}/portfolio-roles/{scope}": {
+      "put": {
+        "operationId": "setPersonPortfolioRole",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,80}$"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,80}$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 32
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "username",
+                    "displayName",
+                    "enabled",
+                    "systemRoles",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "username": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "departmentId": {
+                      "type": "string"
+                    },
+                    "departmentName": {
+                      "type": "string"
+                    },
+                    "jobTitle": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "managed": {
+                      "type": "boolean"
+                    },
+                    "identitySync": {
+                      "type": "string",
+                      "enum": [
+                        "SYNCED",
+                        "PENDING"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "createdBy": {
+                      "type": "string"
+                    },
+                    "lastLoginAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "systemRoles": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "system_admin",
+                          "account_manager"
+                        ]
+                      }
+                    },
+                    "projectCount": {
+                      "type": "integer"
+                    },
+                    "portfolioCount": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Duplicate username, stale version, or last enabled system administrator"
+          },
+          "422": {
+            "description": "Invalid input or self-change"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "x-audit": true,
+        "x-system-permission-domain": true,
+        "x-project-scope-first": true
+      }
+    },
+    "/api/v1/admin/departments": {
+      "get": {
+        "operationId": "listDepartments",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Duplicate username, stale version, or last enabled system administrator"
+          },
+          "422": {
+            "description": "Invalid input or self-change"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "x-system-permission-domain": true
+      },
+      "post": {
+        "operationId": "createDepartment",
+        "parameters": [
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 32
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Duplicate username, stale version, or last enabled system administrator"
+          },
+          "422": {
+            "description": "Invalid input or self-change"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "x-audit": true,
+        "x-system-permission-domain": true,
+        "x-project-scope-first": true
+      }
+    },
+    "/api/v1/admin/departments/{id}": {
+      "put": {
+        "operationId": "updateDepartment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,80}$"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 32
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Duplicate username, stale version, or last enabled system administrator"
+          },
+          "422": {
+            "description": "Invalid input or self-change"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "x-audit": true,
+        "x-system-permission-domain": true,
+        "x-project-scope-first": true
+      }
+    },
+    "/api/v1/admin/portfolio-scopes": {
+      "get": {
+        "operationId": "listAdminPortfolioScopes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Duplicate username, stale version, or last enabled system administrator"
+          },
+          "422": {
+            "description": "Invalid input or self-change"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "x-system-permission-domain": true
+      }
+    },
+    "/api/v1/admin/provisions": {
+      "get": {
+        "operationId": "listPendingProvisions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Duplicate username, stale version, or last enabled system administrator"
+          },
+          "422": {
+            "description": "Invalid input or self-change"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "x-system-permission-domain": true
+      }
+    },
+    "/api/v1/admin/provisions/{id}/resume": {
+      "post": {
+        "operationId": "resumeProvision",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,80}$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 32
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "provisionId",
+                    "state",
+                    "person",
+                    "passwordDelivered",
+                    "replayed"
+                  ],
+                  "properties": {
+                    "provisionId": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "COMPLETED"
+                      ]
+                    },
+                    "person": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "username",
+                        "displayName",
+                        "enabled",
+                        "systemRoles",
+                        "version"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "username": {
+                          "type": "string"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "departmentId": {
+                          "type": "string"
+                        },
+                        "departmentName": {
+                          "type": "string"
+                        },
+                        "jobTitle": {
+                          "type": "string"
+                        },
+                        "phone": {
+                          "type": "string"
+                        },
+                        "email": {
+                          "type": "string"
+                        },
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "managed": {
+                          "type": "boolean"
+                        },
+                        "identitySync": {
+                          "type": "string",
+                          "enum": [
+                            "SYNCED",
+                            "PENDING"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "createdBy": {
+                          "type": "string"
+                        },
+                        "lastLoginAt": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "version": {
+                          "type": "integer"
+                        },
+                        "systemRoles": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "system_admin",
+                              "account_manager"
+                            ]
+                          }
+                        },
+                        "projectCount": {
+                          "type": "integer"
+                        },
+                        "portfolioCount": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "temporaryPassword": {
+                      "type": "string",
+                      "description": "Present only on the response that set it"
+                    },
+                    "passwordDelivered": {
+                      "type": "boolean"
+                    },
+                    "replayed": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Duplicate username, stale version, or last enabled system administrator"
+          },
+          "422": {
+            "description": "Invalid input or self-change"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "x-audit": true,
+        "x-system-permission-domain": true,
+        "x-project-scope-first": true
+      }
+    },
+    "/api/v1/admin/provisions/{id}/cancel": {
+      "post": {
+        "operationId": "cancelProvision",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,80}$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 32
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Duplicate username, stale version, or last enabled system administrator"
+          },
+          "422": {
+            "description": "Invalid input or self-change"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        },
+        "x-audit": true,
+        "x-system-permission-domain": true,
+        "x-project-scope-first": true
+      }
+    },
+    "/api/v1/portfolio/projects/{id}/member-candidates": {
+      "get": {
+        "operationId": "listProjectMemberCandidates",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,80}$"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "maxItems": 20,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "userId": {
+                        "type": "string"
+                      },
+                      "displayName": {
+                        "type": "string"
+                      },
+                      "username": {
+                        "type": "string"
+                      },
+                      "departmentName": {
+                        "type": "string"
+                      },
+                      "jobTitle": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "503": {
+            "description": "Dependency unavailable"
+          }
+        }
+      }
     }
   },
   "components": {

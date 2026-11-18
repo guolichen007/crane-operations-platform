@@ -15,6 +15,8 @@ import (
 
 	"github.com/guolichen007/crane-operations-platform/internal/fleet"
 	"github.com/guolichen007/crane-operations-platform/internal/inventory"
+	"github.com/guolichen007/crane-operations-platform/internal/kcadmin"
+	"github.com/guolichen007/crane-operations-platform/internal/personnel"
 	"github.com/guolichen007/crane-operations-platform/internal/platform"
 	"github.com/guolichen007/crane-operations-platform/internal/webauth"
 	"github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/device"
@@ -166,6 +168,23 @@ func Run(args []string) error {
 			TrustedProxies: c.Production.TrustedProxyCIDRs})
 		if err != nil {
 			return err
+		}
+	}
+	handlers.personnel = &personnel.Service{DB: db, RevokeLive: handlers.revokeLiveFor}
+	if handlers.web != nil {
+		handlers.personnel.Issuer = handlers.web.Issuer()
+		if c.Production.AccountSecretFile != "" {
+			secret, err := platform.PrivateSecret(c.Production.AccountSecretFile, 32)
+			if err != nil {
+				return err
+			}
+			admin, err := kcadmin.New(c.Production.Issuer, c.Production.KeycloakInternalURL, c.Production.AccountClientID, secret, nil)
+			if err != nil {
+				return err
+			}
+			handlers.personnel.IdP = admin
+		} else {
+			logger.Warn("account service not configured; personnel account operations disabled", "event", "account_service_missing")
 		}
 	}
 	if err := handlers.register(mux); err != nil {

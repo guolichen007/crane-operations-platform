@@ -38,7 +38,7 @@ func TestFreshSchema12BootstrapMakesEquipmentInstallable(t *testing.T) {
 	db := testsupport.Database(t)
 	ctx := context.Background()
 	var schema int64
-	if err := db.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&schema); err != nil || schema != 12 {
+	if err := db.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&schema); err != nil || schema != 13 {
 		t.Fatalf("schema version = %d (err=%v), want 12", schema, err)
 	}
 	if n := count(t, db, `SELECT count(*) FROM equipment_types`); n != 0 {
@@ -74,7 +74,7 @@ func TestFreshSchema12BootstrapMakesEquipmentInstallable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rec.Result != "success" || len(rec.Created) != len(equipment.Types()) || rec.Actor != "host:ops-admin" || rec.Target.SchemaVersion != 12 || rec.Target.Database == "" {
+	if rec.Result != "success" || len(rec.Created) != len(equipment.Types()) || rec.Actor != "host:ops-admin" || rec.Target.SchemaVersion != 13 || rec.Target.Database == "" {
 		t.Fatalf("apply record = %+v", rec)
 	}
 	if n := count(t, db, `SELECT count(*) FROM equipment_types WHERE status='ACTIVE'`); n != len(equipment.Types()) {
@@ -90,7 +90,7 @@ func TestFreshSchema12BootstrapMakesEquipmentInstallable(t *testing.T) {
 	if _, err := asset.CreateEquipment(ctx, db, motor, json.RawMessage(`{}`), "actor", "req-e1", ""); err != nil {
 		t.Fatalf("install after bootstrap: %v", err)
 	}
-	if n := count(t, db, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`); n != 12 {
+	if n := count(t, db, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`); n != 13 {
 		t.Fatalf("schema changed to %d", n)
 	}
 }

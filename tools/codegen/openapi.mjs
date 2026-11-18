@@ -154,6 +154,49 @@ Object.assign(paths['/api/v1/operations/summary'].get.responses, {
   503: { description: 'Authorization, statistics query or administrative index unavailable; no partial statistics' },
 });
 delete paths['/api/v1/operations/summary'].get.responses['403'];
+// P1 personnel / account / permission management (independent SYSTEM permission domain:
+// system_admin, account_manager). Never grants project or portfolio business access. Responses that
+// carry a one-time temporaryPassword are no-store; the password is never persisted or logged.
+const person = { type: 'object', required: ['id', 'username', 'displayName', 'enabled', 'systemRoles', 'version'], properties: {
+  id: { type: 'string' }, username: { type: 'string' }, displayName: { type: 'string' }, departmentId: { type: 'string' }, departmentName: { type: 'string' },
+  jobTitle: { type: 'string' }, phone: { type: 'string' }, email: { type: 'string' }, enabled: { type: 'boolean' }, managed: { type: 'boolean' },
+  identitySync: { type: 'string', enum: ['SYNCED', 'PENDING'] }, createdAt: { type: 'string', format: 'date-time' }, createdBy: { type: 'string' },
+  lastLoginAt: { anyOf: [{ type: 'string', format: 'date-time' }, { type: 'null' }] }, version: { type: 'integer' },
+  systemRoles: { type: 'array', items: { type: 'string', enum: ['system_admin', 'account_manager'] } },
+  projectCount: { type: 'integer' }, portfolioCount: { type: 'integer' } } };
+const accountResult = { type: 'object', properties: { person, identitySync: { type: 'string', enum: ['SYNCED', 'PENDING', 'UNMANAGED'] },
+  sessionsRevoked: { type: 'integer' }, liveLeasesRevoked: { type: 'integer' }, temporaryPassword: { type: 'string', description: 'Shown once; never stored' } } };
+const provisionResult = { type: 'object', required: ['provisionId', 'state', 'person', 'passwordDelivered', 'replayed'], properties: {
+  provisionId: { type: 'string' }, state: { type: 'string', enum: ['COMPLETED'] }, person, temporaryPassword: { type: 'string', description: 'Present only on the response that set it' },
+  passwordDelivered: { type: 'boolean' }, replayed: { type: 'boolean' } } };
+add('/api/v1/admin/me', 'get', 'getSystemAccess', { type: 'object', properties: { userId: { type: 'string' }, systemRoles: { type: 'array', items: { type: 'string' } }, capabilities: { type: 'object', additionalProperties: { type: 'boolean' } }, accountServiceConfigured: { type: 'boolean' } } });
+add('/api/v1/admin/people', 'get', 'listPeople', { type: 'object', properties: { items: { type: 'array', items: person }, total: { type: 'integer' } } });
+add('/api/v1/admin/people', 'post', 'provisionPerson', provisionResult, '201');
+add('/api/v1/admin/people/{id}', 'get', 'getPerson', person);
+add('/api/v1/admin/people/{id}', 'patch', 'updatePerson', accountResult);
+add('/api/v1/admin/people/{id}/disable', 'post', 'disablePerson', accountResult);
+add('/api/v1/admin/people/{id}/enable', 'post', 'enablePerson', accountResult);
+add('/api/v1/admin/people/{id}/reset-password', 'post', 'resetPersonPassword', accountResult);
+add('/api/v1/admin/people/{id}/revoke-sessions', 'post', 'revokePersonSessions', accountResult);
+add('/api/v1/admin/people/{id}/system-roles', 'put', 'setPersonSystemRoles', person);
+add('/api/v1/admin/people/{id}/portfolio-roles/{scope}', 'put', 'setPersonPortfolioRole', person);
+add('/api/v1/admin/departments', 'get', 'listDepartments', { type: 'array', items: { type: 'object' } });
+add('/api/v1/admin/departments', 'post', 'createDepartment', { type: 'object' });
+add('/api/v1/admin/departments/{id}', 'put', 'updateDepartment', { type: 'object' });
+add('/api/v1/admin/portfolio-scopes', 'get', 'listAdminPortfolioScopes', { type: 'array', items: { type: 'object' } });
+add('/api/v1/admin/provisions', 'get', 'listPendingProvisions', { type: 'array', items: { type: 'object' } });
+add('/api/v1/admin/provisions/{id}/resume', 'post', 'resumeProvision', provisionResult);
+add('/api/v1/admin/provisions/{id}/cancel', 'post', 'cancelProvision', null, '204');
+add('/api/v1/portfolio/projects/{id}/member-candidates', 'get', 'listProjectMemberCandidates', { type: 'array', maxItems: 20, items: { type: 'object', additionalProperties: false,
+  properties: { userId: { type: 'string' }, displayName: { type: 'string' }, username: { type: 'string' }, departmentName: { type: 'string' }, jobTitle: { type: 'string' } } } });
+paths['/api/v1/portfolio/projects/{id}/member-candidates'].get.parameters.push({ name: 'q', in: 'query', required: true, schema: { type: 'string', minLength: 1, maxLength: 40 } });
+paths['/api/v1/admin/people'].post.parameters.push({ name: 'Idempotency-Key', in: 'header', required: true, schema: { type: 'string', minLength: 8, maxLength: 128 } });
+for (const p of ['/api/v1/admin/people/{id}', '/api/v1/admin/people/{id}/disable', '/api/v1/admin/people/{id}/enable', '/api/v1/admin/departments/{id}'])
+  for (const [method, op] of Object.entries(paths[p])) if (method !== 'get') op.parameters.push({ name: 'If-Match', in: 'header', required: true, schema: { type: 'string' } });
+for (const [path, methods] of Object.entries(paths)) if (path.startsWith('/api/v1/admin/')) for (const op of Object.values(methods)) {
+  op['x-system-permission-domain'] = true;
+  Object.assign(op.responses, { 409: { description: 'Duplicate username, stale version, or last enabled system administrator' }, 422: { description: 'Invalid input or self-change' } });
+}
 paths['/auth/logout'].post.responses['204'].headers = { Location: { description: 'Optional OIDC RP-initiated logout URL with client_id and exact post_logout_redirect_uri; contains no token', schema: { type: 'string', format: 'uri' } } };
 for (const path of ['/auth/login', '/auth/callback']) {
   paths[path].get.security = [];

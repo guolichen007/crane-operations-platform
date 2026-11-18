@@ -19,6 +19,7 @@ import (
 	"github.com/guolichen007/crane-operations-platform/internal/auditlog"
 	"github.com/guolichen007/crane-operations-platform/internal/identity"
 	"github.com/guolichen007/crane-operations-platform/internal/inventory"
+	"github.com/guolichen007/crane-operations-platform/internal/personnel"
 	"github.com/guolichen007/crane-operations-platform/internal/platform"
 	"github.com/guolichen007/crane-operations-platform/internal/webauth"
 	"github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/alarm"
@@ -40,6 +41,7 @@ type apiHandler struct {
 	wsClients *atomic.Int64
 	dbErrors  *atomic.Int64
 	web       *webauth.Manager
+	personnel *personnel.Service
 	ops       operations.Config
 	// geo overrides the embedded administrative index (tests inject failures); nil = geo.Default.
 	geo func() (*geo.Index, error)
@@ -220,6 +222,7 @@ func (h *apiHandler) register(mux *http.ServeMux) error {
 	h.registerPortfolio(api)
 	h.registerAssets(api)
 	h.registerOperations(api)
+	h.registerPersonnel(api)
 	// Deployment environment sentinel: an operator-set, server-side value that a
 	// write-capable test suite reads (after login, before any write) to prove it is
 	// talking to the intended isolated environment. Unset → "" (production never

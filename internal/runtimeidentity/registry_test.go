@@ -59,7 +59,7 @@ func TestRegisterPlanApplyVerifyAndBinding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Items[0].Status != StatusNew || p.Items[0].Binding != "NEW" || p.Items[1].Status != StatusNew || p.Target.SchemaVersion != 12 {
+	if p.Items[0].Status != StatusNew || p.Items[0].Binding != "NEW" || p.Items[1].Status != StatusNew || p.Target.SchemaVersion != 13 {
 		t.Fatalf("plan = %+v", p)
 	}
 	if n(t, db, `SELECT count(*) FROM devices WHERE id LIKE 'SIM-R7-%'`) != 0 {
