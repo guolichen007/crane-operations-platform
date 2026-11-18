@@ -71,13 +71,11 @@ func Run(args []string) error {
 		}
 	}
 	if c.InventoryFile != "" {
-		document, err := inventory.Load(c.InventoryFile)
+		imported, err := inventory.Startup(ctx, db, c.InventoryFile)
 		if err != nil {
 			return err
 		}
-		if err = inventory.Import(ctx, db, document); err != nil {
-			return err
-		}
+		logger.Info("startup inventory", "event", "inventory_startup", "imported", imported)
 	}
 	manifest, e := fleet.Load(c.FleetFile, 20, c.FleetFile == "", false)
 	if e != nil {

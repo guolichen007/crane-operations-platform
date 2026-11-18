@@ -10,6 +10,10 @@
 //	                        --simulator prints ONLY this request's SIMULATION identities (the
 //	                        simulator run Fleet); the cloud Fleet is the output without --simulator
 //	runtime-identity acl    --fleet fleet.json        (broker ACL for exactly that Fleet; no database)
+//	runtime-identity empty-fleet --tenant demo         (explicit empty Fleet; no database)
+//	runtime-identity reset-business plan                                   (crane-dev only, read-only)
+//	runtime-identity reset-business apply --approve <digest> --actor <admin> (crane-dev only; deletes ALL
+//	                        Crane business data, keeps accounts/portfolio scopes/type directory/audit)
 //
 // The database URL is password-free; the password comes only from DATABASE_PASSWORD_FILE.
 package main
@@ -27,6 +31,7 @@ import (
 	"time"
 
 	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
+	"github.com/guolichen007/crane-operations-platform/internal/devreset"
 	"github.com/guolichen007/crane-operations-platform/internal/fleet"
 	"github.com/guolichen007/crane-operations-platform/internal/platform"
 	"github.com/guolichen007/crane-operations-platform/internal/runtimeidentity"
@@ -42,6 +47,12 @@ func execute(args []string, out io.Writer) (int, error) {
 	op := args[0]
 	if op == "acl" {
 		return aclCommand(args[1:], out)
+	}
+	if op == "empty-fleet" {
+		return emptyFleet(args[1:], out)
+	}
+	if op == "reset-business" {
+		return resetBusiness(args[1:], out)
 	}
 	if op != "plan" && op != "apply" && op != "verify" && op != "fleet" && op != "merge" {
 		return 1, errors.New("unknown operation")
@@ -154,6 +165,62 @@ func aclCommand(args []string, out io.Writer) (int, error) {
 	return 0, err
 }
 
+func emptyFleet(args []string, out io.Writer) (int, error) {
+	flags := flag.NewFlagSet("empty-fleet", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	tenant := flags.String("tenant", "", "tenant id")
+	if err := flags.Parse(args); err != nil || flags.NArg() != 0 || *tenant == "" {
+		return 1, errors.New("invalid arguments")
+	}
+	m := contract.FleetManifest{TenantId: *tenant, Devices: []contract.RuntimeDescriptor{}}
+	if err := fleet.Validate(m, false); err != nil {
+		return 1, err
+	}
+	enc := json.NewEncoder(out)
+	enc.SetIndent("", "  ")
+	return 0, enc.Encode(m)
+}
+
+// resetBusiness is the one-off crane-dev business data reset (internal/devreset). The guard values
+// come from the cloud-api container environment (CRANE_DEPLOYMENT_ENVIRONMENT, PUBLIC_URL).
+func resetBusiness(args []string, out io.Writer) (int, error) {
+	if len(args) == 0 || (args[0] != "plan" && args[0] != "apply") {
+		return 1, errors.New("usage: reset-business plan | apply --approve DIGEST --actor ID")
+	}
+	flags := flag.NewFlagSet("reset-business", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	approve := flags.String("approve", "", "approved plan digest")
+	actor := flags.String("actor", "", "host administrator")
+	if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 {
+		return 1, errors.New("invalid arguments")
+	}
+	if args[0] == "plan" && (*approve != "" || *actor != "") || args[0] == "apply" && (strings.TrimSpace(*approve) == "" || strings.TrimSpace(*actor) == "") {
+		return 1, errors.New("apply requires --approve and --actor; plan takes neither")
+	}
+	env := devreset.Guard{Environment: os.Getenv("CRANE_DEPLOYMENT_ENVIRONMENT"), PublicURL: os.Getenv("PUBLIC_URL")}
+	db, err := openDB()
+	if err != nil {
+		return 1, errors.New("runtime-identity database unavailable")
+	}
+	defer db.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	enc := json.NewEncoder(out)
+	enc.SetIndent("", "  ")
+	if args[0] == "plan" {
+		p, err := devreset.PlanReset(ctx, db, env, devreset.CraneDev)
+		if err != nil {
+			return 1, err
+		}
+		return 0, enc.Encode(map[string]any{"operation": "reset-business-plan", "plan": p})
+	}
+	p, err := devreset.Apply(ctx, db, env, devreset.CraneDev, strings.TrimSpace(*approve), strings.TrimSpace(*actor), platform.ID())
+	if err != nil {
+		return 1, err
+	}
+	return 0, enc.Encode(map[string]any{"operation": "reset-business-apply", "deleted": p.Delete, "kept": p.Keep})
+}
+
 func openDB() (*sql.DB, error) {
 	source := os.Getenv("DATABASE_URL")
 	if p := os.Getenv("DATABASE_PASSWORD_FILE"); p != "" {
@@ -174,7 +241,7 @@ func openDB() (*sql.DB, error) {
 }
 
 func safeReason(err error) string {
-	for _, known := range []error{runtimeidentity.ErrRequest, runtimeidentity.ErrDigestMismatch, runtimeidentity.ErrNotApplicable, runtimeidentity.ErrActorRequired} {
+	for _, known := range []error{runtimeidentity.ErrRequest, runtimeidentity.ErrDigestMismatch, runtimeidentity.ErrNotApplicable, runtimeidentity.ErrActorRequired, devreset.ErrGuard, devreset.ErrDigestMismatch} {
 		if errors.Is(err, known) {
 			return err.Error()
 		}

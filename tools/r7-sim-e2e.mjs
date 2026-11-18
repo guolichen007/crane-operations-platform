@@ -26,6 +26,7 @@ export const REQUIRED = [
   'TestR7Sim20DevicesSoak',
   'TestR7IsolatedRestoreDrill',
   'TestR8SimCertScriptIssuesUsableIdentity',
+  'TestR8ZeroBusinessStartToFirstSimulatedCrane',
 ];
 
 /**

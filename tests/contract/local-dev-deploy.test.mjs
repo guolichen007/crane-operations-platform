@@ -10,7 +10,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { build, plan, apply, rollback, localTag, overrideYaml, validateLocalDevelopment, changedServices, BUILDABLE, buildGoproxy, composeMaintenance, updateFleet, ACTIVE_OVERRIDE } from '../../deploy/scripts/local-dev-deploy.mjs';
+import { build, plan, apply, rollback, localTag, overrideYaml, validateLocalDevelopment, changedServices, BUILDABLE, buildGoproxy, composeMaintenance, updateFleet, ACTIVE_OVERRIDE, resetBusiness, SIM_CONTAINER, SIM_SPOOL_VOLUME, readFleet } from '../../deploy/scripts/local-dev-deploy.mjs';
 import { validateProduction } from '../../tools/production-contract.mjs';
 
 const UP = JSON.parse(readFileSync('deploy/production/images.json', 'utf8'));
@@ -29,8 +29,9 @@ function repo(t) {
   git('add', '.'); git('commit', '-qm', 'one');
   const fleet = join(dir, 'fleet.json'), acl = join(dir, 'acl');
   writeFileSync(fleet, fleetDoc(['SIM-OLD']), { mode: 0o600 }); writeFileSync(acl, aclDoc(['SIM-OLD']), { mode: 0o600 });
-  const env = join(dir, 'crane.env'); writeFileSync(env, `CRANE_LOCAL_DEPLOY_DIR=${join(dir, 'state')}\nCRANE_FLEET_FILE=${fleet}\nCRANE_MQTT_ACL=${acl}\n`, { mode: 0o600 });
-  return { dir, root, git, env, fleet, acl, state: join(dir, 'state'), sha: () => git('rev-parse', 'HEAD') };
+  const inventory = join(dir, 'inventory.json'); writeFileSync(inventory, JSON.stringify({ tenantId: 'demo', projects: [{ id: 'P001' }], assetDevices: [], runtimeDevices: [] }), { mode: 0o600 });
+  const env = join(dir, 'crane.env'); writeFileSync(env, `CRANE_LOCAL_DEPLOY_DIR=${join(dir, 'state')}\nCRANE_FLEET_FILE=${fleet}\nCRANE_MQTT_ACL=${acl}\nCRANE_INVENTORY_FILE=${inventory}\n`, { mode: 0o600 });
+  return { dir, root, git, env, fleet, acl, inventory, state: join(dir, 'state'), sha: () => git('rev-parse', 'HEAD') };
 }
 
 function devConfig(images) {
@@ -51,7 +52,7 @@ function devConfig(images) {
  * override names (or, without a local override, the registry refs). Records every call.
  */
 function fakeDocker(r, { buildId = (tag) => 'sha256:' + Buffer.from(tag).toString('hex').padEnd(64, '0').slice(0, 64), arch = 'amd64', smokeOk = () => true } = {}) {
-  const state = { images: {}, running: { ...REG }, calls: [], schema: 12, lastOverride: null, upCount: 0, failUp: null, hup: 0 };
+  const state = { images: {}, running: { ...REG }, calls: [], schema: 12, lastOverride: null, upCount: 0, failUp: null, hup: 0, resetCalls: [], businessRows: 2, simRunning: true, simStopped: false, spool: true };
   for (const s of ['cloud-api', 'web-console']) state.images[REG[s]] = { Id: 'sha256:' + (s === 'cloud-api' ? '1' : '2').repeat(64), Config: { Labels: { 'org.opencontainers.image.revision': R6 } }, Os: 'linux', Architecture: arch };
   const byId = (id) => Object.values(state.images).find((v) => v.Id === id);
   const execute = (cmd, args, opts) => {
@@ -76,7 +77,13 @@ function fakeDocker(r, { buildId = (tag) => 'sha256:' + Buffer.from(tag).toStrin
       if (args.includes('psql')) return { status: 0, stdout: state.schema + '\n' };
       if (args.includes('config')) return { status: 0, stdout: JSON.stringify(devConfig(imgs)) };
       if (args.includes('kill')) { state.hup++; return { status: 0, stdout: '' }; }
-      if (args.includes('exec')) { const path = args.at(-1); return { status: 0, stdout: readFileSync(path === '/mosquitto/acl' ? r.acl : r.fleet, 'utf8') }; }
+      if (args.includes('exec')) { const path = args.at(-1); return { status: 0, stdout: readFileSync(path === '/mosquitto/acl' ? r.acl : path === '/inventory/inventory.json' ? r.inventory : r.fleet, 'utf8') }; }
+      if (args.includes('run') && args.includes('reset-business')) {
+        state.resetCalls.push(args.slice(args.indexOf('reset-business')).join(' '));
+        const counts = (n) => ({ projects: n, devices: n, alarms: n * 3 });
+        if (args.includes('plan')) return { status: 0, stdout: JSON.stringify({ plan: { digest: 'd'.repeat(64), realRuntimes: 0, delete: counts(state.businessRows), keep: { portfolio_scopes: 1, equipment_types: 43 } } }) };
+        if (args.at(-1) && args.includes('apply')) { if (!state.simStopped && state.simRunning) throw Error('database reset while the simulator runs'); state.businessRows = 0; return { status: 0, stdout: JSON.stringify({ deleted: counts(2), kept: { portfolio_scopes: 1, equipment_types: 43 } }) }; }
+      }
       if (args.includes('up')) {
         assert.ok(args.includes('--no-build') && args.includes('never') && args.includes('--no-deps'));
         state.upCount++;
@@ -88,6 +95,10 @@ function fakeDocker(r, { buildId = (tag) => 'sha256:' + Buffer.from(tag).toStrin
       if (args.includes('ps')) return { status: 0, stdout: 'c-' + args.at(-1) + '\n' };
       if (args.includes('logs') || args.includes('restart')) return { status: 0, stdout: '' };
     }
+    if (args[0] === 'ps' && args.includes(`name=^${SIM_CONTAINER}$`)) return { status: 0, stdout: state.simRunning && !state.simStopped ? 'abc\n' : '' };
+    if (args[0] === 'stop' && args.at(-1) === SIM_CONTAINER) { state.simStopped = true; return { status: 0, stdout: '' }; }
+    if (args[0] === 'volume' && args[1] === 'ls') return { status: 0, stdout: state.spool ? SIM_SPOOL_VOLUME + '\n' : '' };
+    if (args[0] === 'volume' && args[1] === 'rm') { assert.ok(state.simStopped || !state.simRunning, 'spool removed while the simulator runs'); state.spool = false; return { status: 0, stdout: '' }; }
     if (args[0] === 'inspect') {
       const svc = args.at(-1).slice(2); const ref = state.running[svc]; const v = state.images[ref];
       if (args[2] === '{{json .}}') return { status: 0, stdout: JSON.stringify({ Image: v.Id, Config: { Image: ref, Labels: { ...v.Config.Labels, 'com.docker.compose.project.working_dir': '/srv/u-dao/src/old/deploy/compose', 'com.docker.compose.project.config_files': '/srv/u-dao/src/old/deploy/compose/docker-compose.prod.yml,/srv/u-dao/src/old/deploy/compose/docker-compose.crane-dev.yml' } }, Os: v.Os, Architecture: v.Architecture }) };
@@ -217,6 +228,39 @@ test('single-instance lock; maintenance and Fleet/ACL updates use the ACTIVE ove
   assert.throws(() => updateFleet(r.env, newFleet, newAcl, d.opts), /ACL does not match/);
   writeFileSync(newAcl, aclDoc(['SIM-OLD', 'SIM-UAT-0001', 'SIM-UAT-0002']).replace('heartbeat', '#'));
   assert.throws(() => updateFleet(r.env, newFleet, newAcl, d.opts), /ACL does not match/);
+});
+
+test('crane-dev business reset: guarded plan/apply, simulator stopped before DB, empty Inventory/Fleet/ACL in place, spool removed, cloud-api recreated', (t) => {
+  const r = repo(t); const d = fakeDocker(r);
+  assert.throws(() => resetBusiness(r.env, 'plan', {}, d.opts), /active-override.yml missing/, 'no reset before a confirmed local deploy');
+  build(r.env, ['cloud-api', 'web-console'], d.opts);
+  apply(r.env, undefined, d.opts);
+  const p = resetBusiness(r.env, 'plan', {}, d.opts);
+  assert.equal(p.digest, 'd'.repeat(64)); assert.equal(p.delete.projects, 2);
+  assert.equal(d.state.businessRows, 2, 'plan is read-only');
+  for (const bad of [{}, { approve: p.digest, actor: 'admin' }, { approve: p.digest, actor: 'admin', confirm: 'production' }, { approve: p.digest, confirm: 'crane-dev' }])
+    assert.throws(() => resetBusiness(r.env, 'apply', bad, d.opts), /--confirm crane-dev/, JSON.stringify(bad));
+  assert.equal(d.state.businessRows, 2);
+  const inodes = [r.inventory, r.fleet, r.acl].map((f) => statSync(f).ino);
+  const upsBefore = d.state.upCount;
+  resetBusiness(r.env, 'apply', { approve: p.digest, actor: 'admin', confirm: 'crane-dev' }, d.opts);
+  assert.ok(d.state.simStopped, 'simulator stopped'); assert.equal(d.state.spool, false, 'spool volume removed');
+  assert.equal(d.state.businessRows, 0);
+  assert.deepEqual(JSON.parse(readFileSync(r.inventory, 'utf8')), { tenantId: 'demo', projects: [], assetDevices: [], runtimeDevices: [] });
+  assert.deepEqual(readFleet(r.fleet), { tenantId: 'demo', devices: [] });
+  assert.equal(readFileSync(r.acl, 'utf8'), '# Generated development ACL: exact tenant/project/device scopes; not production PKI.\nuser cloud-api\n');
+  assert.doesNotMatch(readFileSync(r.acl, 'utf8'), /topic|[#+](?!.*PKI)/);
+  assert.deepEqual([r.inventory, r.fleet, r.acl].map((f) => statSync(f).ino), inodes, 'bind-mounted files keep their inode');
+  assert.ok(d.state.hup >= 1); assert.equal(d.state.upCount, upsBefore + 1);
+  assert.ok(d.state.calls.some((c) => /--force-recreate --wait cloud-api/.test(c) && c.includes(ACTIVE_OVERRIDE)));
+  assert.equal(d.state.running['cloud-api'], localTag('cloud-api', r.sha()));
+  assert.ok(d.state.resetCalls.some((c) => c === `reset-business apply --approve ${p.digest} --actor admin`));
+  // Normal Fleet updates still refuse to remove identities; the empty Fleet is a legal base for growth.
+  const nf = join(r.dir, 'f2.json'), na = join(r.dir, 'a2');
+  writeFileSync(nf, fleetDoc(['SIM-UAT-0001'])); writeFileSync(na, aclDoc(['SIM-UAT-0001']));
+  assert.deepEqual(updateFleet(r.env, nf, na, d.opts), { added: 1 });
+  writeFileSync(nf, JSON.stringify({ tenantId: 'demo', devices: [] })); writeFileSync(na, aclDoc([]));
+  assert.throws(() => updateFleet(r.env, nf, na, d.opts), /would be removed/);
 });
 
 test('local images only for crane-dev; production validation keeps requiring digests', () => {

@@ -62,7 +62,7 @@ test('r2-b2-test.mjs gates the four H2-1A real-PostgreSQL tests and gives invent
     'TestConcurrentMoveLeavesExactlyOneCurrentLocation', 'TestR6EquipmentTypeDirectoryHTTP', 'TestR6AssetLocationReadbackHTTP',
     'TestLocationParentGuards', 'TestLocationLegalUpdatesAndInstalledAssetPath', 'TestConcurrentReparentCannotBuildCycle',
     'TestMoveAssetTraceability', 'TestR6LocationParentGuardHTTP',
-    'TestR7AssetCodeDuplicateHTTP', 'TestR7AssetTypeConstraintHTTP', 'TestRegisterPlanApplyVerifyAndBinding', 'TestRegisterRefusals', 'TestConcurrentBindingVersusRemoveAndRetire', 'TestR8ScheduleWorkflowHTTP'])
+    'TestR7AssetCodeDuplicateHTTP', 'TestR7AssetTypeConstraintHTTP', 'TestRegisterPlanApplyVerifyAndBinding', 'TestRegisterRefusals', 'TestConcurrentBindingVersusRemoveAndRetire', 'TestR8ScheduleWorkflowHTTP', 'TestResetDeletesBusinessDataKeepsFoundation'])
     assert.ok(runner.includes(`'${name}'`), `missing required test ${name}`);
   assert.match(runner, /\['h21a-inventory', '\.\/internal\/inventory'/);
   assert.match(runner, /\['h21a-cloudapi', '\.\/services\/cloud-api\/internal\/app'/);

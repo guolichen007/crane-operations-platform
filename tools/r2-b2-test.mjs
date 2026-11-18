@@ -123,6 +123,10 @@ const h21aPackages = [
     // R8 resource & schedule workflow (create/calendar/reserve/approve/conflict/override/cancel/history)
     'TestR8ScheduleWorkflowHTTP',
   ]],
+  // R8 zero-business start: crane-dev business reset (all-or-nothing, guarded, digest, audit).
+  ['r8-devreset', './internal/devreset', [
+    'TestResetDeletesBusinessDataKeepsFoundation',
+  ]],
   // R7 controlled runtime identity registration (SIMULATION/TEST only, plan/apply/verify).
   ['r7-runtimeidentity', './internal/runtimeidentity', [
     'TestRegisterPlanApplyVerifyAndBinding',

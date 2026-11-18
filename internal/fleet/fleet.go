@@ -58,8 +58,11 @@ func Validate(m contract.FleetManifest, simulationOnly bool) error {
 	if err := contract.ValidateDocument("FleetManifest", m); err != nil {
 		return err
 	}
-	if len(m.Devices) < 1 || len(m.Devices) > 100 {
-		return errors.New("fleet must contain 1..100 identities")
+	// The Cloud accepts an explicit empty Fleet (no runtime identity registered yet: zero
+	// subscriptions, an ACL without any device topic). A simulator / Edge Agent always needs at
+	// least one identity to run (simulationOnly).
+	if len(m.Devices) > 100 || simulationOnly && len(m.Devices) < 1 {
+		return errors.New("fleet must contain 1..100 identities (the Cloud also accepts an explicit empty Fleet)")
 	}
 	ids := map[string]bool{}
 	for _, d := range m.Devices {

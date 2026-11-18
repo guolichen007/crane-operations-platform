@@ -23,7 +23,9 @@ func Validate(d contract.InventoryDocument) error {
 	if err := contract.ValidateDocument("InventoryDocument", d); err != nil {
 		return err
 	}
-	if len(d.Projects) < 1 || len(d.Projects) > 1000 || len(d.AssetDevices) > 10000 || len(d.RuntimeDevices) > 10000 {
+	// An explicit empty Inventory (no projects) is legal: the database is then the only business
+	// source of truth (zero-business start, R8). Missing / malformed files are still rejected.
+	if len(d.Projects) > 1000 || len(d.AssetDevices) > 10000 || len(d.RuntimeDevices) > 10000 {
 		return errors.New("inventory size outside bounds")
 	}
 	projects := map[string]contract.InventoryProjectInput{}
@@ -149,12 +151,70 @@ func Import(ctx context.Context, db *sql.DB, d contract.InventoryDocument) error
 			return err
 		}
 	}
-	// Remove only the empty development seed, never an existing customer project.
-	_, err = tx.ExecContext(ctx, `DELETE FROM projects WHERE id='Project-A' AND tenant_id='demo' AND lifecycle IS NULL AND NOT EXISTS(SELECT 1 FROM devices WHERE project_id='Project-A') AND NOT EXISTS(SELECT 1 FROM asset_devices WHERE project_id='Project-A')`)
-	if err != nil {
+	if err = removeEmptySeed(ctx, tx); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+type execer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+// removeEmptySeed removes only the empty development seed of migration 00001 (Project-A without
+// lifecycle, assets or runtimes), never an existing customer project.
+func removeEmptySeed(ctx context.Context, db execer) error {
+	// Unchanged statement (Import runs on every schema since 00003); newer references to the seed
+	// (locations, memberships, …) make the DELETE fail its foreign key — then the row is in use and
+	// kept, which is the intended outcome. The savepoint keeps the surrounding transaction usable.
+	if _, err := db.ExecContext(ctx, `SAVEPOINT empty_seed`); err != nil {
+		return err
+	}
+	if _, err := db.ExecContext(ctx, `DELETE FROM projects WHERE id='Project-A' AND tenant_id='demo' AND lifecycle IS NULL AND NOT EXISTS(SELECT 1 FROM devices WHERE project_id='Project-A') AND NOT EXISTS(SELECT 1 FROM asset_devices WHERE project_id='Project-A')`); err != nil {
+		if !strings.Contains(err.Error(), "SQLSTATE 23503") {
+			return err
+		}
+		_, err = db.ExecContext(ctx, `ROLLBACK TO SAVEPOINT empty_seed`)
+		return err
+	}
+	_, err := db.ExecContext(ctx, `RELEASE SAVEPOINT empty_seed`)
+	return err
+}
+
+// ErrImportAfterReset: a business reset was recorded, so the database is the only business source
+// of truth; re-importing a startup Inventory would resurrect old demo/test projects.
+var ErrImportAfterReset = errors.New("startup Inventory import refused: business data was reset; use an explicit empty Inventory (the database is the source of truth)")
+
+// Startup is the Cloud start-up step for the configured Inventory file (R8):
+//   - an explicit EMPTY Inventory (projects/assets/runtimes all empty) imports nothing; the
+//     database is the only business source of truth; only the empty 00001 seed is removed;
+//   - a non-empty Inventory keeps the historical behaviour (idempotent import of new rows) unless
+//     a business reset was recorded, then it is refused (no demo re-seed);
+//   - a missing or malformed file is an error (never a silent fallback).
+func Startup(ctx context.Context, db *sql.DB, path string) (imported bool, err error) {
+	d, err := Load(path)
+	if err != nil {
+		return false, err
+	}
+	if len(d.Projects) == 0 && len(d.AssetDevices) == 0 && len(d.RuntimeDevices) == 0 {
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			return false, err
+		}
+		defer tx.Rollback()
+		if err = removeEmptySeed(ctx, tx); err != nil {
+			return false, err
+		}
+		return false, tx.Commit()
+	}
+	var resets int
+	if err = db.QueryRowContext(ctx, `SELECT count(*) FROM audit_logs WHERE action='business_data_reset' AND result='success'`).Scan(&resets); err != nil {
+		return false, err
+	}
+	if resets > 0 {
+		return false, ErrImportAfterReset
+	}
+	return true, Import(ctx, db, d)
 }
 
 // Inventory operating scope (H2-1A, docs/04-前端与可视化/Homepage-H2-0-运营数据契约.md §2.6):

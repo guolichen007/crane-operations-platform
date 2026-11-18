@@ -142,7 +142,7 @@ func freePort(t *testing.T) int {
 	return l.Addr().(*net.TCPAddr).Port
 }
 
-func startMosquitto(t *testing.T, root string, pki *simPKI, acl string) int {
+func startMosquitto(t *testing.T, root string, pki *simPKI, acl string) (int, *os.Process) {
 	t.Helper()
 	bin := os.Getenv("MOSQUITTO_BIN")
 	if bin == "" {
@@ -196,12 +196,12 @@ log_type notice
 	for time.Now().Before(deadline) {
 		if c, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 200*time.Millisecond); err == nil {
 			_ = c.Close()
-			return port
+			return port, cmd.Process
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatal("mosquitto did not listen")
-	return 0
+	return 0, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -268,19 +268,20 @@ func (p *simProxy) dropAll() {
 // The environment.
 // ---------------------------------------------------------------------------
 type simEnv struct {
-	t        *testing.T
-	ctx      context.Context
-	db       *sql.DB
-	root     string
-	pki      *simPKI
-	broker   string
-	manifest contract.FleetManifest
-	req      runtimeidentity.Request
-	provider *testsupport.OIDCProvider
-	server   *httptest.Server
-	handler  http.Handler
-	store    *device.Store
-	leases   *session.Manager
+	t         *testing.T
+	ctx       context.Context
+	db        *sql.DB
+	root      string
+	pki       *simPKI
+	broker    string
+	mosquitto *os.Process
+	manifest  contract.FleetManifest
+	req       runtimeidentity.Request
+	provider  *testsupport.OIDCProvider
+	server    *httptest.Server
+	handler   http.Handler
+	store     *device.Store
+	leases    *session.Manager
 
 	cloudMu     sync.Mutex
 	cloudCancel context.CancelFunc
@@ -348,14 +349,18 @@ func newSimEnv(t *testing.T, ttl, grace time.Duration, specs []simSpec) *simEnv 
 		}
 		e.req.Entries = append(e.req.Entries, entry)
 	}
-	plan, err := runtimeidentity.PlanRegistration(ctx, e.db, e.req)
-	if err != nil {
-		t.Fatal(err)
+	// No specs: the explicit empty Fleet of a zero-business start (R8).
+	e.manifest = contract.FleetManifest{TenantId: "demo", Devices: []contract.RuntimeDescriptor{}}
+	if len(specs) > 0 {
+		plan, err := runtimeidentity.PlanRegistration(ctx, e.db, e.req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := runtimeidentity.Apply(ctx, e.db, e.req, plan.Digest, "r7-sim-operator", "r7-sim-register"); err != nil {
+			t.Fatal(err)
+		}
+		e.manifest = runtimeidentity.Fleet(e.req)
 	}
-	if _, err := runtimeidentity.Apply(ctx, e.db, e.req, plan.Digest, "r7-sim-operator", "r7-sim-register"); err != nil {
-		t.Fatal(err)
-	}
-	e.manifest = runtimeidentity.Fleet(e.req)
 	if err := fleet.Validate(e.manifest, false); err != nil {
 		t.Fatal(err)
 	}
@@ -370,7 +375,8 @@ func newSimEnv(t *testing.T, ttl, grace time.Duration, specs []simSpec) *simEnv 
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.broker = fmt.Sprintf("127.0.0.1:%d", startMosquitto(t, e.root, e.pki, acl))
+	port, mosq := startMosquitto(t, e.root, e.pki, acl)
+	e.broker, e.mosquitto = fmt.Sprintf("127.0.0.1:%d", port), mosq
 
 	e.store, err = device.New(ctx, e.db)
 	if err != nil {
@@ -412,6 +418,17 @@ func newSimEnv(t *testing.T, ttl, grace time.Duration, specs []simSpec) *simEnv 
 	t.Cleanup(e.stopDevices)
 	return e
 }
+
+// reloadBrokerACL makes the broker re-read its ACL file (SIGHUP, as on the site); connections stay.
+func (e *simEnv) reloadBrokerACL() {
+	e.t.Helper()
+	if err := e.mosquitto.Signal(syscall.SIGHUP); err != nil {
+		e.t.Fatal("SIGHUP mosquitto:", err)
+	}
+	time.Sleep(500 * time.Millisecond)
+}
+
+func newRecorder() *httptest.ResponseRecorder { return httptest.NewRecorder() }
 
 func (e *simEnv) startCloud() {
 	e.cloudMu.Lock()

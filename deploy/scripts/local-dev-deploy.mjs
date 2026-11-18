@@ -11,6 +11,12 @@
 //   node deploy/scripts/local-dev-deploy.mjs status   <private.env>
 //   node deploy/scripts/local-dev-deploy.mjs compose  <private.env> -- <docker compose args…>   (maintenance with the ACTIVE override)
 //   node deploy/scripts/local-dev-deploy.mjs fleet    <private.env> --fleet <new fleet.json> --acl <new acl>
+//   node deploy/scripts/local-dev-deploy.mjs reset-business <private.env> plan
+//   node deploy/scripts/local-dev-deploy.mjs reset-business <private.env> apply --approve <digest> --actor <admin> --confirm crane-dev
+//            ONE-OFF crane-dev business reset (OWNER-approved): database business data (one transaction,
+//            guarded, audited), Inventory/Fleet/ACL to explicit empty documents, simulator stopped and
+//            its spool volume removed, broker ACL reloaded, cloud-api recreated; keeps Keycloak, CA,
+//            OIDC, accounts, roles, tenants, portfolio scopes and the equipment type directory
 //
 // Guarantees:
 //   - the checkout must be a clean worktree at a full 40-hex commit; the image tag is that SHA
@@ -414,7 +420,8 @@ export function composeMaintenance(environmentArgument, args, options) {
 /** Minimal structural check of a Fleet manifest (the Go validator runs in cloud-api at start). */
 export function readFleet(path) {
   const m = JSON.parse(readFileSync(path, 'utf8'));
-  if (typeof m.tenantId !== 'string' || !Array.isArray(m.devices) || m.devices.length < 1 || m.devices.length > 100) throw Error(`${path}: not a Fleet manifest (tenantId, 1..100 devices)`);
+  // An explicit empty Fleet (devices: []) is legal for the Cloud (zero-business start).
+  if (typeof m.tenantId !== 'string' || !Array.isArray(m.devices) || m.devices.length > 100) throw Error(`${path}: not a Fleet manifest (tenantId, 0..100 devices)`);
   const ids = new Set();
   for (const d of m.devices) {
     if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(d.runtimeDeviceId ?? '') || ids.has(d.runtimeDeviceId) || !['REAL', 'SIMULATION', 'TEST'].includes(d.sourceMode)) throw Error(`${path}: invalid or duplicate device ${d.runtimeDeviceId}`);
@@ -476,6 +483,77 @@ export function updateFleet(environmentArgument, newFleet, newAcl, options) {
   });
 }
 
+const EMPTY_INVENTORY = (tenant) => JSON.stringify({ tenantId: tenant, projects: [], assetDevices: [], runtimeDevices: [] }, null, 2) + '\n';
+const EMPTY_FLEET = (tenant) => JSON.stringify({ tenantId: tenant, devices: [] }, null, 2) + '\n';
+const EMPTY_ACL = '# Generated development ACL: exact tenant/project/device scopes; not production PKI.\nuser cloud-api\n';
+export const SIM_CONTAINER = 'u-dao-crane-ops-sim';
+export const SIM_SPOOL_VOLUME = `${productionProject}_crane-simulation-spool`;
+
+function writeInPlace(target, content, stamp) {
+  const before = statSync(target);
+  writeFileSync(`${target}.bak-${stamp}`, readFileSync(target), { mode: before.mode & 0o777 });
+  writeFileSync(target, content);
+  const after = statSync(target);
+  if (after.ino !== before.ino || after.uid !== before.uid || (after.mode & 0o777) !== (before.mode & 0o777)) throw Error(`${target}: inode/owner/mode changed`);
+}
+
+/**
+ * One-off crane-dev business reset (see header). `plan` is read-only; `apply` needs the plan digest,
+ * an actor and --confirm crane-dev. The database step runs first and is all-or-nothing; the files are
+ * replaced only after it committed; each step is verified.
+ */
+export function resetBusiness(environmentArgument, mode, { approve, actor, confirm } = {}, options) {
+  const ctx = defaults(options);
+  const { envFile, environment } = loadEnv(ctx, environmentArgument);
+  const dir = stateDir(environment);
+  return withLock(ctx, dir, 'reset-business', () => {
+    const args = activeComposeArgs(ctx, envFile, environment);
+    const current = readState(dir, 'current.json');
+    if (current?.kind !== 'crane-local-deploy') throw new Stop('reset requires a confirmed local deployment (local-dev-deploy apply) first');
+    const config = JSON.parse(docker(ctx, [...args, 'config', '--format', 'json']));
+    const api = config.services['cloud-api'].environment;
+    if (config.name !== productionProject || api.CRANE_DEPLOYMENT_ENVIRONMENT !== devEnvironment || api.PUBLIC_URL !== devOrigin || api.APP_ENV !== 'production')
+      throw new Stop(`not the crane-dev instance (project ${config.name}, environment ${api.CRANE_DEPLOYMENT_ENVIRONMENT}, ${api.PUBLIC_URL})`);
+    for (const key of ['CRANE_INVENTORY_FILE', 'CRANE_FLEET_FILE', 'CRANE_MQTT_ACL'])
+      if (!environment[key] || !existsSync(environment[key])) throw Error(`${key} must point to the existing file`);
+    const tool = (...a) => docker(ctx, [...args, 'run', '--rm', '--no-deps', '--pull', 'never', '--entrypoint', 'runtime-identity', 'cloud-api', 'reset-business', ...a]);
+    if (mode === 'plan') {
+      const out = JSON.parse(tool('plan'));
+      writeState(dir, 'reset-plan.json', out.plan);
+      ctx.log(`LOCAL_DEV_RESET_PLAN digest=${out.plan.digest} real=${out.plan.realRuntimes} delete=${JSON.stringify(out.plan.delete)} keep=${JSON.stringify(out.plan.keep)}`);
+      return out.plan;
+    }
+    if (mode !== 'apply' || !approve || !actor || confirm !== devEnvironment) throw Error('apply requires --approve <plan digest> --actor <admin> --confirm crane-dev');
+    const tenant = readFleet(environment.CRANE_FLEET_FILE).tenantId;
+    // 1. Simulator off first (its spool would replay old events), then the database (one transaction).
+    if (docker(ctx, ['ps', '-q', '--filter', `name=^${SIM_CONTAINER}$`]).trim()) docker(ctx, ['stop', '--time', '10', SIM_CONTAINER]);
+    const applied = JSON.parse(tool('apply', '--approve', approve, '--actor', actor));
+    // 2. Startup documents become explicit empty ones (in place: bind mounts keep their inode).
+    const stamp = ctx.now().toISOString().replace(/[:.]/g, '-');
+    writeInPlace(environment.CRANE_INVENTORY_FILE, EMPTY_INVENTORY(tenant), stamp);
+    writeInPlace(environment.CRANE_FLEET_FILE, EMPTY_FLEET(tenant), stamp);
+    writeInPlace(environment.CRANE_MQTT_ACL, EMPTY_ACL, stamp);
+    // 3. Simulator spool (old queued events) removed; no simulator is running (step 1).
+    if (docker(ctx, ['volume', 'ls', '-q', '--filter', `name=^${SIM_SPOOL_VOLUME}$`]).trim()) docker(ctx, ['volume', 'rm', SIM_SPOOL_VOLUME]);
+    // 4. Broker re-reads the empty ACL; cloud-api restarts with the empty Fleet and empty Inventory.
+    docker(ctx, [...args, 'kill', '-s', 'SIGHUP', 'mosquitto']);
+    docker(ctx, [...args, 'up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--force-recreate', '--wait', 'cloud-api'], false);
+    const inside = (svc, path) => sha256(docker(ctx, [...args, 'exec', '-T', svc, 'cat', path]));
+    if (inside('cloud-api', '/inventory/inventory.json') !== sha256(EMPTY_INVENTORY(tenant)) || inside('cloud-api', '/inventory/fleet.json') !== sha256(EMPTY_FLEET(tenant)) || inside('mosquitto', '/mosquitto/acl') !== sha256(EMPTY_ACL))
+      throw Error('container files differ from the written empty documents');
+    if (runningContainer(ctx, envFile, join(dir, ACTIVE_OVERRIDE), 'cloud-api').id !== current.images['cloud-api'].id) throw Error('cloud-api was recreated with another image than the confirmed one');
+    const after = JSON.parse(tool('plan'));
+    const left = Object.entries(after.plan.delete).filter(([, n]) => n !== 0);
+    if (left.length) throw Error('business rows remain after reset: ' + JSON.stringify(Object.fromEntries(left)));
+    const s = smoke(ctx);
+    ctx.log('LOCAL_DEV_SMOKE ' + s.checks.join(' '));
+    if (!s.ok) throw Object.assign(Error('smoke failed after the reset; previous files kept as *.bak-' + stamp), { code: 3 });
+    writeState(dir, `reset-${stamp}.json`, { kind: 'crane-business-reset', at: ctx.now().toISOString(), actor, digest: approve, deleted: applied.deleted, kept: applied.kept, backups: `*.bak-${stamp}` });
+    ctx.log(`LOCAL_DEV_RESET=PASS deleted=${JSON.stringify(applied.deleted)} inventory=EMPTY fleet=EMPTY acl=EMPTY spool=REMOVED cloud_api=recreated`);
+    return applied;
+  });
+}
+
 if (import.meta.main) {
   const [mode, envFile, ...rest] = process.argv.slice(2);
   const flag = (name) => { const i = rest.indexOf(name); return i >= 0 ? rest[i + 1] : undefined; };
@@ -488,6 +566,7 @@ if (import.meta.main) {
     else if (mode === 'status') status(envFile);
     else if (mode === 'compose') composeMaintenance(envFile, rest[0] === '--' ? rest.slice(1) : rest);
     else if (mode === 'fleet') updateFleet(envFile, flag('--fleet'), flag('--acl'));
+    else if (mode === 'reset-business') resetBusiness(envFile, rest[0], { approve: flag('--approve'), actor: flag('--actor'), confirm: flag('--confirm') });
     else throw Error('unknown mode');
   } catch (error) { console.error(error.message); process.exitCode = error.code || 1; }
 }
