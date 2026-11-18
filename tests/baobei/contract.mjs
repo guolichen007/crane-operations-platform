@@ -55,7 +55,8 @@ assert.equal(
 );
 
 // Web runtime image: digest-pinned official nginx base, same-series security upgrade with a
-// fail-closed minimum-version gate, and the Nginx syntax tests use the same pinned base.
+// fail-closed minimum-version gate. Baobei Web config syntax tests use that base; the HTTP-01
+// test keeps the shared ingress on the server's own pinned Nginx and checks both versions.
 {
   const df = readFileSync('deploy/baobei/web.Dockerfile', 'utf8');
   const froms = [...df.matchAll(/^FROM\s+(\S+)/gm)].map((m) => m[1]);
@@ -64,9 +65,15 @@ assert.equal(
   const tail = df.slice(df.lastIndexOf('FROM '));
   assert.match(tail, /apk upgrade --no-cache/, 'web runtime must apply same-series apk security upgrades');
   assert.match(tail, /apk info -e 'libxslt>=1\.1\.43-r4' 'zlib>=1\.4-r0'/, 'web runtime fixed-package gate missing');
-  for (const f of ['tests/baobei/http01.mjs', 'tests/baobei/preview.mjs', 'tests/baobei/production.mjs']) {
+  for (const f of ['tests/baobei/preview.mjs', 'tests/baobei/production.mjs']) {
     const refs = [...readFileSync(f, 'utf8').matchAll(/'(nginx:[^']+)'/g)].map((m) => m[1]);
-    assert(refs.length && refs.every((r) => r === runtime), f + ' must test Nginx with the pinned web runtime base');
+    assert(refs.length && refs.every((r) => r === runtime), f + ' must test Baobei Web config with the pinned web runtime base');
   }
+  const h = readFileSync('tests/baobei/http01.mjs', 'utf8');
+  const ingress = h.match(/^const ingressNginx = '(nginx:[^']+)';$/m)?.[1];
+  assert.match(ingress ?? '', /^nginx:1\.30\.4-alpine@sha256:[0-9a-f]{64}$/, 'http01 shared ingress must be the pinned server Nginx 1.30.4');
+  assert.equal([...h.matchAll(/'(nginx:[^']+)'/g)].length, 1, 'http01 must not hard-code another Nginx image');
+  assert.match(h, /^const webVersion = \/nginx\\\/1\\\.30\\\.6\\b\/;$/m, 'http01 must assert the Baobei Web Nginx version');
+  assert.match(h, /'apk', 'info', '-e', 'libxslt>=1\.1\.43-r4', 'zlib>=1\.4-r0'/, 'http01 must check the patched Web packages');
   console.log('Web runtime base pin and security upgrade gate PASS');
 }

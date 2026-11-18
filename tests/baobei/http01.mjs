@@ -6,7 +6,11 @@ import { dirname, join, resolve } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
 
 const context = process.env.BAOBEI_DOCKER_CONTEXT;
-const nginx = 'nginx:1.30.6-alpine3.24@sha256:901e593c95dc85f5a729f5765516321366ef4ac401821431d408897e95287d0a';
+// Shared ingress = the production server's existing Nginx (confirmed 1.30.4), not the Baobei image.
+// The Baobei Web container is the compose-built image (runtime base 1.30.6 + apk security upgrade).
+const ingressNginx = 'nginx:1.30.4-alpine@sha256:dc5069ad14f19660b141b21236140b91656bf89bbc3e2417c70ae650cd66104c';
+const ingressVersion = /nginx\/1\.30\.4\b/;
+const webVersion = /nginx\/1\.30\.6\b/;
 const tools = 'baobei-cert-test:local';
 const domain = 'baobei.youdaozd.com';
 const prefix = '/.well-known/acme-challenge/';
@@ -76,7 +80,7 @@ function ingressMounts(commonFile, includeFirebot) {
 
 function syntax(commonFile, includeFirebot) {
   return ['run', '--pull', 'never', '--rm', '--network', 'none',
-    ...ingressMounts(commonFile, includeFirebot), '--entrypoint', 'nginx', nginx, '-t'];
+    ...ingressMounts(commonFile, includeFirebot), '--entrypoint', 'nginx', ingressNginx, '-t'];
 }
 
 function request(probe, scheme, path, method = 'GET') {
@@ -117,6 +121,8 @@ try {
     '-days', '1', '-subj', '/CN=' + domain, '-addext', 'subjectAltName=DNS:' + domain,
     '-keyout', '/fixture-tls/baobei/privkey.pem', '-out', '/fixture-tls/baobei/fullchain.pem',
   ]);
+  // The ingress base is not built by compose; fetch the pinned server version explicitly.
+  if (docker(['image', 'inspect', ingressNginx]).status !== 0) checked(['pull', ingressNginx]);
   for (const includeFirebot of [false, true]) {
     checked(syntax(common, includeFirebot));
   }
@@ -156,7 +162,7 @@ try {
   checked(['network', 'connect', internal, web]);
   const ingress = start('ingress', [
     '--network', frontend, '--network-alias', 'shared-ingress',
-    ...bind(tls, '/etc/nginx/tls'), ...bind(ingressConfig, '/etc/nginx/conf.d'), nginx,
+    ...bind(tls, '/etc/nginx/tls'), ...bind(ingressConfig, '/etc/nginx/conf.d'), ingressNginx,
   ]);
   const probe = start('probe', [
     '--network', frontend, ...bind(cert, '/fixture-ca.pem'), '--entrypoint', 'sleep', tools, '3600',
@@ -170,10 +176,13 @@ try {
   writeFileSync(join(ingressConfig, 'baobei.conf'), readFileSync(vhost));
   checked(['exec', ingress, 'nginx', '-t']);
   checked(['exec', ingress, 'nginx', '-s', 'reload']);
-  for (const name of [web, ingress]) {
-    assert.match(docker(['exec', name, 'nginx', '-v']).stderr, /nginx\/1\.30\.4\b/);
+  for (const [name, version] of [[web, webVersion], [ingress, ingressVersion]]) {
+    assert.match(docker(['exec', name, 'nginx', '-v']).stderr, version);
     checked(['exec', name, 'nginx', '-t']);
   }
+  // Baobei Web runtime carries the same-series security upgrade (web.Dockerfile gate).
+  checked(['exec', web, 'apk', 'info', '-e', 'libxslt>=1.1.43-r4', 'zlib>=1.4-r0']);
+  console.log('NGINX_VERSIONS=PASS (shared ingress 1.30.4 reload, Baobei Web 1.30.6 patched)');
   await ready(['exec', probe, 'curl', '--fail', '--silent', '--noproxy', '*', '--max-time', '3',
     '--cacert', '/fixture-ca.pem', '--connect-to', domain + ':443:shared-ingress:443',
     'https://' + domain + '/health/ready'], 'Shared HTTPS');
