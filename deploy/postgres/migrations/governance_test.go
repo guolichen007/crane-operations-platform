@@ -133,3 +133,67 @@ func TestMigrationUpFromOldDatabase(t *testing.T) {
 		t.Fatalf("version = %d, want 13", v)
 	}
 }
+
+// P1: a populated schema-12 database (OIDC users, project + portfolio grants, sessions, audit) is
+// migrated to 13 without losing or changing anything; existing identities stay enabled and
+// unmanaged (no username, idp_state SYNCED, no system role), new tables start empty, and the new
+// constraints accept the existing rows.
+func TestMigration12To13PreservesPopulatedData(t *testing.T) {
+	db := openIsolated(t)
+	setupGoose(t)
+	ctx := context.Background()
+	if err := goose.UpToContext(ctx, db, ".", 12); err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range []string{
+		`INSERT INTO tenants(id,name) VALUES('t1','t1') ON CONFLICT DO NOTHING`,
+		`INSERT INTO projects(id,tenant_id,name) VALUES('P-M','t1','迁移项目')`,
+		`INSERT INTO portfolio_scopes(id,tenant_id,code,name) VALUES('PS-M','t1','PS-M','组合')`,
+		`INSERT INTO users(id,subject,issuer,display_name,enabled) VALUES('owner','00000000-0000-4000-8000-0000000000aa','https://crane.example/realms/crane','OWNER',true),('old','00000000-0000-4000-8000-0000000000bb','https://crane.example/realms/crane','Old',false)`,
+		`INSERT INTO project_memberships(user_id,project_id,role) VALUES('owner','P-M','platform_admin')`,
+		`INSERT INTO portfolio_memberships(user_id,portfolio_scope_id,role) VALUES('owner','PS-M','portfolio_manager')`,
+		`INSERT INTO web_sessions(session_hash,user_id,csrf_hash,created_at,last_seen_at,expires_at,idle_expires_at) VALUES(decode(repeat('ab',32),'hex'),'owner',decode(repeat('cd',32),'hex'),now(),now(),now()+interval '1 hour',now()+interval '10 minutes')`,
+		`INSERT INTO audit_logs(user_id,project_id,action,result,request_id) VALUES('owner','P-M','login_success','success','r-1')`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatal(stmt, err)
+		}
+	}
+	fingerprint := func() string {
+		var s string
+		if err := db.QueryRow(`SELECT md5(
+		  (SELECT string_agg(id||'|'||subject||'|'||coalesce(issuer,'')||'|'||display_name||'|'||enabled::text, ',' ORDER BY id) FROM users)||'#'||
+		  (SELECT string_agg(user_id||'|'||project_id||'|'||role, ',' ORDER BY user_id) FROM project_memberships)||'#'||
+		  (SELECT string_agg(user_id||'|'||portfolio_scope_id||'|'||role, ',' ORDER BY user_id) FROM portfolio_memberships)||'#'||
+		  (SELECT count(*)::text FROM web_sessions)||'#'||
+		  (SELECT string_agg(user_id||'|'||action||'|'||result||'|'||request_id, ',' ORDER BY id) FROM audit_logs))`).Scan(&s); err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	before := fingerprint()
+	if err := goose.UpContext(ctx, db, "."); err != nil {
+		t.Fatalf("12 -> 13 on populated data: %v", err)
+	}
+	if v := currentVersion(t, db); v != 13 {
+		t.Fatalf("version = %d", v)
+	}
+	if after := fingerprint(); after != before {
+		t.Fatal("existing users / grants / sessions / audit changed by 00013")
+	}
+	var unmanaged, roles, provisions, departments int
+	if err := db.QueryRow(`SELECT (SELECT count(*) FROM users WHERE id IN ('owner','old') AND username IS NULL AND idp_state='SYNCED' AND version=1 AND sessions_revoked_at IS NULL),
+	  (SELECT count(*) FROM system_memberships),(SELECT count(*) FROM account_provisions),(SELECT count(*) FROM departments)`).Scan(&unmanaged, &roles, &provisions, &departments); err != nil {
+		t.Fatal(err)
+	}
+	if unmanaged != 2 || roles != 0 || provisions != 0 || departments != 0 {
+		t.Fatalf("post-migration defaults: unmanaged=%d roles=%d provisions=%d departments=%d", unmanaged, roles, provisions, departments)
+	}
+	// Forward-only: Down refuses and the version stays 13.
+	if err := goose.DownContext(ctx, db, "."); err == nil {
+		t.Fatal("00013 down must refuse")
+	}
+	if v := currentVersion(t, db); v != 13 {
+		t.Fatalf("version after refused down = %d", v)
+	}
+}

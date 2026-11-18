@@ -353,19 +353,61 @@ func TestDisableWithIdentityProviderDownStillBlocksAndIsRetryable(t *testing.T) 
 	ctx := context.Background()
 	root := f.admin(t, "root-admin")
 	f.open(t, root, "flaky")
+	kc, _ := f.idp.FindByUsername(ctx, "flaky")
+	f.idp.Sessions[kc.ID] = 2
+	kcEnabled := func() bool { u, _ := f.idp.Get(ctx, kc.ID); return u != nil && *u.Enabled }
+	db := func() (enabled bool, state string) {
+		_ = f.db.QueryRow(`SELECT enabled, idp_state FROM users WHERE id='flaky'`).Scan(&enabled, &state)
+		return
+	}
+	// 1. Keycloak down: the local disable takes effect at once and reports a pending sync.
 	f.idp.Down = true
 	out, err := f.svc.SetEnabled(ctx, root, "flaky", 0, false)
 	if err != nil || out.IdentitySync != "PENDING" {
 		t.Fatalf("local disable must succeed and report pending sync: %+v %v", out, err)
 	}
-	var enabled bool
-	_ = f.db.QueryRow(`SELECT enabled FROM users WHERE id='flaky'`).Scan(&enabled)
-	if enabled {
-		t.Fatal("local identity must be disabled even if Keycloak is down")
+	if en, st := db(); en || st != "PENDING" {
+		t.Fatalf("db = %v %s", en, st)
 	}
-	// Enable is refused while Keycloak is down (it must be enabled there first).
-	if _, err = f.svc.SetEnabled(ctx, root, "flaky", 0, true); !errors.Is(err, ErrIdentityProvider) {
-		t.Fatal("enable must need the provider", err)
+	f.idp.Down = false
+	if !kcEnabled() {
+		t.Fatal("precondition: Keycloak was not reached")
+	}
+	f.idp.Down = true
+	// 2. Repeating the disable while Keycloak is still down is NOT a conflict: it retries, stays pending.
+	if out, err = f.svc.SetEnabled(ctx, root, "flaky", 0, false); err != nil || out.IdentitySync != "PENDING" {
+		t.Fatalf("repeat while down: %+v %v", out, err)
+	}
+	// 3. Keycloak back: repeating the disable completes the synchronization (disabled + logged out).
+	f.idp.Down = false
+	if out, err = f.svc.SetEnabled(ctx, root, "flaky", 0, false); err != nil || out.IdentitySync != "SYNCED" {
+		t.Fatalf("retry after recovery: %+v %v", out, err)
+	}
+	if kcEnabled() || f.idp.Sessions[kc.ID] != 0 {
+		t.Fatal("Keycloak not disabled / logged out by the retry")
+	}
+	if en, st := db(); en || st != "SYNCED" {
+		t.Fatalf("db after retry = %v %s", en, st)
+	}
+	// 4. A further repeat once everything is consistent is the ordinary "already disabled" conflict.
+	if _, err = f.svc.SetEnabled(ctx, root, "flaky", 0, false); !errors.Is(err, ErrConflict) {
+		t.Fatal("repeat on a synced disabled account must be 409", err)
+	}
+	// 5. Enable while Keycloak is down: local enabled, Keycloak still disabled → cannot log in (login
+	//    needs both); pending; the retry enables Keycloak.
+	f.idp.Down = true
+	if out, err = f.svc.SetEnabled(ctx, root, "flaky", 0, true); err != nil || out.IdentitySync != "PENDING" {
+		t.Fatalf("enable while down: %+v %v", out, err)
+	}
+	f.idp.Down = false
+	if kcEnabled() {
+		t.Fatal("Keycloak enabled although it was down")
+	}
+	if out, err = f.svc.SetEnabled(ctx, root, "flaky", 0, true); err != nil || out.IdentitySync != "SYNCED" || !kcEnabled() {
+		t.Fatalf("enable retry: %+v %v", out, err)
+	}
+	if n := count(t, f.db, `SELECT count(*) FROM audit_logs WHERE target_user_id='flaky' AND action='identity_sync'`); n != 3 {
+		t.Fatal("sync retries must be audited", n)
 	}
 }
 

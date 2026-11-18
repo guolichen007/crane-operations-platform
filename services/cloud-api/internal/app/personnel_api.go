@@ -43,6 +43,10 @@ func (h *apiHandler) personnelError(w http.ResponseWriter, r *http.Request, err 
 		respondAPI(w, 409, map[string]string{"error": "至少需要保留一名启用状态的系统管理员", "code": "LAST_SYSTEM_ADMIN"})
 	case errors.Is(err, personnel.ErrConflict):
 		respondAPI(w, 409, map[string]string{"error": strings.TrimPrefix(err.Error(), "conflict: ")})
+	case errors.Is(err, personnel.ErrBusy):
+		respondAPI(w, 409, map[string]string{"error": "该人员的另一项账号操作正在进行，请稍后刷新再试", "code": "PERSON_BUSY"})
+	case errors.Is(err, personnel.ErrProvisionIncomplete):
+		respondAPI(w, 409, map[string]string{"error": "该账号的开户尚未完成，请在「未完成的开户」中继续或放弃", "code": "PROVISION_INCOMPLETE"})
 	case errors.Is(err, personnel.ErrSelf):
 		respondAPI(w, 422, map[string]string{"error": "不能对自己的账号执行此操作，请由另一位系统管理员处理", "code": "SELF"})
 	case errors.Is(err, personnel.ErrIdempotencyKey):

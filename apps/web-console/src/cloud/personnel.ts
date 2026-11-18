@@ -105,6 +105,8 @@ export function personnelErrorMessage(error: unknown): string {
     if (error.code === 'SELF') return '不能对自己的账号执行此操作，请由另一位系统管理员处理。';
     if (error.code === 'IDENTITY_PROVIDER') return '身份服务暂不可用，操作未完成，可稍后重试（已输入的内容已保留）。';
     if (error.code === 'ACCOUNT_SERVICE_NOT_CONFIGURED') return '本部署尚未配置账号服务，无法开户或重置密码，请联系运维。';
+    if (error.code === 'PERSON_BUSY') return '该人员的另一项账号操作正在进行，请稍后刷新再试。';
+    if (error.code === 'PROVISION_INCOMPLETE') return '该账号的开户尚未完成，请在「未完成的开户」中继续或放弃。';
     if (error.code === 'IDEMPOTENCY_KEY') return '提交内容与上一次不一致，请刷新后重新填写。';
     switch (error.status) {
       case 401: return '登录已失效，请重新登录。';

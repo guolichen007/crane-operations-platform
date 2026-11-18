@@ -302,8 +302,9 @@ WHERE state_hash=$1 AND binding_hash=$2 AND expires_at>$3 RETURNING nonce_hash,p
 		return
 	}
 	var claims struct {
-		Nonce string `json:"nonce"`
-		AZP   string `json:"azp"`
+		Nonce    string `json:"nonce"`
+		AZP      string `json:"azp"`
+		AuthTime int64  `json:"auth_time"`
 	}
 	if verified.Claims(&claims) != nil || verified.Subject == "" || subtle.ConstantTimeCompare(nonceHash, m.digest("nonce", claims.Nonce)) != 1 ||
 		(claims.AZP != "" && claims.AZP != m.config.ClientID) || (len(verified.Audience) > 1 && claims.AZP != m.config.ClientID) {
@@ -320,7 +321,19 @@ WHERE state_hash=$1 AND binding_hash=$2 AND expires_at>$3 RETURNING nonce_hash,p
 	if cookie, err := r.Cookie(CookieName); err == nil {
 		old = cookie.Value
 	}
-	raw, session, err := m.createSession(ctx, user, old, m.Metadata(r))
+	// auth_time is when the user actually authenticated at Keycloak (a reused SSO session keeps the
+	// old value). Without it the session fence cannot be enforced, so the login is refused.
+	// Keycloak always sends auth_time in the Code-flow ID token (verified on 26.8.1). Missing → zero
+	// time, which fails the fence for every fenced account (fail closed, never falls back to iat).
+	var authTime time.Time
+	if claims.AuthTime > 0 {
+		authTime = time.Unix(claims.AuthTime, 0)
+	}
+	raw, session, err := m.createSession(ctx, user, old, m.Metadata(r), authTime)
+	if errors.Is(err, errSessionFenced) {
+		m.failedLogin(w, r, "authentication_before_session_revocation")
+		return
+	}
 	if err != nil {
 		jsonResponse(w, 503, map[string]string{"error": "session unavailable"})
 		return
@@ -334,7 +347,12 @@ func (m *Manager) csrf(raw string) string {
 	return base64.RawURLEncoding.EncodeToString(m.digest("csrf", raw))
 }
 
-func (m *Manager) createSession(ctx context.Context, user identity.User, old string, meta Metadata) (string, Session, error) {
+// errSessionFenced: the OIDC authentication happened at or before the account's last session
+// revocation (disable, password reset, revoke sessions). A Keycloak SSO session or an in-flight
+// callback from before the revocation must not mint a new application session.
+var errSessionFenced = errors.New("authentication predates session revocation")
+
+func (m *Manager) createSession(ctx context.Context, user identity.User, old string, meta Metadata, authTime time.Time) (string, Session, error) {
 	raw, err := randomID()
 	if err != nil {
 		return "", Session{}, err
@@ -347,6 +365,21 @@ func (m *Manager) createSession(ctx context.Context, user identity.User, old str
 		return "", s, err
 	}
 	defer tx.Rollback()
+	// Lock the user row (FOR SHARE) so a concurrent disable / reset / revoke (FOR UPDATE on the same
+	// row) is serialized against this login: either the revocation commits first and the fence below
+	// refuses this login, or this session is created first and the revocation then deletes it.
+	var enabled bool
+	var revokedAt sql.NullTime
+	err = tx.QueryRowContext(ctx, `SELECT enabled, sessions_revoked_at FROM users WHERE id=$1 FOR SHARE`, user.ID).Scan(&enabled, &revokedAt)
+	if err != nil {
+		return "", s, err
+	}
+	if !enabled {
+		return "", s, errSessionFenced
+	}
+	if revokedAt.Valid && !authTime.After(revokedAt.Time.Truncate(time.Second)) {
+		return "", s, errSessionFenced
+	}
 	if old != "" {
 		if _, err = tx.ExecContext(ctx, `DELETE FROM web_sessions WHERE session_hash=$1`, m.digest("session", old)); err != nil {
 			return "", s, err

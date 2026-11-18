@@ -253,3 +253,65 @@ func TestTrustedProxyAndRequestID(t *testing.T) {
 		t.Fatal("request trace differs from audit metadata")
 	}
 }
+
+// Session fence (P1): after a password reset / session revocation / disable, users.sessions_revoked_at
+// is set. A login whose OIDC auth_time is not strictly after it — a Keycloak SSO session that still
+// exists, or a callback whose code was issued before the revocation — must not create an
+// application session. A fresh authentication after the revocation works.
+func TestCallbackRefusesAuthenticationBeforeSessionRevocation(t *testing.T) {
+	_, provider, handler, db := fixture(t)
+	callback := func(c string, cookies []*http.Cookie) int {
+		r := httptest.NewRequest("GET", c, nil)
+		for _, k := range cookies {
+			r.AddCookie(k)
+		}
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		return w.Code
+	}
+	// SSO established 10 minutes ago, before the revocation.
+	ssoAuth := time.Now().Add(-10 * time.Minute)
+	provider.Set(testsupport.OIDCScenario{Subject: "subject-a", AuthTime: ssoAuth})
+	// 1. An in-flight callback: code obtained BEFORE the revocation, redeemed after it.
+	inflight, cookies := testsupport.BeginLogin(t, handler, provider, origin)
+	if _, err := db.Exec(`UPDATE users SET sessions_revoked_at=now() - interval '1 minute' WHERE id='user-a'`); err != nil {
+		t.Fatal(err)
+	}
+	if code := callback(inflight, cookies); code != 401 {
+		t.Fatal("in-flight callback from before the revocation created a session", code)
+	}
+	// 2. A new login that reuses the old Keycloak SSO session (auth_time unchanged) is refused too.
+	reuse, cookies := testsupport.BeginLogin(t, handler, provider, origin)
+	if code := callback(reuse, cookies); code != 401 {
+		t.Fatal("SSO session older than the revocation created a session", code)
+	}
+	var n int
+	_ = db.QueryRow(`SELECT count(*) FROM web_sessions WHERE user_id='user-a'`).Scan(&n)
+	if n != 0 {
+		t.Fatal("fenced login left a session")
+	}
+	_ = db.QueryRow(`SELECT count(*) FROM audit_logs WHERE action='login_failure' AND result='authentication_before_session_revocation'`).Scan(&n)
+	if n != 2 {
+		t.Fatal("fenced logins must be audited", n)
+	}
+	// 3. A fresh authentication (user re-entered the password after the revocation) is accepted.
+	provider.Set(testsupport.OIDCScenario{Subject: "subject-a", AuthTime: time.Now().Add(time.Second)})
+	fresh, cookies := testsupport.BeginLogin(t, handler, provider, origin)
+	if code := callback(fresh, cookies); code != 303 {
+		t.Fatal("fresh authentication after the revocation refused", code)
+	}
+	// 4. Callback racing a revocation that commits while it runs: the user row lock orders them; if
+	//    the revocation commits first the login is refused (case 1), otherwise the revocation deletes
+	//    the new session. Here: session exists, then a revocation removes it.
+	if _, err := db.Exec(`UPDATE users SET sessions_revoked_at=now() + interval '2 second' WHERE id='user-a'; `); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DELETE FROM web_sessions WHERE user_id='user-a'`); err != nil {
+		t.Fatal(err)
+	}
+	provider.Set(testsupport.OIDCScenario{Subject: "subject-a"}) // auth_time = now, before the fence
+	late, cookies := testsupport.BeginLogin(t, handler, provider, origin)
+	if code := callback(late, cookies); code != 401 {
+		t.Fatal("authentication at the revocation instant must be refused", code)
+	}
+}

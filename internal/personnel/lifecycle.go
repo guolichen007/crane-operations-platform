@@ -86,12 +86,7 @@ type AccountResult struct {
 }
 
 func (s *Service) markSync(ctx context.Context, id string, synced bool) string {
-	state := "SYNCED"
-	if !synced {
-		state = "PENDING"
-	}
-	_, _ = s.DB.ExecContext(context.WithoutCancel(ctx), `UPDATE users SET idp_state=$2 WHERE id=$1`, id, state)
-	return state
+	return s.setSync(ctx, id, synced)
 }
 
 func (s *Service) revokeLive(ctx context.Context, id string) (int, error) {
@@ -99,6 +94,68 @@ func (s *Service) revokeLive(ctx context.Context, id string) (int, error) {
 		return 0, nil
 	}
 	return 0, s.RevokeLive(ctx, id)
+}
+
+// fence ends every application session of a person and moves the session fence forward: any OIDC
+// login whose auth_time is not after this instant is refused by the BFF (old Keycloak SSO session,
+// callback already in flight). Runs inside the caller's transaction (target row locked FOR UPDATE).
+func fence(ctx context.Context, tx *sql.Tx, id string) (int, error) {
+	if _, err := tx.ExecContext(ctx, `UPDATE users SET sessions_revoked_at=now() WHERE id=$1`, id); err != nil {
+		return 0, err
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM web_sessions WHERE user_id=$1`, id)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
+// refence repeats the fence after Keycloak confirmed the change (password replaced / SSO logged
+// out): a login that completed between the local commit and the Keycloak change is removed too.
+func (s *Service) refence(ctx context.Context, id string) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(ctx, `SELECT 1 FROM users WHERE id=$1 FOR UPDATE`, id); err != nil {
+		return err
+	}
+	if _, err = fence(ctx, tx, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// begin opens the mutation transaction of a lifecycle operation: actor re-authorized (inside the
+// person locks), target locked FOR UPDATE, account-manager protection applied.
+func (s *Service) begin(ctx context.Context, a Actor, id string, cap SystemCapability, globalAdmin bool) (*sql.Tx, []SystemRole, target, error) {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, nil, target{}, err
+	}
+	fail := func(e error) (*sql.Tx, []SystemRole, target, error) {
+		_ = tx.Rollback()
+		return nil, nil, target{}, e
+	}
+	if globalAdmin {
+		if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, adminLock); err != nil {
+			return fail(err)
+		}
+	}
+	roles, err := authorize(ctx, tx, a, cap)
+	if err != nil {
+		return fail(err)
+	}
+	t, err := lockTarget(ctx, tx, id)
+	if err != nil {
+		return fail(err)
+	}
+	if err = guardTarget(roles, a, t); err != nil {
+		return fail(err)
+	}
+	return tx, roles, t, nil
 }
 
 // UpdateProfile edits name / department / job title / contact (username is immutable).
@@ -110,266 +167,261 @@ func (s *Service) UpdateProfile(ctx context.Context, a Actor, id string, version
 	if err := p.normalize(); err != nil {
 		return out, err
 	}
-	tx, err := s.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return out, err
-	}
-	defer tx.Rollback()
-	roles, err := authorize(ctx, tx, a, CapAccountManage)
-	if err != nil {
-		return out, err
-	}
-	t, err := lockTarget(ctx, tx, id)
-	if err != nil {
-		return out, err
-	}
-	if err = guardTarget(roles, a, t); err != nil {
-		return out, err
-	}
-	if t.version != version {
-		return out, fmt.Errorf("%w: the person was changed by someone else", ErrConflict)
-	}
-	if err = checkDepartment(ctx, tx, p.DepartmentID); err != nil {
-		return out, err
-	}
-	before, err := loadPerson(ctx, tx, id)
-	if err != nil {
-		return out, err
-	}
-	idp := "UNMANAGED"
-	if t.managed() {
-		idp = "PENDING"
-	}
-	if _, err = tx.ExecContext(ctx, `UPDATE users SET display_name=$2, department_id=NULLIF($3,''), job_title=$4, phone=NULLIF($5,''), email=NULLIF($6,''),
-version=version+1, updated_at=now(), idp_state=CASE WHEN $7='PENDING' THEN 'PENDING' ELSE idp_state END WHERE id=$1`,
-		id, p.DisplayName, p.DepartmentID, p.JobTitle, p.Phone, p.Email, idp); err != nil {
-		return out, err
-	}
-	change := map[string]any{}
-	for k, v := range map[string][2]string{"displayName": {before.DisplayName, p.DisplayName}, "departmentId": {before.DepartmentID, p.DepartmentID},
-		"jobTitle": {before.JobTitle, p.JobTitle}, "phone": {before.Phone, p.Phone}, "email": {before.Email, p.Email}} {
-		if v[0] != v[1] {
-			change[k] = map[string]string{"from": v[0], "to": v[1]}
+	err := s.withPeople(ctx, []string{a.ID, id}, func() error {
+		tx, _, t, err := s.begin(ctx, a, id, CapAccountManage, false)
+		if err != nil {
+			return err
 		}
-	}
-	if err = auditlog.Write(ctx, tx, a.event("profile_updated", "success", id, "account", change)); err != nil {
+		defer tx.Rollback()
+		if t.version != version {
+			return fmt.Errorf("%w: the person was changed by someone else", ErrConflict)
+		}
+		if err = checkDepartment(ctx, tx, p.DepartmentID); err != nil {
+			return err
+		}
+		before, err := loadPerson(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE users SET display_name=$2, department_id=NULLIF($3,''), job_title=$4, phone=NULLIF($5,''), email=NULLIF($6,''),
+version=version+1, updated_at=now(), idp_state=CASE WHEN $7 THEN 'PENDING' ELSE idp_state END WHERE id=$1`,
+			id, p.DisplayName, p.DepartmentID, p.JobTitle, p.Phone, p.Email, t.managed()); err != nil {
+			return err
+		}
+		change := map[string]any{}
+		for k, v := range map[string][2]string{"displayName": {before.DisplayName, p.DisplayName}, "departmentId": {before.DepartmentID, p.DepartmentID},
+			"jobTitle": {before.JobTitle, p.JobTitle}, "phone": {before.Phone, p.Phone}, "email": {before.Email, p.Email}} {
+			if v[0] != v[1] {
+				change[k] = map[string]string{"from": v[0], "to": v[1]}
+			}
+		}
+		if err = auditlog.Write(ctx, tx, a.event("profile_updated", "success", id, "account", change)); err != nil {
+			return err
+		}
+		if err = tx.Commit(); err != nil {
+			return err
+		}
+		out.IdentitySync, err = s.syncIdentity(ctx, s.DB, id, true)
+		return err
+	})
+	if err != nil {
 		return out, err
-	}
-	if err = tx.Commit(); err != nil {
-		return out, err
-	}
-	out.IdentitySync = idp
-	if t.managed() && s.IdP != nil {
-		e := s.IdP.UpdateProfile(ctx, t.subject, kcadmin.Profile{Username: t.username, DisplayName: p.DisplayName, Email: p.Email, LocalUserID: id})
-		out.IdentitySync = s.markSync(ctx, id, e == nil)
 	}
 	out.Person, err = loadPerson(ctx, s.DB, id)
 	return out, err
 }
 
-// SetEnabled disables or re-enables a person.
+// SetEnabled disables or re-enables a person. The database is the authority and changes first;
+// Keycloak is then brought to the same state (syncIdentity). Login needs BOTH users.enabled (BFF,
+// every request and WebSocket frame) and an enabled Keycloak account, so a Keycloak failure after
+// a disable can never re-open access: the result reports identitySync=PENDING and repeating the
+// same disable (or enable) re-runs only the Keycloak synchronization — it is idempotent instead of
+// answering "already disabled".
 //
-// Disable is applied LOCALLY FIRST, in one transaction: users.enabled=false, every web session
-// deleted (the BFF re-reads users.enabled + web_sessions on every API request and every WebSocket
-// frame, so existing cookies and streams stop immediately), then live-view leases are revoked and
-// the Keycloak account is disabled and logged out. A Keycloak failure leaves identitySync=PENDING
-// (retry) but cannot re-open access: login requires users.enabled.
-//
-// Enable re-enables Keycloak first, then the local identity. Grants that were revoked stay
-// revoked (nothing is restored from history); memberships that were never revoked become
-// effective again.
+// Disable also moves the session fence and deletes every web session (existing cookies and
+// streams stop at once), and ends live-view leases. Enable never restores grants revoked in the
+// meantime. Accounts of an unfinished opening can only be completed / cancelled through the
+// provisioning flow.
 func (s *Service) SetEnabled(ctx context.Context, a Actor, id string, version int64, enabled bool) (AccountResult, error) {
 	var out AccountResult
-	tx, err := s.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return out, err
-	}
-	defer tx.Rollback()
-	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, adminLock); err != nil {
-		return out, err
-	}
-	roles, err := authorize(ctx, tx, a, CapAccountManage)
-	if err != nil {
+	if _, err := s.Authorize(ctx, a, CapAccountManage); err != nil {
 		return out, err
 	}
 	if !a.Host && a.ID == id {
 		return out, ErrSelf
 	}
-	t, err := lockTarget(ctx, tx, id)
+	err := s.withPeople(ctx, []string{a.ID, id}, func() error {
+		tx, _, t, err := s.begin(ctx, a, id, CapAccountManage, true)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		if pending, err := unfinishedProvision(ctx, tx, t.username); err != nil {
+			return err
+		} else if pending {
+			return ErrProvisionIncomplete
+		}
+		var idpState string
+		if err = tx.QueryRowContext(ctx, `SELECT idp_state FROM users WHERE id=$1`, id).Scan(&idpState); err != nil {
+			return err
+		}
+		if t.enabled == enabled {
+			if !t.managed() || idpState != "PENDING" {
+				return fmt.Errorf("%w: the account is already %s", ErrConflict, map[bool]string{true: "enabled", false: "disabled"}[enabled])
+			}
+			// Idempotent retry of a change whose Keycloak half did not complete.
+			if err = tx.Commit(); err != nil {
+				return err
+			}
+			if !enabled {
+				if _, err = s.revokeLive(ctx, id); err != nil {
+					return err
+				}
+			}
+			out.IdentitySync, err = s.syncIdentity(ctx, s.DB, id, false)
+			if err != nil {
+				return err
+			}
+			if out.IdentitySync == "SYNCED" && !enabled {
+				if err = s.refence(ctx, id); err != nil {
+					return err
+				}
+			}
+			return auditlog.Write(ctx, s.DB, a.event("identity_sync", map[bool]string{true: "success", false: "pending"}[out.IdentitySync == "SYNCED"], id, "account",
+				map[string]any{"enabled": enabled, "retry": true}))
+		}
+		if version != 0 && t.version != version {
+			return fmt.Errorf("%w: the person was changed by someone else", ErrConflict)
+		}
+		if !enabled && t.hasRole(RoleSystemAdmin) {
+			n, err := otherEnabledAdmins(ctx, tx, id)
+			if err != nil {
+				return err
+			}
+			if n == 0 {
+				return ErrLastAdmin
+			}
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE users SET enabled=$2, idp_state=CASE WHEN $3 THEN 'PENDING' ELSE idp_state END, version=version+1, updated_at=now() WHERE id=$1`,
+			id, enabled, t.managed()); err != nil {
+			return err
+		}
+		action, change := "account_enabled", map[string]any{"restoredRevokedGrants": false}
+		if !enabled {
+			n, err := fence(ctx, tx, id)
+			if err != nil {
+				return err
+			}
+			out.SessionsRevoked = n
+			action, change = "account_disabled", map[string]any{"sessionsRevoked": n}
+		}
+		if err = auditlog.Write(ctx, tx, a.event(action, "success", id, "account", change)); err != nil {
+			return err
+		}
+		if err = tx.Commit(); err != nil {
+			return err
+		}
+		if !enabled {
+			if _, err = s.revokeLive(ctx, id); err != nil {
+				return err
+			}
+		}
+		out.IdentitySync, err = s.syncIdentity(ctx, s.DB, id, false)
+		if err == nil && !enabled && out.IdentitySync == "SYNCED" {
+			err = s.refence(ctx, id)
+		}
+		return err
+	})
 	if err != nil {
 		return out, err
-	}
-	if err = guardTarget(roles, a, t); err != nil {
-		return out, err
-	}
-	if version != 0 && t.version != version {
-		return out, fmt.Errorf("%w: the person was changed by someone else", ErrConflict)
-	}
-	if t.enabled == enabled {
-		return out, fmt.Errorf("%w: the account is already %s", ErrConflict, map[bool]string{true: "enabled", false: "disabled"}[enabled])
-	}
-	if !enabled && t.hasRole(RoleSystemAdmin) {
-		n, err := otherEnabledAdmins(ctx, tx, id)
-		if err != nil {
-			return out, err
-		}
-		if n == 0 {
-			return out, ErrLastAdmin
-		}
-	}
-	out.IdentitySync = "UNMANAGED"
-	if enabled {
-		if t.managed() {
-			if s.IdP == nil {
-				return out, ErrNotConfigured
-			}
-			if err = s.IdP.SetEnabled(ctx, t.subject, true); err != nil {
-				return out, ErrIdentityProvider
-			}
-			out.IdentitySync = "SYNCED"
-		}
-		if _, err = tx.ExecContext(ctx, `UPDATE users SET enabled=true, idp_state='SYNCED', version=version+1, updated_at=now() WHERE id=$1`, id); err != nil {
-			return out, err
-		}
-		if err = auditlog.Write(ctx, tx, a.event("account_enabled", "success", id, "account", map[string]any{"restoredRevokedGrants": false})); err != nil {
-			return out, err
-		}
-		if err = tx.Commit(); err != nil {
-			return out, err
-		}
-	} else {
-		if _, err = tx.ExecContext(ctx, `UPDATE users SET enabled=false, idp_state=CASE WHEN $2 THEN 'PENDING' ELSE idp_state END, version=version+1, updated_at=now() WHERE id=$1`, id, t.managed()); err != nil {
-			return out, err
-		}
-		res, err := tx.ExecContext(ctx, `DELETE FROM web_sessions WHERE user_id=$1`, id)
-		if err != nil {
-			return out, err
-		}
-		n, _ := res.RowsAffected()
-		out.SessionsRevoked = int(n)
-		if err = auditlog.Write(ctx, tx, a.event("account_disabled", "success", id, "account", map[string]any{"sessionsRevoked": n})); err != nil {
-			return out, err
-		}
-		if err = tx.Commit(); err != nil {
-			return out, err
-		}
-		if _, err = s.revokeLive(ctx, id); err != nil {
-			return out, err
-		}
-		if t.managed() && s.IdP != nil {
-			e := s.IdP.SetEnabled(ctx, t.subject, false)
-			if e == nil {
-				e = s.IdP.Logout(ctx, t.subject)
-			}
-			out.IdentitySync = s.markSync(ctx, id, e == nil)
-		} else if t.managed() {
-			out.IdentitySync = "PENDING"
-		}
 	}
 	out.Person, err = loadPerson(ctx, s.DB, id)
 	return out, err
 }
 
-// RevokeSessions ends every application session and live-view lease of a person, and their
-// Keycloak SSO sessions (so the next login must re-enter the password).
+// RevokeSessions ends every application session and live-view lease of a person, logs out their
+// Keycloak SSO sessions and moves the session fence (an old SSO session or an in-flight callback
+// cannot mint a new application session; the person must enter the password again).
 func (s *Service) RevokeSessions(ctx context.Context, a Actor, id string) (AccountResult, error) {
 	var out AccountResult
-	tx, err := s.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return out, err
-	}
-	defer tx.Rollback()
-	roles, err := authorize(ctx, tx, a, CapAccountManage)
-	if err != nil {
-		return out, err
-	}
-	t, err := lockTarget(ctx, tx, id)
-	if err != nil {
-		return out, err
-	}
-	if err = guardTarget(roles, a, t); err != nil {
-		return out, err
-	}
-	res, err := tx.ExecContext(ctx, `DELETE FROM web_sessions WHERE user_id=$1`, id)
-	if err != nil {
-		return out, err
-	}
-	n, _ := res.RowsAffected()
-	out.SessionsRevoked = int(n)
-	if err = auditlog.Write(ctx, tx, a.event("sessions_revoked", "success", id, "account", map[string]any{"sessionsRevoked": n})); err != nil {
-		return out, err
-	}
-	if err = tx.Commit(); err != nil {
-		return out, err
-	}
-	if _, err = s.revokeLive(ctx, id); err != nil {
-		return out, err
-	}
-	out.IdentitySync = "UNMANAGED"
-	if t.managed() {
-		out.IdentitySync = "PENDING"
-		if s.IdP != nil {
-			out.IdentitySync = s.markSync(ctx, id, s.IdP.Logout(ctx, t.subject) == nil)
+	err := s.withPeople(ctx, []string{a.ID, id}, func() error {
+		tx, _, t, err := s.begin(ctx, a, id, CapAccountManage, false)
+		if err != nil {
+			return err
 		}
+		defer tx.Rollback()
+		n, err := fence(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		out.SessionsRevoked = n
+		if err = auditlog.Write(ctx, tx, a.event("sessions_revoked", "success", id, "account", map[string]any{"sessionsRevoked": n})); err != nil {
+			return err
+		}
+		if err = tx.Commit(); err != nil {
+			return err
+		}
+		if _, err = s.revokeLive(ctx, id); err != nil {
+			return err
+		}
+		out.IdentitySync = "UNMANAGED"
+		if t.managed() {
+			synced := s.IdP != nil && s.IdP.Logout(ctx, t.subject) == nil
+			out.IdentitySync = s.markSync(ctx, id, synced)
+			if synced {
+				return s.refence(ctx, id)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return out, err
 	}
 	out.Person, err = loadPerson(ctx, s.DB, id)
 	return out, err
 }
 
-// ResetPassword issues a new one-time password (returned once, UPDATE_PASSWORD required) after
-// ending every existing application session, live-view lease and Keycloak session, so neither the
-// old password nor an old session keeps working. A Keycloak failure returns ErrIdentityProvider
-// (sessions are already revoked; retry issues a fresh password).
+// ResetPassword issues a new one-time password (returned once, UPDATE_PASSWORD required). Order:
+// fence + delete sessions + end live views (local, one transaction) → Keycloak password replaced →
+// Keycloak SSO logout → fence again. Neither the old password, an old application session, an old
+// SSO session nor a login that raced the reset can be used afterwards. A Keycloak failure returns
+// ErrIdentityProvider (sessions are already revoked; retry issues a fresh password). Concurrent
+// resets of the same person are serialized: each caller gets the password that is actually set.
 func (s *Service) ResetPassword(ctx context.Context, a Actor, id string) (AccountResult, error) {
 	var out AccountResult
 	if s.IdP == nil {
 		return out, ErrNotConfigured
 	}
-	tx, err := s.DB.BeginTx(ctx, nil)
+	err := s.withPeople(ctx, []string{a.ID, id}, func() error {
+		tx, _, t, err := s.begin(ctx, a, id, CapAccountManage, false)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		if !t.managed() {
+			return InvalidError{"account", "该人员的登录账号未纳入平台管理，请先由宿主机管理员纳管"}
+		}
+		if pending, err := unfinishedProvision(ctx, tx, t.username); err != nil {
+			return err
+		} else if pending {
+			return ErrProvisionIncomplete
+		}
+		n, err := fence(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		out.SessionsRevoked = n
+		if err = tx.Commit(); err != nil {
+			return err
+		}
+		if _, err = s.revokeLive(ctx, id); err != nil {
+			return err
+		}
+		password, err := GeneratePassword()
+		if err != nil {
+			return err
+		}
+		if err = s.IdP.SetTemporaryPassword(ctx, t.subject, password); err != nil {
+			_ = auditlog.Write(ctx, s.DB, a.event("password_reset", "identity_provider_failed", id, "account", map[string]any{"sessionsRevoked": n}))
+			return ErrIdentityProvider
+		}
+		if err = s.fault("after_password_reset"); err != nil {
+			return err
+		}
+		logoutErr := s.IdP.Logout(ctx, t.subject)
+		if err = s.refence(ctx, id); err != nil {
+			return err
+		}
+		if err = auditlog.Write(ctx, s.DB, a.event("password_reset", "success", id, "account", map[string]any{"sessionsRevoked": n, "temporaryPassword": "issued", "ssoLogout": logoutErr == nil})); err != nil {
+			return err
+		}
+		out.IdentitySync = s.markSync(ctx, id, logoutErr == nil)
+		out.TemporaryPassword = string(password)
+		return nil
+	})
 	if err != nil {
 		return out, err
 	}
-	defer tx.Rollback()
-	roles, err := authorize(ctx, tx, a, CapAccountManage)
-	if err != nil {
-		return out, err
-	}
-	t, err := lockTarget(ctx, tx, id)
-	if err != nil {
-		return out, err
-	}
-	if err = guardTarget(roles, a, t); err != nil {
-		return out, err
-	}
-	if !t.managed() {
-		return out, InvalidError{"account", "该人员的登录账号未纳入平台管理，请先由宿主机管理员纳管"}
-	}
-	res, err := tx.ExecContext(ctx, `DELETE FROM web_sessions WHERE user_id=$1`, id)
-	if err != nil {
-		return out, err
-	}
-	n, _ := res.RowsAffected()
-	out.SessionsRevoked = int(n)
-	if err = tx.Commit(); err != nil {
-		return out, err
-	}
-	if _, err = s.revokeLive(ctx, id); err != nil {
-		return out, err
-	}
-	password, err := GeneratePassword()
-	if err != nil {
-		return out, err
-	}
-	if err = s.IdP.SetTemporaryPassword(ctx, t.subject, password); err != nil {
-		_ = auditlog.Write(ctx, s.DB, a.event("password_reset", "identity_provider_failed", id, "account", map[string]any{"sessionsRevoked": n}))
-		return out, ErrIdentityProvider
-	}
-	logoutErr := s.IdP.Logout(ctx, t.subject)
-	if err = auditlog.Write(ctx, s.DB, a.event("password_reset", "success", id, "account", map[string]any{"sessionsRevoked": n, "temporaryPassword": "issued", "ssoLogout": logoutErr == nil})); err != nil {
-		return out, err
-	}
-	out.IdentitySync = s.markSync(ctx, id, logoutErr == nil)
-	out.TemporaryPassword = string(password)
 	out.Person, err = loadPerson(ctx, s.DB, id)
 	return out, err
 }
@@ -377,6 +429,16 @@ func (s *Service) ResetPassword(ctx context.Context, a Actor, id string) (Accoun
 // SetSystemRoles replaces a person's system roles. expected is the role set the caller last saw
 // (concurrency guard). Self-changes are refused; the last enabled system_admin cannot lose it.
 func (s *Service) SetSystemRoles(ctx context.Context, a Actor, id string, roles, expected []string) (Person, error) {
+	var out Person
+	err := s.withPeople(ctx, []string{a.ID, id}, func() error {
+		p, err := s.setSystemRoles(ctx, a, id, roles, expected)
+		out = p
+		return err
+	})
+	return out, err
+}
+
+func (s *Service) setSystemRoles(ctx context.Context, a Actor, id string, roles, expected []string) (Person, error) {
 	norm := func(in []string) ([]string, error) {
 		set := map[string]bool{}
 		for _, r := range in {
@@ -449,6 +511,11 @@ func (s *Service) SetSystemRoles(ctx context.Context, a Actor, id string, roles,
 	if len(want) > 0 && !t.enabled {
 		return Person{}, InvalidError{"systemRoles", "已停用的人员不能授予系统角色"}
 	}
+	if pending, err := unfinishedProvision(ctx, tx, t.username); err != nil {
+		return Person{}, err
+	} else if pending {
+		return Person{}, ErrProvisionIncomplete
+	}
 	if _, err = tx.ExecContext(ctx, `DELETE FROM system_memberships WHERE user_id=$1 AND NOT (role = ANY($2))`, id, want); err != nil {
 		return Person{}, err
 	}
@@ -472,6 +539,16 @@ func (s *Service) SetSystemRoles(ctx context.Context, a Actor, id string, roles,
 // SetPortfolioRole grants, changes (role) or revokes (role="") one portfolio role. expected is the
 // role the caller last saw ("" = none). Self-changes are refused.
 func (s *Service) SetPortfolioRole(ctx context.Context, a Actor, id, scope, role, expected string) (Person, error) {
+	var out Person
+	err := s.withPeople(ctx, []string{a.ID, id}, func() error {
+		p, err := s.setPortfolioRole(ctx, a, id, scope, role, expected)
+		out = p
+		return err
+	})
+	return out, err
+}
+
+func (s *Service) setPortfolioRole(ctx context.Context, a Actor, id, scope, role, expected string) (Person, error) {
 	if _, err := s.Authorize(ctx, a, CapPortfolioRoleMgmt); err != nil {
 		return Person{}, err
 	}
@@ -517,6 +594,11 @@ func (s *Service) SetPortfolioRole(ctx context.Context, a Actor, id, scope, role
 	}
 	if role != "" && (!t.enabled || status != "ACTIVE") {
 		return Person{}, InvalidError{"role", "人员已停用或项目组合已停用"}
+	}
+	if pending, err := unfinishedProvision(ctx, tx, t.username); err != nil {
+		return Person{}, err
+	} else if pending {
+		return Person{}, ErrProvisionIncomplete
 	}
 	if role == "" {
 		_, err = tx.ExecContext(ctx, `DELETE FROM portfolio_memberships WHERE user_id=$1 AND portfolio_scope_id=$2`, id, scope)
@@ -617,6 +699,16 @@ ORDER BY u.display_name, u.id LIMIT $3`, issuer, pattern, limit)
 // user's password. If a local identity for that subject exists it is kept (same id, grants and
 // history) and only gains the username and the role.
 func (s *Service) AdoptAdministrator(ctx context.Context, a Actor, username, displayName string) (Person, error) {
+	var out Person
+	err := s.withPeople(ctx, []string{"adopt:" + strings.ToLower(strings.TrimSpace(username))}, func() error {
+		p, err := s.adoptAdministrator(ctx, a, username, displayName)
+		out = p
+		return err
+	})
+	return out, err
+}
+
+func (s *Service) adoptAdministrator(ctx context.Context, a Actor, username, displayName string) (Person, error) {
 	if !a.Host {
 		return Person{}, ErrForbidden
 	}

@@ -151,6 +151,21 @@ const h21aPackages = [
     'TestResetPasswordRevokesSessionsAndReturnsOnce',
     'TestCandidatesAreMinimalScopedAndBounded',
     'TestHostAdoptKeepsExistingIdentityAndGrants',
+    // Final security closure: identity sync retry, serialized lifecycle, session fence, provision guard.
+    'TestRaceDisableVersusEnable',
+    'TestRaceTwoAdministratorsResetPassword',
+    'TestRaceTargetGainsSystemRoleDuringAccountManagerOperation',
+    'TestRaceActorLosesPermissionMidOperation',
+    'TestSessionFenceMovesOnResetRevokeDisable',
+    'TestProvisionIncompleteCannotBeBypassed',
+    'TestUnfinishedHighPrivilegeProvisionNeedsMatchingCapability',
+    'TestRaceResumeVersusRoleChange',
+  ]],
+  ['p1-session-fence', './internal/webauth', [
+    'TestCallbackRefusesAuthenticationBeforeSessionRevocation',
+  ]],
+  ['p1-migration', './deploy/postgres/migrations', [
+    'TestMigration12To13PreservesPopulatedData',
   ]],
   ['p1-personnel-http', './services/cloud-api/internal/app', [
     'TestPersonnelAPIAnonymousAndUnauthorizedAreRefused',
@@ -214,6 +229,7 @@ try {
   console.log('R2_H3_UATDATA_DB_TEST=PASS');
   console.log('R2_R6_BIZ_DB_TEST=PASS');
   console.log('R2_P1_PERSONNEL_DB_TEST=PASS');
+  console.log('R2_P1_MIGRATION_12_TO_13=PASS');
 } finally {
   run(docker, [...compose, 'down', '--volumes', '--remove-orphans'], first);
 }

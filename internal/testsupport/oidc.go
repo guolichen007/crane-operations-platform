@@ -25,6 +25,9 @@ const OIDCSecret = "anonymous-integration-client-secret-only"
 type OIDCScenario struct {
 	Subject, Nonce, Issuer, Audience, AZP string
 	RejectPKCE                            bool
+	// AuthTime (optional) is the auth_time claim: when the user really authenticated. A Keycloak SSO
+	// session reused for a new login keeps the original value. Zero = now.
+	AuthTime time.Time
 }
 
 type authorization struct{ Nonce, Challenge, Redirect string }
@@ -116,7 +119,11 @@ func (p *OIDCProvider) serve(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "signing failed", 500)
 			return
 		}
-		token, err := jwt.Signed(signer).Claims(map[string]any{"iss": issuer, "sub": s.Subject, "aud": audience, "azp": s.AZP, "nonce": nonce, "iat": time.Now().Unix(), "exp": time.Now().Add(5 * time.Minute).Unix()}).Serialize()
+		authTime := time.Now()
+		if !s.AuthTime.IsZero() {
+			authTime = s.AuthTime
+		}
+		token, err := jwt.Signed(signer).Claims(map[string]any{"iss": issuer, "sub": s.Subject, "aud": audience, "azp": s.AZP, "nonce": nonce, "iat": time.Now().Unix(), "exp": time.Now().Add(5 * time.Minute).Unix(), "auth_time": authTime.Unix()}).Serialize()
 		if err != nil {
 			http.Error(w, "signing failed", 500)
 			return

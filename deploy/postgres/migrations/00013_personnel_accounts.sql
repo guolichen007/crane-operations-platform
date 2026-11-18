@@ -30,7 +30,12 @@ ALTER TABLE users
   ADD COLUMN last_login_at timestamptz,
   ADD COLUMN version bigint NOT NULL DEFAULT 1,
   ADD COLUMN idp_state text NOT NULL DEFAULT 'SYNCED' CHECK (idp_state IN ('SYNCED','PENDING')),
-  ADD COLUMN created_by text NOT NULL DEFAULT '';
+  ADD COLUMN created_by text NOT NULL DEFAULT '',
+  -- Session fence: set when the account is disabled, its password reset or its sessions revoked.
+  -- The BFF refuses any login whose OIDC auth_time is not strictly after it, so a still-valid
+  -- Keycloak SSO session or an in-flight callback from before the revocation cannot establish a
+  -- new application session.
+  ADD COLUMN sessions_revoked_at timestamptz;
 CREATE UNIQUE INDEX users_username_unique ON users (username) WHERE username IS NOT NULL;
 
 CREATE TABLE system_memberships (

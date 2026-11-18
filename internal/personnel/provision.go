@@ -257,23 +257,20 @@ func (s *Service) PendingProvisions(ctx context.Context, a Actor) ([]Provision, 
 	return out, nil
 }
 
-// withProvisionLock runs fn while holding a session advisory lock for one provision, so two
-// concurrent retries of the same opening never interleave their Keycloak calls.
-func (s *Service) withProvisionLock(ctx context.Context, id string, fn func() error) error {
-	conn, err := s.DB.Conn(ctx)
+// withProvisionLock runs fn while holding the person locks of the acting administrator and of the
+// person being opened (the provision's username is the future user id), so concurrent retries of
+// the same opening, and any lifecycle / role operation on that person (enable, role change, ...),
+// never interleave with its Keycloak calls.
+func (s *Service) withProvisionLock(ctx context.Context, a Actor, id string, fn func() error) error {
+	var username string
+	err := s.DB.QueryRowContext(ctx, `SELECT username FROM account_provisions WHERE id=$1`, id).Scan(&username)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
-	var got bool
-	if err = conn.QueryRowContext(ctx, `SELECT pg_try_advisory_lock($1, hashtext($2))`, adminLock, id).Scan(&got); err != nil {
-		return err
-	}
-	if !got {
-		return fmt.Errorf("%w: this account opening is already in progress", ErrConflict)
-	}
-	defer conn.ExecContext(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock($1, hashtext($2))`, adminLock, id)
-	return fn()
+	return s.withPeople(ctx, []string{a.ID, username}, fn)
 }
 
 func (s *Service) setProvisionState(ctx context.Context, id, state, subject, failure string) error {
@@ -283,7 +280,7 @@ func (s *Service) setProvisionState(ctx context.Context, id, state, subject, fai
 
 func (s *Service) continueProvision(ctx context.Context, a Actor, id string, replay bool) (ProvisionResult, error) {
 	out := ProvisionResult{ProvisionID: id, Replayed: replay}
-	err := s.withProvisionLock(ctx, id, func() error {
+	err := s.withProvisionLock(ctx, a, id, func() error {
 		p, err := s.provision(ctx, s.DB, id)
 		if err != nil {
 			return err
@@ -293,6 +290,17 @@ func (s *Service) continueProvision(ctx context.Context, a Actor, id string, rep
 			return err
 		}
 		req, local := p.Request, p.Request.Username
+		if p.State != "COMPLETED" && p.State != "CANCELLED" {
+			// Re-checked under the lock: an opening that grants system / portfolio roles can only be
+			// continued by someone who may grant them NOW (not merely when it was started).
+			roles, err := s.Authorize(ctx, a, CapAccountManage)
+			if err != nil {
+				return err
+			}
+			if err = requireGrantable(roles, req); err != nil {
+				return err
+			}
+		}
 		switch p.State {
 		case "COMPLETED":
 			out.State = p.State
@@ -469,13 +477,20 @@ func (s *Service) CancelProvision(ctx context.Context, a Actor, id string) error
 	if _, err := s.Authorize(ctx, a, CapAccountManage); err != nil {
 		return err
 	}
-	return s.withProvisionLock(ctx, id, func() error {
+	return s.withProvisionLock(ctx, a, id, func() error {
 		p, err := s.provision(ctx, s.DB, id)
 		if err != nil {
 			return err
 		}
 		if p.State != "STARTED" && p.State != "IDP_CREATED" && p.State != "FAILED" {
 			return fmt.Errorf("%w: only an unbound opening can be cancelled (state %s)", ErrConflict, p.State)
+		}
+		roles, err := s.Authorize(ctx, a, CapAccountManage)
+		if err != nil {
+			return err
+		}
+		if err = requireGrantable(roles, p.Request); err != nil {
+			return err
 		}
 		var subject sql.NullString
 		if err = s.DB.QueryRowContext(ctx, `SELECT idp_subject FROM account_provisions WHERE id=$1`, id).Scan(&subject); err != nil {

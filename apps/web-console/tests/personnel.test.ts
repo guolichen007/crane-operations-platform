@@ -36,6 +36,8 @@ describe('personnel presentation', () => {
     expect(personnelErrorMessage(new ApiError(409, 'VERSION_CONFLICT', 'username already exists'))).toContain('用户名已存在');
     expect(personnelErrorMessage(new ApiError(503, 'IDENTITY_PROVIDER', 'x'))).toContain('可稍后重试');
     expect(personnelErrorMessage(new ApiError(403, 'NO_PERMISSION', 'x'))).toContain('系统权限');
+    expect(personnelErrorMessage(new ApiError(409, 'PERSON_BUSY', 'x'))).toContain('正在进行');
+    expect(personnelErrorMessage(new ApiError(409, 'PROVISION_INCOMPLETE', 'x'))).toContain('未完成的开户');
     expect(systemRoleNames(['system_admin', 'account_manager'])).toBe('系统管理员、账号管理员');
   });
   it('project grant form now requires a picked person (no raw id typing)', () => {

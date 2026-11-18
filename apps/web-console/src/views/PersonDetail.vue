@@ -37,7 +37,7 @@ async function refresh() {
   ]);
 }
 function syncNote(r: AccountResult): string {
-  if (r.identitySync === 'PENDING') return '（平台侧已生效；身份服务同步失败，请稍后在本页重试同一操作）';
+  if (r.identitySync === 'PENDING') return '（平台侧已生效；身份服务同步失败，可点击「重试身份同步」）';
   return '';
 }
 
@@ -82,15 +82,17 @@ function submitEdit() {
 
 // ---------------------------------------------------------------- account actions
 const act = useMutation({
-  mutationFn: async (kind: 'disable' | 'enable' | 'reset' | 'revoke') => {
+  mutationFn: async (kind: 'disable' | 'enable' | 'reset' | 'revoke' | 'sync') => {
     if (!p.value) throw new Error('missing');
+    // Repeating the current state's change re-runs only the identity-provider synchronization.
+    if (kind === 'sync') return setEnabled(id.value, p.value.version, p.value.enabled);
     if (kind === 'disable' || kind === 'enable') return setEnabled(id.value, p.value.version, kind === 'enable');
     if (kind === 'reset') return resetPassword(id.value);
     return revokeSessions(id.value);
   },
   onSuccess: async (r, kind) => {
     actionError.value = '';
-    const text = { disable: `已停用，已结束 ${r.sessionsRevoked} 个在线会话与实时观看`, enable: '已启用（此前撤销的权限不会恢复）', reset: `已重置密码，已结束 ${r.sessionsRevoked} 个在线会话`, revoke: `已撤销 ${r.sessionsRevoked} 个在线会话与实时观看` }[kind];
+    const text = { disable: `已停用，已结束 ${r.sessionsRevoked} 个在线会话与实时观看`, enable: '已启用（此前撤销的权限不会恢复）', reset: `已重置密码，已结束 ${r.sessionsRevoked} 个在线会话`, revoke: `已撤销 ${r.sessionsRevoked} 个在线会话与实时观看`, sync: r.identitySync === 'SYNCED' ? '身份服务已同步' : '身份服务仍不可用' }[kind];
     notice.value = text + syncNote(r);
     if (kind === 'reset' && r.temporaryPassword) otp.value = r;
     await refresh();
@@ -100,8 +102,13 @@ const act = useMutation({
     await refresh();
   },
 });
-function run(kind: 'disable' | 'enable' | 'reset' | 'revoke') {
+function run(kind: 'disable' | 'enable' | 'reset' | 'revoke' | 'sync') {
   if (!p.value || act.isPending.value) return;
+  if (kind === 'sync') {
+    notice.value = '';
+    act.mutate(kind);
+    return;
+  }
   const name = p.value.displayName || p.value.username;
   const ask = {
     disable: `停用「${name}」？其所有登录会话、实时观看将立即失效，历史业务记录与审计保留。`,
@@ -222,6 +229,7 @@ const changeText = (c: unknown) => {
             <button v-else class="ghost-action" :disabled="act.isPending.value" data-testid="person-enable" @click="run('enable')"><Power :size="14" />启用</button>
             <button class="ghost-action" :disabled="act.isPending.value || !p.managed" data-testid="person-reset" @click="run('reset')"><KeyRound :size="14" />重置密码</button>
             <button class="ghost-action" :disabled="act.isPending.value" data-testid="person-revoke" @click="run('revoke')"><LogOut :size="14" />撤销会话</button>
+            <button v-if="p.identitySync === 'PENDING' && p.managed" class="ghost-action" :disabled="act.isPending.value" data-testid="person-sync" @click="run('sync')">重试身份同步</button>
           </div>
           <p v-if="self" class="form-hint">不能停用自己的账号。</p>
           <p v-else-if="caps.account_manage && !canAct" class="form-hint">该人员持有系统角色，只有系统管理员可以管理其账号。</p>
