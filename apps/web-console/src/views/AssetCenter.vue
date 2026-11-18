@@ -86,6 +86,9 @@ const assetsQuery = useQuery({
   enabled: computed(() => state.value === 'ready'),
 });
 
+// F-11 (same rule as the server): a name is required — the asset name, or the asset code which
+// then becomes the name. Checked before sending; the server returns 422 with the same reason.
+const NAME_REQUIRED = '请填写资产名称或资产编号（未填名称时以编号作为名称）。';
 const createMutation = useMutation({
   mutationFn: (input: AssetMasterData) => createFence.guard(() => createAsset(input, idempotencyKey)),
   onSuccess: async (created) => {
@@ -100,9 +103,23 @@ const createMutation = useMutation({
   onError: (e) => {
     // Idempotency-Key is kept, so a deliberate resubmit after an unknown outcome replays instead of
     // creating twice.
-    formError.value = e instanceof NetworkWriteError || e instanceof ScopeChangedError ? e.message : e instanceof ApiError ? e.message : '创建失败';
+    formError.value = e instanceof NetworkWriteError || e instanceof ScopeChangedError ? e.message
+      : e instanceof ApiError && e.status === 422 && /displayName or assetCode/.test(e.message) ? NAME_REQUIRED
+        : e instanceof ApiError ? e.message : '创建失败';
   },
 });
+
+function submitCreate() {
+  if (createMutation.isPending.value) return;
+  const name = (newAsset.value.displayName ?? '').trim();
+  const code = (newAsset.value.assetCode ?? '').trim();
+  if (!name && !code) {
+    formError.value = NAME_REQUIRED;
+    return;
+  }
+  formError.value = '';
+  createMutation.mutate(newAsset.value as AssetMasterData);
+}
 
 function openCreate() {
   idempotencyKey = crypto.randomUUID();
@@ -251,7 +268,7 @@ const statusText: Record<string, string> = {
       <form
         class="workspace-modal"
         data-testid="asset-create-form"
-        @submit.prevent="createMutation.mutate(newAsset as AssetMasterData)"
+        @submit.prevent="submitCreate"
       >
         <h2>新建资产</h2>
         <label>授权项目
@@ -262,8 +279,9 @@ const statusText: Record<string, string> = {
             </option>
           </select>
         </label>
-        <label>资产名称<input v-model="newAsset.displayName" placeholder="例如：1 号门式起重机" /></label>
+        <label>资产名称<input v-model="newAsset.displayName" placeholder="例如：1 号门式起重机" aria-describedby="asset-name-hint" /></label>
         <label>资产编号<input v-model="newAsset.assetCode" placeholder="CRN-001" /></label>
+        <p id="asset-name-hint" class="form-hint">名称与编号至少填写一项；未填名称时以编号作为名称。</p>
         <label>类型
           <select v-model="newAsset.assetType">
             <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>

@@ -104,7 +104,7 @@ func TestAssetHTTPAuthorizationMatrix(t *testing.T) {
 		t.Fatalf("maintainer write = %d, want 403", w.Code)
 	}
 	// platform_admin WITH ProjectGrant: can business write.
-	if w := f.requestJSON(admin, sa.CsrfToken, "/api/v1/assets", "POST", `{"projectId":"P001","assetType":"CRANE"}`); w.Code != 201 {
+	if w := f.requestJSON(admin, sa.CsrfToken, "/api/v1/assets", "POST", `{"projectId":"P001","assetType":"CRANE","displayName":"授权矩阵行车"}`); w.Code != 201 {
 		t.Fatalf("admin write = %d, want 201", w.Code)
 	}
 	// platform_admin (P001 only) cannot read a P002 asset.

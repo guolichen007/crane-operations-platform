@@ -131,3 +131,33 @@ test('详情返回台账恢复合法项目范围与搜索，丢弃未授权项�
   await page.getByRole('button', { name: '返回' }).click();
   await expect(page).toHaveURL(/#\/assets\?q=C1$/);
 });
+
+// F-11: name and code both empty → refused in the form with the server's rule, no POST; a code alone
+// is accepted (it becomes the name on the server); a server 422 for the same rule shows the same text.
+test('新建资产：名称与编号均为空时不提交并提示；仅填编号可提交', async ({ page }) => {
+  const posts: unknown[] = [];
+  await page.route('**/auth/session', (r) => r.fulfill({ json: session }));
+  await page.route('**/api/v1/**', async (r) => {
+    const p = new URL(r.request().url()).pathname;
+    if (p === '/api/v1/assets' && r.request().method() === 'POST') {
+      const body = r.request().postDataJSON();
+      posts.push(body);
+      if (!String(body.displayName ?? '').trim() && !String(body.assetCode ?? '').trim()) return r.fulfill({ status: 422, json: { error: 'invalid input: displayName or assetCode is required' } });
+      return r.fulfill({ status: 201, json: { ...base, id: 'A-NEW', displayName: String(body.assetCode).trim(), assetCode: String(body.assetCode).trim() } });
+    }
+    if (p === '/api/v1/assets') return r.fulfill({ json: { items: [], total: 0, limit: 50, offset: 0 } });
+    return r.fulfill({ json: p.startsWith('/api/v1/assets/A-NEW') ? { ...base, id: 'A-NEW' } : [] });
+  });
+  await page.goto('/#/assets');
+  await page.getByTestId('asset-create').click();
+  const form = page.getByTestId('asset-create-form');
+  await form.getByLabel('授权项目选择').selectOption('P001');
+  await form.getByLabel('资产名称').fill('   ');
+  await form.getByRole('button', { name: '创建' }).click();
+  await expect(form.getByRole('alert')).toHaveText('请填写资产名称或资产编号（未填名称时以编号作为名称）。');
+  expect(posts).toHaveLength(0);
+  await form.getByPlaceholder('CRN-001').fill('CRN-F11');
+  await form.getByRole('button', { name: '创建' }).click();
+  await expect(page).toHaveURL(/#\/assets\/A-NEW/);
+  expect(posts).toHaveLength(1);
+});

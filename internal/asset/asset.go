@@ -172,6 +172,11 @@ func CreateAsset(ctx context.Context, db *sql.DB, in contract.AssetMasterData, a
 	if err := validDisplayName(strings.TrimSpace(in.DisplayName)); err != nil {
 		return in, err
 	}
+	// F-11: a business name is required — either displayName or assetCode (which then becomes the
+	// name). Refused before any transaction, idempotency claim, revision or audit.
+	if in.DisplayName == "" && in.AssetCode == nil {
+		return in, invalid("displayName or assetCode is required")
+	}
 	if in.AssetType == "" {
 		in.AssetType = DefaultAssetType
 	}
@@ -202,15 +207,11 @@ func CreateAsset(ctx context.Context, db *sql.DB, in contract.AssetMasterData, a
 	in.Id = platform.ID()
 	in.AssetStatus = "DRAFT"
 	in.Version = 1
-	// Business display name: an explicit client-supplied name wins; otherwise it
-	// falls back to the asset code and finally a project-scoped placeholder. It is
-	// a real editable field, never a second system id.
+	// Business display name: an explicit client-supplied name wins; otherwise the asset code
+	// (validated above: one of them is present). It is a real editable field, never a system id.
 	displayName := strings.TrimSpace(in.DisplayName)
 	if displayName == "" && in.AssetCode != nil {
 		displayName = strings.TrimSpace(*in.AssetCode)
-	}
-	if displayName == "" {
-		displayName = in.ProjectId + "-asset"
 	}
 	in.DisplayName = displayName
 	if in.AssetCode != nil {

@@ -417,26 +417,27 @@ func (h *apiHandler) registerPortfolio(api *http.ServeMux) {
 			respondAPI(w, 400, map[string]string{"error": "invalid body"})
 			return
 		}
-		if in.DependencyType != "FS" {
-			respondAPI(w, 422, map[string]string{"error": "unsupported dependency type"})
-			return
-		}
-		if in.LagMinutes < 0 || in.PredecessorItemId == in.SuccessorItemId {
-			respondAPI(w, 422, map[string]string{"error": "invalid dependency"})
-			return
-		}
-		// Both ends must be in one portfolio the caller can write; resolved from the DB.
+		// Authorization first (scope resolved from the DB): an unauthorized caller learns nothing
+		// about validation. Both ends must be in one portfolio the caller can write.
 		predScope, err1 := portfolioScopeOfScheduleItem(r, h.db, in.PredecessorItemId)
 		succScope, err2 := portfolioScopeOfScheduleItem(r, h.db, in.SuccessorItemId)
 		if err1 != nil || err2 != nil {
 			respondAPI(w, 404, map[string]string{"error": "not found"})
 			return
 		}
+		if !h.authorizePortfolioObject(w, r, predScope, identity.CapProjectScheduleWrite) {
+			return
+		}
 		if predScope != succScope {
 			respondAPI(w, 409, map[string]string{"error": "dependency crosses portfolios"})
 			return
 		}
-		if !h.authorizePortfolioObject(w, r, succScope, identity.CapProjectScheduleWrite) {
+		if in.DependencyType != "FS" {
+			respondAPI(w, 422, map[string]string{"error": "unsupported dependency type"})
+			return
+		}
+		if in.LagMinutes < 0 || in.PredecessorItemId == in.SuccessorItemId {
+			respondAPI(w, 422, map[string]string{"error": "invalid dependency"})
 			return
 		}
 		if err := scheduling.CreateDependency(r.Context(), h.db, in); err != nil {
@@ -665,7 +666,9 @@ func (h *apiHandler) registerPortfolio(api *http.ServeMux) {
 				respondAPI(w, 404, map[string]string{"error": "not found"})
 				return
 			}
-			if !h.authorizePortfolioObject(w, r, scope, identity.CapProjectScheduleWrite) {
+			// Approval is a manager decision (project_approve), like intake approval; planners
+			// prepare items and reservations (project_schedule_write) but cannot approve them.
+			if !h.authorizePortfolioObject(w, r, scope, identity.CapProjectApprove) {
 				return
 			}
 		}

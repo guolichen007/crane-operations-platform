@@ -122,6 +122,10 @@ const h21aPackages = [
     'TestR7AssetTypeConstraintHTTP',
     // R8 resource & schedule workflow (create/calendar/reserve/approve/conflict/override/cancel/history)
     'TestR8ScheduleWorkflowHTTP',
+    // R8 F-11 asset name or code required
+    'TestR8AssetNameOrCodeRequiredHTTP',
+    // R8 read-only / role negatives on every resource, calendar, schedule, reservation, approve, override, cancel route
+    'TestR8PortfolioReadOnlyNegativesHTTP',
   ]],
   // R8 zero-business start: crane-dev business reset (all-or-nothing, guarded, digest, audit).
   ['r8-devreset', './internal/devreset', [

@@ -326,8 +326,8 @@ func TestRelationCrossAssetRejected(t *testing.T) {
 	ctx := context.Background()
 	seedProject(t, db, "Project-A")
 	seedEquipmentType(t, db, "MOTOR")
-	a1, _ := CreateAsset(ctx, db, contract.AssetMasterData{ProjectId: "Project-A", AssetType: "CRANE"}, "actor", "req-1", "")
-	a2, _ := CreateAsset(ctx, db, contract.AssetMasterData{ProjectId: "Project-A", AssetType: "CRANE"}, "actor", "req-2", "")
+	a1, _ := CreateAsset(ctx, db, contract.AssetMasterData{ProjectId: "Project-A", AssetType: "CRANE", DisplayName: "行车 1"}, "actor", "req-1", "")
+	a2, _ := CreateAsset(ctx, db, contract.AssetMasterData{ProjectId: "Project-A", AssetType: "CRANE", DisplayName: "行车 2"}, "actor", "req-2", "")
 	e1, err := CreateEquipment(ctx, db, contract.EquipmentInstallation{AssetId: a1.Id, EquipmentCode: "EQ-1", TypeCode: "MOTOR"}, json.RawMessage(`{"rated_power_kw": 7.5, "rated_speed_rpm": 1450, "brake_integrated": true}`), "actor", "req-3", "")
 	if err != nil {
 		t.Fatal(err)

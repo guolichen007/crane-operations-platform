@@ -1,8 +1,10 @@
 package app
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 
@@ -176,5 +178,54 @@ func TestR7AssetTypeConstraintHTTP(t *testing.T) {
 	// Normalizing it to an authoritative type is allowed.
 	if c, out := patch(3, map[string]any{"assetType": "GANTRY"}); c != 200 || out.AssetType != "GANTRY" {
 		t.Fatalf("legacy PATCH to GANTRY = %d %+v", c, out)
+	}
+}
+
+// F-11: an asset needs a business name. Name and code both blank (after trim) → 422 with the reason,
+// no asset / revision / success audit / idempotency row; a name alone is enough (code optional); a
+// code alone still becomes the name (historical behaviour). Never "<projectId>-asset".
+func TestR8AssetNameOrCodeRequiredHTTP(t *testing.T) {
+	f := newSecurityFixture(t)
+	admin, ai := f.login(t, "admin")
+	counts := func() [4]int {
+		var c [4]int
+		_ = f.db.QueryRow(`SELECT count(*) FROM asset_devices WHERE project_id='P001'`).Scan(&c[0])
+		_ = f.db.QueryRow(`SELECT count(*) FROM entity_revisions WHERE entity_type='asset'`).Scan(&c[1])
+		_ = f.db.QueryRow(`SELECT count(*) FROM audit_logs WHERE action='asset_created' AND result='success'`).Scan(&c[2])
+		_ = f.db.QueryRow(`SELECT count(*) FROM idempotency_keys WHERE operation='asset_create'`).Scan(&c[3])
+		return c
+	}
+	before := counts()
+	for name, body := range map[string]map[string]any{
+		"both missing":          {"projectId": "P001", "assetType": "CRANE"},
+		"both blank":            {"projectId": "P001", "assetType": "CRANE", "displayName": "   ", "assetCode": "  "},
+		"blank name, null code": {"projectId": "P001", "assetType": "CRANE", "displayName": "\t", "assetCode": nil},
+	} {
+		w := f.doBody(admin, ai.CsrfToken, "POST", "/api/v1/assets", map[string]string{"Idempotency-Key": "f11-" + strings.ReplaceAll(name, " ", "-")}, body)
+		if w.Code != 422 || !strings.Contains(w.Body.String(), "displayName or assetCode") {
+			t.Fatalf("%s: %d %s, want 422 with reason", name, w.Code, w.Body.String())
+		}
+	}
+	if after := counts(); after != before {
+		t.Fatalf("refused create had side effects: %v → %v", before, after)
+	}
+	var placeholders int
+	_ = f.db.QueryRow(`SELECT count(*) FROM asset_devices WHERE display_name LIKE '%-asset'`).Scan(&placeholders)
+	if placeholders != 0 {
+		t.Fatalf("%d placeholder-named assets", placeholders)
+	}
+	for _, c := range []struct {
+		body map[string]any
+		want string
+	}{
+		{map[string]any{"projectId": "P001", "assetType": "CRANE", "displayName": "  一号行车 "}, "一号行车"},
+		{map[string]any{"projectId": "P001", "assetType": "CRANE", "displayName": " ", "assetCode": " F11-CODE "}, "F11-CODE"},
+	} {
+		w := f.doBody(admin, ai.CsrfToken, "POST", "/api/v1/assets", nil, c.body)
+		var a contract.AssetMasterData
+		_ = json.Unmarshal(w.Body.Bytes(), &a)
+		if w.Code != 201 || a.DisplayName != c.want {
+			t.Fatalf("create %v = %d %s, want name %q", c.body, w.Code, w.Body.String(), c.want)
+		}
 	}
 }
