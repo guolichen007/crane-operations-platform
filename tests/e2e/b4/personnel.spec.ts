@@ -36,11 +36,19 @@ async function keycloakLogin(page: Page, user: string, password: string): Promis
   return 'rejected';
 }
 
+// The real temporary password is never rendered (no 「显示」) and never captured: this spec runs
+// without trace / video (their DOM snapshots and network bodies are CI artifacts) and reads the value
+// through the dialog's own 「复制」 button (clipboard), exactly as an administrator would hand it over.
+test.use({ trace: 'off', video: 'off' });
+
 async function readOneTimePassword(page: Page): Promise<string> {
   const otp = page.getByTestId('one-time-password');
   await expect(otp).toBeVisible();
-  await otp.getByTestId('otp-reveal').click();
-  const value = (await otp.getByTestId('otp-password').textContent())!.trim();
+  await expect(otp.getByTestId('otp-password')).toHaveText('••••••••••••••••');
+  await otp.getByTestId('otp-copy').click();
+  await expect(otp.getByTestId('otp-copy')).toContainText('已复制');
+  const value = (await page.evaluate(() => navigator.clipboard.readText())).trim();
+  await page.evaluate(() => navigator.clipboard.writeText(''));
   expect(value).toMatch(/^[A-Za-z0-9]{16}$/);
   await otp.getByTestId('otp-confirm').check();
   await otp.getByTestId('otp-close').click();
@@ -63,7 +71,7 @@ async function api(page: Page, method: string, path: string, body?: unknown, hea
 
 test('P1 人员与账号：网页开户 → 首次登录改密 → 授权生效 → 停用即断 → 重置密码 → 防重/最后管理员/越权', async ({ browser }) => {
   test.setTimeout(240_000);
-  const adminCtx = await browser.newContext();
+  const adminCtx = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
   const admin = await adminCtx.newPage();
   await login(admin, 'b4-admin');
   await assertWriteTarget(admin);
@@ -160,6 +168,14 @@ test('P1 人员与账号：网页开户 → 首次登录改密 → 授权生效 
   await admin.getByTestId('person-reset').click();
   const reset = await readOneTimePassword(admin);
   expect(reset).not.toBe(temporary);
+  expect((await api(second, 'GET', '/api/v1/portfolio/scopes')).status).toBe(401);
+  // The old Keycloak SSO cookie of that browser must not silently mint a new application session:
+  // starting a login again must stop at the Keycloak form (or be refused), never land in the app.
+  await second.goto('/');
+  await second.getByRole('link', { name: '账号登录', exact: true }).click();
+  await expect(second.locator('#username').or(second.locator('#kc-error-message')).or(second.getByText('login rejected'))).toBeVisible();
+  await expect(second.getByTestId('session-user')).toHaveCount(0);
+  await second.goto(origin + '/');
   expect((await api(second, 'GET', '/api/v1/portfolio/scopes')).status).toBe(401);
   const third = await (await browser.newContext()).newPage();
   expect(await keycloakLogin(third, username, chosen)).toBe('rejected');

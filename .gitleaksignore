@@ -12,3 +12,15 @@
 # finding (this one); with this entry → no leaks; a newly committed synthetic
 # key still fails (counter-proof).
 46a50f040a09507e3cade02ea4d9e50e6b0942a1:apps/project-intake-web/src/api-client.test.ts:generic-api-key:62
+#
+# 2026-11-18 generic-api-key ×2, commit 8a28f01 (feature/crane-r7-sim-e2e, already pushed; history is
+# NOT rewritten). Both matches are `temporaryPassword: '<16 chars>'` literals inside the page.route()
+# MOCK of tests/e2e/premium/p1-personnel.spec.ts: the mocked API answer that the browser test asserts
+# is shown once in the one-time-password dialog. No Keycloak, database or account ever received or
+# generated these values (the premium project never reaches a backend; real temporary passwords are
+# generated at runtime by personnel.GeneratePassword and never committed). Replaced by obvious
+# placeholders in 4bb176e; absent from every branch tip. Classification: SYNTHETIC_TEST_FIXTURE, no
+# rotation required. Verified with gitleaks v8.30.1 --redact: full history → exactly these 2 findings;
+# with these entries → no leaks; a newly committed synthetic value still fails (counter-proof).
+8a28f01878787fca1ce216ba15faf97bfbd55af5:tests/e2e/premium/p1-personnel.spec.ts:generic-api-key:59
+8a28f01878787fca1ce216ba15faf97bfbd55af5:tests/e2e/premium/p1-personnel.spec.ts:generic-api-key:82

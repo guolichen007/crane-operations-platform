@@ -69,6 +69,8 @@ type drillFingerprint struct {
 	AuditHash    string
 	RevisionHash string
 	InstallHash  string
+	// Schema 13 (P1 personnel): people, departments, system roles, account provisions.
+	PersonnelHash string
 }
 
 func fingerprintDB(t *testing.T, db *sql.DB) drillFingerprint {
@@ -80,15 +82,21 @@ func fingerprintDB(t *testing.T, db *sql.DB) drillFingerprint {
 	  (SELECT count(*) FROM audit_logs),
 	  (SELECT md5(coalesce(string_agg(user_id||'|'||action||'|'||result||'|'||coalesce(project_id,'')||'|'||request_id||'|'||observed_at::text, ',' ORDER BY id),'')) FROM audit_logs),
 	  (SELECT md5(coalesce(string_agg(entity_type||'|'||entity_id||'|'||revision||'|'||coalesce(snapshot_sha256,''), ',' ORDER BY id),'')) FROM entity_revisions),
-	  (SELECT md5(coalesce(string_agg(asset_id||'|'||location_id||'|'||valid_from::text||'|'||coalesce(valid_to::text,''), ',' ORDER BY id),'')) FROM asset_installations)`).
-		Scan(&f.Schema, &f.Projects, &f.Assets, &f.Types, &f.ActiveTypes, &f.Users, &f.Memberships, &f.Audits, &f.AuditHash, &f.RevisionHash, &f.InstallHash)
+	  (SELECT md5(coalesce(string_agg(asset_id||'|'||location_id||'|'||valid_from::text||'|'||coalesce(valid_to::text,''), ',' ORDER BY id),'')) FROM asset_installations),
+	  (SELECT md5(
+	     coalesce((SELECT string_agg(id||'|'||coalesce(username,'')||'|'||coalesce(department_id,'')||'|'||job_title||'|'||enabled::text||'|'||version::text||'|'||idp_state, ',' ORDER BY id) FROM users),'')||'#'||
+	     coalesce((SELECT string_agg(user_id||'|'||role, ',' ORDER BY user_id, role) FROM system_memberships),'')||'#'||
+	     coalesce((SELECT string_agg(id||'|'||name||'|'||status, ',' ORDER BY id) FROM departments),'')||'#'||
+	     coalesce((SELECT string_agg(id||'|'||state||'|'||username, ',' ORDER BY id) FROM account_provisions),'')||'#'||
+	     coalesce((SELECT string_agg(coalesce(target_user_id,'')||'|'||coalesce(scope,'')||'|'||coalesce(change::text,''), ',' ORDER BY id) FROM audit_logs),'')))`).
+		Scan(&f.Schema, &f.Projects, &f.Assets, &f.Types, &f.ActiveTypes, &f.Users, &f.Memberships, &f.Audits, &f.AuditHash, &f.RevisionHash, &f.InstallHash, &f.PersonnelHash)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return f
 }
 
-// R7 isolated restore drill: a schema-12 database with the 43-type directory, users, grants,
+// R7 isolated restore drill: a schema-13 database (P1: incl. personnel, system roles, departments) with the 43-type directory, users, grants,
 // assets, moves, equipment and audit is dumped (pg_dump -Fc) and restored into a NEW database that
 // is never a formal database. The restored copy must have the identical business fingerprint and
 // work through the real BFF: OIDC login of the existing user, historical asset and location
@@ -131,8 +139,22 @@ func TestR7IsolatedRestoreDrill(t *testing.T) {
 	if _, err := asset.CreateEquipment(ctx, src, contract.EquipmentInstallation{AssetId: a.Id, EquipmentCode: "DR-PLC", TypeCode: "PLC", Criticality: "HIGH"}, json.RawMessage(`{}`), "u-drill", "drill-e", ""); err != nil {
 		t.Fatal(err)
 	}
+	// Schema 13 personnel state rides along in the backup: department, profile, system role, provision.
+	for _, stmt := range []string{
+		`INSERT INTO departments(id,name) VALUES('dr-ops','运维部')`,
+		`UPDATE users SET username='u-drill', department_id='dr-ops', job_title='管理员' WHERE id='u-drill'`,
+		`INSERT INTO system_memberships(user_id,role,granted_by) VALUES('u-drill','system_admin','host:drill')`,
+		`INSERT INTO account_provisions(id,actor,idempotency_key,payload_sha256,username,request,state) VALUES('prov-dr','u-drill','key-drill-0001','x','u-drill','{}','COMPLETED')`,
+	} {
+		if _, err := src.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := auditlog.Write(ctx, src, auditlog.Event{Actor: "host:drill", Action: "account_adopted", Result: "success", TargetUser: "u-drill", Scope: "system", Change: map[string]any{"systemRoles": []string{"system_admin"}}}); err != nil {
+		t.Fatal(err)
+	}
 	before := fingerprintDB(t, src)
-	if before.Schema != 12 || before.Types != 43 || before.ActiveTypes != 43 {
+	if before.Schema != 13 || before.Types != 43 || before.ActiveTypes != 43 {
 		t.Fatalf("source fingerprint = %+v", before)
 	}
 
