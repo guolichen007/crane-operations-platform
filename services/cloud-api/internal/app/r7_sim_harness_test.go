@@ -30,6 +30,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -383,7 +384,8 @@ func newSimEnv(t *testing.T, ttl, grace time.Duration, specs []simSpec) *simEnv 
 	var delegate atomic.Value
 	e.server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { delegate.Load().(http.Handler).ServeHTTP(w, r) }))
 	t.Cleanup(e.server.Close)
-	manager, err := webauth.New(ctx, e.db, webauth.Config{PublicURL: e.server.URL, Issuer: e.provider.Server.URL, ClientID: testsupport.OIDCClient, ClientSecret: []byte(testsupport.OIDCSecret), ServerSecret: []byte(strings.Repeat("r7-sim-server-key-", 3)), AbsoluteTTL: time.Hour, IdleTTL: 30 * time.Minute, HTTPClient: e.provider.Server.Client()})
+	absolute := simSessionTTL(t)
+	manager, err := webauth.New(ctx, e.db, webauth.Config{PublicURL: e.server.URL, Issuer: e.provider.Server.URL, ClientID: testsupport.OIDCClient, ClientSecret: []byte(testsupport.OIDCSecret), ServerSecret: []byte(strings.Repeat("r7-sim-server-key-", 3)), AbsoluteTTL: absolute, IdleTTL: min(30*time.Minute, absolute), HTTPClient: e.provider.Server.Client()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -621,6 +623,31 @@ func envelopeFor(id, project, kind string, bootID string, bootSeq, seq int64, pa
 	return contract.WithPayload(contract.Envelope{SchemaVersion: 1, MessageId: platform.ID(), TenantId: "demo", ProjectId: project, DeviceId: id, BootId: bootID, BootSeq: bootSeq, Sequence: seq, SentAt: time.Now().UTC(), Kind: kind}, payload)
 }
 
+// simSoakDuration is the hold time of TestR7Sim20DevicesSoak (default 90 s; R7_SIM_SOAK_SECONDS /
+// R7_SIM_SOAK_MINUTES override; minutes win).
+func simSoakDuration() time.Duration {
+	d := 90 * time.Second
+	if v, err := strconv.Atoi(os.Getenv("R7_SIM_SOAK_SECONDS")); err == nil && v > 0 {
+		d = time.Duration(v) * time.Second
+	}
+	if v, err := strconv.Atoi(os.Getenv("R7_SIM_SOAK_MINUTES")); err == nil && v > 0 {
+		d = time.Duration(v) * time.Minute
+	}
+	return d
+}
+
+// simSessionTTL is the web-session absolute lifetime of the TEST harness only (production keeps
+// its configured AbsoluteSeconds/IdleSeconds). A soak must outlive the login made before it starts:
+// soak duration + 30 min margin, at least 1 h. R7_SIM_SESSION_TTL_SECONDS (test-only) forces a
+// value to reproduce an expiring session (a 401 on renew still fails the soak — never swallowed).
+func simSessionTTL(t *testing.T) time.Duration {
+	if v, err := strconv.Atoi(os.Getenv("R7_SIM_SESSION_TTL_SECONDS")); err == nil && v > 0 {
+		t.Logf("R7_SIM session TTL forced to %ds", v)
+		return time.Duration(v) * time.Second
+	}
+	return max(time.Hour, simSoakDuration()+30*time.Minute)
+}
+
 // repoRoot finds the repository root (the directory whose go.mod declares this module) from the
 // working directory upwards. `go test` runs in the package directory, while the CI gate runs the
 // precompiled test binary (`go test -c`) from the repository root: both must resolve the same path.
@@ -683,4 +710,21 @@ func TestR8SimCertScriptIssuesUsableIdentity(t *testing.T) {
 		t.Fatalf("foreign topic publish rc=0x%x, want 0x87 not authorized", rc)
 	}
 	simRecord(t, "SIM_CERT_SCRIPT", "openssl-issued SIM certificate accepted by broker; ACL scoped; CA key not in output")
+}
+
+// The harness session must outlive the soak (the 60-minute server soak got 401 on renew with the old
+// fixed 1 h lifetime: login happens before the hold starts). Pure rule check; no broker/DB needed.
+func TestR8SimSessionTTLOutlivesSoak(t *testing.T) {
+	for _, c := range []struct{ minutes, seconds string }{{"", ""}, {"", "90"}, {"60", ""}, {"120", ""}} {
+		t.Setenv("R7_SIM_SOAK_MINUTES", c.minutes)
+		t.Setenv("R7_SIM_SOAK_SECONDS", c.seconds)
+		t.Setenv("R7_SIM_SESSION_TTL_SECONDS", "")
+		soak, ttl := simSoakDuration(), simSessionTTL(t)
+		if ttl < soak+30*time.Minute || ttl < time.Hour {
+			t.Fatalf("soak %s: session TTL %s does not cover soak + 30 min", soak, ttl)
+		}
+		if ttl > 24*time.Hour {
+			t.Fatalf("soak %s: session TTL %s exceeds webauth maximum", soak, ttl)
+		}
+	}
 }

@@ -485,13 +485,7 @@ func TestR7Sim20DevicesSoak(t *testing.T) {
 	e.until("20 connected", 60*time.Second, func() bool { return all() == 20 })
 	connectAll := time.Since(start)
 	admin := e.user("c-admin", "R7-C1", "platform_admin")
-	duration := 90 * time.Second
-	if v, err := strconv.Atoi(os.Getenv("R7_SIM_SOAK_SECONDS")); err == nil && v > 0 {
-		duration = time.Duration(v) * time.Second
-	}
-	if v, err := strconv.Atoi(os.Getenv("R7_SIM_SOAK_MINUTES")); err == nil && v > 0 {
-		duration = time.Duration(v) * time.Minute
-	}
+	duration := simSoakDuration()
 	q := func(label string, query string, args []any, dest ...any) {
 		t.Helper()
 		if err := e.db.QueryRow(query, args...).Scan(dest...); err != nil {
@@ -523,8 +517,8 @@ func TestR7Sim20DevicesSoak(t *testing.T) {
 	for time.Now().Before(end) {
 		time.Sleep(5 * time.Second)
 		ticks++
-		if e.call(admin, "POST", "/api/v1/live-sessions/"+lease.SessionId+"/renew", nil) != 200 {
-			t.Fatal("renew failed during soak")
+		if code := e.call(admin, "POST", "/api/v1/live-sessions/"+lease.SessionId+"/renew", nil); code != 200 {
+			t.Fatalf("renew failed during soak after %s: HTTP %d", time.Since(watchStart).Round(time.Second), code)
 		}
 		if ticks%6 == 0 { // every 30 s: short network drop on two devices
 			for _, id := range []string{"SIM-R7-C07", "SIM-R7-C13"} {

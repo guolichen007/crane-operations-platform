@@ -12,7 +12,7 @@
 // removed afterwards — the Crane database, the shared broker and other platforms are never used.
 // R7_SIM_ONLY=TestR7Sim20DevicesSoak runs just the soak (the gate then requires exactly that test).
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, writeFileSync, chmodSync, readFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, chmodSync, readFileSync, openSync, closeSync, statSync, existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { gateProblems, runPattern } from './r2-db-gate.mjs';
@@ -27,6 +27,46 @@ export const REQUIRED = [
   'TestR7IsolatedRestoreDrill',
   'TestR8SimCertScriptIssuesUsableIdentity',
 ];
+
+/**
+ * Run the test binary with stdout+stderr written DIRECTLY to <dir>/test.log (no pipe, no buffer
+ * limit: a long or crashing run keeps every line), then record meta.json: command, full SHA,
+ * start/end, exit code, signal, timeout, log size. Secrets in `redact` are removed from the log
+ * copy that is parsed and kept (the raw log is rewritten in place before anything reads it).
+ */
+export function runToFile(command, args, env, dir, { timeoutMs = 0, sha = '', redact = [] } = {}) {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const logPath = join(dir, 'test.log');
+  if (existsSync(logPath)) throw Error(`${logPath} exists: every run needs a fresh directory`);
+  const fd = openSync(logPath, 'wx', 0o600);
+  const startedAt = new Date().toISOString();
+  let r;
+  try {
+    r = spawnSync(command, args, { stdio: ['ignore', fd, fd], env, timeout: timeoutMs || undefined, killSignal: 'SIGKILL' });
+  } finally { closeSync(fd); }
+  if (redact.length) {
+    let text = readFileSync(logPath, 'utf8');
+    for (const secret of redact) if (secret) text = text.split(secret).join('***');
+    writeFileSync(logPath, text, { mode: 0o600 });
+  }
+  const timedOut = r.error?.code === 'ETIMEDOUT' || (!!timeoutMs && r.signal === 'SIGKILL');
+  const meta = { sha, command: [command, ...args].map((a) => redact.reduce((x, s) => (s ? x.split(s).join('***') : x), a)), startedAt, finishedAt: new Date().toISOString(),
+    exitCode: r.status, signal: r.signal, timedOut, spawnError: r.error && !timedOut ? String(r.error.code || r.error.message) : null, logBytes: statSync(logPath).size };
+  writeFileSync(join(dir, 'meta.json'), JSON.stringify(meta, null, 2) + '\n', { mode: 0o600 });
+  return { ...meta, logPath };
+}
+
+/** Gate verdict from the complete log file and the real process result. */
+export function evaluateRun(result, selected) {
+  const output = readFileSync(result.logPath, 'utf8');
+  const problems = gateProblems(output, selected, { exact: true });
+  if (result.timedOut) problems.unshift('test binary timed out');
+  else if (result.signal) problems.unshift(`test binary killed by ${result.signal}`);
+  else if (result.exitCode !== 0) problems.unshift(`test binary exit code ${result.exitCode}`);
+  if (result.spawnError) problems.unshift(`spawn error ${result.spawnError}`);
+  const tail = output.split('\n').filter(Boolean).slice(-15).join('\n');
+  return { problems, tail };
+}
 
 function run(command, args, extra = {}, capture = false) {
   const r = spawnSync(command, args, { encoding: 'utf8', stdio: capture ? 'pipe' : 'inherit', env: { ...process.env, ...extra } });
@@ -60,7 +100,6 @@ if (import.meta.main) {
     run('go', ['test', '-c', '-o', binary, './services/cloud-api/internal/app']);
   }
   console.log(`R7_SIM_SOURCE sha=${sha} dirty=${dirty} soak=${process.env.R7_SIM_SOAK_MINUTES ? process.env.R7_SIM_SOAK_MINUTES + 'min' : (process.env.R7_SIM_SOAK_SECONDS ?? '90') + 's'}`);
-  const evidence = resolve('test-results-r7/sim-evidence.jsonl');
   mkdirSync(resolve('test-results-r7'), { recursive: true });
   try {
     run('docker', ['pull', '-q', images.mosquitto], {}, true);
@@ -82,17 +121,20 @@ exec docker run --rm --init --label r7-sim-e2e=${name} --network host --user "$(
     const only = process.env.R7_SIM_ONLY ? process.env.R7_SIM_ONLY.split(',') : null;
     if (only && only.some((t) => !REQUIRED.includes(t))) throw Error('R7_SIM_ONLY must name required tests');
     const selected = only ?? REQUIRED;
-    const output = run(binary, ['-test.v', '-test.count=1', '-test.timeout=90m', '-test.run=' + runPattern(selected)], {
-      R7_SIM_E2E: '1', MOSQUITTO_BIN: wrapper, R7_SIM_EVIDENCE: evidence,
+    const runDir = join(resolve('test-results-r7'), `run-${new Date().toISOString().replace(/[:.]/g, '-')}-${process.pid}`);
+    const testEnv = { ...process.env, R7_SIM_E2E: '1', MOSQUITTO_BIN: wrapper, R7_SIM_EVIDENCE: join(runDir, 'sim-evidence.jsonl'),
       // Restore drill: pg_dump / pg_restore of the server's own version, inside the DB container.
       R7_RESTORE_DRILL: '1', R7_PG_EXEC: `docker exec -i -e PGPASSWORD=${password} ${pg}`,
-      A1_TEST_DATABASE_URL: `postgres://a1test:${password}@127.0.0.1:${port}/a1test?sslmode=disable`,
-    }, true);
-    process.stdout.write(output);
-    const problems = gateProblems(output, selected, { exact: true });
-    if (problems.length) throw Error('R7 SIM-E2E gate failed: ' + problems.join('; '));
+      A1_TEST_DATABASE_URL: `postgres://a1test:${password}@127.0.0.1:${port}/a1test?sslmode=disable` };
+    const timeoutMin = Number(process.env.R7_SIM_SOAK_MINUTES || 0) + 60;
+    const result = runToFile(binary, ['-test.v', '-test.count=1', `-test.timeout=${timeoutMin}m`, '-test.run=' + runPattern(selected)], testEnv, runDir,
+      { timeoutMs: (timeoutMin + 5) * 60_000, sha, redact: [password] });
+    const { problems, tail } = evaluateRun(result, selected);
+    console.log(`R7_SIM_RUN dir=${runDir} sha=${sha} exit=${result.exitCode} signal=${result.signal ?? 'none'} timedOut=${result.timedOut} logBytes=${result.logBytes} started=${result.startedAt} finished=${result.finishedAt}`);
+    console.log('--- last lines of test.log ---\n' + tail);
+    if (problems.length) throw Error('R7 SIM-E2E gate failed: ' + problems.join('; ') + ` (full log: ${result.logPath})`);
     for (const t of selected) console.log('R7_SIM_E2E_REQUIRED_PASS ' + t);
-    if (only) { console.log(`R7_SIM_E2E_SUBSET=PASS tests=${selected.join(',')} sha=${sha} evidence=${evidence}`); }
+    if (only) { console.log(`R7_SIM_E2E_SUBSET=PASS tests=${selected.join(',')} sha=${sha} dir=${runDir}`); }
     else {
       console.log('R7_SIM_E2E=PASS MOSQUITTO=REAL POSTGRES=REAL EDGE_AGENT=REAL BFF=REAL');
       console.log('R7_ISOLATED_RESTORE_DRILL=PASS');
