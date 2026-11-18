@@ -365,6 +365,24 @@ func TestDatabaseProductionPrivileges(t *testing.T) {
 		t.Fatal("restricted admin handoff", string(response))
 	}
 
+	// V1.1 00015: approval history is immutable for every production role. The
+	// application roles have no UPDATE/DELETE/TRUNCATE privilege at all
+	// (42501); the migrator (table owner) is stopped by the evidence trigger
+	// (BB002); approvals can still be appended through the normal decision path.
+	for _, pool := range []*pgxpool.Pool{runtime, maintenance, staff} {
+		for _, sql := range []string{"UPDATE approvals SET reason='改写'", "DELETE FROM approvals", "TRUNCATE approvals"} {
+			deny(pool, sql)
+		}
+	}
+	for _, sql := range []string{"UPDATE approvals SET reason='改写'", "UPDATE approvals SET decision='REJECT'",
+		"DELETE FROM approvals", "TRUNCATE approvals"} {
+		_, err := migrator.Exec(ctx, sql)
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || pgErr.Code != "BB002" {
+			t.Fatalf("migrator rewrote approval history with %q: %v", sql, err)
+		}
+	}
+
 	summary, err := applyIdentity(ctx, maintenance, identityFixture(), "synthetic-operator", false)
 	if err != nil || summary.UsersChanged != 1 || summary.TeamsChanged != 1 {
 		t.Fatal("maintenance could not provision approved identity", summary, err)

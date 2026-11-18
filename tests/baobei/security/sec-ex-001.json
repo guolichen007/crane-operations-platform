@@ -1,0 +1,42 @@
+{
+  "id": "SEC-EX-001",
+  "status": "APPROVED",
+  "approved_by": "OWNER",
+  "approved_at": "2026-11-18",
+  "approval_record": "docs/项目报备中心/54-V1.1-picomatch-GHSA-fc5q-39xc-vjpf限时风险审批申请.md 方案 A；OWNER 书面批准于 2026-11-18（V1.1 最终质量缺陷与安全门禁收口执行令）",
+  "acceptance_link": "docs/项目报备中心/55-V1.1最终质量缺陷与安全门禁收口.md",
+  "advisory": {
+    "ghsa": "GHSA-fc5q-39xc-vjpf",
+    "cve": "CVE-2026-112366",
+    "url": "https://github.com/advisories/GHSA-fc5q-39xc-vjpf",
+    "npm_source": 1247710,
+    "package": "picomatch",
+    "vulnerable_range": "<=4.0.7",
+    "max_severity": "high"
+  },
+  "scope": "devDependency chain of apps/project-intake-web only",
+  "lockfile": "apps/project-intake-web/package-lock.json",
+  "nodes": {
+    "node_modules/@vue/language-core/node_modules/picomatch": "4.0.7",
+    "node_modules/tinyglobby/node_modules/picomatch": "4.0.7",
+    "node_modules/vite/node_modules/picomatch": "4.0.7",
+    "node_modules/vitest/node_modules/picomatch": "4.0.7"
+  },
+  "integrity": "sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA==",
+  "propagated": [
+    "@typescript-eslint/eslint-plugin",
+    "@typescript-eslint/parser",
+    "@typescript-eslint/type-utils",
+    "@typescript-eslint/typescript-estree",
+    "@typescript-eslint/utils",
+    "@vue/language-core",
+    "fdir",
+    "tinyglobby",
+    "typescript-eslint",
+    "vite",
+    "vitest",
+    "vue-tsc"
+  ],
+  "expires_on": "2026-12-18",
+  "fix_grace_days": 7
+}

@@ -20,6 +20,7 @@ import { rememberScroll } from './scroll-memory';
 import { routeAllowed } from './navigation';
 import { loginErrorMessage } from './login-errors';
 import { clearStaffDraft, draftPath, readStaffDraft } from './staff-role-draft';
+import NotFound from './NotFound.vue';
 import './style.css';
 const pinia = createPinia();
 const router = createRouter({
@@ -45,6 +46,8 @@ const router = createRouter({
     { path: '/new', component: Wizard },
     { path: '/projects/:id/edit', component: Wizard },
     { path: '/projects/:id', component: Detail },
+    // V1.1 final: unknown addresses get a 404 page (after the same guards).
+    { path: '/:unknown(.*)*', name: 'not-found', component: NotFound },
   ],
 });
 // AC-13: the list's scroll position is remembered when leaving it.

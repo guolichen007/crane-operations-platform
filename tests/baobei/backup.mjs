@@ -94,7 +94,7 @@ const productTables = [
   'identity_links',
   'account_operations',
   // V1.1: 00009 review routes, 00010 profile audit, 00011 customers,
-  // 00012 technical brief (00013 adds a trigger only, no table).
+  // 00012 technical brief (00013, 00014, 00015 add triggers only, no table).
   'project_review_routes',
   'profile_audit',
   'organization_team_profiles',

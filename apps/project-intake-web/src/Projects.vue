@@ -89,9 +89,16 @@ async function load() {
     if (view.value === 'bin') params.set('bin', 'discarded');
     const b = await app.api<{ items: Project[]; total: number; asOf: string }>('/api/v1/projects?' + params);
     if (n === generation) {
+      // AC-13 (UAT, deep scroll): replacing every row while the user is deep in
+      // the list (e.g. a slow load finishing after a preview was opened) briefly
+      // collapses the page and the browser clamps the scroll to the top. Keep
+      // the position the user had across the replacement.
+      const keep = window.scrollY;
       items.value = b.items;
       total.value = b.total;
       asOf.value = b.asOf;
+      await nextTick();
+      if (Math.abs(window.scrollY - keep) > 1) window.scrollTo(0, keep);
       // AC-13: back from a project restores where the user was in this list.
       if (!restored) {
         restored = true;
@@ -231,7 +238,7 @@ const asOfText = computed(() => (asOf.value ? new Date(asOf.value).toLocaleStrin
   <div v-if="columns" class="column-settings">
     <label><input v-model="showLocation" type="checkbox" />地区</label><label><input v-model="showOwner" type="checkbox" />负责人</label>
   </div>
-  <p v-if="loading" role="status" class="muted">正在加载报备…</p>
+  <p v-if="loading" role="status" :class="['muted', { 'list-refreshing': items.length }]">正在加载报备…</p>
   <div v-if="failure" class="form-alert" role="alert">
     {{ failure }} <ActionButton action-id="project.reload" :run="load">重新加载</ActionButton>
   </div>

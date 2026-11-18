@@ -2962,3 +2962,39 @@ td.unassigned,
   .tech-row { grid-template-columns: 1fr 1fr; }
   .tech-row input { min-height: 44px; }
 }
+/* AC-13 (UAT): a refresh of an already shown list must not move the rows the
+   user is looking at; the progress note floats instead of taking a line. */
+.list-refreshing {
+  position: fixed;
+  top: 12px;
+  right: 16px;
+  z-index: 30;
+  margin: 0;
+  padding: 4px 10px;
+  background: #fff;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  box-shadow: 0 2px 8px #15243b1f;
+}
+/* V1.1 final: 404 inside the shell. */
+.not-found {
+  margin-top: 24px;
+}
+.not-found h1 {
+  margin: 10px 0 6px;
+  font-size: 22px;
+}
+.not-found-actions {
+  justify-content: center;
+  margin-top: 18px;
+}
+/* V1.1 final UX: touch targets in the member statistics table on phones. */
+@media (max-width: 700px) {
+  .stats-table .stats-open { min-height: 44px; min-width: 44px; }
+}
+/* V1.1 final UX: keyboard focus stays visible on the current navigation entry
+   (the active style removed the shared focus ring on phones). */
+.sidebar nav button:focus-visible,
+.sidebar nav .active:focus-visible {
+  box-shadow: var(--focus);
+}

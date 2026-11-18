@@ -115,7 +115,11 @@ const tasks = {
     run(process.execPath, ['tests/baobei/auth-browser.mjs']);
   },
   security() {
-    npm('audit', '--audit-level=high');
+    // SEC-EX-001 (OWNER-approved, expires 2026-12-18): npm audit at level high,
+    // fail-closed, with exactly one approved dev-chain advisory. See
+    // tests/baobei/security/audit-gate-core.mjs.
+    run(process.execPath, ['tests/baobei/security/audit-gate.mjs']);
+    run(process.execPath, ['--test', 'tests/baobei/security/audit-gate.test.mjs']);
     run(process.execPath, ['tests/baobei/contract.mjs']);
     env.BAOBEI_GOVULNCHECK
       ? run(env.BAOBEI_GOVULNCHECK, ['./...'], api)
