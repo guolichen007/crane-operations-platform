@@ -56,7 +56,7 @@ async function mock(page: Page, opts: { roles?: string[]; failProvisionOnce?: bo
       const np = person(b.username, { displayName: b.profile.displayName, systemRoles: b.systemRoles, portfolioCount: b.portfolioGrants.length });
       people.push(np);
       portfolio[np.id] = Object.fromEntries(b.portfolioGrants.map((g) => [g.scopeId, g.role]));
-      return r.fulfill({ status: 201, json: { provisionId: 'prov-' + key, state: 'COMPLETED', person: np, temporaryPassword: 'Ab3dEf7hJk9mNp2q', passwordDelivered: true, replayed: false } });
+      return r.fulfill({ status: 201, json: { provisionId: 'prov-' + key, state: 'COMPLETED', person: np, temporaryPassword: 'AAAAAAAAAAAAAAA1', passwordDelivered: true, replayed: false } });
     }
     const one = p.match(/^admin\/people\/([^/]+)(?:\/(.+))?$/);
     if (one) {
@@ -79,7 +79,7 @@ async function mock(page: Page, opts: { roles?: string[]; failProvisionOnce?: bo
         target.version++;
         return r.fulfill({ json: { person: target, identitySync: 'SYNCED', sessionsRevoked: action === 'disable' ? 2 : 0 } });
       }
-      if (action === 'reset-password') return r.fulfill({ json: { person: target, identitySync: 'SYNCED', sessionsRevoked: 1, temporaryPassword: 'Zx8cVb6nMq4wEr2t' } });
+      if (action === 'reset-password') return r.fulfill({ json: { person: target, identitySync: 'SYNCED', sessionsRevoked: 1, temporaryPassword: 'BBBBBBBBBBBBBBB2' } });
       if (action === 'revoke-sessions') return r.fulfill({ json: { person: target, identitySync: 'SYNCED', sessionsRevoked: 3 } });
       if (action === 'system-roles') {
         const b = body as { roles: string[]; expectedRoles: string[] };
@@ -137,7 +137,7 @@ test('系统管理员：三步开户 → 一次性初始密码 → 人员详情�
   await expect(otp.getByTestId('otp-username')).toHaveText('zhangsan');
   await expect(otp.getByTestId('otp-password')).toHaveText('••••••••••••••••');
   await otp.getByTestId('otp-reveal').click();
-  await expect(otp.getByTestId('otp-password')).toHaveText('Ab3dEf7hJk9mNp2q');
+  await expect(otp.getByTestId('otp-password')).toHaveText('AAAAAAAAAAAAAAA1');
   await expect(otp.getByTestId('otp-close')).toBeDisabled();
   await page.screenshot({ path: shot('3-one-time-password') });
   const posts = api.calls.filter((c) => c.method === 'POST' && c.path === 'admin/people');
@@ -145,14 +145,14 @@ test('系统管理员：三步开户 → 一次性初始密码 → 人员详情�
   expect(posts[0].headers['idempotency-key']).toBe(posts[1].headers['idempotency-key']);
   // The password is never written to Web Storage.
   const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }));
-  expect(stored).not.toContain('Ab3dEf7hJk9mNp2q');
+  expect(stored).not.toContain('AAAAAAAAAAAAAAA1');
   await otp.getByTestId('otp-confirm').check();
   await otp.getByTestId('otp-close').click();
   await expect(page.getByTestId('person-detail')).toBeVisible();
   await expect(page.getByTestId('person-username')).toHaveText('zhangsan');
   await expect(page.getByTestId('detail-portfolio')).toContainText('华东项目组合');
   // After closing, the password is gone from the page.
-  await expect(page.locator('body')).not.toContainText('Ab3dEf7hJk9mNp2q');
+  await expect(page.locator('body')).not.toContainText('AAAAAAAAAAAAAAA1');
 });
 
 test('人员详情：停用/启用（If-Match）、重置密码只显示一次、撤销会话、系统角色与项目组合角色', async ({ page }) => {
@@ -170,7 +170,7 @@ test('人员详情：停用/启用（If-Match）、重置密码只显示一次�
   await d.getByTestId('person-reset').click();
   const otp = page.getByTestId('one-time-password');
   await otp.getByTestId('otp-reveal').click();
-  await expect(otp.getByTestId('otp-password')).toHaveText('Zx8cVb6nMq4wEr2t');
+  await expect(otp.getByTestId('otp-password')).toHaveText('BBBBBBBBBBBBBBB2');
   await otp.getByTestId('otp-confirm').check();
   await otp.getByTestId('otp-close').click();
   await d.getByTestId('person-revoke').click();
