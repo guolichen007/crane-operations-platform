@@ -1,0 +1,21 @@
+# Pre-P1 realm (realm + crane-bff only, custom passwordPolicy length(12), ssoSessionIdleTimeout 1234, existing owner login),
+# then provision-keycloak --account-service-only twice, then OWNER adopt-admin through the account service.
+# (Least-privilege probe of the same service account: keycloak-26.8.1-real-run.txt.)
+KC_READY after 31s
+Keycloak realm/client provisioned; no users or project grants created.
+policy 204
+owner 201
+BEFORE
+length(12) 1234 True
+298cc2b7bdd2ae8c
+UNCHANGED client:crane-bff sha256=d0d3c2cf7e65bf1e
+UNCHANGED realm sha256=9d2375928b798260
+UNCHANGED required-actions sha256=a10eebcca1bbade0
+UNCHANGED users+credentials sha256=6a404d7f9679895f
+crane-account-service converged; realm, crane-bff, users and policies unchanged; no credential printed.
+crane-account-service converged; realm, crane-bff, users and policies unchanged; no credential printed.
+AFTER
+length(12) 1234 True
+298cc2b7bdd2ae8c
+PASS host adopt-admin keeps the existing password and marks the account managed
+--- PASS: TestRealKeycloakAccountLifecycle (15.15s)

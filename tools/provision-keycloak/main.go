@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -58,29 +59,21 @@ func (c client) request(ctx context.Context, method, path string, body any, outp
 	return response.StatusCode, nil
 }
 
-func execute(ctx context.Context) error {
-	base, public := os.Getenv("KEYCLOAK_ADMIN_URL"), os.Getenv("PUBLIC_URL")
-	if !endpoint(base) || !platform.SecureURL(public, false) {
-		return errors.New("explicit admin endpoint and public HTTPS origin required")
-	}
+func adminClient(ctx context.Context, base string) (client, error) {
 	admin, err := platform.PrivateSecret(os.Getenv("KEYCLOAK_BOOTSTRAP_PASSWORD_FILE"), 32)
 	if err != nil {
-		return err
-	}
-	secret, err := platform.PrivateSecret(os.Getenv("OIDC_CLIENT_SECRET_FILE"), 32)
-	if err != nil {
-		return err
+		return client{}, err
 	}
 	h := &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	form := url.Values{"grant_type": {"password"}, "client_id": {"admin-cli"}, "username": {"bootstrap-crane"}, "password": {string(admin)}}
 	r, err := http.NewRequestWithContext(ctx, "POST", base+"/realms/master/protocol/openid-connect/token", strings.NewReader(form.Encode()))
 	if err != nil {
-		return err
+		return client{}, err
 	}
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	response, err := h.Do(r)
 	if err != nil {
-		return errors.New("keycloak admin authentication unavailable")
+		return client{}, errors.New("keycloak admin authentication unavailable")
 	}
 	var authentication struct {
 		AccessToken string `json:"access_token"`
@@ -88,9 +81,24 @@ func execute(ctx context.Context) error {
 	decodeErr := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&authentication)
 	_ = response.Body.Close()
 	if response.StatusCode != 200 || decodeErr != nil || authentication.AccessToken == "" {
-		return errors.New("keycloak admin authentication rejected")
+		return client{}, errors.New("keycloak admin authentication rejected")
 	}
-	c := client{base: base, token: authentication.AccessToken, http: h}
+	return client{base: base, token: authentication.AccessToken, http: h}, nil
+}
+
+func execute(ctx context.Context) error {
+	base, public := os.Getenv("KEYCLOAK_ADMIN_URL"), os.Getenv("PUBLIC_URL")
+	if !endpoint(base) || !platform.SecureURL(public, false) {
+		return errors.New("explicit admin endpoint and public HTTPS origin required")
+	}
+	secret, err := platform.PrivateSecret(os.Getenv("OIDC_CLIENT_SECRET_FILE"), 32)
+	if err != nil {
+		return err
+	}
+	c, err := adminClient(ctx, base)
+	if err != nil {
+		return err
+	}
 	template, err := os.ReadFile(os.Getenv("KEYCLOAK_REALM_TEMPLATE"))
 	if err != nil {
 		return errors.New("realm template unavailable")
@@ -142,22 +150,73 @@ func execute(ctx context.Context) error {
 	} else {
 		return errors.New("realm lookup rejected")
 	}
-	return provisionAccountService(ctx, c)
+	return provisionAccountService(ctx, c, false)
+}
+
+// executeAccountServiceOnly is the deployment mode for an EXISTING crane realm: it touches only
+// crane-account-service (client, its service-account role mappings and scope mappings) and adds the
+// two admin-only user-profile attributes when missing. It never writes the realm settings, the
+// crane-bff client, required actions, password policy or any user, and does not read the OIDC
+// client secret. Before/after digests of those objects are compared and printed; any difference is
+// an error.
+func executeAccountServiceOnly(ctx context.Context) error {
+	base := os.Getenv("KEYCLOAK_ADMIN_URL")
+	if !endpoint(base) {
+		return errors.New("explicit admin endpoint required")
+	}
+	c, err := adminClient(ctx, base)
+	if err != nil {
+		return err
+	}
+	if status, err := c.request(ctx, "GET", "/admin/realms/crane", nil, nil); err != nil || status != 200 {
+		return errors.New("crane realm must already exist (account-service-only never creates it)")
+	}
+	before, err := protectedDigest(ctx, c)
+	if err != nil {
+		return err
+	}
+	if err = provisionAccountService(ctx, c, true); err != nil {
+		return err
+	}
+	after, err := protectedDigest(ctx, c)
+	if err != nil {
+		return err
+	}
+	for k, v := range before {
+		if after[k] != v {
+			return errors.New("protected Keycloak configuration changed: " + k)
+		}
+	}
+	keys := make([]string, 0, len(before))
+	for k := range before {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		_, _ = os.Stdout.WriteString("UNCHANGED " + k + " sha256=" + before[k][:16] + "\n")
+	}
+	return nil
 }
 
 func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	precheck := false
+	precheck, accountOnly := false, false
 	for _, arg := range os.Args[1:] {
-		if arg == "--preview-precheck" {
+		switch arg {
+		case "--preview-precheck":
 			precheck = true
+		case "--account-service-only":
+			accountOnly = true
 		}
 	}
 	var err error
-	if precheck {
+	switch {
+	case precheck:
 		err = previewPrecheck(ctx)
-	} else {
+	case accountOnly:
+		err = executeAccountServiceOnly(ctx)
+	default:
 		err = execute(ctx)
 	}
 	if err != nil {
@@ -166,6 +225,8 @@ func main() {
 	}
 	if precheck {
 		_, _ = os.Stdout.WriteString("Keycloak preview realm/client precheck passed; read-only, no writes.\n")
+	} else if accountOnly {
+		_, _ = os.Stdout.WriteString("crane-account-service converged; realm, crane-bff, users and policies unchanged; no credential printed.\n")
 	} else {
 		_, _ = os.Stdout.WriteString("Keycloak realm/client provisioned; no users or project grants created.\n")
 	}

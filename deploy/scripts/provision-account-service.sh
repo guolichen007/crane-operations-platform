@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# One-shot, host-administrator run of provision-keycloak for crane-dev: converges the crane realm,
-# the crane-bff client (unchanged rules) and the restricted crane-account-service client
-# (view/query/manage-users only, scope mapping, admin-only user attributes).
+# One-shot, host-administrator run of `provision-keycloak --account-service-only` for crane-dev.
+# Scope is limited to the restricted crane-account-service client (view/query/manage-users only,
+# scope mapping) and the two admin-only user-profile attributes when missing. It NEVER writes the
+# realm settings, the crane-bff OIDC client, required actions, password policy or any user/password
+# (before/after digests of those objects are compared and printed; any difference fails), and does
+# not read the OIDC client secret. Requires the crane realm to exist already.
 #
 #   sudo deploy/scripts/provision-account-service.sh <private.env>
 #
@@ -21,8 +24,7 @@ env_file="${1:-}"
 [[ $(id -u) == 0 ]] || die "run as the host administrator (needs read access to private secret files)"
 envval() { sed -n "s/^$1=//p" "$env_file" | tail -1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/"; }
 secrets="$(envval CRANE_SECRET_DIR)"; secrets="${secrets:-/srv/u-dao/secrets/crane-ops}"
-public="$(envval CRANE_PUBLIC_URL)"; public="${public:-https://crane.youdaozd.com}"
-for f in keycloak_bootstrap_password oidc_client_secret account_service_secret; do
+for f in keycloak_bootstrap_password account_service_secret; do
   [[ -f "$secrets/$f" && ! -L "$secrets/$f" ]] || die "$secrets/$f missing (run deploy/scripts/provision-secrets.sh first)"
 done
 state_dir="$(envval CRANE_LOCAL_DEPLOY_DIR)"; state_dir="${state_dir:-/srv/u-dao/releases/crane-local}"
@@ -32,12 +34,10 @@ docker image inspect "$image" >/dev/null 2>&1 || die "local image $image not pre
 network="$(docker network ls --format '{{.Name}}' | grep -Fx u-dao-crane-ops_backend)" || die "Crane backend network not found"
 docker run --rm --pull never --network "$network" --user 0:0 --read-only --cap-drop ALL --cap-add DAC_READ_SEARCH --security-opt no-new-privileges:true \
   --entrypoint provision-keycloak \
-  -e KEYCLOAK_ADMIN_URL=http://keycloak:8080 -e PUBLIC_URL="$public" \
-  -e KEYCLOAK_BOOTSTRAP_PASSWORD_FILE=/s/keycloak_bootstrap_password -e OIDC_CLIENT_SECRET_FILE=/s/oidc_client_secret \
-  -e ACCOUNT_SERVICE_SECRET_FILE=/s/account_service_secret -e KEYCLOAK_REALM_TEMPLATE=/t/realm.template.json \
+  -e KEYCLOAK_ADMIN_URL=http://keycloak:8080 \
+  -e KEYCLOAK_BOOTSTRAP_PASSWORD_FILE=/s/keycloak_bootstrap_password \
+  -e ACCOUNT_SERVICE_SECRET_FILE=/s/account_service_secret \
   -v "$secrets/keycloak_bootstrap_password:/s/keycloak_bootstrap_password:ro" \
-  -v "$secrets/oidc_client_secret:/s/oidc_client_secret:ro" \
   -v "$secrets/account_service_secret:/s/account_service_secret:ro" \
-  -v "$root/deploy/production/realm.template.json:/t/realm.template.json:ro" \
-  "$image"
+  "$image" --account-service-only
 echo "crane-account-service converged; restart cloud-api with: node deploy/scripts/local-dev-deploy.mjs compose $env_file -- up -d --no-deps cloud-api"

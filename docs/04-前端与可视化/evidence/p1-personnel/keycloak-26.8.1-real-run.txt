@@ -26,12 +26,14 @@ PASS cannot grant realm-admin to a user it created
 PASS cannot grant manage-realm to a user it created
 PASS cannot grant manage-clients to a user it created
 PASS after escalation attempts a fresh token still cannot create clients
---- PASS: TestRealKeycloakLeastPrivilege (0.52s)
+--- PASS: TestRealKeycloakLeastPrivilege (0.50s)
 PASS
+create owner 201
 PASS web account create (real Keycloak user enabled after grants)
 PASS first login password change
 PASS password reset invalidates old password
 PASS disable blocks identity-provider login; enable restores it
 PASS provision crash recovery (Keycloak success, DB not yet bound) and retry
---- PASS: TestRealKeycloakAccountLifecycle (13.69s)
+PASS host adopt-admin keeps the existing password and marks the account managed
+--- PASS: TestRealKeycloakAccountLifecycle (14.76s)
 PASS

@@ -17,10 +17,15 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"net/url"
 	"os"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/guolichen007/crane-operations-platform/internal/platform"
 )
@@ -36,7 +41,7 @@ type role struct {
 	ClientRole  bool   `json:"clientRole,omitempty"`
 }
 
-func provisionAccountService(ctx context.Context, c client) error {
+func provisionAccountService(ctx context.Context, c client, accountOnly bool) error {
 	path := os.Getenv("ACCOUNT_SERVICE_SECRET_FILE")
 	if path == "" {
 		return nil // optional: personnel account operations stay disabled until configured
@@ -137,11 +142,11 @@ func provisionAccountService(ctx context.Context, c client) error {
 	if err = converge("/admin/realms/crane/clients/" + url.PathEscape(clientUUID) + "/scope-mappings/clients/" + url.PathEscape(rm)); err != nil {
 		return err
 	}
-	return declareProfileAttributes(ctx, c)
+	return declareProfileAttributes(ctx, c, accountOnly)
 }
 
 // declareProfileAttributes adds admin-only crane_managed / crane_user_id to the user profile.
-func declareProfileAttributes(ctx context.Context, c client) error {
+func declareProfileAttributes(ctx context.Context, c client, addOnly bool) error {
 	var profile map[string]any
 	status, err := c.request(ctx, "GET", "/admin/realms/crane/users/profile", nil, &profile)
 	if err != nil || status != 200 {
@@ -157,7 +162,7 @@ func declareProfileAttributes(ctx context.Context, c client) error {
 				// Personnel are opened by administrators with name + username only: email / first /
 				// last name must not be required at first login (no extra "update profile" step), and
 				// people may not edit them themselves (the administrator owns the record).
-				if n == "email" || n == "firstName" || n == "lastName" {
+				if !addOnly && (n == "email" || n == "firstName" || n == "lastName") {
 					if _, req := m["required"]; req {
 						delete(m, "required")
 						changed = true
@@ -188,4 +193,74 @@ func declareProfileAttributes(ctx context.Context, c client) error {
 		return errors.New("user profile update rejected")
 	}
 	return nil
+}
+
+// protectedDigest hashes the Keycloak objects the account-service-only mode must never change:
+// realm settings (incl. password policy, brute force, required actions, SSO lifetimes), the
+// crane-bff client, the realm's required-action list, and the set of non-service users with their
+// enabled flag and credential types. Volatile fields (attribute order) are normalized.
+func protectedDigest(ctx context.Context, c client) (map[string]string, error) {
+	out := map[string]string{}
+	fetch := func(path string) (any, error) {
+		var v any
+		status, err := c.request(ctx, "GET", path, nil, &v)
+		if err != nil || status != 200 {
+			return nil, errors.New("protected object lookup rejected")
+		}
+		return v, nil
+	}
+	sum := func(v any) string {
+		b, _ := json.Marshal(v) // encoding/json sorts map keys: stable
+		h := sha256.Sum256(b)
+		return hex.EncodeToString(h[:])
+	}
+	realm, err := fetch("/admin/realms/crane")
+	if err != nil {
+		return nil, err
+	}
+	out["realm"] = sum(realm)
+	var bff []map[string]any
+	if status, err := c.request(ctx, "GET", "/admin/realms/crane/clients?clientId=crane-bff", nil, &bff); err != nil || status != 200 || len(bff) != 1 {
+		return nil, errors.New("crane-bff lookup rejected")
+	}
+	delete(bff[0], "secret") // the secret is not returned in full anyway; compared by presence below
+	out["client:crane-bff"] = sum(bff[0])
+	actions, err := fetch("/admin/realms/crane/authentication/required-actions")
+	if err != nil {
+		return nil, err
+	}
+	out["required-actions"] = sum(actions)
+	var users []map[string]any
+	if status, err := c.request(ctx, "GET", "/admin/realms/crane/users?briefRepresentation=true&max=10000", nil, &users); err != nil || status != 200 {
+		return nil, errors.New("user lookup rejected")
+	}
+	type u struct {
+		ID, Username string
+		Enabled      bool
+		Creds        []string
+	}
+	list := []u{}
+	for _, x := range users {
+		name, _ := x["username"].(string)
+		if strings.HasPrefix(name, "service-account-") {
+			continue
+		}
+		id, _ := x["id"].(string)
+		en, _ := x["enabled"].(bool)
+		var creds []map[string]any
+		if status, err := c.request(ctx, "GET", "/admin/realms/crane/users/"+url.PathEscape(id)+"/credentials", nil, &creds); err != nil || status != 200 {
+			return nil, errors.New("credential lookup rejected")
+		}
+		types := []string{}
+		for _, cr := range creds {
+			t, _ := cr["type"].(string)
+			created, _ := cr["createdDate"].(float64)
+			types = append(types, t+"@"+strconv.FormatInt(int64(created), 10))
+		}
+		sort.Strings(types)
+		list = append(list, u{id, name, en, types})
+	}
+	sort.Slice(list, func(i, j int) bool { return list[i].ID < list[j].ID })
+	out["users+credentials"] = sum(list)
+	return out, nil
 }

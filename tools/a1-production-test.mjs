@@ -62,6 +62,15 @@ try {
   run(docker, [...compose, 'up', '-d', '--wait', '--wait-timeout', '300', 'postgres', 'keycloak', 'mosquitto', 'ingress']);
   run(docker, [...compose, 'run', '--rm', '--no-deps', 'provisioner']);
   run(docker, [...compose, 'run', '--rm', '--no-deps', 'provisioner']); // Repeat must be safe and retain exact client secret.
+  // P1: deployment mode on an EXISTING realm — only crane-account-service is converged; realm,
+  // crane-bff, required actions, users and credentials are digested before/after and must be unchanged.
+  const accountOnly = run(docker, [...compose, 'run', '--rm', '--no-deps', '--entrypoint', 'provision-keycloak', '-e', 'KEYCLOAK_ADMIN_URL=http://keycloak:8080',
+    '-e', 'KEYCLOAK_BOOTSTRAP_PASSWORD_FILE=/fixture/secrets/keycloak_bootstrap_password', '-e', 'ACCOUNT_SERVICE_SECRET_FILE=/fixture/secrets/account_service_secret',
+    'provisioner', '--account-service-only'], {}, true);
+  process.stdout.write(accountOnly);
+  for (const k of ['realm', 'client:crane-bff', 'required-actions', 'users+credentials']) assert.match(accountOnly, new RegExp('UNCHANGED ' + k.replace('+', '\\+') + ' '));
+  assert.match(accountOnly, /realm, crane-bff, users and policies unchanged/);
+  console.log('P1_ACCOUNT_SERVICE_ONLY_PROVISION=PASS PROTECTED_CONFIG=UNCHANGED');
   // P1: the restricted crane-account-service is proven least-privilege against the real realm.
   const probeOut = run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-tool', '--operation', 'probe-account-service'], {}, true);
   process.stdout.write(probeOut);
