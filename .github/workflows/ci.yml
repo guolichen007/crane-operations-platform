@@ -23,7 +23,7 @@ jobs:
       - run: npm ci
       - run: node tools/diagnostics/repository.mjs
       - run: node tools/codegen/contracts.mjs --check && node tools/codegen/openapi.mjs --check && node tools/codegen/geoindex.mjs --check
-      - run: node --test tests/contract/contracts.test.mjs tests/contract/asset-runtime.test.mjs tests/contract/production-preflight.test.mjs tests/contract/cert-ops.test.mjs tests/contract/b4-preview-contract.test.mjs tests/contract/b4-codes.test.mjs tests/contract/r2-db-gate.test.mjs tests/contract/operations-summary-contract.test.mjs tests/contract/dev-release.test.mjs tests/contract/legacy-preview.test.mjs tests/contract/web-nginx.test.mjs tests/contract/asset-types.test.mjs tests/contract/r7-sim-e2e.test.mjs tests/contract/r7-release.test.mjs tests/contract/local-dev-deploy.test.mjs tests/contract/sim-tools.test.mjs
+      - run: node --test tests/contract/contracts.test.mjs tests/contract/asset-runtime.test.mjs tests/contract/production-preflight.test.mjs tests/contract/cert-ops.test.mjs tests/contract/b4-preview-contract.test.mjs tests/contract/b4-codes.test.mjs tests/contract/r2-db-gate.test.mjs tests/contract/operations-summary-contract.test.mjs tests/contract/dev-release.test.mjs tests/contract/legacy-preview.test.mjs tests/contract/web-nginx.test.mjs tests/contract/asset-types.test.mjs tests/contract/r7-sim-e2e.test.mjs tests/contract/r7-release.test.mjs tests/contract/local-dev-deploy.test.mjs tests/contract/sim-tools.test.mjs tests/contract/npm-audit-gate.test.mjs
       - name: 源码级调用约束（AST，仓库根执行）
         run: go test ./tools/astguard/ && go run ./tools/astguard
       - run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
@@ -126,12 +126,24 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with: { node-version: '24.19.0', cache: npm }
       - run: go run github.com/zricethezav/gitleaks/v8@v8.30.1 git . --redact
-      - run: npm ci && npm audit --audit-level=high
+      # CRANE-SEC-001 (OWNER-approved, expires 2026-12-02): full npm audit evaluated by the gate; only
+      # GHSA-fc5q-39xc-vjpf on dev-only picomatch@4.0.7 is tolerated; production audit must be clean.
+      - run: |
+          npm ci
+          node tools/npm-audit-gate.mjs --report-dir test-results-security
+          node tools/bundle-dev-deps-check.mjs --report-dir test-results-security
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
       - run: docker run --rm -v "$PWD:/repo:ro" aquasec/trivy:0.74.0 fs --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --skip-dirs /repo/node_modules /repo
       - run: docker build -f deploy/Dockerfile.backend -t crane-cloud:ci .
       - run: docker save crane-cloud:ci -o "$RUNNER_TEMP/crane-cloud.tar"
       - run: docker run --rm -v "$RUNNER_TEMP/crane-cloud.tar:/input.tar:ro" aquasec/trivy:0.74.0 image --input /input.tar --severity HIGH,CRITICAL --exit-code 1
+      - name: 归档 npm audit 原始报告与浏览器构建模块清单
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: security-npm-audit-${{ github.sha }}
+          if-no-files-found: error
+          path: test-results-security/**
   a1-security:
     runs-on: ubuntu-latest
     timeout-minutes: 20

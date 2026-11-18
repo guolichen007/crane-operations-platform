@@ -1,0 +1,20 @@
+{
+  "id": "CRANE-SEC-001",
+  "status": "APPROVED",
+  "approvedBy": "OWNER guolichen007",
+  "approvedAt": "2026-11-18",
+  "responsible": "Crane 负责人（安全门禁责任人）/ CC 执行",
+  "advisory": "GHSA-fc5q-39xc-vjpf",
+  "cve": "CVE-2026-112366",
+  "package": "picomatch",
+  "installedVersion": "4.0.7",
+  "vulnerableRange": "<=4.0.7",
+  "severity": "high",
+  "expires": "2026-12-02T00:00:00Z",
+  "scope": "development dependencies only (package-lock dev=true); never production",
+  "propagation": ["picomatch", "fdir", "tinyglobby", "vite", "vitest", "@vue/language-core", "vue-tsc", "@typescript-eslint/typescript-estree"],
+  "forbiddenInBrowserBundle": ["picomatch", "fdir", "tinyglobby", "vitest", "@vue/language-core", "vue-tsc"],
+  "reason": "No patched picomatch release exists (latest 4.0.7, advisory published 2026-10-19). The package is reachable only through build/test tooling (vite, vitest, vue-tsc, typescript-eslint). The web runtime image copies only the built dist; npm audit --omit=dev reports no HIGH/CRITICAL.",
+  "removal": "Remove this file and its gate entry as soon as a patched picomatch is published: upgrade (npm update picomatch / lock refresh), confirm npm audit --audit-level=high passes without exception, delete config/security/npm-audit-exceptions.json. The gate fails automatically at the expiry date; extending it needs a new OWNER approval recorded here.",
+  "notAFix": "This is an approved, time-limited exception (PASS_WITH_APPROVED_EXCEPTION). The vulnerability is NOT fixed."
+}
