@@ -54,7 +54,9 @@ test('正式项目授权闭环：经理在浏览器授权 → 被授权人登记
   await manager.locator(`[data-formal-id="${projectId}"]`).getByTestId('formal-open').click();
   const panel = manager.getByTestId('formal-panel');
   await expect(panel.getByTestId('formal-grant-status')).toContainText('尚未配置');
-  await panel.getByTestId('grant-form').getByLabel('平台账号 ID').fill('b4-grantee');
+  // P1: controlled person picker — search the real directory, then select (no raw id input).
+  await panel.getByTestId('grant-form').getByTestId('member-search').fill('b4-grantee');
+  await panel.getByTestId('grant-form').locator('[data-candidate="b4-grantee"]').click();
   await panel.getByTestId('grant-form').getByLabel('项目角色').selectOption('platform_admin');
   await panel.getByTestId('grant-submit').click();
   await expect(panel.getByTestId('grant-notice')).toContainText('立即生效');

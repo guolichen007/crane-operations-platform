@@ -8,6 +8,8 @@
 # - Uses the LOCAL cloud-api image of the ACTIVE deployment (crane-local/cloud-api:<sha>), never pulled.
 # - Runs on the Crane backend network only (http://keycloak:8080); nothing is published.
 # - Only this throw-away container reads keycloak_bootstrap_password; cloud-api never mounts it.
+#   It runs as root with ALL capabilities dropped except DAC_READ_SEARCH (read the 0600 secret files
+#   owned by the Keycloak / cloud-api users), read-only root filesystem, no new privileges.
 # - Idempotent; any extra role later added to the service account is removed again.
 # - Prints no credential or upstream response.
 set -Eeuo pipefail
@@ -28,7 +30,7 @@ image="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["images
   || die "$state_dir/current.json missing: deploy with local-dev-deploy.mjs apply first"
 docker image inspect "$image" >/dev/null 2>&1 || die "local image $image not present"
 network="$(docker network ls --format '{{.Name}}' | grep -Fx u-dao-crane-ops_backend)" || die "Crane backend network not found"
-docker run --rm --pull never --network "$network" --user 0:0 --read-only --cap-drop ALL --security-opt no-new-privileges:true \
+docker run --rm --pull never --network "$network" --user 0:0 --read-only --cap-drop ALL --cap-add DAC_READ_SEARCH --security-opt no-new-privileges:true \
   --entrypoint provision-keycloak \
   -e KEYCLOAK_ADMIN_URL=http://keycloak:8080 -e PUBLIC_URL="$public" \
   -e KEYCLOAK_BOOTSTRAP_PASSWORD_FILE=/s/keycloak_bootstrap_password -e OIDC_CLIENT_SECRET_FILE=/s/oidc_client_secret \

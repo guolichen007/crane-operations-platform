@@ -52,13 +52,13 @@ function devConfig(cloud, web) {
   for (const name of ['postgres', 'keycloak', 'mosquitto', 'cloud-api', 'web-console'])
     services[name] = { image: UP[name] ?? 'x@sha256:' + 'a'.repeat(64), logging: { driver: 'json-file', options: { 'max-size': '10m', 'max-file': '5' } }, networks: { backend: null } };
   services['cloud-api'].image = cloud; services['web-console'].image = web;
-  services['cloud-api'].environment = { APP_ENV: 'production', OIDC_CLIENT_SECRET_FILE: '/run/secrets/oidc_client_secret', OIDC_ISSUER: 'https://crane.youdaozd.com/realms/crane',
+  services['cloud-api'].environment = { APP_ENV: 'production', OIDC_CLIENT_SECRET_FILE: '/run/secrets/oidc_client_secret', ACCOUNT_SERVICE_CLIENT_ID: 'crane-account-service', ACCOUNT_SERVICE_SECRET_FILE: '/run/secrets/account_service_secret', KEYCLOAK_INTERNAL_URL: 'http://keycloak:8080', OIDC_ISSUER: 'https://crane.youdaozd.com/realms/crane',
     OIDC_CLIENT_ID: 'crane-bff', PUBLIC_URL: 'https://crane.youdaozd.com', CRANE_DEPLOYMENT_ENVIRONMENT: 'crane-dev' };
   services.keycloak.environment = { KC_HOSTNAME_STRICT: 'true', KC_DB: 'postgres', KC_HOSTNAME: 'https://crane.youdaozd.com' };
   services.keycloak.volumes = [{ target: '/opt/keycloak/themes/u-dao', source: '/anon/themes', read_only: true }];
   for (const name of ['keycloak', 'cloud-api', 'web-console']) services[name].networks.frontend = null;
   return { name: productionProject, services, networks: { frontend: { external: true, name: 'u-dao-crane-frontend' }, backend: { internal: true } },
-    secrets: Object.fromEntries(Array.from({ length: 6 }, (_, i) => ['s' + i, { file: '/anon/' + i }])) };
+    secrets: Object.fromEntries(Array.from({ length: 7 }, (_, i) => ['s' + i, { file: '/anon/' + i }])) };
 }
 
 /** Fake Docker: tracks which images run, the DB schema and every invocation. */

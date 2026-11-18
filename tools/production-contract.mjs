@@ -35,7 +35,12 @@ export function validateProduction(config) {
   const theme = config.services.keycloak.volumes.find(volume => volume.target === '/opt/keycloak/themes/u-dao');
   assert.equal(theme?.read_only, true, 'Keycloak theme must be versioned and mounted read-only');
   assert.ok(!JSON.stringify(config.services.keycloak).includes('start-dev'));
-  assert.equal(Object.keys(config.secrets).length, 6);
+  assert.equal(Object.keys(config.secrets).length, 7);
+  const api = config.services['cloud-api'].environment;
+  assert.equal(api.ACCOUNT_SERVICE_CLIENT_ID, 'crane-account-service', 'Account service is the dedicated realm-scoped client');
+  assert.equal(api.ACCOUNT_SERVICE_SECRET_FILE, '/run/secrets/account_service_secret');
+  assert.equal(api.KEYCLOAK_INTERNAL_URL, 'http://keycloak:8080', 'Admin API is reached only over the internal network');
+  assert.doesNotMatch(JSON.stringify(config.services['cloud-api']), /keycloak_bootstrap_password|KEYCLOAK_BOOTSTRAP/, 'The application never receives the bootstrap administrator credential');
   for (const item of Object.values(config.secrets)) assert.equal(typeof item.file, 'string');
   return true;
 }

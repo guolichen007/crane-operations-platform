@@ -42,12 +42,12 @@ function config(manifest) {
   const services = {};
   for (const name of ['postgres', 'keycloak', 'mosquitto', 'cloud-api', 'web-console']) services[name] = { image: 'example.invalid/' + name + '@sha256:' + 'a'.repeat(64), logging: { driver: 'json-file', options: { 'max-size': '10m', 'max-file': '5' } } };
   for (const image of manifest.images) services[image.image_name.split('/').at(-1)].image = image.image_name + '@' + image.image_digest;
-  services['cloud-api'].environment = { APP_ENV: 'production', OIDC_CLIENT_SECRET_FILE: '/run/secrets/oidc_client_secret', OIDC_ISSUER: 'https://anonymous.example.test/realms/crane' };
+  services['cloud-api'].environment = { APP_ENV: 'production', OIDC_CLIENT_SECRET_FILE: '/run/secrets/oidc_client_secret', ACCOUNT_SERVICE_CLIENT_ID: 'crane-account-service', ACCOUNT_SERVICE_SECRET_FILE: '/run/secrets/account_service_secret', KEYCLOAK_INTERNAL_URL: 'http://keycloak:8080', OIDC_ISSUER: 'https://anonymous.example.test/realms/crane' };
   services.keycloak.environment = { KC_HOSTNAME_STRICT: 'true', KC_DB: 'postgres', KC_HOSTNAME: 'https://anonymous.example.test' };
   services.keycloak.volumes = [{ target: '/opt/keycloak/themes/u-dao', source: '/anonymous/themes/u-dao', read_only: true }];
   for (const service of Object.values(services)) service.networks = { backend: null };
   for (const name of ['keycloak', 'cloud-api', 'web-console']) services[name].networks.frontend = null;
-  return { name: productionProject, services, networks: { frontend: { external: true, name: frontendNetwork }, backend: { internal: true } }, secrets: Object.fromEntries(Array.from({ length: 6 }, (_, index) => ['anonymous' + index, { file: '/anonymous/file' + index }])) };
+  return { name: productionProject, services, networks: { frontend: { external: true, name: frontendNetwork }, backend: { internal: true } }, secrets: Object.fromEntries(Array.from({ length: 7 }, (_, index) => ['anonymous' + index, { file: '/anonymous/file' + index }])) };
 }
 
 test('manifest SHA different from actual checkout HEAD rejects before any Docker action', t => {

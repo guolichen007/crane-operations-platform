@@ -7,7 +7,7 @@ chmod 0711 /fixture/secrets
 chmod 0600 /fixture/secrets/* /fixture/inventory.json /fixture/fleet.json /fixture/acl
 chown 10001:10001 /fixture/inventory.json /fixture/fleet.json
 chown 1883:1883 /fixture/acl
-for file in app_db_password oidc_client_secret session_server_secret; do chown 10001:10001 "/fixture/secrets/$file"; done
+for file in app_db_password oidc_client_secret session_server_secret account_service_secret; do chown 10001:10001 "/fixture/secrets/$file"; done
 for file in keycloak_db_password keycloak_bootstrap_password; do chown 1000:1000 "/fixture/secrets/$file"; done
 # Keycloak base entrypoint reads these file names directly under /run/secrets.
 ln -sf secrets/keycloak_db_password /fixture/keycloak_db_password

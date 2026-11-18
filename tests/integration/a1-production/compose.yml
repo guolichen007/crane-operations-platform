@@ -23,6 +23,7 @@ services:
     environment:
       OIDC_CLIENT_SECRET_FILE: /fixture/secrets/oidc_client_secret
       SESSION_SECRET_FILE: /fixture/secrets/session_server_secret
+      ACCOUNT_SERVICE_SECRET_FILE: /fixture/secrets/account_service_secret
       DATABASE_PASSWORD_FILE: /fixture/secrets/app_db_password
       INVENTORY_FILE: /fixture/inventory.json
       FLEET_FILE: /fixture/fleet.json
@@ -61,6 +62,7 @@ services:
       PUBLIC_URL: ${CRANE_PUBLIC_URL}
       KEYCLOAK_BOOTSTRAP_PASSWORD_FILE: /fixture/secrets/keycloak_bootstrap_password
       OIDC_CLIENT_SECRET_FILE: /fixture/secrets/oidc_client_secret
+      ACCOUNT_SERVICE_SECRET_FILE: /fixture/secrets/account_service_secret
       KEYCLOAK_REALM_TEMPLATE: /template/realm.template.json
     volumes: [a1-fixture:/fixture:ro, ../production/realm.template.json:/template/realm.template.json:ro]
     networks: [backend]

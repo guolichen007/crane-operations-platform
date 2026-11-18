@@ -62,6 +62,11 @@ try {
   run(docker, [...compose, 'up', '-d', '--wait', '--wait-timeout', '300', 'postgres', 'keycloak', 'mosquitto', 'ingress']);
   run(docker, [...compose, 'run', '--rm', '--no-deps', 'provisioner']);
   run(docker, [...compose, 'run', '--rm', '--no-deps', 'provisioner']); // Repeat must be safe and retain exact client secret.
+  // P1: the restricted crane-account-service is proven least-privilege against the real realm.
+  const probeOut = run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-tool', '--operation', 'probe-account-service'], {}, true);
+  process.stdout.write(probeOut);
+  assert.match(probeOut, /P1_ACCOUNT_SERVICE_LEAST_PRIVILEGE=PASS/);
+  assert.doesNotMatch(probeOut, /ACCOUNT_SERVICE_PROBE FAIL/);
   run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-tool', '--operation', 'probe-discovery']);
   run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-tool', '--operation', 'probe-http01']);
   console.log('PRODUCTION_HTTP01_WEBROOT=PASS HTTP_REDIRECT=PASS HTTPS_ROUTES=UNCHANGED');
@@ -70,6 +75,8 @@ try {
   run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-tool', '--operation', 'probe-discovery']);
   run(docker, [...compose, 'up', '-d', '--wait', '--wait-timeout', '180', 'cloud-api', 'web-console']);
   run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-tool', '--operation', 'seed']);
+  // P1: b4-admin becomes a managed system_admin through the production host recovery path.
+  run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-tool', '--operation', 'seed-personnel']);
   run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-tool', '--operation', 'probe-topology']);
   recreateDifferentIP('web-console');
   run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-tool', '--operation', 'probe-topology']);
@@ -100,7 +107,7 @@ try {
     const planOut = run(docker, [...typesTool, 'plan', '--types', 'MOTOR,PLC'], {}, true);
     const plan = JSON.parse(planOut).plan;
     assert.deepEqual(plan.toCreate, ['MOTOR', 'PLC']);
-    assert.equal(plan.target.database, 'crane_app'); assert.equal(plan.target.role, 'crane_app'); assert.equal(plan.target.schemaVersion, 12);
+    assert.equal(plan.target.database, 'crane_app'); assert.equal(plan.target.role, 'crane_app'); assert.equal(plan.target.schemaVersion, 13);
     const applyOut = run(docker, [...typesTool, 'apply', '--types', 'MOTOR,PLC', '--approve', plan.digest, '--actor', 'b4-fixture-operator'], {}, true);
     assert.equal(JSON.parse(applyOut).record.result, 'success');
     // The approved digest is single-use: re-presenting it after the apply is refused (exit 1).
@@ -118,6 +125,10 @@ try {
     console.log('R6_EQUIPMENT_TYPES_BOOTSTRAP=PASS CREATED=MOTOR,PLC SECOND_APPLY=noop');
     run(npm[0], [...b4Args, '--grep-invert', '@r6-empty-types'], b4Env);
     run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-tool', '--operation', 'verify-b4-state', '--b4-run-id', b4RunId]);
+    const personnelOut = run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-tool', '--operation', 'verify-personnel-state', '--b4-run-id', b4RunId], {}, true);
+    process.stdout.write(personnelOut);
+    assert.match(personnelOut, /P1_PERSONNEL_DB_STATE=VERIFIED/);
+    console.log('P1_PERSONNEL_ACCEPTANCE=PASS KEYCLOAK=REAL BROWSER=REAL WEB_ACCOUNT_CREATE=PASS FIRST_LOGIN_PASSWORD_CHANGE=PASS');
     console.log('B4_BUSINESS_ACCEPTANCE=PASS KEYCLOAK=REAL E2E_BROWSER_CRUD=REAL RBAC=REAL DB_STATE=VERIFIED');
   }
   // Backup CLI uses the same isolated project through a generated resolved Compose file; no secrets are emitted.

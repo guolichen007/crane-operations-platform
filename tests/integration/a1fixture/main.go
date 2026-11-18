@@ -74,7 +74,7 @@ func prepare(out string) error {
 	if err = write(filepath.Join(out, "acl"), []byte(acl)); err != nil {
 		return err
 	}
-	for _, name := range []string{"postgres_admin_password", "app_db_password", "keycloak_db_password", "keycloak_bootstrap_password", "oidc_client_secret", "session_server_secret", "browser_test_password"} {
+	for _, name := range []string{"postgres_admin_password", "app_db_password", "keycloak_db_password", "keycloak_bootstrap_password", "oidc_client_secret", "session_server_secret", "browser_test_password", "account_service_secret"} {
 		value := make([]byte, 32)
 		if _, err = rand.Read(value); err != nil {
 			return err
@@ -494,6 +494,18 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		err = probeHTTP01(ctx)
+	} else if *operation == "probe-account-service" {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		err = probeAccountService(ctx)
+	} else if *operation == "seed-personnel" {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		err = seedPersonnel(ctx)
+	} else if *operation == "verify-personnel-state" {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		err = verifyPersonnelState(ctx, *b4RunID)
 	} else {
 		err = errors.New("unknown fixture operation")
 	}

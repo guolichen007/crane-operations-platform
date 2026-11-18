@@ -87,6 +87,10 @@ services:
       OIDC_CLIENT_ID: crane-bff
       OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
       SESSION_SECRET_FILE: /run/secrets/session_server_secret
+      # P1 personnel: realm-scoped account service (client credentials, view/query/manage-users only).
+      ACCOUNT_SERVICE_CLIENT_ID: crane-account-service
+      ACCOUNT_SERVICE_SECRET_FILE: /run/secrets/account_service_secret
+      KEYCLOAK_INTERNAL_URL: http://keycloak:8080
       DATABASE_PASSWORD_FILE: /run/secrets/app_db_password
       DATABASE_URL: postgres://crane_app@postgres:5432/crane_app?sslmode=disable
       TRUSTED_PROXY_CIDRS: ${CRANE_PROXY_CIDRS:?explicit trusted ingress CIDRs required}
@@ -96,7 +100,7 @@ services:
       FLEET_FILE: /inventory/fleet.json
       MQTT_URL: tls://mosquitto:8883
       CERT_DIR: /certs
-    secrets: [app_db_password, oidc_client_secret, session_server_secret]
+    secrets: [app_db_password, oidc_client_secret, session_server_secret, account_service_secret]
     volumes:
       - ${CRANE_INVENTORY_FILE:?explicit private Inventory required}:/inventory/inventory.json:ro
       - ${CRANE_FLEET_FILE:?explicit provisioned Fleet required}:/inventory/fleet.json:ro
@@ -133,6 +137,7 @@ secrets:
   keycloak_bootstrap_password: {file: '${CRANE_SECRET_DIR:-/srv/u-dao/secrets/crane-ops}/keycloak_bootstrap_password'}
   oidc_client_secret: {file: '${CRANE_SECRET_DIR:-/srv/u-dao/secrets/crane-ops}/oidc_client_secret'}
   session_server_secret: {file: '${CRANE_SECRET_DIR:-/srv/u-dao/secrets/crane-ops}/session_server_secret'}
+  account_service_secret: {file: '${CRANE_SECRET_DIR:-/srv/u-dao/secrets/crane-ops}/account_service_secret'}
 volumes:
   crane-postgres:
   crane-mqtt:

@@ -137,6 +137,26 @@ const h21aPackages = [
     'TestRegisterRefusals',
     'TestConcurrentBindingVersusRemoveAndRetire',
   ]],
+  // P1 personnel / account / permission management: provisioning state machine and crash recovery,
+  // system RBAC, last-administrator protection, disable/reset/session revocation, picker scope.
+  ['p1-personnel', './internal/personnel', [
+    'TestProvisionHappyPathEnablesOnlyAfterGrants',
+    'TestProvisionRecoversFromEveryCrashPointWithoutUnauthorizedLogin',
+    'TestProvisionLostCreateResponseAndCancelLeavesNoOrphan',
+    'TestProvisionRefusesExistingForeignKeycloakUsername',
+    'TestSystemRBACAndLastAdminProtection',
+    'TestConcurrentAdminRemovalKeepsOneAdmin',
+    'TestDisableRevokesSessionsAndLiveAndEnableDoesNotRestoreRevokedGrants',
+    'TestDisableWithIdentityProviderDownStillBlocksAndIsRetryable',
+    'TestResetPasswordRevokesSessionsAndReturnsOnce',
+    'TestCandidatesAreMinimalScopedAndBounded',
+    'TestHostAdoptKeepsExistingIdentityAndGrants',
+  ]],
+  ['p1-personnel-http', './services/cloud-api/internal/app', [
+    'TestPersonnelAPIAnonymousAndUnauthorizedAreRefused',
+    'TestPersonnelAPIProvisionDisableResetAndLiveRevocation',
+    'TestProjectMemberPickerIsScopedAndMinimal',
+  ]],
   // D1 synthetic acceptance dataset: exact-id cleanup, ownership refusal, server-side guard.
   ['h3-uatdata', './tools/uatdata', [
     'TestSeedVerifyReseedCleanup',
@@ -193,6 +213,7 @@ try {
   console.log('R2_H21C_DB_TEST=PASS');
   console.log('R2_H3_UATDATA_DB_TEST=PASS');
   console.log('R2_R6_BIZ_DB_TEST=PASS');
+  console.log('R2_P1_PERSONNEL_DB_TEST=PASS');
 } finally {
   run(docker, [...compose, 'down', '--volumes', '--remove-orphans'], first);
 }
