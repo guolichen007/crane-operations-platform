@@ -196,6 +196,7 @@ const h21aPackages = [
     'TestThresholdsAlertsWorkOrderReplacementAndNextCycle',
     'TestTimeRuleProgressesWithoutTelemetry',
     'TestWireRopeInspectionNeedsInspectorConclusion',
+    'TestCalibrationRuleDueCreatesCalibrationWorkOrder',
   ]],
   ['r9-maintenance-http', './services/cloud-api/internal/app', [
     'TestMaintenanceHTTPScopeRolesAndWorkOrderFlow',

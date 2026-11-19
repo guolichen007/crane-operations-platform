@@ -407,4 +407,47 @@ func TestWireRopeInspectionNeedsInspectorConclusion(t *testing.T) {
 	}
 }
 
+// CALIBRATION_DUE: a calibration rule (time based) raises LEAD_7 once, becomes a CALIBRATION work
+// order and shows in the center as CALIBRATION_DUE; re-evaluating never duplicates the alert.
+func TestCalibrationRuleDueCreatesCalibrationWorkOrder(t *testing.T) {
+	db := lhk(t)
+	ctx := context.Background()
+	anchor := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	if _, err := UpsertTestRule(ctx, db, "LHK-CRANE-001", TestRule{Code: "T-CAL", Name: "称重传感器 校准（测试）", Kind: "CALIBRATION", Type: "TIME_BASED", Slot: "GANTRY-01",
+		IntervalDays: ptr(180), LeadDays: []int{30, 7}, AnchorAt: &anchor}, "test"); err != nil {
+		t.Fatal(err)
+	}
+	now := anchor.AddDate(0, 0, 175) // 5 days left
+	for i := 0; i < 2; i++ {
+		if _, err := EvaluateAll(ctx, db, "LHK-CRANE-001", now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if cnt(t, db, `SELECT count(*) FROM maintenance_alerts WHERE stage='LEAD_7' AND source_mode='SIMULATION'`) != 1 ||
+		cnt(t, db, `SELECT count(*) FROM maintenance_alerts WHERE source_mode='REAL'`) != 0 {
+		t.Fatal("calibration LEAD_7 alert missing, duplicated or leaked to REAL")
+	}
+	rows, err := Center(ctx, db, []string{"LHK"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, r := range rows {
+		if r.RuleName == "称重传感器 校准（测试）" {
+			found = r.Category == "CALIBRATION_DUE" && r.Status == StatusDueSoon && r.SourceMode == "SIMULATION"
+		}
+	}
+	if !found {
+		t.Fatalf("center row %+v", rows)
+	}
+	var alert string
+	if err = db.QueryRow(`SELECT id FROM maintenance_alerts WHERE stage='LEAD_7'`).Scan(&alert); err != nil {
+		t.Fatal(err)
+	}
+	wo, err := CreateFromAlert(ctx, db, alert, "planner", "r")
+	if err != nil || wo.Type != "CALIBRATION" || wo.SourceMode != "SIMULATION" {
+		t.Fatalf("%+v %v", wo, err)
+	}
+}
+
 func ptr[T any](v T) *T { return &v }
