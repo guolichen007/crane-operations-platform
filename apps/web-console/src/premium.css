@@ -1830,7 +1830,9 @@
 .detail-title h1 { margin: 6px 0 2px; font-size: 22px; color: var(--text-1); }
 .detail-title p { margin: 0; color: var(--text-3); font-size: 13px; }
 .detail-actions { display: flex; gap: 8px; }
-.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line-soft); }
+/* R9: six asset-detail tabs wrap onto a second line at phone widths (no horizontal overflow). */
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line-soft); }
+.tabs button { white-space: nowrap; }
 .tabs button { border: 0; background: transparent; color: var(--text-3); padding: 10px 16px; cursor: pointer; font-size: 13px; border-bottom: 2px solid transparent; }
 .tabs button.active { color: var(--accent-blue); border-bottom-color: var(--accent-blue); }
 .detail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }

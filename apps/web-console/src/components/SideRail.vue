@@ -12,6 +12,7 @@ import {
   TriangleAlert,
   ChartColumn,
   UsersRound,
+  Wrench,
   ChevronDown,
   PanelLeftClose,
   PanelLeftOpen,
@@ -34,6 +35,7 @@ const assets: NavItem[] = [
   { path: '/assets', name: '资产台账', icon: Container },
   { path: '/locations', name: '位置中心', icon: MapPin },
   { path: '/catalog', name: '设备目录', icon: BookOpen },
+  { path: '/maintenance', name: '维护与到期', icon: Wrench },
 ];
 const after: NavItem[] = [
   { path: '/runtime', name: '运营', icon: Gauge },

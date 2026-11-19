@@ -20,6 +20,8 @@ import { cloudMode, type AlarmWindow } from '../cloud/api';
 import CloudRuntime from '../components/CloudRuntime.vue';
 import KpiStrip from './overview/KpiStrip.vue';
 import AttentionPanel from './overview/AttentionPanel.vue';
+import { useQuery } from '@tanstack/vue-query';
+import { getCenter } from '../cloud/maintenance';
 import InspectorPanel from './overview/InspectorPanel.vue';
 import EventStrip from './overview/EventStrip.vue';
 import RegionNavPanel from './overview/RegionNavPanel.vue';
@@ -61,6 +63,10 @@ const metrics = computed(() => (demo && hasNumbers(dataState.value) ? homeMetric
 const plannedDevices = computed(() => store.scopedProjects.filter((p) => p.dataSource === 'real').reduce((s, p) => s + p.quantity, 0));
 const kpis = computed(() => (demo ? homeKpis('demo', metrics.value, null, plannedDevices.value) : summaryKpis(summary.value)));
 const attentionRows = computed(() => (demo ? demoAttention(metrics.value) : summaryAttention(summary.value)));
+// R9: maintenance & inspection attention from the maintenance center (API mode only, REAL counters).
+const maintenanceCenter = demo ? null : useQuery({ queryKey: ['r9-center'], queryFn: getCenter, refetchInterval: 60_000, retry: false });
+const maintenanceAttention = computed(() => maintenanceCenter?.data.value?.attention ?? null);
+const maintenanceError = computed(() => !!maintenanceCenter?.isError.value);
 const scopeText = computed(() =>
   demo ? scopeLabel('demo', store.scope, store.scopeName) : `全部授权项目 · ${store.regionPath.length ? store.scopeName : '全国'}`
 );
@@ -226,7 +232,7 @@ watch(drawerOpen, (open) => (store.inspectorInset = open ? 320 : 0), { immediate
     <KpiStrip :kpis="kpis" :active="status" :state="dataState" @apply="onKpi" />
     <section class="home-grid" :class="{ narrow, 'drawer-open': drawerOpen }">
       <div class="home-left left-context" :class="{ compact: narrow }">
-        <AttentionPanel :rows="attentionRows" :state="dataState" :active="status" :compact="narrow" :demo="demo"
+        <AttentionPanel :rows="attentionRows" :state="dataState" :active="status" :compact="narrow" :demo="demo" :maintenance="maintenanceAttention" :maintenance-error="maintenanceError"
           :note="demo ? undefined : '点击「待复核且告警」在地图中显示服务端返回的复核资产；其余为独立统计，不相加。'" @apply="applyFilter" />
         <RegionNavPanel v-if="!narrow" :demo="demo" :summary="summary" :state="dataState" />
       </div>

@@ -30,6 +30,7 @@ import { webSession } from '../cloud/session';
 import { canWriteProject } from '../cloud/auth-state';
 import { useDraftSession, allowClose, allowRebase, draftText, fieldDiff, sameData } from '../cloud/draft';
 import { ledgerReturnQuery } from '../cloud/project-scope';
+import AssetMaintenancePanel from '../components/AssetMaintenancePanel.vue';
 import type { AssetMasterData, AssetLocation, EquipmentInstallation } from '../../../../contracts/typescript/types.gen';
 
 const route = useRoute();
@@ -91,7 +92,13 @@ const kindLabel = (k: string) => KIND_TEXT[k] ?? k;
 const pathLabel = (p: Parameters<typeof locationPathText>[0]) => locationPathText(p, KIND_TEXT);
 /** 位置中心 deep link that scopes to the asset's project and highlights the location. */
 const locationLink = (locationId: string) => ({ path: '/locations', query: { project: asset.value?.projectId ?? '', location: locationId } });
-const tab = ref<'overview' | 'equipment'>('overview');
+type DetailTab = 'overview' | 'equipment' | 'ledger' | 'monitor' | 'maintenance' | 'history';
+const tab = ref<DetailTab>('overview');
+// R9 B6: maintenance execution follows CapMaintenanceWrite (maintainer, platform_admin).
+const canMaintain = computed(() => {
+  const project = asset.value?.projectId ?? '';
+  return !!webSession.value?.projects.some((p) => p.projectId === project && (p.role === 'maintainer' || p.role === 'platform_admin'));
+});
 const moveTargets = computed(() => (locationsQuery.data.value ?? []) as AssetLocation[]);
 
 // Each write action pins the version (and a snapshot) at the moment its dialog
@@ -536,7 +543,12 @@ const statusText: Record<string, string> = {
       <div class="tabs" role="tablist">
         <button :class="{ active: tab === 'overview' }" @click="tab = 'overview'">概览</button>
         <button :class="{ active: tab === 'equipment' }" @click="tab = 'equipment'">设备</button>
+        <button :class="{ active: tab === 'ledger' }" data-testid="tab-ledger" @click="tab = 'ledger'">台账与点位</button>
+        <button :class="{ active: tab === 'monitor' }" data-testid="tab-monitor" @click="tab = 'monitor'">运行监测</button>
+        <button :class="{ active: tab === 'maintenance' }" data-testid="tab-maintenance" @click="tab = 'maintenance'">寿命与维护</button>
+        <button :class="{ active: tab === 'history' }" data-testid="tab-history" @click="tab = 'history'">历史</button>
       </div>
+      <AssetMaintenancePanel v-if="tab === 'ledger' || tab === 'monitor' || tab === 'maintenance' || tab === 'history'" :asset-id="asset.id" :tab="tab" :can-maintain="canMaintain" />
 
       <template v-if="tab === 'overview'">
       <div class="detail-grid">
@@ -579,7 +591,7 @@ const statusText: Record<string, string> = {
       </section>
       </template>
 
-      <div v-else>
+      <div v-else-if="tab === 'equipment'">
         <div class="equipment-toolbar">
           <button v-if="canWrite" class="primary-action" @click="openEquipmentAdd">
             <Plus :size="14" />安装 Equipment

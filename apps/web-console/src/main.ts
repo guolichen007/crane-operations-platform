@@ -17,11 +17,14 @@ const CatalogCenter = () => import('./views/CatalogCenter.vue');
 const PortfolioWorkspace = () => import('./views/PortfolioWorkspace.vue');
 const PersonnelCenter = () => import('./views/PersonnelCenter.vue');
 const PersonDetail = () => import('./views/PersonDetail.vue');
+const MaintenanceCenter = () => import('./views/MaintenanceCenter.vue');
 const cloudMode = import.meta.env.VITE_DATA_MODE === 'api';
 const productionAuth = import.meta.env.VITE_AUTH_MODE === 'oidc';
 import './styles.css';
 import './refinements.css';
+// R9: in API mode /maintenance is the real 维护与到期中心 (registered below), not a placeholder.
 const routes = ['projects', 'devices', 'monitor', 'alarms', 'analytics', 'maintenance', 'remote']
+  .filter((path) => !(cloudMode && path === 'maintenance'))
   .filter((path) => !productionAuth || ['projects', 'devices', 'alarms'].includes(path))
   .map((path) => ({
     path: `/${path}`,
@@ -51,6 +54,7 @@ createApp(App)
         { path: '/portfolio', component: PortfolioWorkspace },
         { path: '/locations', component: LocationCenter },
         { path: '/catalog', component: CatalogCenter },
+        ...(cloudMode ? [{ path: '/maintenance', component: MaintenanceCenter }] : []),
         { path: '/system/people', component: PersonnelCenter },
         { path: '/system/people/:id', component: PersonDetail },
         ...(productionAuth ? [] : [{ path: '/system', component: Workspace }]),
