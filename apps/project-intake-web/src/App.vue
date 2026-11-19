@@ -53,7 +53,7 @@ const groups = computed(() => {
 });
 const active = (path: string) =>
   path === '/' ? route.path === '/' : activeEntry(route.path) === path || route.path.startsWith(path + '/');
-const createLabel = computed(() => (app.user?.role === 'baobei_admin' ? '新建项目' : '新建报备'));
+const createLabel = computed(() => (app.user?.role === 'baobei_admin' ? '报备项目' : '新建报备'));
 const accountOpen = ref(false);
 // One sign-out: ends this Baobei session on the server. The next sign-in always
 // asks for the password again (prompt=login), so another person can sign in.

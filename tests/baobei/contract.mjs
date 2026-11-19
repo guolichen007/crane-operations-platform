@@ -73,7 +73,11 @@ assert.equal(
   const ingress = h.match(/^const ingressNginx = '(nginx:[^']+)';$/m)?.[1];
   assert.match(ingress ?? '', /^nginx:1\.30\.4-alpine@sha256:[0-9a-f]{64}$/, 'http01 shared ingress must be the pinned server Nginx 1.30.4');
   assert.equal([...h.matchAll(/'(nginx:[^']+)'/g)].length, 1, 'http01 must not hard-code another Nginx image');
-  assert.match(h, /^const webVersion = \/nginx\\\/1\\\.30\\\.6\\b\/;$/m, 'http01 must assert the Baobei Web Nginx version');
+  // The Web version asserted by http01 is exactly the version of the pinned runtime base.
+  const webTag = runtime.match(/^nginx:(\d+)\.(\d+)\.(\d+)-/);
+  assert(webTag, 'web runtime base must carry an explicit nginx version');
+  assert(h.includes(String.raw`const webVersion = /nginx\/${webTag[1]}\.${webTag[2]}\.${webTag[3]}\b/;`), 'http01 must assert the Baobei Web Nginx version of the runtime base');
+  assert.notEqual(`${webTag[1]}.${webTag[2]}.${webTag[3]}`, '1.30.4', 'Baobei Web must not be confused with the shared ingress Nginx');
   assert.match(h, /'apk', 'info', '-e', 'libxslt>=1\.1\.43-r4', 'zlib>=1\.4-r0'/, 'http01 must check the patched Web packages');
   console.log('Web runtime base pin and security upgrade gate PASS');
 }

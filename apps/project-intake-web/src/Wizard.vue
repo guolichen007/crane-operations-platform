@@ -449,7 +449,7 @@ onBeforeUnmount(() => {
   <div class="wizard">
     <div class="page-heading">
       <div>
-        <h1>{{ route.params.id || id ? '继续完善报备' : isAdmin ? '新建项目' : '快速报备' }}</h1>
+        <h1>{{ route.params.id || id ? '继续完善报备' : isAdmin ? '报备项目' : '快速报备' }}</h1>
         <p class="muted">先记下已知信息即可保存草稿；正式报备前再补齐必填项。</p>
       </div>
       <span class="save-state" role="status" aria-live="polite">{{

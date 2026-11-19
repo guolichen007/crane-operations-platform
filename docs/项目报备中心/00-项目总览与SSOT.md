@@ -3,13 +3,14 @@
 BAOBEI_DOMAIN=baobei.youdaozd.com
 BAOBEI_MAIN_MERGE=FORBIDDEN
 BAOBEI_R2_MERGE=FORBIDDEN
-BRANCH=feature/baobei-v1.1-b
+BRANCH=product/baobei-v1（正式产品分支）
 PRODUCT_VERSION=V1.1
-RELEASE_STATE=PRODUCTION_GO_LIVE（投产初始化候选，待 OWNER 推送与 CI 8/8）
-BASE_SHA=056acfd5355f786ba7e375b163174b5f6ff60e01（CI 44460013041 a1 8/8，Schema 00015，Realm baobei；实际运行 SHA 以服务器回执为准）
-GO_LIVE_SCHEMA=00016（首次认领，增量迁移；00001–00015 未改）
+RELEASE_STATE=PRODUCTION（正式投产，运营维护模式）
+GO_LIVE_SHA=4ebcdc023a6e864da87d3ed0158d3594d9ea60df（CI 44486059479 a1 8/8，已部署）
+FINAL_PATCH_SHA=待确认（首页按钮文案 + nginx 1.30.7 封板补丁；CI 与部署待确认）
+SCHEMA_VERSION=00016
 IDENTITY_REALM=baobei（https://crane.youdaozd.com/realms/baobei）
-RELEASE_TAG=baobei-v1.1.0（仅在实际运行 SHA 现场验收通过后创建）
+RELEASE_TAG=baobei-v1.1.0（待确认：封板补丁现场验收通过后，指向实际运行的完整 SHA）
 FEATURE_FREEZE=YES（只修缺陷与日常运维）
 
 目标：快速报项目、识别重复、明确归属并跟进。独立产品，永不合并 main/R2。
@@ -19,12 +20,27 @@ FEATURE_FREEZE=YES（只修缺陷与日常运维）
 | 项 | 值 |
 |---|---|
 | 正式网站 | https://baobei.youdaozd.com |
+| 正式分支 | `product/baobei-v1`；不合并 main，不合并 R2 |
 | 身份 | 独立 Keycloak Realm `baobei`；账号服务 `baobei-account-service` 经专用内部网络 `u-dao-baobei-kc-admin`（`http://baobei-kc-admin:8080`）访问管理接口；公网 `/admin/` 一律拒绝 |
 | 数据库 | PostgreSQL 18.4（固定 digest），迁移 00001–00016，最小权限四角色，审批/提交/审计证据不可变 |
-| 正式组织 | OWNER（现有管理员）、备用管理员 1 名、销售 5 名，团队“销售一组”；均由网页或受保护初始化工具建立，不使用虚假手机号 |
-| 首次登录 | 管理员发放临时登录名（如 sales01）与一次性临时密码 → 本人改密 → 填写真实姓名与手机号 → 登录名改为手机号、临时登录名失效 → 用手机号重新登录 |
+| 正式组织 | 7 人 1 团队：OWNER（管理员）、备用管理员 1 名、销售 5 名，团队“销售一组”（由受保护初始化工具建立，58 号） |
+| 业务数据 | 投产初始化时旧业务数据（UAT 项目、客户、审批、测试账号与测试团队）已全部清零；初始化前数据库改名保留于服务器作回退证据 |
+| 首次认领 | 管理员发放临时登录名与一次性临时密码 → 本人改密 → 填写真实姓名与手机号 → 登录名改为手机号、临时登录名失效 → 用手机号重新登录；认领前一切业务接口拒绝 |
+| Web 运行镜像 | `nginx:1.30.7-alpine3.24@sha256:bef15473…8598` + 同系列 `apk upgrade`（`libxslt>=1.1.43-r4`、`zlib>=1.4-r0` 门禁）；共享入口仍为服务器现有 Nginx 1.30.4，两者分别测试 |
+| 封板补丁 | 管理员首页按钮“新建项目”→“报备项目”（待分配草稿页按钮、管理员填写页标题同步；URL、action-id、权限不变；项目类型“新建项目”分类不变）；Web 基础镜像 1.30.6 → 1.30.7。**部署与现场检查：待确认** |
 | 安全例外 | SEC-EX-001（picomatch 开发依赖，至 2026-12-18 或官方修复后 7 天），见 54 号 |
 | 运行模式 | 功能冻结；缺陷修复与日常运维 |
+
+## 待确认事项（服务器回执取得前不写 PASS）
+
+| 项 | 状态 |
+|---|---|
+| 封板补丁 SHA 的 CI（同 Run、Attempt 1、8/8） | 待确认 |
+| 封板补丁实际镜像 Trivy 扫描（Web/API 0 CRITICAL / 0 HIGH） | 待确认 |
+| 封板补丁正式部署（同 Schema 00016、同 Realm，普通 up） | 待确认 |
+| 首页“报备项目”按钮真实浏览器检查与关键冒烟 | 待确认 |
+| 账号生命周期 12 项与安全反例（57 号 §3、§4） | 待确认 |
+| Tag `baobei-v1.1.0` 与 GitHub Release “Baobei V1.1 — Production Release” | 待确认 |
 
 ## 正式交付文档（V1.1）
 
@@ -41,7 +57,7 @@ FEATURE_FREEZE=YES（只修缺陷与日常运维）
 
 ## 历史：V1.1 研发至投产（2026-11-16 至 2026-11-19）
 
-V1.1 R0–R7（48–53 号）、最终质量与安全门禁（54–55 号）、Web 运行镜像安全补丁（nginx 1.30.6 + 同系列 apk upgrade）、HTTP-01 共享入口与 Web 版本分离测试、网页账号管理 503 修复（专用内部网络）、首次认领与正式初始化（56–60 号）。
+V1.1 R0–R7（48–53 号）、最终质量与安全门禁（54–55 号）、Web 运行镜像安全补丁（nginx 1.30.6 + 同系列 apk upgrade，后升至 1.30.7）、HTTP-01 共享入口与 Web 版本分离测试、网页账号管理 503 修复（专用内部网络）、首次认领与正式初始化（56–60 号）、封板补丁（首页按钮文案 + nginx 1.30.7）。
 
 ## 历史：G5-C-U1 人员身份与角色操作闭环
 

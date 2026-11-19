@@ -7,10 +7,10 @@ import { setTimeout } from 'node:timers/promises';
 
 const context = process.env.BAOBEI_DOCKER_CONTEXT;
 // Shared ingress = the production server's existing Nginx (confirmed 1.30.4), not the Baobei image.
-// The Baobei Web container is the compose-built image (runtime base 1.30.6 + apk security upgrade).
+// The Baobei Web container is the compose-built image (runtime base 1.30.7 + apk security upgrade).
 const ingressNginx = 'nginx:1.30.4-alpine@sha256:dc5069ad14f19660b141b21236140b91656bf89bbc3e2417c70ae650cd66104c';
 const ingressVersion = /nginx\/1\.30\.4\b/;
-const webVersion = /nginx\/1\.30\.6\b/;
+const webVersion = /nginx\/1\.30\.7\b/;
 const tools = 'baobei-cert-test:local';
 const domain = 'baobei.youdaozd.com';
 const prefix = '/.well-known/acme-challenge/';
@@ -182,7 +182,7 @@ try {
   }
   // Baobei Web runtime carries the same-series security upgrade (web.Dockerfile gate).
   checked(['exec', web, 'apk', 'info', '-e', 'libxslt>=1.1.43-r4', 'zlib>=1.4-r0']);
-  console.log('NGINX_VERSIONS=PASS (shared ingress 1.30.4 reload, Baobei Web 1.30.6 patched)');
+  console.log('NGINX_VERSIONS=PASS (shared ingress 1.30.4 reload, Baobei Web 1.30.7 patched)');
   await ready(['exec', probe, 'curl', '--fail', '--silent', '--noproxy', '*', '--max-time', '3',
     '--cacert', '/fixture-ca.pem', '--connect-to', domain + ':443:shared-ingress:443',
     'https://' + domain + '/health/ready'], 'Shared HTTPS');

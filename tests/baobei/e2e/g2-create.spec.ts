@@ -36,8 +36,11 @@ const draftId = (p: Page) => new URL(p.url()).searchParams.get('draft') || new U
 
 test('admin unassigned draft, real assignment, then admin cannot review own participation', async ({ page }, info) => {
   await login(page, 'synthetic-admin');
+  // V1.1 final: the administrator's header button reads 报备项目 (same action, URL and permission).
+  await expect(action(page, 'project.create').first()).toHaveText(/报备项目/);
   await action(page, 'project.create').first().click();
-  await expect(page.getByRole('heading', { name: '新建项目' })).toBeVisible();
+  await expect(page).toHaveURL(/\/new$/);
+  await expect(page.getByRole('heading', { name: '报备项目' })).toBeVisible();
   const name = unique(info, '管理员代录');
   await page.locator('[name=customer]').fill(name + '客户');
   await expect(page.getByText('信息不足，尚无法完成查重').first()).toBeVisible();

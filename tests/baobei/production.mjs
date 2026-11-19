@@ -126,7 +126,7 @@ const syntax = spawnSync(
     process.cwd() + '/deploy/baobei/nginx.production.conf:/etc/nginx/conf.d/default.conf:ro',
     '-v',
     process.cwd() + '/deploy/baobei/nginx.proxy.production.conf:/etc/nginx/baobei-proxy.conf:ro',
-    'nginx:1.30.6-alpine3.24@sha256:901e593c95dc85f5a729f5765516321366ef4ac401821431d408897e95287d0a',
+    'nginx:1.30.7-alpine3.24@sha256:bef154735288bc38d99fac41ae63730684bcc661503673a04a0f9bc526ba8598',
     '-t',
   ],
   { encoding: 'utf8' }

@@ -186,7 +186,7 @@ const asOfText = computed(() => (asOf.value ? new Date(asOf.value).toLocaleStrin
         <span class="view-current" aria-current="page"><List :size="15" aria-hidden="true" />列表</span>
         <ActionButton action-id="view.pipeline" :run="() => router.push(pipelineLink)"><Columns3 :size="15" aria-hidden="true" />管道</ActionButton>
       </nav>
-      <ActionButton v-if="view === 'unassigned' && can(app.user, 'project.create')" action-id="project.create" primary :run="() => router.push('/new')">新建项目</ActionButton>
+      <ActionButton v-if="view === 'unassigned' && can(app.user, 'project.create')" action-id="project.create" primary :run="() => router.push('/new')">报备项目</ActionButton>
     </div>
   </div>
   <ScopePicker v-if="view === 'projects' || view === 'followups'" v-model="sel" />
