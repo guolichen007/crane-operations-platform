@@ -214,14 +214,14 @@ watch(canRead, (v) => {
       <section v-if="canManage && (provisions.data.value?.length ?? 0) > 0" class="recovery-panel" data-testid="provision-recovery">
         <h2><AlertTriangle :size="15" />未完成的开户</h2>
         <p class="form-hint">以下开户因网络或身份服务中断未完成，登录账号尚未生效。可「继续开户」完成，或「放弃」释放用户名（仅限未授权的开户）。</p>
-        <table class="data-table">
+        <table class="data-table stack-table">
           <thead><tr><th>用户名</th><th>姓名</th><th>状态</th><th>更新时间</th><th></th></tr></thead>
           <tbody>
             <tr v-for="p in provisions.data.value" :key="p.id" :data-provision="p.username">
-              <td>{{ p.username }}</td>
-              <td>{{ p.request.profile.displayName }}</td>
-              <td>{{ PROVISION_STATE[p.state] ?? p.state }}<div v-if="p.failure" class="cell-sub">{{ p.failure }}</div></td>
-              <td>{{ formatTime(p.updatedAt) }}</td>
+              <td data-label="用户名">{{ p.username }}</td>
+              <td data-label="姓名">{{ p.request.profile.displayName }}</td>
+              <td data-label="状态">{{ PROVISION_STATE[p.state] ?? p.state }}<div v-if="p.failure" class="cell-sub">{{ p.failure }}</div></td>
+              <td data-label="更新时间">{{ formatTime(p.updatedAt) }}</td>
               <td class="row-actions">
                 <button v-if="p.state !== 'FAILED'" class="ghost-action" :disabled="resume.isPending.value" data-testid="provision-resume" @click="resume.mutate(p.id)">继续开户</button>
                 <button v-if="p.state !== 'BOUND'" class="danger-action" :disabled="cancel.isPending.value" data-testid="provision-cancel" @click="cancel.mutate(p.id)">放弃</button>
@@ -242,6 +242,7 @@ watch(canRead, (v) => {
           <option value="ENABLED">启用</option>
           <option value="DISABLED">已停用</option>
           <option value="UNMANAGED">账号未纳管</option>
+          <option value="ARCHIVED">已删除（归档）</option>
         </select>
         <select v-model="department" aria-label="部门筛选">
           <option value="">全部部门</option>
@@ -259,21 +260,21 @@ watch(canRead, (v) => {
       <p v-else-if="people.isError.value" class="workspace-error" role="alert">人员加载失败：{{ personnelErrorMessage(people.error.value) }}</p>
       <p v-else-if="!people.data.value?.items.length" class="workspace-empty" data-testid="people-empty">没有符合条件的人员。</p>
       <div v-else class="data-table-wrap">
-        <table class="data-table" data-testid="people-table">
+        <table class="data-table stack-table" data-testid="people-table">
           <thead>
             <tr><th>姓名</th><th>用户名</th><th>部门 / 岗位</th><th>状态</th><th>系统角色</th><th>授权</th><th>最近登录</th><th>创建时间</th></tr>
           </thead>
           <tbody>
             <tr v-for="p in people.data.value.items" :key="p.id" class="data-row" :data-person="p.id" tabindex="0"
               @click="router.push(`/system/people/${encodeURIComponent(p.id)}`)" @keyup.enter="router.push(`/system/people/${encodeURIComponent(p.id)}`)">
-              <td data-col="name">{{ p.displayName || '—' }}</td>
-              <td data-col="username">{{ p.username || p.id }}</td>
-              <td>{{ p.departmentName || '—' }}<div class="cell-sub">{{ p.jobTitle || '' }}</div></td>
-              <td><span class="status-pill" :data-tone="statusLabel(p).tone" data-col="status">{{ statusLabel(p).text }}</span></td>
-              <td>{{ systemRoleNames(p.systemRoles) || '—' }}</td>
-              <td>{{ p.portfolioCount }} 个组合 · {{ p.projectCount }} 个项目</td>
-              <td>{{ formatTime(p.lastLoginAt) }}</td>
-              <td>{{ formatTime(p.createdAt) }}</td>
+              <td data-col="name" data-label="姓名">{{ p.displayName || '—' }}</td>
+              <td data-col="username" data-label="用户名">{{ p.username || p.id }}</td>
+              <td data-label="部门 / 岗位">{{ p.departmentName || '—' }}<div class="cell-sub">{{ p.jobTitle || '' }}</div></td>
+              <td data-label="状态"><span class="status-pill" :data-tone="statusLabel(p).tone" data-col="status">{{ statusLabel(p).text }}</span></td>
+              <td data-label="系统角色">{{ systemRoleNames(p.systemRoles) || '—' }}</td>
+              <td data-label="授权">{{ p.portfolioCount }} 个组合 · {{ p.projectCount }} 个项目</td>
+              <td data-label="最近登录">{{ formatTime(p.lastLoginAt) }}</td>
+              <td data-label="创建时间">{{ formatTime(p.createdAt) }}</td>
             </tr>
           </tbody>
         </table>
@@ -408,6 +409,20 @@ watch(canRead, (v) => {
 @media (max-width: 700px) {
   .form-grid, .grant-row { grid-template-columns: 1fr; }
   .head-actions { flex-wrap: wrap; }
-  .data-table-wrap { overflow-x: auto; }
+  .head-actions > button { flex: 1 1 auto; justify-content: center; }
+  /* R9 A2: at phone widths each person is a card (label + value rows) instead of an 8-column
+     table that had to scroll sideways inside its frame (measured 375 px: table 900+ px wide). */
+  .stack-table, .stack-table tbody, .stack-table tr, .stack-table td { display: block; width: 100%; }
+  .stack-table thead { display: none; }
+  .stack-table tr { border-bottom: 1px solid var(--line-soft); padding: 10px 12px; }
+  .stack-table td { position: relative; padding: 3px 0 3px 100px; border: 0; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
+  .stack-table td::before { content: attr(data-label); position: absolute; left: 0; top: 3px; width: 92px; color: var(--text-3); font-size: 12px; }
+  .stack-table td:not([data-label]) { padding-left: 0; }
+  .stack-table td.row-actions { display: flex; flex-wrap: wrap; gap: 6px; padding-left: 0; }
+  .stack-table .status-pill { display: inline-flex; width: auto; }
+  .dept-form input { flex: 1 1 140px; min-width: 0; }
+  .pager { justify-content: space-between; }
+  .person-wizard { width: 100vw; max-height: 100dvh; border-radius: 0; }
+  .wizard-steps { flex-wrap: wrap; }
 }
 </style>

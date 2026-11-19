@@ -53,6 +53,12 @@ func (h *apiHandler) personnelError(w http.ResponseWriter, r *http.Request, err 
 		respondAPI(w, 422, map[string]string{"error": "幂等键已用于另一请求，请刷新后重新提交", "code": "IDEMPOTENCY_KEY"})
 	case errors.Is(err, personnel.ErrIdentityProvider):
 		respondAPI(w, 503, map[string]string{"error": "身份服务暂不可用，操作可重试", "code": "IDENTITY_PROVIDER"})
+	case errors.Is(err, personnel.ErrArchived):
+		respondAPI(w, 409, map[string]string{"error": "该人员已删除（归档），不能再执行此操作", "code": "ARCHIVED"})
+	case errors.Is(err, personnel.ErrProtectedIdentity):
+		h.deny(w, r, 403, "", "", "protected_identity")
+	case errors.Is(err, personnel.ErrReferenced):
+		respondAPI(w, 409, map[string]string{"error": "该人员存在业务历史记录，只能保留为已删除（归档），不能永久删除", "code": "REFERENCED"})
 	case errors.Is(err, personnel.ErrNotConfigured):
 		respondAPI(w, 503, map[string]string{"error": "本部署未配置账号服务", "code": "ACCOUNT_SERVICE_NOT_CONFIGURED"})
 	default:
@@ -88,7 +94,7 @@ func (h *apiHandler) registerPersonnel(api *http.ServeMux) {
 		}
 		caps := map[string]bool{}
 		for _, c := range []personnel.SystemCapability{personnel.CapPersonnelRead, personnel.CapAccountManage, personnel.CapDepartmentManage,
-			personnel.CapSystemRoleManage, personnel.CapPortfolioRoleMgmt, personnel.CapPersonnelAudit} {
+			personnel.CapSystemRoleManage, personnel.CapPortfolioRoleMgmt, personnel.CapPersonnelAudit, personnel.CapPersonnelArchive} {
 			caps[string(c)] = personnel.Has(roles, c)
 		}
 		respondAPI(w, 200, map[string]any{"userId": currentPrincipal(r).user, "systemRoles": roles, "capabilities": caps, "accountServiceConfigured": h.personnel.IdP != nil})
@@ -207,6 +213,60 @@ func (h *apiHandler) registerPersonnel(api *http.ServeMux) {
 			return
 		}
 		respondAPI(w, 200, out)
+	})
+
+	// R9 A1: delete = archive (system_admin only; If-Match version; typed username confirmation).
+	api.HandleFunc("POST /api/v1/admin/people/{id}/archive", func(w http.ResponseWriter, r *http.Request) {
+		if !ready(w, r) {
+			return
+		}
+		version, ok := versionHeader(r)
+		if !ok {
+			respondAPI(w, 428, map[string]string{"error": "If-Match version required"})
+			return
+		}
+		var in struct {
+			Reason          string `json:"reason"`
+			ConfirmUsername string `json:"confirmUsername"`
+		}
+		if err := decodeStrict(r, &in); err != nil {
+			respondAPI(w, 400, map[string]string{"error": "invalid body"})
+			return
+		}
+		out, err := h.personnel.Archive(r.Context(), h.actor(r), r.PathValue("id"), version, in.Reason, in.ConfirmUsername)
+		if err != nil {
+			h.personnelError(w, r, err)
+			return
+		}
+		respondAPI(w, 200, out)
+	})
+	api.HandleFunc("GET /api/v1/admin/people/{id}/purge-check", func(w http.ResponseWriter, r *http.Request) {
+		if !ready(w, r) {
+			return
+		}
+		out, err := h.personnel.CheckPurge(r.Context(), h.actor(r), r.PathValue("id"))
+		if err != nil {
+			h.personnelError(w, r, err)
+			return
+		}
+		respondAPI(w, 200, out)
+	})
+	api.HandleFunc("POST /api/v1/admin/people/{id}/purge", func(w http.ResponseWriter, r *http.Request) {
+		if !ready(w, r) {
+			return
+		}
+		var in struct {
+			ConfirmUsername string `json:"confirmUsername"`
+		}
+		if err := decodeStrict(r, &in); err != nil {
+			respondAPI(w, 400, map[string]string{"error": "invalid body"})
+			return
+		}
+		if err := h.personnel.Purge(r.Context(), h.actor(r), r.PathValue("id"), in.ConfirmUsername); err != nil {
+			h.personnelError(w, r, err)
+			return
+		}
+		w.WriteHeader(204)
 	})
 
 	api.HandleFunc("PUT /api/v1/admin/people/{id}/system-roles", func(w http.ResponseWriter, r *http.Request) {

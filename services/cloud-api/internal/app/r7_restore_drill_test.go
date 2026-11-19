@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"github.com/guolichen007/crane-operations-platform/deploy/postgres/migrations"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -154,7 +155,7 @@ func TestR7IsolatedRestoreDrill(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := fingerprintDB(t, src)
-	if before.Schema != 13 || before.Types != 43 || before.ActiveTypes != 43 {
+	if before.Schema != migrations.Latest() || before.Types != 43 || before.ActiveTypes != 43 {
 		t.Fatalf("source fingerprint = %+v", before)
 	}
 

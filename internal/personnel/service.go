@@ -151,7 +151,11 @@ type Person struct {
 	Phone           string     `json:"phone"`
 	Email           string     `json:"email"`
 	Enabled         bool       `json:"enabled"`
-	Managed         bool       `json:"managed"` // has a Crane-managed login account (username set)
+	ArchivedAt      *time.Time `json:"archivedAt"`
+	ArchivedBy      string     `json:"archivedBy"`
+	ArchiveReason   string     `json:"archiveReason"`
+	Protected       string     `json:"protected"` // "" | OWNER | SERVICE | SYSTEM
+	Managed         bool       `json:"managed"`   // has a Crane-managed login account (username set)
 	IdentitySync    string     `json:"identitySync"`
 	CreatedAt       time.Time  `json:"createdAt"`
 	CreatedBy       string     `json:"createdBy"`
@@ -339,16 +343,22 @@ const personColumns = `u.id, COALESCE(u.username,''), u.display_name, COALESCE(u
 COALESCE(u.phone,''), COALESCE(u.email,''), u.enabled, u.username IS NOT NULL, u.idp_state, u.created_at, u.created_by, u.last_login_at, u.version,
 COALESCE((SELECT array_to_json(array_agg(s.role ORDER BY s.role)) FROM system_memberships s WHERE s.user_id=u.id),'[]'::json),
 (SELECT count(*) FROM project_memberships m WHERE m.user_id=u.id),
-(SELECT count(*) FROM portfolio_memberships m WHERE m.user_id=u.id)`
+(SELECT count(*) FROM portfolio_memberships m WHERE m.user_id=u.id),
+u.archived_at, COALESCE(u.archived_by,''), COALESCE(u.archive_reason,''), COALESCE(u.protected_reason,'')`
 
 func scanPerson(row interface{ Scan(...any) error }) (Person, error) {
 	var p Person
 	var roles []byte
-	var last sql.NullTime
+	var last, archived sql.NullTime
 	err := row.Scan(&p.ID, &p.Username, &p.DisplayName, &p.DepartmentID, &p.DepartmentName, &p.JobTitle, &p.Phone, &p.Email,
-		&p.Enabled, &p.Managed, &p.IdentitySync, &p.CreatedAt, &p.CreatedBy, &last, &p.Version, &roles, &p.ProjectCount, &p.PortfolioCount)
+		&p.Enabled, &p.Managed, &p.IdentitySync, &p.CreatedAt, &p.CreatedBy, &last, &p.Version, &roles, &p.ProjectCount, &p.PortfolioCount,
+		&archived, &p.ArchivedBy, &p.ArchiveReason, &p.Protected)
 	if err != nil {
 		return p, err
+	}
+	if archived.Valid {
+		t := archived.Time
+		p.ArchivedAt = &t
 	}
 	if last.Valid {
 		t := last.Time
@@ -388,14 +398,19 @@ func (s *Service) List(ctx context.Context, a Actor, f ListFilter) (ListResult, 
 	if f.DepartmentID != "" {
 		add(`u.department_id = ?`, f.DepartmentID)
 	}
+	// R9: archived (deleted) people are hidden unless explicitly requested.
 	switch f.Status {
-	case "", "ALL":
+	case "":
+		where = append(where, `u.archived_at IS NULL`)
+	case "ALL":
 	case "ENABLED":
 		where = append(where, `u.enabled`)
 	case "DISABLED":
-		where = append(where, `NOT u.enabled`)
+		where = append(where, `NOT u.enabled AND u.archived_at IS NULL`)
 	case "UNMANAGED":
-		where = append(where, `u.username IS NULL`)
+		where = append(where, `u.username IS NULL AND u.archived_at IS NULL`)
+	case "ARCHIVED":
+		where = append(where, `u.archived_at IS NOT NULL`)
 	default:
 		return ListResult{}, InvalidError{"status", "未知状态筛选"}
 	}
@@ -476,7 +491,8 @@ func grantsOf(ctx context.Context, q queryer, id string) (portfolio, project []G
 // personnelActions are the audit actions shown in a person's security history.
 var personnelActions = []string{"personnel_created", "account_enabled", "account_disabled", "password_reset", "sessions_revoked",
 	"profile_updated", "system_role_changed", "portfolio_role_changed", "project_role_changed", "account_adopted",
-	"account_provision_failed", "account_provision_cancelled", "identity_sync", "login_success", "logout", "identity_bound"}
+	"account_provision_failed", "account_provision_cancelled", "identity_sync", "login_success", "logout", "identity_bound",
+	"personnel_archived", "personnel_purged", "identity_protection_changed"}
 
 // Get returns one person with grants, live identity-provider status and security history.
 func (s *Service) Get(ctx context.Context, a Actor, id string) (PersonDetail, error) {
@@ -569,7 +585,7 @@ func (s *Service) Departments(ctx context.Context, a Actor) ([]Department, error
 	if _, err := s.Authorize(ctx, a, CapPersonnelRead); err != nil {
 		return nil, err
 	}
-	rows, err := s.DB.QueryContext(ctx, `SELECT d.id, d.name, d.status, d.version, (SELECT count(*) FROM users u WHERE u.department_id=d.id) FROM departments d ORDER BY d.status, d.name`)
+	rows, err := s.DB.QueryContext(ctx, `SELECT d.id, d.name, d.status, d.version, (SELECT count(*) FROM users u WHERE u.department_id=d.id AND u.archived_at IS NULL) FROM departments d ORDER BY d.status, d.name`)
 	if err != nil {
 		return nil, err
 	}

@@ -32,6 +32,8 @@ writeFileSync(join(httpWebroot, 'fixture-http01'), 'fixture-http01', { mode: 0o6
 writeFileSync(join(directory, 'ingress.conf'), fixtureIngress(webPort, httpPort));
 const fixtureProject = `crane-a1-prod-${process.pid}`;
 if (fixtureProject === productionProject) throw Error('Anonymous fixture must not use the production project');
+// The schema every freshly migrated database has: the highest shipped migration (never a literal).
+const LATEST_SCHEMA = Math.max(...readdirSync('deploy/postgres/migrations').map((f) => /^(\d{5})_.*\.sql$/.exec(f)?.[1]).filter(Boolean).map(Number));
 const compose = ['compose', '--project-name', fixtureProject, '--env-file', envFile, '-f', 'deploy/compose/docker-compose.prod.yml', '-f', 'tests/integration/a1-production/compose.yml'];
 let ownedNetwork;
 const holders = [];
@@ -116,7 +118,7 @@ try {
     const planOut = run(docker, [...typesTool, 'plan', '--types', 'MOTOR,PLC'], {}, true);
     const plan = JSON.parse(planOut).plan;
     assert.deepEqual(plan.toCreate, ['MOTOR', 'PLC']);
-    assert.equal(plan.target.database, 'crane_app'); assert.equal(plan.target.role, 'crane_app'); assert.equal(plan.target.schemaVersion, 13);
+    assert.equal(plan.target.database, 'crane_app'); assert.equal(plan.target.role, 'crane_app'); assert.equal(plan.target.schemaVersion, LATEST_SCHEMA);
     const applyOut = run(docker, [...typesTool, 'apply', '--types', 'MOTOR,PLC', '--approve', plan.digest, '--actor', 'b4-fixture-operator'], {}, true);
     assert.equal(JSON.parse(applyOut).record.result, 'success');
     // The approved digest is single-use: re-presenting it after the apply is refused (exit 1).

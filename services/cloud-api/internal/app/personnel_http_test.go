@@ -227,3 +227,94 @@ func TestProjectMemberPickerIsScopedAndMinimal(t *testing.T) {
 }
 
 func itoa64(n int64) string { return strconv.FormatInt(n, 10) }
+
+// R9 A1 over the real BFF: delete = archive. An already logged-in person's cookie, WebSocket and
+// live lease stop at once, every grant is revoked, the person disappears from the default list,
+// history stays; only a system_admin may archive; protected and self are refused; purge is
+// refused while business history references the person.
+func TestPersonnelAPIArchiveStopsEverythingAndKeepsHistory(t *testing.T) {
+	f, _ := personnelFixture(t)
+	admin, as := f.login(t, "admin")
+	op, os := f.login(t, "operator")
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, "wss"+strings.TrimPrefix(f.server.URL, "https")+"/api/v1/devices/SIM-P001-01/stream",
+		&websocket.DialOptions{HTTPClient: f.server.Client(), HTTPHeader: http.Header{"Cookie": []string{op.String()}, "Origin": []string{f.server.URL}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.CloseNow()
+	if _, _, err = conn.Read(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := f.jsonCall(t, op, os.CsrfToken, "POST", "/api/v1/devices/SIM-P001-01/live-sessions", nil, nil); code != 201 {
+		t.Fatal("live lease", code)
+	}
+	var version int64
+	_ = f.db.QueryRow(`SELECT version FROM users WHERE id='user-operator'`).Scan(&version)
+	body := map[string]any{"reason": "离职", "confirmUsername": "user-operator"}
+	// Account manager: 403 (archive is system_admin only). Missing If-Match: 428.
+	mgr, ms := f.login(t, "maintainer")
+	if code, _ := f.jsonCall(t, mgr, ms.CsrfToken, "POST", "/api/v1/admin/people/user-operator/archive", map[string]string{"If-Match": `"` + itoa64(version) + `"`}, body); code != 403 {
+		t.Fatal("account manager archived", code)
+	}
+	if code, _ := f.jsonCall(t, admin, as.CsrfToken, "POST", "/api/v1/admin/people/user-operator/archive", nil, body); code != 428 {
+		t.Fatal("archive without If-Match", code)
+	}
+	code, res := f.jsonCall(t, admin, as.CsrfToken, "POST", "/api/v1/admin/people/user-operator/archive", map[string]string{"If-Match": `"` + itoa64(version) + `"`}, body)
+	if code != 200 || res["sessionsRevoked"].(float64) < 1 {
+		t.Fatal("archive", code, res)
+	}
+	if w := f.request(op, "", "/api/v1/devices", "GET"); w.Code != 401 {
+		t.Fatal("archived user's cookie still works", w.Code)
+	}
+	for {
+		if _, _, err = conn.Read(ctx); err != nil {
+			break
+		}
+	}
+	if websocket.CloseStatus(err) != websocket.StatusPolicyViolation {
+		t.Fatal("WebSocket survived archive", err)
+	}
+	for q, want := range map[string]int{
+		`SELECT count(*) FROM live_sessions WHERE user_id='user-operator'`:                                                        0,
+		`SELECT count(*) FROM project_memberships WHERE user_id='user-operator'`:                                                  0,
+		`SELECT count(*) FROM users WHERE id='user-operator' AND archived_at IS NOT NULL AND NOT enabled`:                         1,
+		`SELECT count(*) FROM audit_logs WHERE action='personnel_archived' AND target_user_id='user-operator' AND request_id<>''`: 1,
+		`SELECT count(*) FROM audit_logs WHERE user_id='user-operator' AND action='login_success'`:                                1, // own history kept
+	} {
+		if n := f.count(t, q); n != want {
+			t.Fatalf("%s = %d, want %d", q, n, want)
+		}
+	}
+	// Hidden from the default list; visible with status=ARCHIVED.
+	w := f.request(admin, as.CsrfToken, "/api/v1/admin/people", "GET")
+	if strings.Contains(w.Body.String(), `"id":"user-operator"`) {
+		t.Fatal("archived person in the default list")
+	}
+	if w = f.request(admin, as.CsrfToken, "/api/v1/admin/people?status=ARCHIVED", "GET"); !strings.Contains(w.Body.String(), `"id":"user-operator"`) {
+		t.Fatal("archived filter")
+	}
+	// Frozen: enable refused with 409 ARCHIVED.
+	if code, res = f.jsonCall(t, admin, as.CsrfToken, "POST", "/api/v1/admin/people/user-operator/enable", map[string]string{"If-Match": `"` + itoa64(version+1) + `"`}, nil); code != 409 || res["code"] != "ARCHIVED" {
+		t.Fatal("enable archived", code, res)
+	}
+	// Business history (login + live session audit) → purge refused, stays archived.
+	code, chk := f.jsonCall(t, admin, as.CsrfToken, "GET", "/api/v1/admin/people/user-operator/purge-check", nil, nil)
+	if code != 200 || chk["purgeable"] != false {
+		t.Fatal("purge-check", code, chk)
+	}
+	if code, res = f.jsonCall(t, admin, as.CsrfToken, "POST", "/api/v1/admin/people/user-operator/purge", nil, map[string]any{"confirmUsername": "user-operator"}); code != 409 || res["code"] != "REFERENCED" {
+		t.Fatal("purge referenced", code, res)
+	}
+	// Self and protected identities.
+	if code, _ = f.jsonCall(t, admin, as.CsrfToken, "POST", "/api/v1/admin/people/user-admin/archive", map[string]string{"If-Match": `"1"`}, map[string]any{"reason": "x", "confirmUsername": "user-admin"}); code != 422 {
+		t.Fatal("self archive", code)
+	}
+	if _, err = f.db.Exec(`UPDATE users SET protected_reason='OWNER' WHERE id='user-maintainer'`); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ = f.jsonCall(t, admin, as.CsrfToken, "POST", "/api/v1/admin/people/user-maintainer/archive", map[string]string{"If-Match": `"1"`}, map[string]any{"reason": "x", "confirmUsername": "user-maintainer"}); code != 403 {
+		t.Fatal("protected archive", code)
+	}
+}

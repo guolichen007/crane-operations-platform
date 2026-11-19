@@ -161,7 +161,8 @@ func ChangeGrant(ctx context.Context, db *sql.DB, user, project, role string, re
 	defer tx.Rollback()
 	// Serialize each user's grant changes, including revoke and bootstrap tools.
 	var issuer sql.NullString
-	if err = tx.QueryRowContext(ctx, `SELECT issuer FROM users WHERE id=$1 FOR UPDATE`, user).Scan(&issuer); err != nil || !issuer.Valid {
+	var archived bool
+	if err = tx.QueryRowContext(ctx, `SELECT issuer, archived_at IS NOT NULL FROM users WHERE id=$1 FOR UPDATE`, user).Scan(&issuer, &archived); err != nil || !issuer.Valid || (archived && !revoke) {
 		return ErrDenied
 	}
 	if err = writeGrant(ctx, tx, user, project, role, revoke, event); err != nil {

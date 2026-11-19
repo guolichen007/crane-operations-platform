@@ -9,6 +9,11 @@
 //	             Needs the account service (ACCOUNT_SERVICE_SECRET_FILE, OIDC_ISSUER, KEYCLOAK_INTERNAL_URL).
 //	list-admins  enabled/disabled system administrators (no secrets).
 //	system-role  --id U --role R [--remove]   (host recovery; still refuses to remove the last admin)
+//	protect      --id U --reason OWNER|SERVICE|SYSTEM | --clear   (R9: never archivable / purgeable)
+//	cleanup-plan --list FILE      read-only classification of an EXPLICIT test-account list
+//	             ({"reason": "...", "accounts": [{"id": "...", "username": "..."}]}); never a pattern
+//	cleanup-apply --list FILE --approve DIGEST   archive (+ purge when unreferenced) exactly the
+//	             approved plan through the normal service guards; needs the account service.
 //
 // Every write is audited as host:<actor>.
 package main
@@ -22,6 +27,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/guolichen007/crane-operations-platform/internal/auditlog"
@@ -32,11 +38,12 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-var operations = map[string]bool{"bind": true, "grant": true, "revoke": true, "list-grants": true, "adopt-admin": true, "list-admins": true, "system-role": true}
+var operations = map[string]bool{"bind": true, "grant": true, "revoke": true, "list-grants": true, "adopt-admin": true, "list-admins": true, "system-role": true,
+	"protect": true, "cleanup-plan": true, "cleanup-apply": true}
 
 func execute(args []string, output io.Writer) error {
 	if len(args) == 0 || !operations[args[0]] {
-		return errors.New("usage: identity bind|grant|revoke|list-grants|adopt-admin|list-admins|system-role")
+		return errors.New("usage: identity bind|grant|revoke|list-grants|adopt-admin|list-admins|system-role|protect|cleanup-plan|cleanup-apply")
 	}
 	flags := flag.NewFlagSet("identity", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -50,15 +57,20 @@ func execute(args []string, output io.Writer) error {
 	remove := flags.Bool("remove", false, "remove the system role")
 	username := flags.String("username", "", "exact Keycloak username (adopt-admin)")
 	actor := flags.String("actor", "", "explicit host administrator audit identity")
+	reason := flags.String("reason", "", "protection reason (protect)")
+	clear := flags.Bool("clear", false, "clear the protection (protect)")
+	list := flags.String("list", "", "explicit cleanup list file (cleanup-plan / cleanup-apply)")
+	approve := flags.String("approve", "", "approved cleanup plan digest (cleanup-apply)")
 	if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 {
 		return errors.New("invalid explicit identity arguments")
 	}
 	op := args[0]
-	needsID := op == "bind" || op == "grant" || op == "revoke" || op == "list-grants" || op == "system-role"
-	if (needsID && *id == "") || (op == "adopt-admin" && *username == "") {
+	needsID := op == "bind" || op == "grant" || op == "revoke" || op == "list-grants" || op == "system-role" || op == "protect"
+	if (needsID && *id == "") || (op == "adopt-admin" && *username == "") || (strings.HasPrefix(op, "cleanup-") && *list == "") ||
+		(op == "cleanup-apply" && *approve == "") || (op == "protect" && (*reason == "") == !*clear) {
 		return errors.New("invalid explicit identity arguments")
 	}
-	if op != "list-grants" && op != "list-admins" && *actor == "" {
+	if op != "list-grants" && op != "list-admins" && op != "cleanup-plan" && *actor == "" {
 		return errors.New("host administrator actor required")
 	}
 	source := os.Getenv("DATABASE_URL")
@@ -116,6 +128,40 @@ func execute(args []string, output io.Writer) error {
 			out = append(out, a)
 		}
 		return json.NewEncoder(output).Encode(out)
+	case "protect":
+		err = svc.SetProtected(ctx, host, *id, *reason)
+	case "cleanup-plan", "cleanup-apply":
+		raw, e := os.ReadFile(*list)
+		if e != nil {
+			return errors.New("cleanup list unreadable")
+		}
+		var doc personnel.CleanupList
+		dec := json.NewDecoder(strings.NewReader(string(raw)))
+		dec.DisallowUnknownFields()
+		if e = dec.Decode(&doc); e != nil {
+			return errors.New("cleanup list must be {reason, accounts:[{id, username}]}")
+		}
+		if op == "cleanup-plan" {
+			plan, e := svc.PlanCleanup(ctx, doc)
+			if e != nil {
+				return e
+			}
+			enc := json.NewEncoder(output)
+			enc.SetIndent("", "  ")
+			return enc.Encode(plan)
+		}
+		if svc.IdP, e = accountClient(svc.Issuer); e != nil {
+			return e
+		}
+		plan, e := svc.ApplyCleanup(ctx, host, doc, *approve)
+		if e != nil {
+			return e
+		}
+		enc := json.NewEncoder(output)
+		enc.SetIndent("", "  ")
+		if e = enc.Encode(plan); e != nil {
+			return e
+		}
 	case "adopt-admin":
 		if !platform.SecureURL(svc.Issuer, true) {
 			return errors.New("OIDC_ISSUER required")
@@ -173,6 +219,19 @@ func execute(args []string, output io.Writer) error {
 	return err
 }
 
+// accountClient builds the realm-scoped account service client (cleanup-apply needs Keycloak to
+// disable / delete the managed test accounts).
+func accountClient(issuer string) (*kcadmin.Client, error) {
+	if !platform.SecureURL(issuer, true) {
+		return nil, errors.New("OIDC_ISSUER required")
+	}
+	secret, err := platform.PrivateSecret(os.Getenv("ACCOUNT_SERVICE_SECRET_FILE"), 32)
+	if err != nil {
+		return nil, err
+	}
+	return kcadmin.New(issuer, os.Getenv("KEYCLOAK_INTERNAL_URL"), envOr("ACCOUNT_SERVICE_CLIENT_ID", "crane-account-service"), secret, nil)
+}
+
 func envOr(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -191,7 +250,11 @@ func main() {
 		case errors.Is(err, personnel.ErrIdentityProvider):
 			msg = "Rejected: account service / Keycloak unavailable or not permitted."
 		case errors.Is(err, personnel.ErrConflict):
-			msg = "Rejected: conflicting identity or role state."
+			msg = "Rejected: conflicting identity or role state (re-plan if the cleanup plan changed)."
+		case errors.Is(err, personnel.ErrProtectedIdentity):
+			msg = "Rejected: protected identity (OWNER / SERVICE / SYSTEM)."
+		case errors.Is(err, personnel.ErrInvalid):
+			msg = "Rejected: " + err.Error()
 		}
 		fmt.Fprintln(os.Stderr, msg)
 		os.Exit(1)

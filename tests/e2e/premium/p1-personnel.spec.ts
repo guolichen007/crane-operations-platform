@@ -12,11 +12,15 @@ async function mock(page: Page, opts: { roles?: string[]; failProvisionOnce?: bo
   const caps = {
     personnel_read: roles.length > 0, account_manage: roles.length > 0, personnel_audit_read: roles.length > 0,
     department_manage: roles.includes('system_admin'), system_role_manage: roles.includes('system_admin'), portfolio_role_manage: roles.includes('system_admin'),
+    personnel_archive: roles.includes('system_admin'),
   };
   const now = '2026-11-18T08:00:00Z';
   const person = (id: string, over: Partial<P> = {}): P => ({ id, username: id, displayName: '员工 ' + id, departmentId: 'ops', departmentName: '运维部', jobTitle: '工程师', phone: '', email: '',
-    enabled: true, managed: true, identitySync: 'SYNCED', createdAt: now, createdBy: 'host:ops', lastLoginAt: null, version: 1, systemRoles: [], projectCount: 0, portfolioCount: 0, ...over });
-  const people: P[] = [person('root-admin', { displayName: '系统管理员', systemRoles: ['system_admin'], lastLoginAt: now }), person('worker-1')];
+    enabled: true, managed: true, identitySync: 'SYNCED', createdAt: now, createdBy: 'host:ops', lastLoginAt: null, version: 1, systemRoles: [], projectCount: 0, portfolioCount: 0,
+    archivedAt: null, archivedBy: '', archiveReason: '', protected: '', ...over });
+  const people: P[] = [person('root-admin', { displayName: '系统管理员', systemRoles: ['system_admin'], lastLoginAt: now, protected: 'OWNER' }), person('worker-1'),
+    person('tester-9', { displayName: '临时测试员 九号（一个很长的显示名称用于检查窄屏换行）', jobTitle: '现场调试与验收测试工程师', departmentName: '工程与交付部', portfolioCount: 1, projectCount: 2 })];
+  const referenced = new Set(['worker-1']);
   const portfolio: Record<string, Record<string, string>> = {};
   const provisions = new Map<string, { body: unknown; done: boolean }>();
   const calls: { method: string; path: string; body?: unknown; headers: Record<string, string> }[] = [];
@@ -37,7 +41,8 @@ async function mock(page: Page, opts: { roles?: string[]; failProvisionOnce?: bo
     if (p === 'admin/people' && m === 'GET') {
       const q = url.searchParams.get('q') ?? '';
       const st = url.searchParams.get('status') ?? '';
-      const items = people.filter((x) => (!q || x.displayName.includes(q) || x.username.includes(q)) && (!st || (st === 'ENABLED' ? x.enabled : !x.enabled)));
+      const items = people.filter((x) => (!q || x.displayName.includes(q) || x.username.includes(q)) &&
+        (st === 'ARCHIVED' ? !!x.archivedAt : st === 'ALL' || !x.archivedAt) && (!st || st === 'ALL' || st === 'ARCHIVED' || (st === 'ENABLED' ? x.enabled : !x.enabled)));
       return r.fulfill({ json: { items, total: items.length } });
     }
     if (p === 'admin/people' && m === 'POST') {
@@ -78,6 +83,26 @@ async function mock(page: Page, opts: { roles?: string[]; failProvisionOnce?: bo
         target.enabled = action === 'enable';
         target.version++;
         return r.fulfill({ json: { person: target, identitySync: 'SYNCED', sessionsRevoked: action === 'disable' ? 2 : 0 } });
+      }
+      if (action === 'archive') {
+        const b = body as { reason: string; confirmUsername: string };
+        if (target.protected) return r.fulfill({ status: 403, json: { error: 'Forbidden' } });
+        if (target.archivedAt) return r.fulfill({ status: 409, json: { error: 'archived', code: 'ARCHIVED' } });
+        if (ifMatch !== target.version) return r.fulfill({ status: 409, json: { error: 'stale' } });
+        if (!b.reason || b.confirmUsername !== target.username) return r.fulfill({ status: 422, json: { error: '请输入该人员的登录用户名以确认', field: 'confirmUsername' } });
+        const revoked = { systemRoles: target.systemRoles, portfolio: Object.keys(portfolio[target.id] ?? {}), projects: [] };
+        Object.assign(target, { enabled: false, archivedAt: now, archivedBy: 'root-admin', archiveReason: b.reason, systemRoles: [], portfolioCount: 0, projectCount: 0, version: target.version + 1 });
+        portfolio[target.id] = {};
+        return r.fulfill({ json: { person: target, identitySync: 'SYNCED', sessionsRevoked: 1, liveLeasesRevoked: 0, revoked } });
+      }
+      if (action === 'purge-check') {
+        const refs = referenced.has(target.id) ? { audit_actions: 3 } : {};
+        return r.fulfill({ json: { archived: !!target.archivedAt, protected: !!target.protected, references: refs, purgeable: !!target.archivedAt && !Object.keys(refs).length } });
+      }
+      if (action === 'purge') {
+        if (!target.archivedAt || referenced.has(target.id)) return r.fulfill({ status: 409, json: { error: 'referenced', code: 'REFERENCED' } });
+        people.splice(people.indexOf(target), 1);
+        return r.fulfill({ status: 204, body: '' });
       }
       if (action === 'reset-password') return r.fulfill({ json: { person: target, identitySync: 'SYNCED', sessionsRevoked: 1, temporaryPassword: 'BBBBBBBBBBBBBBB2' } });
       if (action === 'revoke-sessions') return r.fulfill({ json: { person: target, identitySync: 'SYNCED', sessionsRevoked: 3 } });
@@ -200,6 +225,127 @@ test('无系统角色：侧栏无入口，直接访问提示无权限且不发�
   await expect(page.getByTestId('personnel-forbidden')).toBeVisible();
   expect(api.calls.filter((c) => c.path.startsWith('admin/') && c.path !== 'admin/me')).toHaveLength(0);
 });
+
+test('删除人员：输入原因与用户名确认 → 归档并撤销授权；默认列表隐藏；无业务引用的测试账号可永久删除；有引用只能归档', async ({ page }) => {
+  const api = await mock(page);
+  await page.goto('/#/system/people/tester-9');
+  const d = page.getByTestId('person-detail');
+  await d.getByTestId('person-delete').click();
+  const dlg = page.getByTestId('person-delete-dialog');
+  await expect(dlg).toContainText('历史操作、审批、责任人记录与审计全部保留');
+  await expect(dlg.getByTestId('delete-submit')).toBeDisabled();
+  await dlg.getByTestId('delete-reason').fill('测试账号清理');
+  await dlg.getByTestId('delete-confirm').fill('tester-');
+  await expect(dlg.getByTestId('delete-submit')).toBeDisabled();
+  await dlg.getByTestId('delete-confirm').fill('tester-9');
+  await page.screenshot({ path: shot('7-delete-dialog') });
+  await dlg.getByTestId('delete-submit').click();
+  await expect(d.getByTestId('person-notice')).toContainText('已删除（归档）');
+  await expect(d.getByTestId('person-archived')).toContainText('测试账号清理');
+  await expect(d.getByTestId('person-status')).toHaveText('已删除（归档）');
+  await expect(d.getByTestId('person-reset')).toHaveCount(0);
+  await expect(d.getByTestId('person-delete')).toHaveCount(0);
+  const call = api.calls.find((c) => c.path === 'admin/people/tester-9/archive');
+  expect(call?.headers['if-match']).toBe('"1"');
+  expect(call?.body).toEqual({ reason: '测试账号清理', confirmUsername: 'tester-9' });
+  // Default list hides it; the archived filter shows it.
+  await page.evaluate(() => { location.hash = '#/system/people'; });
+  await expect(page.getByTestId('people-table')).toBeVisible();
+  await expect(page.locator('[data-person="tester-9"]')).toHaveCount(0);
+  await page.getByLabel('状态筛选').selectOption('ARCHIVED');
+  await page.getByTestId('people-filter').click();
+  await expect(page.locator('[data-person="tester-9"]')).toBeVisible();
+  // Unreferenced test account: permanent purge offered and confirmed by username.
+  await page.locator('[data-person="tester-9"]').click();
+  await d.getByTestId('person-purge-open').click();
+  const pd = page.getByTestId('person-purge-dialog');
+  await expect(pd.getByTestId('purge-submit')).toBeDisabled();
+  await pd.getByTestId('purge-confirm').fill('tester-9');
+  await pd.getByTestId('purge-submit').click();
+  await expect(page.getByTestId('personnel-center')).toBeVisible();
+  expect(api.people.some((x) => x.id === 'tester-9')).toBe(false);
+  // Referenced person: archive allowed, purge refused (only archive).
+  await page.evaluate(() => { location.hash = '#/system/people/worker-1'; });
+  await d.getByTestId('person-delete').click();
+  await dlg.getByTestId('delete-reason').fill('离职');
+  await dlg.getByTestId('delete-confirm').fill('worker-1');
+  await dlg.getByTestId('delete-submit').click();
+  await expect(d.getByTestId('purge-blocked')).toContainText('操作日志 3');
+  await expect(d.getByTestId('person-purge-open')).toHaveCount(0);
+  // Protected OWNER and oneself: no delete button.
+  await page.evaluate(() => { location.hash = '#/system/people/root-admin'; });
+  await expect(page.getByTestId('person-protected')).toBeVisible();
+  await expect(page.getByTestId('person-delete')).toHaveCount(0);
+});
+
+// R9 A2: phone widths — every personnel page and dialog fits 375 / 390 px without horizontal
+// overflow, and add / edit / delete / permission configuration stay operable.
+for (const [w, h] of [[375, 812], [390, 844]] as const) {
+  test(`手机 ${w}×${h}：人员列表卡片化、开户/编辑/权限/删除可操作、无横向溢出`, async ({ page }) => {
+    await page.setViewportSize({ width: w, height: h });
+    await mock(page);
+    const noOverflow = async (where: string) => {
+      const r = await page.evaluate(() => {
+        const vw = document.documentElement.clientWidth;
+        const off: string[] = [];
+        for (const el of document.querySelectorAll<HTMLElement>('body *')) {
+          const b = el.getBoundingClientRect();
+          if (b.width > 0 && b.right > vw + 0.5 && getComputedStyle(el).visibility !== 'hidden') off.push(`${el.tagName.toLowerCase()}.${[...el.classList].join('.')}@${Math.round(b.right)}`);
+        }
+        return { sw: document.documentElement.scrollWidth - vw, off: off.slice(0, 5) };
+      });
+      expect(r.sw, `${where} scrollWidth`).toBeLessThanOrEqual(0);
+      expect(r.off, `${where} offenders`).toEqual([]);
+    };
+    await page.goto('/#/system/people');
+    await expect(page.getByTestId('people-table')).toBeVisible();
+    await expect(page.locator('[data-person="tester-9"] td[data-label="姓名"]')).toBeVisible();
+    await noOverflow('list');
+    await page.screenshot({ path: shot(`8-list-${w}`), fullPage: true });
+    // Add: three steps reachable, summary visible.
+    await page.getByTestId('person-create').click();
+    const wiz = page.getByTestId('person-wizard');
+    await wiz.getByTestId('wiz-name').fill('移动端新人');
+    await wiz.getByTestId('wiz-username').fill('mobile-new');
+    await wiz.getByTestId('wiz-next').click();
+    await wiz.getByTestId('wiz-add-scope').click();
+    await wiz.getByTestId('wiz-scope-0').selectOption('PS-A');
+    await noOverflow('wizard-permissions');
+    await wiz.getByTestId('wiz-next').click();
+    await expect(wiz.getByTestId('wiz-summary')).toBeVisible();
+    await noOverflow('wizard-summary');
+    await wiz.getByTestId('wiz-next').click();
+    const otp = page.getByTestId('one-time-password');
+    await noOverflow('one-time-password');
+    await otp.getByTestId('otp-confirm').check();
+    await otp.getByTestId('otp-close').click();
+    // Edit + permission configuration on the detail page.
+    await page.evaluate(() => { location.hash = '#/system/people/tester-9'; });
+    const d = page.getByTestId('person-detail');
+    await d.getByTestId('edit-open').click();
+    await d.getByTestId('edit-job').fill('移动端编辑');
+    await noOverflow('edit');
+    await d.getByTestId('edit-save').click();
+    await expect(d.getByTestId('person-notice')).toContainText('资料已保存');
+    await d.getByTestId('detail-role-account_manager').check();
+    await d.getByTestId('detail-roles-save').click();
+    await expect(d.getByTestId('person-notice')).toContainText('系统角色已更新');
+    await d.getByTestId('detail-scope').selectOption('PS-A');
+    await d.getByTestId('detail-scope-add').click();
+    await expect(d.getByTestId('detail-portfolio')).toContainText('华东项目组合');
+    await noOverflow('detail');
+    await page.screenshot({ path: shot(`9-detail-${w}`), fullPage: true });
+    // Delete dialog.
+    await d.getByTestId('person-delete').click();
+    const dlg = page.getByTestId('person-delete-dialog');
+    await dlg.getByTestId('delete-reason').fill('移动端删除');
+    await dlg.getByTestId('delete-confirm').fill('tester-9');
+    await noOverflow('delete-dialog');
+    await dlg.getByTestId('delete-submit').click();
+    await expect(d.getByTestId('person-archived')).toBeVisible();
+    await noOverflow('archived');
+  });
+}
 
 for (const [w, h] of [[375, 812], [1280, 720], [1920, 1080]] as const) {
   test(`人员与账号在 ${w}×${h} 可读可用、无横向溢出`, async ({ page }) => {

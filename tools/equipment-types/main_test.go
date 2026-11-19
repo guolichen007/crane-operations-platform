@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/guolichen007/crane-operations-platform/deploy/postgres/migrations"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -98,7 +100,7 @@ func TestCLIPlanApplyVerifyNeverPrintsSecret(t *testing.T) {
 	if code, _ := run("verify", "--types", "MOTOR,PLC", "--expect-installable", "43"); code != exitDrift {
 		t.Fatalf("verify with a wrong installable expectation exit %d, want %d", code, exitDrift)
 	}
-	if !strings.Contains(text, `"database": "`+name+`"`) || !strings.Contains(text, `"schemaVersion": 13`) {
+	if !strings.Contains(text, `"database": "`+name+`"`) || !strings.Contains(text, `"schemaVersion": `+strconv.FormatInt(migrations.Latest(), 10)) {
 		t.Fatalf("plan output lacks the target identity: %s", text)
 	}
 	var n int

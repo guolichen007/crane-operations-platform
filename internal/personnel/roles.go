@@ -47,12 +47,15 @@ const (
 	CapSystemRoleManage  SystemCapability = "system_role_manage"
 	CapPortfolioRoleMgmt SystemCapability = "portfolio_role_manage"
 	CapPersonnelAudit    SystemCapability = "personnel_audit_read"
+	// CapPersonnelArchive (R9): archive ("delete") a person and purge an unreferenced test
+	// account. system_admin only — an account manager can disable but never delete.
+	CapPersonnelArchive SystemCapability = "personnel_archive"
 )
 
 func roleCapabilities(role SystemRole) []SystemCapability {
 	switch role {
 	case RoleSystemAdmin:
-		return []SystemCapability{CapPersonnelRead, CapAccountManage, CapDepartmentManage, CapSystemRoleManage, CapPortfolioRoleMgmt, CapPersonnelAudit}
+		return []SystemCapability{CapPersonnelRead, CapAccountManage, CapDepartmentManage, CapSystemRoleManage, CapPortfolioRoleMgmt, CapPersonnelAudit, CapPersonnelArchive}
 	case RoleAccountManager:
 		return []SystemCapability{CapPersonnelRead, CapAccountManage, CapPersonnelAudit}
 	}
@@ -90,6 +93,12 @@ var (
 	ErrIdempotencyKey = errors.New("idempotency key reused with a different request")
 	// ErrIdentityProvider: Keycloak unavailable or refused; the operation can be retried (HTTP 503).
 	ErrIdentityProvider = errors.New("identity provider unavailable; the operation can be retried")
+	// ErrArchived: the person is archived (deleted); only a test-account purge may follow (HTTP 409).
+	ErrArchived = errors.New("the person is archived")
+	// ErrProtectedIdentity: OWNER / service / system identities are never archived or purged (HTTP 403).
+	ErrProtectedIdentity = errors.New("protected identity")
+	// ErrReferenced: a purge was refused because business history references the person (HTTP 409).
+	ErrReferenced = errors.New("the person is referenced by business history; archive only")
 	// ErrNotConfigured: the deployment has no account service credential (HTTP 503).
 	ErrNotConfigured = errors.New("account service is not configured on this deployment")
 )

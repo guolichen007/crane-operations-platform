@@ -89,8 +89,8 @@ func TestMigrationUpFromEmptyAppliesSpec(t *testing.T) {
 	if !specColumnPresent(t, db) {
 		t.Fatal("spec_json column missing after up from empty")
 	}
-	if v := currentVersion(t, db); v != 13 {
-		t.Fatalf("version = %d, want 13", v)
+	if v := currentVersion(t, db); v != migrations.Latest() {
+		t.Fatalf("version = %d, want %d", v, migrations.Latest())
 	}
 }
 
@@ -108,8 +108,8 @@ func TestMigrationDownRefusedKeepsVersionConsistent(t *testing.T) {
 	if !specColumnPresent(t, db) {
 		t.Fatal("spec_json column lost after refused down")
 	}
-	if v := currentVersion(t, db); v != 13 {
-		t.Fatalf("version after refused down = %d, want 13 (record must stay consistent with schema)", v)
+	if v := currentVersion(t, db); v != migrations.Latest() {
+		t.Fatalf("version after refused down = %d, want %d (record must stay consistent with schema)", v, migrations.Latest())
 	}
 }
 
@@ -129,8 +129,8 @@ func TestMigrationUpFromOldDatabase(t *testing.T) {
 	if !specColumnPresent(t, db) {
 		t.Fatal("spec_json column missing after upgrade")
 	}
-	if v := currentVersion(t, db); v != 13 {
-		t.Fatalf("version = %d, want 13", v)
+	if v := currentVersion(t, db); v != migrations.Latest() {
+		t.Fatalf("version = %d, want %d", v, migrations.Latest())
 	}
 }
 
@@ -172,7 +172,7 @@ func TestMigration12To13PreservesPopulatedData(t *testing.T) {
 		return s
 	}
 	before := fingerprint()
-	if err := goose.UpContext(ctx, db, "."); err != nil {
+	if err := goose.UpToContext(ctx, db, ".", 13); err != nil {
 		t.Fatalf("12 -> 13 on populated data: %v", err)
 	}
 	if v := currentVersion(t, db); v != 13 {
@@ -195,5 +195,65 @@ func TestMigration12To13PreservesPopulatedData(t *testing.T) {
 	}
 	if v := currentVersion(t, db); v != 13 {
 		t.Fatalf("version after refused down = %d", v)
+	}
+}
+
+// R9 A1: a populated schema-13 database (people, roles, provisions, audit) migrates to 14 without
+// changing anything; nobody is archived or protected by the migration; the new CHECKs accept every
+// existing row; an archived person can never be enabled again; forward-only.
+func TestMigration13To14PersonnelArchive(t *testing.T) {
+	db := openIsolated(t)
+	setupGoose(t)
+	ctx := context.Background()
+	if err := goose.UpToContext(ctx, db, ".", 13); err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range []string{
+		`INSERT INTO tenants(id,name) VALUES('t1','t1') ON CONFLICT DO NOTHING`,
+		`INSERT INTO users(id,subject,issuer,display_name,enabled,username) VALUES('owner','00000000-0000-4000-8000-0000000000aa','https://crane.example/realms/crane','OWNER',true,'owner'),('off','00000000-0000-4000-8000-0000000000bb','https://crane.example/realms/crane','Off',false,'off')`,
+		`INSERT INTO system_memberships(user_id,role,granted_by) VALUES('owner','system_admin','host:ops')`,
+		`INSERT INTO account_provisions(id,actor,idempotency_key,payload_sha256,username,request,state) VALUES('p1','owner','key-0000001','x','off','{}','COMPLETED')`,
+		`INSERT INTO audit_logs(user_id,action,result,request_id,target_user_id) VALUES('owner','account_disabled','success','r-1','off')`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatal(stmt, err)
+		}
+	}
+	fingerprint := func() string {
+		var s string
+		if err := db.QueryRow(`SELECT md5((SELECT string_agg(id||'|'||enabled::text||'|'||coalesce(username,'')||'|'||version::text, ',' ORDER BY id) FROM users)||'#'||
+		  (SELECT string_agg(user_id||role, ',') FROM system_memberships)||'#'||(SELECT string_agg(id||state, ',') FROM account_provisions)||'#'||(SELECT count(*)::text FROM audit_logs))`).Scan(&s); err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	before := fingerprint()
+	if err := goose.UpToContext(ctx, db, ".", 14); err != nil {
+		t.Fatalf("13 -> 14: %v", err)
+	}
+	if fingerprint() != before {
+		t.Fatal("00014 changed existing people / roles / provisions / audit")
+	}
+	var archived, protected int
+	if err := db.QueryRow(`SELECT count(*) FILTER (WHERE archived_at IS NOT NULL), count(*) FILTER (WHERE protected_reason IS NOT NULL) FROM users`).Scan(&archived, &protected); err != nil || archived != 0 || protected != 0 {
+		t.Fatalf("migration archived/protected people: %d/%d %v", archived, protected, err)
+	}
+	if _, err := db.Exec(`UPDATE users SET archived_at=now() WHERE id='owner'`); err == nil {
+		t.Fatal("an enabled person was archived (CHECK users_archived_disabled missing)")
+	}
+	if _, err := db.Exec(`UPDATE users SET archived_at=now() WHERE id='off'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE users SET enabled=true WHERE id='off'`); err == nil {
+		t.Fatal("an archived person was re-enabled")
+	}
+	if _, err := db.Exec(`UPDATE users SET protected_reason='OWNER' WHERE id='off'`); err == nil {
+		t.Fatal("an archived person was marked protected")
+	}
+	if _, err := db.Exec(`UPDATE account_provisions SET state='PURGED' WHERE id='p1'`); err != nil {
+		t.Fatal("PURGED provision state refused:", err)
+	}
+	if err := goose.DownContext(ctx, db, "."); err == nil {
+		t.Fatal("00014 down must refuse")
 	}
 }

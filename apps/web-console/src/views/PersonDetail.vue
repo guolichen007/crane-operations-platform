@@ -2,9 +2,10 @@
 import { computed, ref, watch } from 'vue';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query';
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
-import { ArrowLeft, KeyRound, LogOut, Power, PowerOff, Save, ShieldCheck } from 'lucide-vue-next';
+import { ArrowLeft, KeyRound, LogOut, Power, PowerOff, Save, ShieldCheck, Trash2 } from 'lucide-vue-next';
 import {
   getSystemAccess, getPerson, updatePerson, setEnabled, resetPassword, revokeSessions, setSystemRoles, setPortfolioRole,
+  archivePerson, purgeCheck, purgePerson, REFERENCE_TEXT,
   listDepartments, listAdminPortfolioScopes, validateProfile, systemRoleNames, portfolioRoleName, personnelErrorMessage, statusLabel, formatTime,
   SYSTEM_ROLES, SYSTEM_ROLE_TEXT, PORTFOLIO_ROLES, PORTFOLIO_ROLE_LABEL, PROJECT_ROLE_LABEL, ACTION_TEXT,
   type Profile, type SystemRole, type PortfolioRole, type AccountResult,
@@ -24,8 +25,11 @@ const departments = useQuery({ queryKey: ['departments'], queryFn: listDepartmen
 const scopes = useQuery({ queryKey: ['admin-portfolio-scopes'], queryFn: listAdminPortfolioScopes, enabled: computed(() => !!caps.value.portfolio_role_manage) });
 const p = computed(() => person.data.value);
 const self = computed(() => !!p.value && p.value.id === webSession.value?.userId);
-// Account managers may not act on system role holders (server enforces; UI hides).
-const canAct = computed(() => !!caps.value.account_manage && !!p.value && (p.value.systemRoles.length === 0 || !!caps.value.system_role_manage));
+// Account managers may not act on system role holders (server enforces; UI hides). An archived
+// (deleted) person is frozen: no account action at all.
+const archived = computed(() => !!p.value?.archivedAt);
+const canAct = computed(() => !archived.value && !!caps.value.account_manage && !!p.value && (p.value.systemRoles.length === 0 || !!caps.value.system_role_manage));
+const canArchive = computed(() => !!caps.value.personnel_archive && !!p.value && !archived.value && !self.value && !p.value.protected);
 const notice = ref('');
 const actionError = ref('');
 const otp = ref<AccountResult | null>(null);
@@ -164,6 +168,51 @@ function changePortfolio(scope: string, current: string, role: PortfolioRole | n
   portfolioMut.mutate({ scope, role, expected: current });
 }
 
+// ---------------------------------------------------------------- delete (archive) / purge
+// Deleting a person archives it: grants, sessions, live views and the login are revoked at once;
+// the person and every historical record stay. Only an archived test account that no business
+// record references can be removed permanently (server re-checks everything).
+const deleteOpen = ref(false);
+const deleteReason = ref('');
+const deleteConfirm = ref('');
+const deleteError = ref('');
+const loginName = computed(() => p.value?.username || p.value?.id || '');
+function openDelete() {
+  deleteReason.value = '';
+  deleteConfirm.value = '';
+  deleteError.value = '';
+  deleteOpen.value = true;
+}
+const archive = useMutation({
+  mutationFn: () => archivePerson(id.value, p.value?.version ?? 0, deleteReason.value.trim(), deleteConfirm.value.trim()),
+  onSuccess: async (r) => {
+    deleteOpen.value = false;
+    const n = r.revoked.systemRoles.length + r.revoked.portfolio.length + r.revoked.projects.length;
+    notice.value = `已删除（归档）：撤销 ${n} 项授权、结束 ${r.sessionsRevoked} 个在线会话与实时观看，登录已禁用；历史记录保留。` + syncNote(r);
+    actionError.value = '';
+    await refresh();
+  },
+  onError: (e) => (deleteError.value = personnelErrorMessage(e)),
+});
+const purgeInfo = useQuery({
+  queryKey: computed(() => ['purge-check', id.value]),
+  queryFn: () => purgeCheck(id.value),
+  enabled: computed(() => archived.value && !!caps.value.personnel_archive),
+});
+const purgeOpen = ref(false);
+const purgeConfirm = ref('');
+const purge = useMutation({
+  mutationFn: () => purgePerson(id.value, purgeConfirm.value.trim()),
+  onSuccess: async () => {
+    purgeOpen.value = false;
+    await queryClient.invalidateQueries({ queryKey: ['people'] });
+    void router.push('/system/people');
+  },
+  onError: (e) => (deleteError.value = personnelErrorMessage(e)),
+});
+const referenceText = computed(() =>
+  Object.entries(purgeInfo.data.value?.references ?? {}).map(([k, n]) => `${REFERENCE_TEXT[k] ?? k} ${n}`).join('、'));
+
 onBeforeRouteLeave(() => (otp.value ? false : allowClose(dirty.value, save.isPending.value)));
 const changeText = (c: unknown) => {
   if (!c || typeof c !== 'object') return '';
@@ -189,6 +238,16 @@ const changeText = (c: unknown) => {
     <p v-else-if="person.isError.value" class="workspace-error" role="alert">{{ personnelErrorMessage(person.error.value) }}</p>
     <template v-else-if="p">
       <p v-if="notice" class="workspace-notice" role="status" data-testid="person-notice">{{ notice }}</p>
+      <section v-if="archived" class="archived-banner" data-testid="person-archived" role="status">
+        <strong>该人员已删除（归档）</strong>
+        <span>{{ formatTime(p.archivedAt) }} · {{ p.archivedBy }} · 原因：{{ p.archiveReason }}</span>
+        <span>登录、授权与会话均已撤销；其历史操作、审批与责任记录保留，不可恢复启用。</span>
+        <template v-if="caps.personnel_archive">
+          <span v-if="purgeInfo.data.value?.purgeable" class="form-hint">该账号没有任何业务历史引用，可作为测试账号永久删除。</span>
+          <span v-else-if="purgeInfo.data.value" class="form-hint" data-testid="purge-blocked">存在业务历史（{{ referenceText || '受保护' }}），只能保留为归档，不能永久删除。</span>
+          <button v-if="purgeInfo.data.value?.purgeable" class="danger-action" data-testid="person-purge-open" @click="purgeConfirm = ''; deleteError = ''; purgeOpen = true"><Trash2 :size="14" />永久删除测试账号</button>
+        </template>
+      </section>
       <p v-if="actionError" class="form-error" role="alert" data-testid="person-error">{{ actionError }}</p>
 
       <div class="detail-grid">
@@ -231,13 +290,17 @@ const changeText = (c: unknown) => {
             <button class="ghost-action" :disabled="act.isPending.value" data-testid="person-revoke" @click="run('revoke')"><LogOut :size="14" />撤销会话</button>
             <button v-if="p.identitySync === 'PENDING' && p.managed" class="ghost-action" :disabled="act.isPending.value" data-testid="person-sync" @click="run('sync')">重试身份同步</button>
           </div>
-          <p v-if="self" class="form-hint">不能停用自己的账号。</p>
+          <div v-if="canArchive" class="account-actions danger-zone">
+            <button class="danger-action" :disabled="act.isPending.value || archive.isPending.value" data-testid="person-delete" @click="openDelete"><Trash2 :size="14" />删除人员</button>
+          </div>
+          <p v-if="p.protected" class="form-hint" data-testid="person-protected">受保护身份（{{ p.protected }}），不能删除。</p>
+          <p v-if="self" class="form-hint">不能停用或删除自己的账号。</p>
           <p v-else-if="caps.account_manage && !canAct" class="form-hint">该人员持有系统角色，只有系统管理员可以管理其账号。</p>
         </section>
 
         <section class="detail-card">
           <h2><ShieldCheck :size="15" />系统权限</h2>
-          <template v-if="caps.system_role_manage && !self">
+          <template v-if="caps.system_role_manage && !self && !archived">
             <label v-for="r in SYSTEM_ROLES" :key="r" class="check-row">
               <input type="checkbox" :checked="roleDraft.includes(r)" :data-testid="`detail-role-${r}`" :disabled="!p.enabled && !roleDraft.includes(r)" @change="toggleRole(r)" />
               <span><strong>{{ SYSTEM_ROLE_TEXT[r].label }}</strong><small>{{ SYSTEM_ROLE_TEXT[r].detail }}</small></span>
@@ -250,19 +313,19 @@ const changeText = (c: unknown) => {
 
         <section class="detail-card">
           <h2>项目组合授权</h2>
-          <table v-if="p.portfolioGrants?.length" class="data-table" data-testid="detail-portfolio">
-            <thead><tr><th>项目组合</th><th>角色</th><th v-if="caps.portfolio_role_manage && !self"></th></tr></thead>
+          <table v-if="p.portfolioGrants?.length" class="data-table stack-table" data-testid="detail-portfolio">
+            <thead><tr><th>项目组合</th><th>角色</th><th v-if="caps.portfolio_role_manage && !self && !archived"></th></tr></thead>
             <tbody>
               <tr v-for="g in p.portfolioGrants" :key="g.scopeId" :data-scope="g.scopeId">
-                <td>{{ g.scopeName }}</td>
-                <td>
-                  <select v-if="caps.portfolio_role_manage && !self" :value="g.role" :aria-label="`${g.scopeName} 角色`" :disabled="portfolioMut.isPending.value"
+                <td data-label="项目组合">{{ g.scopeName }}</td>
+                <td data-label="角色">
+                  <select v-if="caps.portfolio_role_manage && !self && !archived" :value="g.role" :aria-label="`${g.scopeName} 角色`" :disabled="portfolioMut.isPending.value"
                     @change="changePortfolio(g.scopeId, g.role, ($event.target as HTMLSelectElement).value as PortfolioRole)">
                     <option v-for="r in PORTFOLIO_ROLES" :key="r" :value="r">{{ PORTFOLIO_ROLE_LABEL[r] }}</option>
                   </select>
                   <template v-else>{{ portfolioRoleName(g.role) }}</template>
                 </td>
-                <td v-if="caps.portfolio_role_manage && !self"><button class="danger-action" :disabled="portfolioMut.isPending.value" @click="changePortfolio(g.scopeId, g.role, null)">撤销</button></td>
+                <td v-if="caps.portfolio_role_manage && !self && !archived"><button class="danger-action" :disabled="portfolioMut.isPending.value" @click="changePortfolio(g.scopeId, g.role, null)">撤销</button></td>
               </tr>
             </tbody>
           </table>
@@ -276,9 +339,9 @@ const changeText = (c: unknown) => {
 
         <section class="detail-card">
           <h2>项目授权</h2>
-          <table v-if="p.projectGrants?.length" class="data-table" data-testid="detail-projects">
+          <table v-if="p.projectGrants?.length" class="data-table stack-table" data-testid="detail-projects">
             <thead><tr><th>项目</th><th>项目角色</th></tr></thead>
-            <tbody><tr v-for="g in p.projectGrants" :key="g.scopeId"><td>{{ g.scopeName }}<div class="cell-sub">{{ g.scopeId }}</div></td><td>{{ PROJECT_ROLE_LABEL[g.role] ?? g.role }}</td></tr></tbody>
+            <tbody><tr v-for="g in p.projectGrants" :key="g.scopeId"><td data-label="项目">{{ g.scopeName }}<div class="cell-sub">{{ g.scopeId }}</div></td><td data-label="项目角色">{{ PROJECT_ROLE_LABEL[g.role] ?? g.role }}</td></tr></tbody>
           </table>
           <p v-else class="workspace-hint">无项目权限。</p>
           <p class="form-hint">项目权限由项目所在组合的「项目组合经理」在「项目组合 → 正式项目 → 项目成员」中授予或撤销。</p>
@@ -298,6 +361,39 @@ const changeText = (c: unknown) => {
         </section>
       </div>
     </template>
+
+    <div v-if="deleteOpen && p" class="modal-backdrop" @click.self="!archive.isPending.value && (deleteOpen = false)">
+      <form class="workspace-modal delete-modal" data-testid="person-delete-dialog" novalidate @submit.prevent="archive.mutate()">
+        <h2>删除人员「{{ p.displayName || loginName }}」</h2>
+        <ul class="delete-effects">
+          <li>立即撤销全部系统、项目组合与项目授权（{{ p.systemRoles.length + p.portfolioCount + p.projectCount }} 项）；</li>
+          <li>立即结束所有在线会话与实时观看，并禁用登录账号；</li>
+          <li>人员从默认列表隐藏；历史操作、审批、责任人记录与审计全部保留；</li>
+          <li>删除后不能恢复启用。如只是暂时不用，请改用「停用」。</li>
+        </ul>
+        <label>删除原因 *<input v-model="deleteReason" maxlength="200" data-testid="delete-reason" placeholder="如：离职 / 测试账号清理" /></label>
+        <label><span>请输入登录用户名 <code>{{ loginName }}</code> 以确认 *</span><input v-model="deleteConfirm" data-testid="delete-confirm" autocomplete="off" autocapitalize="off" spellcheck="false" /></label>
+        <p v-if="deleteError" class="form-error" role="alert" data-testid="delete-error">{{ deleteError }}</p>
+        <div class="modal-actions">
+          <button type="button" class="ghost-action" :disabled="archive.isPending.value" @click="deleteOpen = false">取消</button>
+          <button type="submit" class="danger-action" data-testid="delete-submit" :disabled="archive.isPending.value || !deleteReason.trim() || deleteConfirm.trim() !== loginName">
+            {{ archive.isPending.value ? '删除中…' : '确认删除' }}
+          </button>
+        </div>
+      </form>
+    </div>
+    <div v-if="purgeOpen && p" class="modal-backdrop" @click.self="!purge.isPending.value && (purgeOpen = false)">
+      <form class="workspace-modal delete-modal" data-testid="person-purge-dialog" novalidate @submit.prevent="purge.mutate()">
+        <h2>永久删除测试账号「{{ loginName }}」</h2>
+        <p class="form-hint">仅用于没有任何业务历史的测试账号：登录账号与人员记录将被永久移除，安全审计保留；该用户名不会再分配给新人员。</p>
+        <label><span>请输入登录用户名 <code>{{ loginName }}</code> 以确认 *</span><input v-model="purgeConfirm" data-testid="purge-confirm" autocomplete="off" autocapitalize="off" spellcheck="false" /></label>
+        <p v-if="deleteError" class="form-error" role="alert">{{ deleteError }}</p>
+        <div class="modal-actions">
+          <button type="button" class="ghost-action" :disabled="purge.isPending.value" @click="purgeOpen = false">取消</button>
+          <button type="submit" class="danger-action" data-testid="purge-submit" :disabled="purge.isPending.value || purgeConfirm.trim() !== loginName">永久删除</button>
+        </div>
+      </form>
+    </div>
 
     <OneTimePassword v-if="otp?.temporaryPassword && p" title="密码已重置" :username="p.username" :display-name="p.displayName" :password="otp.temporaryPassword"
       note="旧密码与所有在线会话已失效。" @close="otp = null" />
@@ -326,8 +422,29 @@ const changeText = (c: unknown) => {
 .status-pill[data-tone='off'] { color: #f08a8a; }
 .status-pill[data-tone='warn'] { color: #e8b75d; }
 .status-pill[data-tone='ok'] { color: #6fd39b; }
+.danger-zone { border-top: 1px dashed var(--line-soft); padding-top: 10px; }
+.archived-banner { border: 1px solid rgba(240, 138, 138, 0.45); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; color: var(--text-2); font-size: 13px; }
+.archived-banner strong { color: #f08a8a; }
+.archived-banner button { align-self: flex-start; }
+.delete-modal { width: min(560px, 94vw); display: flex; flex-direction: column; gap: 10px; }
+.delete-modal label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--text-3); }
+.delete-modal input { height: 34px; padding: 0 8px; border: 1px solid var(--line-soft); border-radius: 7px; background: var(--surface-900); color: var(--text-1); font-size: 13px; }
+.delete-effects { margin: 0; padding-left: 18px; font-size: 13px; color: var(--text-2); display: flex; flex-direction: column; gap: 4px; }
+.data-table { min-width: 0; }
+.detail-card .data-table td, .detail-card .data-table th { overflow-wrap: anywhere; }
 @media (max-width: 700px) {
   .detail-grid { grid-template-columns: 1fr; }
+  .detail-card { padding: 12px; }
+  .facts { grid-template-columns: 1fr 1fr; }
+  .account-actions > button { flex: 1 1 calc(50% - 8px); justify-content: center; }
+  .stack-table, .stack-table tbody, .stack-table tr, .stack-table td { display: block; width: 100%; }
+  .stack-table thead { display: none; }
+  .stack-table tr { border-bottom: 1px solid var(--line-soft); padding: 8px 0; }
+  .stack-table td { position: relative; padding: 3px 0 3px 88px; border: 0; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
+  .stack-table td::before { content: attr(data-label); position: absolute; left: 0; top: 3px; width: 80px; color: var(--text-3); font-size: 12px; }
+  .stack-table td:not([data-label]) { padding-left: 0; }
+  .stack-table select { width: 100%; }
+  .delete-modal { width: 100vw; border-radius: 0; }
   .history li { grid-template-columns: 1fr; }
   .h-change { grid-column: 1; }
   .grant-row { grid-template-columns: 1fr; }

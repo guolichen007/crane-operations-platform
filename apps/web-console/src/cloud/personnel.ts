@@ -28,6 +28,7 @@ export type GrantRef = { scopeId: string; scopeName: string; role: string };
 export type Person = {
   id: string; username: string; displayName: string; departmentId: string; departmentName: string; jobTitle: string;
   phone: string; email: string; enabled: boolean; managed: boolean; identitySync: 'SYNCED' | 'PENDING';
+  archivedAt: string | null; archivedBy: string; archiveReason: string; protected: '' | 'OWNER' | 'SERVICE' | 'SYSTEM';
   createdAt: string; createdBy: string; lastLoginAt: string | null; version: number; systemRoles: SystemRole[];
   projectCount: number; portfolioCount: number; portfolioGrants?: GrantRef[]; projectGrants?: GrantRef[];
 };
@@ -43,6 +44,8 @@ export type ProvisionRequest = { username: string; profile: Profile; systemRoles
 export type ProvisionResult = { provisionId: string; state: string; person: Person; temporaryPassword?: string; passwordDelivered: boolean; replayed: boolean };
 export type AccountResult = { person: Person; identitySync: 'SYNCED' | 'PENDING' | 'UNMANAGED'; sessionsRevoked: number; temporaryPassword?: string };
 export type Provision = { id: string; actor: string; username: string; state: string; failure: string; request: ProvisionRequest; createdAt: string; updatedAt: string };
+export type ArchiveResult = AccountResult & { revoked: { systemRoles: string[]; portfolio: string[]; projects: string[] } };
+export type PurgeCheck = { archived: boolean; protected: boolean; references: Record<string, number>; purgeable: boolean };
 export type Candidate = { userId: string; displayName: string; username: string; departmentName: string; jobTitle: string };
 
 export const getSystemAccess = () => api<SystemAccess>('admin/me');
@@ -61,6 +64,11 @@ export const setSystemRoles = (id: string, roles: SystemRole[], expectedRoles: S
   api<Person>(`admin/people/${encodeURIComponent(id)}/system-roles`, { method: 'PUT', body: { roles, expectedRoles } });
 export const setPortfolioRole = (id: string, scope: string, role: PortfolioRole | null, expectedRole: string | null) =>
   api<Person>(`admin/people/${encodeURIComponent(id)}/portfolio-roles/${encodeURIComponent(scope)}`, { method: 'PUT', body: { role, expectedRole } });
+export const archivePerson = (id: string, version: number, reason: string, confirmUsername: string) =>
+  api<ArchiveResult>(`admin/people/${encodeURIComponent(id)}/archive`, { method: 'POST', body: { reason, confirmUsername }, ifMatch: version });
+export const purgeCheck = (id: string) => api<PurgeCheck>(`admin/people/${encodeURIComponent(id)}/purge-check`);
+export const purgePerson = (id: string, confirmUsername: string) =>
+  api<void>(`admin/people/${encodeURIComponent(id)}/purge`, { method: 'POST', body: { confirmUsername } });
 export const listDepartments = () => api<Department[]>('admin/departments');
 export const createDepartment = (d: { id: string; name: string }) => api<Department>('admin/departments', { method: 'POST', body: { ...d, status: 'ACTIVE', version: 0, memberCount: 0 } });
 export const updateDepartment = (d: Department) =>
@@ -108,6 +116,8 @@ export function personnelErrorMessage(error: unknown): string {
     if (error.code === 'PERSON_BUSY') return '该人员的另一项账号操作正在进行，请稍后刷新再试。';
     if (error.code === 'PROVISION_INCOMPLETE') return '该账号的开户尚未完成，请在「未完成的开户」中继续或放弃。';
     if (error.code === 'IDEMPOTENCY_KEY') return '提交内容与上一次不一致，请刷新后重新填写。';
+    if (error.code === 'ARCHIVED') return '该人员已删除（归档），不能再执行此操作。';
+    if (error.code === 'REFERENCED') return '该人员存在业务历史记录，只能保留为已删除（归档），不能永久删除。';
     switch (error.status) {
       case 401: return '登录已失效，请重新登录。';
       case 403: return '没有执行此操作的系统权限（或目标人员持有您无权管理的系统角色）。';
@@ -122,7 +132,8 @@ export function personnelErrorMessage(error: unknown): string {
   return '网络连接失败或请求超时，请刷新核对后再操作。';
 }
 
-export function statusLabel(p: Pick<Person, 'enabled' | 'managed' | 'identitySync'>): { text: string; tone: 'ok' | 'off' | 'warn' } {
+export function statusLabel(p: Pick<Person, 'enabled' | 'managed' | 'identitySync'> & { archivedAt?: string | null }): { text: string; tone: 'ok' | 'off' | 'warn' } {
+  if (p.archivedAt) return { text: '已删除（归档）', tone: 'off' };
   if (!p.enabled) return { text: '已停用', tone: 'off' };
   if (p.identitySync === 'PENDING') return { text: '启用 · 身份同步待重试', tone: 'warn' };
   if (!p.managed) return { text: '启用 · 账号未纳管', tone: 'warn' };
@@ -134,6 +145,16 @@ export const ACTION_TEXT: Record<string, string> = {
   sessions_revoked: '撤销会话', profile_updated: '修改资料', system_role_changed: '调整系统角色', portfolio_role_changed: '调整项目组合角色',
   project_role_changed: '调整项目权限', account_adopted: '宿主机纳管', account_provision_failed: '开户失败', account_provision_cancelled: '开户已取消',
   login_success: '登录', logout: '退出', identity_bound: '绑定身份',
+  personnel_archived: '删除人员（归档）', personnel_purged: '永久删除测试账号', identity_protection_changed: '调整受保护标记',
+};
+
+/** Purge reference keys → user-facing names (why a person can only stay archived). */
+export const REFERENCE_TEXT: Record<string, string> = {
+  audit_actions: '操作日志', entity_revisions: '台账修订', project_intakes: '项目登记责任人', intake_transitions: '项目登记流转',
+  project_activities: '项目活动负责人', person_resources: '人员资源', resource_reservations: '资源预约', conflict_overrides: '冲突放行',
+  schedule_baselines: '排期审批', accounts_opened: '开户操作', people_created: '创建的人员', roles_granted: '授予的系统角色',
+  maintenance_work_orders: '维护工单', maintenance_rules: '维护规则', wire_rope_inspections: '钢丝绳检查', onboarding_imports: '台账导入',
+  point_mapping_reviews: '点位核查', equipment_replacements: '器件更换', meter_baselines: '计量基准',
 };
 
 export const systemRoleNames = (roles: readonly string[]): string =>

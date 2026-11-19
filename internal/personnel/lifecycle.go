@@ -16,7 +16,8 @@ import (
 // target is the locked state of the person an operation applies to.
 type target struct {
 	id, username, issuer, subject string
-	enabled                       bool
+	enabled, archived             bool
+	protected                     string
 	version                       int64
 	roles                         []SystemRole
 }
@@ -37,8 +38,9 @@ func (t target) hasRole(r SystemRole) bool {
 func lockTarget(ctx context.Context, tx *sql.Tx, id string) (target, error) {
 	var t target
 	var username, issuer, subject sql.NullString
-	err := tx.QueryRowContext(ctx, `SELECT id, username, issuer, subject, enabled, version FROM users WHERE id=$1 AND (issuer IS NOT NULL OR username IS NOT NULL) FOR UPDATE`, id).
-		Scan(&t.id, &username, &issuer, &subject, &t.enabled, &t.version)
+	err := tx.QueryRowContext(ctx, `SELECT id, username, issuer, subject, enabled, archived_at IS NOT NULL, COALESCE(protected_reason,''), version
+FROM users WHERE id=$1 AND (issuer IS NOT NULL OR username IS NOT NULL) FOR UPDATE`, id).
+		Scan(&t.id, &username, &issuer, &subject, &t.enabled, &t.archived, &t.protected, &t.version)
 	if errors.Is(err, sql.ErrNoRows) {
 		return t, ErrNotFound
 	}
@@ -154,6 +156,11 @@ func (s *Service) begin(ctx context.Context, a Actor, id string, cap SystemCapab
 	}
 	if err = guardTarget(roles, a, t); err != nil {
 		return fail(err)
+	}
+	if t.archived {
+		// An archived (deleted) person is frozen: no profile edit, re-enable, password or session
+		// operation. Only the permanent purge of a test account may follow.
+		return fail(ErrArchived)
 	}
 	return tx, roles, t, nil
 }
@@ -483,6 +490,9 @@ func (s *Service) setSystemRoles(ctx context.Context, a Actor, id string, roles,
 	if err != nil {
 		return Person{}, err
 	}
+	if t.archived {
+		return Person{}, ErrArchived
+	}
 	current := make([]string, 0, len(t.roles))
 	for _, r := range t.roles {
 		current = append(current, string(r))
@@ -572,6 +582,9 @@ func (s *Service) setPortfolioRole(ctx context.Context, a Actor, id, scope, role
 	t, err := lockTarget(ctx, tx, id)
 	if err != nil {
 		return Person{}, err
+	}
+	if t.archived {
+		return Person{}, ErrArchived
 	}
 	var status string
 	err = tx.QueryRowContext(ctx, `SELECT status FROM portfolio_scopes WHERE id=$1 FOR SHARE`, scope).Scan(&status)
@@ -727,11 +740,21 @@ func (s *Service) adoptAdministrator(ctx context.Context, a Actor, username, dis
 		return Person{}, ErrNotFound
 	}
 	var local string
-	err = s.DB.QueryRowContext(ctx, `SELECT id FROM users WHERE issuer=$1 AND subject=$2`, s.Issuer, u.ID).Scan(&local)
+	var archived bool
+	err = s.DB.QueryRowContext(ctx, `SELECT id, archived_at IS NOT NULL FROM users WHERE issuer=$1 AND subject=$2`, s.Issuer, u.ID).Scan(&local, &archived)
 	if errors.Is(err, sql.ErrNoRows) {
 		local = sanitizeLocalID(username)
+		if reserved, e := usernameReserved(ctx, s.DB, local); e != nil {
+			return Person{}, e
+		} else if reserved {
+			return Person{}, fmt.Errorf("%w: local id %s belonged to a purged person", ErrConflict, local)
+		}
 	} else if err != nil {
 		return Person{}, err
+	}
+	if archived {
+		// An archived person is never revived, not even by host recovery.
+		return Person{}, ErrArchived
 	}
 	if _, err = s.IdP.Adopt(ctx, u.ID, local); err != nil {
 		return Person{}, ErrIdentityProvider
@@ -762,7 +785,7 @@ func (s *Service) adoptAdministrator(ctx context.Context, a Actor, username, dis
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO users(id,issuer,subject,display_name,enabled,username,idp_state,created_by) VALUES($1,$2,$3,$4,true,$5,'SYNCED',$6)
 ON CONFLICT (id) DO UPDATE SET enabled=true, username=COALESCE(users.username, excluded.username), display_name=CASE WHEN users.display_name='' THEN excluded.display_name ELSE users.display_name END,
-idp_state='SYNCED', version=users.version+1, updated_at=now() WHERE users.issuer=excluded.issuer AND users.subject=excluded.subject`,
+idp_state='SYNCED', version=users.version+1, updated_at=now() WHERE users.issuer=excluded.issuer AND users.subject=excluded.subject AND users.archived_at IS NULL`,
 		local, s.Issuer, u.ID, name, stored, a.event("", "", "", "", nil).Actor); err != nil {
 		if isUniqueViolation(err) {
 			return Person{}, fmt.Errorf("%w: username or local id already used by another person", ErrConflict)

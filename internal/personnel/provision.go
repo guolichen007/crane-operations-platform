@@ -165,6 +165,12 @@ func (s *Service) ProvisionAccount(ctx context.Context, a Actor, key string, req
 	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE id=$1 OR username=$1)`, req.Username).Scan(&taken); err != nil {
 		return out, err
 	}
+	if !taken {
+		// A purged person's username stays reserved: its audit history keeps that local id.
+		if taken, err = usernameReserved(ctx, tx, req.Username); err != nil {
+			return out, err
+		}
+	}
 	if taken {
 		return out, fmt.Errorf("%w: username already exists", ErrConflict)
 	}
