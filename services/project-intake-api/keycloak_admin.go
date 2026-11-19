@@ -36,7 +36,11 @@ type accountProblem struct{ status int }
 
 func (e accountProblem) Error() string { return fmt.Sprintf("keycloak status %d", e.status) }
 
-func newKeycloakAdmin(issuer, webClientID, clientID, secret string, client *http.Client) (*keycloakAdmin, error) {
+// adminBase (optional) replaces the issuer's base for the token and admin calls:
+// production uses the approved internal address (environment.go AdminBase). The
+// realm is still taken from the issuer only. An internal address is reached
+// directly, never through an HTTP proxy.
+func newKeycloakAdmin(issuer, webClientID, clientID, secret string, client *http.Client, adminBase ...string) (*keycloakAdmin, error) {
 	i := strings.Index(issuer, "/realms/")
 	if i < 0 || clientID == "" || secret == "" {
 		return nil, errors.New("account service configuration")
@@ -45,10 +49,24 @@ func newKeycloakAdmin(issuer, webClientID, clientID, secret string, client *http
 	if realm == "" || strings.ContainsAny(realm, "/?#") || realm == "master" {
 		return nil, errors.New("account service realm")
 	}
+	base := issuer[:i]
+	if len(adminBase) > 0 && adminBase[0] != "" {
+		u, err := url.Parse(adminBase[0])
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil ||
+			(u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
+			return nil, errors.New("account service admin address")
+		}
+		base = u.Scheme + "://" + u.Host
+		if client == nil {
+			transport := http.DefaultTransport.(*http.Transport).Clone()
+			transport.Proxy = nil
+			client = &http.Client{Timeout: 10 * time.Second, Transport: transport}
+		}
+	}
 	if client == nil {
 		client = &http.Client{Timeout: 10 * time.Second}
 	}
-	return &keycloakAdmin{base: issuer[:i], realm: realm, clientID: clientID, secret: secret, webClientID: webClientID, http: client}, nil
+	return &keycloakAdmin{base: base, realm: realm, clientID: clientID, secret: secret, webClientID: webClientID, http: client}, nil
 }
 
 func (k *keycloakAdmin) accessToken(ctx context.Context) (string, error) {

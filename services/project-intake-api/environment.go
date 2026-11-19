@@ -26,14 +26,22 @@ type realmProfile struct {
 	// AccountService: the dedicated realm has a Baobei account service client;
 	// the shared realm does not (no admin API access there, ever).
 	AccountService bool
+	// AdminBase: the account service's only Keycloak address for tokens and the
+	// admin API (2026-11-19 account 503). The public entry denies /admin/, so the
+	// API reaches Keycloak over the dedicated internal network u-dao-baobei-kc-admin
+	// (members: baobei-api and Keycloak's alias baobei-kc-admin only). Login (OIDC)
+	// stays on the public Issuer; tokens still carry the public issuer because
+	// Keycloak's hostname is fixed.
+	AdminBase string
 }
 
 var deployedProfiles = map[string]deployedProfile{
 	"production": {Origin: "https://baobei.youdaozd.com", Realms: map[string]realmProfile{
 		// G4-S5-R1-E: dedicated Baobei realm (target) and the shared crane realm
 		// (current, and the fallback for a controlled switch back).
-		"baobei": {Issuer: "https://crane.youdaozd.com/realms/baobei", ClientID: "baobei-web", AccountService: true},
-		"crane":  {Issuer: "https://crane.youdaozd.com/realms/crane", ClientID: "baobei-web"},
+		"baobei": {Issuer: "https://crane.youdaozd.com/realms/baobei", ClientID: "baobei-web", AccountService: true,
+			AdminBase: "http://baobei-kc-admin:8080"},
+		"crane": {Issuer: "https://crane.youdaozd.com/realms/crane", ClientID: "baobei-web"},
 	}},
 	"preview": {Origin: "https://baobei-preview.youdaozd.com", Realms: map[string]realmProfile{
 		// Preview keeps its isolated realm without the account service until an

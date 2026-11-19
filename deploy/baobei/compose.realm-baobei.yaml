@@ -11,7 +11,19 @@ services:
       OIDC_CLIENT_ID: baobei-web
       BAOBEI_ACCOUNT_CLIENT_ID: baobei-account-service
       BAOBEI_ACCOUNT_CLIENT_SECRET_FILE: /run/secrets/account_client_secret
+      # 2026-11-19 account 503: the public entry denies /admin/. The account service
+      # uses Keycloak only through the dedicated internal network below (token and
+      # admin API); browser login stays on the public issuer.
+      BAOBEI_KEYCLOAK_ADMIN_BASE: http://baobei-kc-admin:8080
     secrets: [oidc_client_secret, runtime_database_url, staff_database_url, account_client_secret]
+    networks: [internal, egress, kc-admin]
+networks:
+  # Created once by the operator (internal, no published ports, 10.240.31.0/24);
+  # members: baobei-api and the Keycloak container with alias baobei-kc-admin only.
+  # direct-deploy.py verifies the membership before and after every start.
+  kc-admin:
+    name: u-dao-baobei-kc-admin
+    external: true
 secrets:
   # CR-08C: the dedicated realm's own baobei-web client secret. The container
   # path stays /run/secrets/oidc_client_secret; the source is never the shared

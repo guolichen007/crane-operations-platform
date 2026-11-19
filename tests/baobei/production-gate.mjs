@@ -21,7 +21,10 @@ export function validateProduction(c) {
   }
   const keys = (name) => Object.keys(s[name].networks).sort();
   assert.deepEqual(keys('baobei-web'), ['frontend', 'internal']);
-  assert.deepEqual(keys('baobei-api'), ['egress', 'internal']);
+  // 2026-11-19 account 503: only the dedicated realm attaches the API to the
+  // account service network (Keycloak admin, internal); checked again below.
+  const realmName = s['baobei-api'].environment?.BAOBEI_IDENTITY_REALM;
+  assert.deepEqual(keys('baobei-api'), realmName === 'baobei' ? ['egress', 'internal', 'kc-admin'] : ['egress', 'internal']);
   assert.deepEqual(keys('baobei-postgres'), ['internal']);
   assert.equal(c.networks.internal.internal, true);assert.equal(c.networks.internal.name,'u-dao-baobei-internal');assert.equal(c.networks.frontend.external,true);
   assert.equal(c.networks.frontend.name, 'u-dao-baobei-frontend');
@@ -67,6 +70,10 @@ export function validateProduction(c) {
     assert.equal(env.BAOBEI_ACCOUNT_CLIENT_ID, 'baobei-account-service');
     assert.equal(env.BAOBEI_ACCOUNT_CLIENT_SECRET_FILE, '/run/secrets/account_client_secret');
     assert(!env.BAOBEI_ACCOUNT_CLIENT_SECRET);
+    assert.equal(env.BAOBEI_KEYCLOAK_ADMIN_BASE, 'http://baobei-kc-admin:8080', 'account service uses the internal Keycloak address');
+    assert.deepEqual(c.networks['kc-admin'], { name: 'u-dao-baobei-kc-admin', external: true });
+  } else {
+    assert(!env.BAOBEI_KEYCLOAK_ADMIN_BASE && !c.networks['kc-admin'], 'shared realm has no account service network');
   }
   assert(env.OIDC_CLIENT_SECRET_FILE && !env.OIDC_CLIENT_SECRET);
   // CR-08C: each realm mounts its own Web client secret file.

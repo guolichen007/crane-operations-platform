@@ -49,7 +49,11 @@ REALMS = {
               "web_secret": "oidc_client_secret"},
     "baobei": {"overlay": "compose.realm-baobei.yaml", "issuer": "https://crane.youdaozd.com/realms/baobei",
                "client_id": "baobei-web", "account_client_id": "baobei-account-service",
-               "secrets": ("account_client_secret",), "web_secret": "baobei_oidc_client_secret"},
+               "secrets": ("account_client_secret",), "web_secret": "baobei_oidc_client_secret",
+               # 2026-11-19 account 503: the account service reaches Keycloak only
+               # through this dedicated internal network (never the public /admin/).
+               "admin_base": "http://baobei-kc-admin:8080", "admin_network": "u-dao-baobei-kc-admin",
+               "admin_alias": "baobei-kc-admin"},
 }
 DEFAULT_REALM = "crane"
 BASE_SECRETS = ("db_password", "runtime_database_url", "staff_database_url")
@@ -357,6 +361,66 @@ def check_identity(config, realm, legacy=False, web_secret=None):
             raise ValueError("账号服务密钥必须来自外部密钥目录")
     elif "BAOBEI_ACCOUNT_CLIENT_ID" in env or "BAOBEI_ACCOUNT_CLIENT_SECRET_FILE" in env or "account_client_secret" in secrets:
         raise ValueError("共享 Realm 不得启用账号服务")
+    # 2026-11-19 account 503: the account service's Keycloak address and network.
+    networks = api.get("networks") or {}
+    names = sorted(networks) if isinstance(networks, dict) else sorted(networks)
+    # Releases prepared before this change (for example the rollback target
+    # a9171b9) carry neither the address nor the network and stay valid as they
+    # were; a release that carries either must carry exactly both. The API of a
+    # new release refuses to start without the exact address (environment.go).
+    wired = "BAOBEI_KEYCLOAK_ADMIN_BASE" in env or "kc-admin" in names
+    if profile.get("admin_network") and wired:
+        net = (config.get("networks") or {}).get("kc-admin") or {}
+        if (env.get("BAOBEI_KEYCLOAK_ADMIN_BASE") != profile["admin_base"] or
+                names != ["egress", "internal", "kc-admin"] or
+                net.get("name") != profile["admin_network"] or net.get("external") is not True):
+            raise ValueError("独立 Realm 账号服务必须经专用内部网络 " + profile["admin_network"] + " 访问 Keycloak")
+    elif wired:
+        raise ValueError("共享 Realm 不得接入账号服务管理网络")
+
+
+def uses_admin_network(release, realm):
+    """Whether this prepared release's realm overlay attaches the API to the
+    account service network (releases from before 2026-11-19 do not)."""
+    profile = realm_profile(realm)
+    if not profile.get("admin_network") or release is None:
+        return False
+    overlay = Path(release) / profile["overlay"]
+    return overlay.is_file() and profile["admin_network"] in overlay.read_text(encoding="utf-8")
+
+
+def verify_admin_network(docker, realm, api_container=None):
+    """The dedicated network exists, is internal and has no member besides the
+    Baobei API and the one Keycloak container carrying the approved alias. With
+    api_container (after start) the API must be attached as well."""
+    profile = realm_profile(realm)
+    if not profile.get("admin_network"):
+        return None
+    try:
+        net, = json.loads(docker.call("network", "inspect", profile["admin_network"]))
+    except Exception:
+        raise ValueError("账号服务管理网络 " + profile["admin_network"] + " 不存在：先由运维按部署说明创建并接入 Keycloak")
+    if net.get("Internal") is not True or net.get("Driver") != "bridge":
+        raise ValueError("账号服务管理网络必须是 internal bridge 网络")
+    members = sorted((net.get("Containers") or {}).keys())
+    keycloak, api, others = [], [], []
+    for cid in members:
+        info, = json.loads(docker.call("inspect", cid))
+        aliases = ((info.get("NetworkSettings") or {}).get("Networks") or {}).get(profile["admin_network"], {}).get("Aliases") or []
+        labels = (info.get("Config") or {}).get("Labels") or {}
+        if (labels.get("com.docker.compose.project") == "u-dao-baobei" and
+                labels.get("com.docker.compose.service") == "baobei-api"):
+            api.append(cid)
+        elif profile["admin_alias"] in aliases and (info.get("Config") or {}).get("Image", "").startswith("quay.io/keycloak/keycloak:"):
+            keycloak.append(cid)
+        else:
+            others.append(cid)
+    if others or len(keycloak) != 1 or len(api) > 1:
+        raise ValueError("账号服务管理网络成员不合规：只允许 baobei-api 与带别名 %s 的 Keycloak（Keycloak=%d，API=%d，其他=%d）"
+                         % (profile["admin_alias"], len(keycloak), len(api), len(others)))
+    if api_container is not None and api != [api_container] and not any(a.startswith(api_container) or api_container.startswith(a) for a in api):
+        raise ValueError("baobei-api 未接入账号服务管理网络")
+    return {"network": profile["admin_network"], "keycloak": 1, "api": len(api)}
 
 
 def config_hash(docker, release, secrets, images, realm=DEFAULT_REALM, legacy=False, web_secret=None):
@@ -557,6 +621,9 @@ def start(docker, release, secrets, manifest, realm=DEFAULT_REALM):
     """Reconcile only Web/API. PostgreSQL is created solely by the explicit db command."""
     images = manifest["images"]
     database = database_identity(docker, release, secrets, images, realm)
+    admin_network = uses_admin_network(release, realm)
+    if admin_network:
+        verify_admin_network(docker, realm)
     docker.compose(release, secrets, images, *APP_UP, capture=False, realm=realm)
     if database_identity(docker, release, secrets, images, realm) != database:
         raise ValueError("PostgreSQL 容器在应用切换期间被改变，停止并人工核查")
@@ -564,6 +631,8 @@ def start(docker, release, secrets, manifest, realm=DEFAULT_REALM):
         container = docker.compose(release, secrets, images, "ps", "-q", service, realm=realm).decode().strip()
         if not container or docker.call("inspect", "--format", "{{.Image}}", container).decode().strip() != image["id"]:
             raise ValueError("运行容器的镜像 ID 与部署清单不匹配")
+        if service == "baobei-api" and admin_network:
+            verify_admin_network(docker, realm, container)
 
 
 # G5-RC0 upgrade-order gate. A release whose database contract differs from the
@@ -766,6 +835,11 @@ def execute_preflight_tool(helper, tool_args, realm):
         if not value:
             raise ValueError("预检参数缺失：--" + name.replace("_", "-"))
         args += ["--" + name.replace("_", "-"), str(value)]
+    # 2026-11-19: account-service calls through the dedicated internal network.
+    if tool_args.get("admin_base"):
+        if tool_args["admin_base"] != realm_profile(realm).get("admin_base"):
+            raise ValueError("--keycloak-admin-base 只能是批准的内部地址")
+        args += ["--admin-base", tool_args["admin_base"]]
     result = subprocess.run(args, check=False, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     try:
         return json.loads(result.stdout)
@@ -1541,6 +1615,7 @@ def main():
     parser.add_argument("--takeover-admin", help="批准的接管管理员 staff_id")
     parser.add_argument("--change", help="变更编号（预检记录绑定）")
     parser.add_argument("--keycloak-base")
+    parser.add_argument("--keycloak-admin-base", help="预检账号服务调用的内部地址（仅 http://baobei-kc-admin:8080）")
     parser.add_argument("--admin-row", type=Path, help="接管管理员业务行（私有 0600 文件）")
     parser.add_argument("--link-row", type=Path, help="身份链接行（私有 0600 文件）")
     parser.add_argument("--service-secret-file", type=Path)
@@ -1577,7 +1652,8 @@ def main():
             return
         if args.command == "preflight":
             window = preflight(state, rid, args.takeover_admin, args.change, {
-                "base": args.keycloak_base, "admin": args.admin_row, "link": args.link_row,
+                "base": args.keycloak_base, "admin_base": args.keycloak_admin_base,
+                "admin": args.admin_row, "link": args.link_row,
                 "service_secret_file": args.service_secret_file, "password_file": args.password_file,
                 "web_secret_file": args.web_secret_file.absolute() if args.web_secret_file else None,
                 "redirect": args.redirect}, secrets=secrets)

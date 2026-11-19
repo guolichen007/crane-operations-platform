@@ -363,6 +363,54 @@ func TestR1ELoginName(t *testing.T) {
 	if _, _, err := k.call(context.Background(), "GET", "/../crane/users", nil, nil); err == nil {
 		t.Fatal("path traversal to another realm accepted")
 	}
+	// 2026-11-19 account 503: with the approved internal address, the realm still
+	// comes from the issuer; only the base changes, and bad addresses are refused.
+	k, err = newKeycloakAdmin("https://crane.youdaozd.com/realms/baobei", "baobei-web", "svc", "s", nil, "http://baobei-kc-admin:8080")
+	if err != nil || k.realm != "baobei" || k.base != "http://baobei-kc-admin:8080" {
+		t.Fatal(k, err)
+	}
+	if tr, ok := k.http.Transport.(*http.Transport); !ok || tr.Proxy != nil {
+		t.Fatal("internal admin address must not go through an HTTP proxy")
+	}
+	for _, bad := range []string{"baobei-kc-admin:8080", "ftp://baobei-kc-admin", "http://u:p@baobei-kc-admin:8080",
+		"http://baobei-kc-admin:8080/admin", "http://baobei-kc-admin:8080?x=1", "http://"} {
+		if _, err := newKeycloakAdmin("https://crane.youdaozd.com/realms/baobei", "baobei-web", "svc", "s", nil, bad); err == nil {
+			t.Fatal("admin address accepted:", bad)
+		}
+	}
+	if _, err := newKeycloakAdmin("https://crane.youdaozd.com/realms/master", "baobei-web", "svc", "s", nil, "http://baobei-kc-admin:8080"); err == nil {
+		t.Fatal("master realm accepted through the admin address")
+	}
+}
+
+// The token request and every admin call go to the internal address while the
+// realm stays the issuer's; nothing is sent to the public issuer host.
+func TestR1EAccountAdminBaseRouting(t *testing.T) {
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.Method+" "+r.URL.Path)
+		switch r.URL.Path {
+		case "/realms/baobei/protocol/openid-connect/token":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"synthetic","expires_in":60}`))
+		case "/admin/realms/baobei/users":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[]`))
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer srv.Close()
+	k, err := newKeycloakAdmin("https://crane.youdaozd.com/realms/baobei", "baobei-web", "svc", "s", nil, srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u, err := k.findByUsername(context.Background(), "13800000000"); err != nil || u != nil {
+		t.Fatal(u, err)
+	}
+	if strings.Join(paths, ",") != "POST /realms/baobei/protocol/openid-connect/token,GET /admin/realms/baobei/users" {
+		t.Fatal(paths)
+	}
 }
 
 // Migration under the chosen model: an existing member with history (projects,

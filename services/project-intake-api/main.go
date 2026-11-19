@@ -23,12 +23,17 @@ type Config struct {
 	// Account service (dedicated realm only): client credentials for the Baobei
 	// realm's admin API. Never set for the shared realm.
 	AccountClientID, AccountSecret string
+	// AccountAdminBase: approved internal Keycloak address for the account service
+	// (BAOBEI_KEYCLOAK_ADMIN_BASE); empty outside deployed environments, where the
+	// issuer's own base is used.
+	AccountAdminBase string
 }
 
 func config() (Config, error) {
 	c := Config{Env: os.Getenv("APP_ENV"), Addr: os.Getenv("LISTEN_ADDR"), Origin: os.Getenv("PUBLIC_ORIGIN"), Issuer: os.Getenv("OIDC_ISSUER"),
 		ClientID: os.Getenv("OIDC_CLIENT_ID"), Secret: envSecret("OIDC_CLIENT_SECRET"), Dev: os.Getenv("DEV_AUTH") == "1",
-		Realm: os.Getenv("BAOBEI_IDENTITY_REALM"), AccountClientID: os.Getenv("BAOBEI_ACCOUNT_CLIENT_ID"), AccountSecret: envSecret("BAOBEI_ACCOUNT_CLIENT_SECRET")}
+		Realm: os.Getenv("BAOBEI_IDENTITY_REALM"), AccountClientID: os.Getenv("BAOBEI_ACCOUNT_CLIENT_ID"), AccountSecret: envSecret("BAOBEI_ACCOUNT_CLIENT_SECRET"),
+		AccountAdminBase: os.Getenv("BAOBEI_KEYCLOAK_ADMIN_BASE")}
 	if c.Addr == "" {
 		c.Addr = "127.0.0.1:8088"
 	}
@@ -59,6 +64,11 @@ func config() (Config, error) {
 		if r.AccountService != (c.AccountClientID != "") || r.AccountService && (c.AccountClientID != accountServiceClientID || c.AccountSecret == "") {
 			return c, fmt.Errorf("%s account service configuration does not match realm %q", c.Env, c.Realm)
 		}
+		if c.AccountAdminBase != r.AdminBase {
+			return c, fmt.Errorf("%s account service admin address does not match realm %q", c.Env, c.Realm)
+		}
+	} else if c.AccountAdminBase != "" {
+		return c, fmt.Errorf("BAOBEI_KEYCLOAK_ADMIN_BASE is only for deployed environments")
 	}
 	return c, nil
 }
@@ -168,7 +178,7 @@ func main() {
 		log.Fatal("authentication initialization failed")
 	}
 	if r, err := selectRealm(c.Env, c.Realm); err == nil && r.AccountService {
-		if a.accounts, e = newKeycloakAdmin(c.Issuer, c.ClientID, c.AccountClientID, c.AccountSecret, nil); e != nil {
+		if a.accounts, e = newKeycloakAdmin(c.Issuer, c.ClientID, c.AccountClientID, c.AccountSecret, nil, c.AccountAdminBase); e != nil {
 			log.Fatal("account service configuration rejected")
 		}
 		a.linkedOnly = true

@@ -295,3 +295,88 @@ class OrderGateTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AccountAdminNetworkTests(unittest.TestCase):
+    """2026-11-19 account 503: the account service reaches Keycloak only through
+    u-dao-baobei-kc-admin (internal; members baobei-api + Keycloak alias
+    baobei-kc-admin). The public /admin/ stays denied."""
+
+    def test_overlay_wires_address_and_network(self):
+        config = render("baobei")
+        direct.check_identity(config, "baobei")
+        api = config["services"]["baobei-api"]
+        self.assertEqual(api["environment"]["BAOBEI_KEYCLOAK_ADMIN_BASE"], "http://baobei-kc-admin:8080")
+        self.assertEqual(sorted(api["networks"]), ["egress", "internal", "kc-admin"])
+        self.assertEqual(config["networks"]["kc-admin"], {"name": "u-dao-baobei-kc-admin", "external": True})
+        self.assertNotIn("kc-admin", render("crane")["services"]["baobei-api"]["networks"])
+
+    def test_wiring_mismatches_fail_closed(self):
+        cases = [
+            lambda c: c["services"]["baobei-api"]["environment"].update(BAOBEI_KEYCLOAK_ADMIN_BASE="https://crane.youdaozd.com"),
+            lambda c: c["services"]["baobei-api"]["environment"].update(BAOBEI_KEYCLOAK_ADMIN_BASE="http://keycloak:8080"),
+            lambda c: c["services"]["baobei-api"]["environment"].pop("BAOBEI_KEYCLOAK_ADMIN_BASE"),
+            lambda c: c["services"]["baobei-api"].update(networks=["internal", "egress", "kc-admin", "crane-backend"]),
+            lambda c: c["services"]["baobei-api"].update(networks=["internal", "egress"]),
+            lambda c: c["networks"]["kc-admin"].update(name="u-dao-crane-ops_backend"),
+            lambda c: c["networks"]["kc-admin"].update(external=False),
+        ]
+        for i, mutate in enumerate(cases):
+            config = render("baobei")
+            mutate(config)
+            with self.subTest(case=i), self.assertRaises(ValueError):
+                direct.check_identity(config, "baobei")
+        config = render("crane")
+        config["services"]["baobei-api"]["environment"]["BAOBEI_KEYCLOAK_ADMIN_BASE"] = "http://baobei-kc-admin:8080"
+        with self.assertRaises(ValueError):
+            direct.check_identity(config, "crane")
+
+    def test_release_before_the_change_stays_valid(self):
+        # The rollback target (a9171b9) has neither the address nor the network.
+        config = render("baobei")
+        api = config["services"]["baobei-api"]
+        api["environment"].pop("BAOBEI_KEYCLOAK_ADMIN_BASE")
+        api["networks"] = ["internal", "egress"]
+        config["networks"].pop("kc-admin")
+        direct.check_identity(config, "baobei")
+        with TemporaryDirectory() as tmp:
+            release = Path(tmp)
+            (release / "compose.realm-baobei.yaml").write_text("services: {}\n")
+            self.assertFalse(direct.uses_admin_network(release, "baobei"))
+            (release / "compose.realm-baobei.yaml").write_text((ROOT / "deploy/baobei/compose.realm-baobei.yaml").read_text())
+            self.assertTrue(direct.uses_admin_network(release, "baobei"))
+            self.assertFalse(direct.uses_admin_network(release, "crane"))
+
+    def test_runtime_membership(self):
+        def docker(net, members):
+            class D:
+                def call(self, *args, **kw):
+                    if args[:2] == ("network", "inspect"):
+                        if net is None:
+                            raise ValueError("missing")
+                        return json.dumps([net]).encode()
+                    return json.dumps([members[args[1]]]).encode()
+            return D()
+        kc = {"Config": {"Image": "quay.io/keycloak/keycloak:26.8.1", "Labels": {}},
+              "NetworkSettings": {"Networks": {"u-dao-baobei-kc-admin": {"Aliases": ["baobei-kc-admin"]}}}}
+        api = {"Config": {"Image": "x", "Labels": {"com.docker.compose.project": "u-dao-baobei",
+                                                   "com.docker.compose.service": "baobei-api"}}, "NetworkSettings": {}}
+        db = {"Config": {"Image": "postgres:18.4-alpine", "Labels": {}}, "NetworkSettings": {}}
+        crane_api = {"Config": {"Image": "crane", "Labels": {"com.docker.compose.project": "u-dao-crane-ops",
+                                                             "com.docker.compose.service": "cloud-api"}}, "NetworkSettings": {}}
+        good = {"Internal": True, "Driver": "bridge", "Containers": {"kc": {}, "api": {}}}
+        self.assertEqual(direct.verify_admin_network(docker(good, {"kc": kc, "api": api}), "baobei", "api")["keycloak"], 1)
+        self.assertIsNone(direct.verify_admin_network(docker(None, {}), "crane"))
+        bad = [
+            (None, {}),
+            ({**good, "Internal": False}, {"kc": kc, "api": api}),
+            ({**good, "Containers": {"kc": {}, "api": {}, "db": {}}}, {"kc": kc, "api": api, "db": db}),
+            ({**good, "Containers": {"kc": {}, "api": {}, "c": {}}}, {"kc": kc, "api": api, "c": crane_api}),
+            ({**good, "Containers": {"api": {}}}, {"api": api}),
+            ({**good, "Containers": {"kc": {}}}, {"kc": {**kc, "NetworkSettings": {"Networks": {"u-dao-baobei-kc-admin": {"Aliases": ["keycloak"]}}}}}),
+        ]
+        for i, (net, members) in enumerate(bad):
+            with self.subTest(case=i), self.assertRaises(ValueError):
+                direct.verify_admin_network(docker(net, members), "baobei")
+        with self.assertRaises(ValueError):   # API not attached after start
+            direct.verify_admin_network(docker({**good, "Containers": {"kc": {}}}, {"kc": kc}), "baobei", "api")

@@ -25,6 +25,10 @@ succeeded and the token matched. Anything not run is NOT_RUN, never PASS.
 
 Inputs:
   --base         Keycloak base URL (https in production; http only for 127.0.0.1)
+  --admin-base   optional, account-service calls only (token + Admin API): the
+                 approved internal address http://baobei-kc-admin:8080 on the
+                 dedicated network u-dao-baobei-kc-admin (the public entry denies
+                 /admin/). Login and token verification always use --base.
   --realm        approved realm (baobei)
   --admin        business row of the takeover admin: private JSON file (0600)
                  {"staff_id", "subject", "role", "staff_status", "work_phone"}
@@ -49,7 +53,8 @@ from urllib.request import BaseHandler, HTTPRedirectHandler, ProxyHandler, Reque
 
 UUID = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
 MAINLAND = re.compile(r'^\+861[3-9]\d{9}$')
-APPROVED = {'baobei': {'client': 'baobei-web', 'service': 'baobei-account-service'}}
+APPROVED = {'baobei': {'client': 'baobei-web', 'service': 'baobei-account-service',
+                       'admin_base': 'http://baobei-kc-admin:8080'}}
 
 
 class Refused(Exception):
@@ -68,9 +73,11 @@ def mask(phone):
 
 
 class Client:
-    def __init__(self, base):
+    def __init__(self, base, internal=None):
         u = urllib.parse.urlparse(base)
-        if not (u.scheme == 'https' or (u.scheme == 'http' and u.hostname in ('127.0.0.1', 'localhost'))):
+        if base == internal:
+            pass   # the one approved internal admin address (checked by the caller)
+        elif not (u.scheme == 'https' or (u.scheme == 'http' and u.hostname in ('127.0.0.1', 'localhost'))):
             raise Refused('Keycloak 地址必须为 https（仅本机回环允许 http）')
         self.base = base.rstrip('/')
         self.jar = {}
@@ -142,6 +149,11 @@ def check_admin(args, report):
     realm, approved = args.realm, APPROVED.get(args.realm)
     if not approved:
         raise Refused('Realm 不在批准名单')
+    # Account-service calls go to the approved internal address when given;
+    # issuer, login and JWKS stay on the public base.
+    if args.admin_base and args.admin_base != approved['admin_base']:
+        raise Refused('--admin-base 只能是批准的内部地址 ' + approved['admin_base'])
+    svc = Client(args.admin_base, internal=approved['admin_base']) if args.admin_base else c
     admin = json.loads(private(args.admin))
     link = json.loads(private(args.link))
     issuer = c.base + '/realms/' + realm
@@ -152,14 +164,14 @@ def check_admin(args, report):
         problems.append('业务记录没有大陆工作手机（不得猜测）')
     if link.get('issuer') != issuer or link.get('subject') != admin.get('subject') or not UUID.match(link.get('external_subject', '')):
         problems.append('身份链接与业务 subject 或目标 Issuer 不一致')
-    s, tok, _ = c.call('POST', f'/realms/{realm}/protocol/openid-connect/token',
+    s, tok, _ = svc.call('POST', f'/realms/{realm}/protocol/openid-connect/token',
                        {'grant_type': 'client_credentials', 'client_id': approved['service'],
                         'client_secret': private(args.service_secret_file)}, form=True)
     if s != 200:
         raise Refused('账号服务凭据无法取得令牌（%s）' % s)
     t = tok['access_token']
     ext = link.get('external_subject', '')
-    s, u, _ = c.call('GET', f'/admin/realms/{realm}/users/{urllib.parse.quote(ext)}', token=t)
+    s, u, _ = svc.call('GET', f'/admin/realms/{realm}/users/{urllib.parse.quote(ext)}', token=t)
     if s != 200:
         problems.append('目标 Realm 中不存在该管理员账号')
         u = {}
@@ -176,9 +188,9 @@ def check_admin(args, report):
             problems.append('baobei_subject 属性缺失或与业务 subject 不一致')
         if u.get('username') != admin.get('work_phone', '')[3:]:
             problems.append('登录名不是批准的工作手机号')
-        s, clients, _ = c.call('GET', f'/admin/realms/{realm}/clients?clientId={approved["client"]}', token=t)
+        s, clients, _ = svc.call('GET', f'/admin/realms/{realm}/clients?clientId={approved["client"]}', token=t)
         web = clients[0]['id'] if s == 200 and clients else None
-        s, mapped, _ = c.call('GET', f'/admin/realms/{realm}/users/{ext}/role-mappings', token=t)
+        s, mapped, _ = svc.call('GET', f'/admin/realms/{realm}/users/{ext}/role-mappings', token=t)
         client_maps = (mapped or {}).get('clientMappings') or {} if s == 200 else {}
         web_roles = sorted(r['name'] for r in (client_maps.get(approved['client']) or {}).get('mappings', []))
         if not web or web_roles != ['baobei_admin']:
@@ -245,6 +257,7 @@ def main():
     ap.add_argument('mode', choices=('admin', 'login'))
     for name in ('--base', '--realm', '--admin', '--link', '--service-secret-file'):
         ap.add_argument(name, required=True)
+    ap.add_argument('--admin-base')
     ap.add_argument('--password-file')
     ap.add_argument('--web-secret-file')
     ap.add_argument('--redirect')

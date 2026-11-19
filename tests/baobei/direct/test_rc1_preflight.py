@@ -194,3 +194,76 @@ class AdminPreflightSubjectTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AdminBaseTests(unittest.TestCase):
+    """2026-11-19 account 503: admin-preflight.py sends the account-service token
+    request and Admin API calls to the approved internal address; login, JWKS
+    and the issuer stay on the public base. Any other admin address is refused."""
+
+    def load(self):
+        spec = importlib.util.spec_from_file_location("admin_preflight_ab", ROOT / "deploy/baobei/admin-preflight.py")
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        return m
+
+    def test_only_the_approved_internal_address(self):
+        m = self.load()
+        self.assertEqual(m.APPROVED["baobei"]["admin_base"], "http://baobei-kc-admin:8080")
+        with self.assertRaises(m.Refused):
+            m.Client("http://keycloak:8080")                    # plain http elsewhere still refused
+        m.Client("http://baobei-kc-admin:8080", internal="http://baobei-kc-admin:8080")
+        with TemporaryDirectory() as tmp:
+            for name in ("admin", "link", "svc"):
+                p = Path(tmp) / name
+                p.write_text("{}")
+                p.chmod(0o600)
+            for bad in ("http://keycloak:8080", "https://crane.youdaozd.com", "http://baobei-kc-admin:8080/x"):
+                args = type("A", (), {"base": "https://crane.youdaozd.com", "realm": "baobei", "admin_base": bad,
+                                      "admin": str(Path(tmp) / "admin"), "link": str(Path(tmp) / "link"),
+                                      "service_secret_file": str(Path(tmp) / "svc")})
+                with self.subTest(bad=bad), self.assertRaises(m.Refused):
+                    m.check_admin(args, {})
+
+    def test_account_calls_use_the_internal_address(self):
+        m = self.load()
+        seen = []
+
+        def fake(self, method, path, body=None, token=None, form=False):
+            seen.append((self.base, method, path.split("?")[0]))
+            if path.endswith("/token"):
+                return 200, {"access_token": "t"}, {}
+            return 404, "", {}
+        with TemporaryDirectory() as tmp, patch.object(m.Client, "call", fake):
+            files = {"admin": {"staff_id": ADMIN, "subject": SUBJECT, "role": "baobei_admin", "staff_status": "ACTIVE",
+                               "work_phone": "+8613800000000"},
+                     "link": {"issuer": ISSUER, "external_subject": KC_SUB, "subject": SUBJECT}, "svc": "s"}
+            for name, body in files.items():
+                p = Path(tmp) / name
+                p.write_text(body if isinstance(body, str) else json.dumps(body))
+                p.chmod(0o600)
+            args = type("A", (), {"base": "https://crane.youdaozd.com", "realm": "baobei",
+                                  "admin_base": "http://baobei-kc-admin:8080", "admin": str(Path(tmp) / "admin"),
+                                  "link": str(Path(tmp) / "link"), "service_secret_file": str(Path(tmp) / "svc")})
+            report = {}
+            c, _, _ = m.check_admin(args, report)
+        self.assertEqual(c.base, "https://crane.youdaozd.com")      # login/JWKS client stays public
+        self.assertEqual(report["issuer"], ISSUER)
+        self.assertTrue(seen)
+        self.assertTrue(all(base == "http://baobei-kc-admin:8080" for base, _, _ in seen), seen)
+
+    def test_release_tool_passes_only_the_approved_admin_base(self):
+        captured = {}
+
+        def fake_run(args, **kw):
+            captured["args"] = args
+            return type("R", (), {"stdout": b"{}"})()
+        tool = {"base": "https://crane.youdaozd.com", "admin": "a", "link": "l", "service_secret_file": "s",
+                "password_file": "p", "web_secret_file": "w", "redirect": "https://baobei.youdaozd.com/auth/callback"}
+        with patch.object(direct.subprocess, "run", fake_run):
+            direct.execute_preflight_tool(Path("/t/admin-preflight.py"), tool, "baobei")
+            self.assertNotIn("--admin-base", captured["args"])
+            direct.execute_preflight_tool(Path("/t/admin-preflight.py"), {**tool, "admin_base": "http://baobei-kc-admin:8080"}, "baobei")
+            self.assertEqual(captured["args"][-2:], ["--admin-base", "http://baobei-kc-admin:8080"])
+            with self.assertRaises(ValueError):
+                direct.execute_preflight_tool(Path("/t/admin-preflight.py"), {**tool, "admin_base": "http://keycloak:8080"}, "baobei")

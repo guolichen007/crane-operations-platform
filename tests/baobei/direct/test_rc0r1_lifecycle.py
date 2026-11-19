@@ -165,6 +165,24 @@ class FakeDocker:
         raise AssertionError(args)
 
     def call(self, *args, capture=True, env=None, cwd=None, stdin=None):
+        if args[:2] == ("network", "inspect"):   # 2026-11-19 account service network
+            net = getattr(self.w, "admin_network", "default")
+            if net is None:
+                raise ValueError("docker network inspect 失败（不存在）")
+            if net == "default":
+                net = {"Internal": True, "Driver": "bridge",
+                       "Containers": {"kc-container": {}, "baobei-api-container": {}}}
+            return json.dumps([net]).encode()
+        if args[:2] == ("inspect", "kc-container"):
+            return json.dumps([{"Config": {"Image": "quay.io/keycloak/keycloak:26.8.1", "Labels": {}},
+                                "NetworkSettings": {"Networks": {"u-dao-baobei-kc-admin": {"Aliases": ["baobei-kc-admin"]}}}}]).encode()
+        if args[:2] == ("inspect", "baobei-api-container"):
+            return json.dumps([{"Config": {"Image": "baobei-api", "Labels": {
+                "com.docker.compose.project": "u-dao-baobei", "com.docker.compose.service": "baobei-api"}},
+                "NetworkSettings": {"Networks": {}}}]).encode()
+        if args[:2] == ("inspect", "crane-db-container"):
+            return json.dumps([{"Config": {"Image": "postgres:18", "Labels": {}},
+                                "NetworkSettings": {"Networks": {}}}]).encode()
         if args[0] == "run":                     # the migrator
             self.w.migrations += 1
             self.w.ledger = self.w.ledger_of(NEW)

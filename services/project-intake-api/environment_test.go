@@ -33,6 +33,7 @@ func setDeployedEnv(t *testing.T, env, realm string) {
 		t.Setenv("BAOBEI_ACCOUNT_CLIENT_ID", "")
 		t.Setenv("BAOBEI_ACCOUNT_CLIENT_SECRET", "")
 	}
+	t.Setenv("BAOBEI_KEYCLOAK_ADMIN_BASE", r.AdminBase)
 }
 
 func rejects(t *testing.T, what string, pairs ...[2]string) {
@@ -88,8 +89,17 @@ func TestPreviewConfigGate(t *testing.T) {
 	// Account service credentials exist only for the dedicated realm, with the fixed client id.
 	rejects(t, "dedicated realm without account service", [2]string{"BAOBEI_ACCOUNT_CLIENT_ID", ""}, [2]string{"BAOBEI_ACCOUNT_CLIENT_SECRET", ""},
 		[2]string{"BAOBEI_ACCOUNT_CLIENT_ID", "admin-cli"})
+	// 2026-11-19 account 503: the account service reaches Keycloak only at the
+	// approved internal address; the public base, another host or a missing value is refused.
+	rejects(t, "account admin address", [2]string{"BAOBEI_KEYCLOAK_ADMIN_BASE", ""},
+		[2]string{"BAOBEI_KEYCLOAK_ADMIN_BASE", "https://crane.youdaozd.com"},
+		[2]string{"BAOBEI_KEYCLOAK_ADMIN_BASE", "http://keycloak:8080"},
+		[2]string{"BAOBEI_KEYCLOAK_ADMIN_BASE", "http://baobei-kc-admin:8080/"})
 	setDeployedEnv(t, "production", "crane")
-	rejects(t, "shared realm with account service", [2]string{"BAOBEI_ACCOUNT_CLIENT_ID", accountServiceClientID})
+	rejects(t, "shared realm with account service", [2]string{"BAOBEI_ACCOUNT_CLIENT_ID", accountServiceClientID},
+		[2]string{"BAOBEI_KEYCLOAK_ADMIN_BASE", "http://baobei-kc-admin:8080"})
+	setDeployedEnv(t, "preview", "baobei-preview")
+	rejects(t, "preview with admin address", [2]string{"BAOBEI_KEYCLOAK_ADMIN_BASE", "http://baobei-kc-admin:8080"})
 	// Unknown or near-miss environment names are not deployed environments.
 	for _, env := range []string{"", "Preview", "staging", "prod", "preview "} {
 		t.Setenv("APP_ENV", env)

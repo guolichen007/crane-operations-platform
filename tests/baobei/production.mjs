@@ -83,6 +83,12 @@ for (const mutate of [
   (x) => (x.services['baobei-api'].environment.BAOBEI_IDENTITY_REALM = 'master'),
   (x) => { delete x.services['baobei-api'].environment.BAOBEI_ACCOUNT_CLIENT_ID; },
   (x) => (x.services['baobei-api'].environment.BAOBEI_ACCOUNT_CLIENT_SECRET = 'plaintext'),
+  // 2026-11-19 account 503: the internal admin address and its dedicated network.
+  (x) => (x.services['baobei-api'].environment.BAOBEI_KEYCLOAK_ADMIN_BASE = 'https://crane.youdaozd.com'),
+  (x) => { delete x.services['baobei-api'].environment.BAOBEI_KEYCLOAK_ADMIN_BASE; },
+  (x) => { delete x.services['baobei-api'].networks['kc-admin']; },
+  (x) => (x.networks['kc-admin'].name = 'u-dao-crane-ops_backend'),
+  (x) => (x.services['baobei-api'].networks['u-dao-crane-frontend'] = null),
   // CR-08C: the dedicated realm must not mount the shared crane Web secret.
   (x) => (x.secrets.oidc_client_secret.file = x.secrets.oidc_client_secret.file.replace('baobei_oidc_client_secret', 'oidc_client_secret')),
 ]) {
@@ -91,6 +97,7 @@ for (const mutate of [
   assert.throws(() => validateProduction(x));
 }
 { const x = structuredClone(c); x.services['baobei-api'].environment.BAOBEI_ACCOUNT_CLIENT_ID = 'baobei-account-service'; assert.throws(() => validateProduction(x)); }
+{ const x = structuredClone(c); x.services['baobei-api'].environment.BAOBEI_KEYCLOAK_ADMIN_BASE = 'http://baobei-kc-admin:8080'; assert.throws(() => validateProduction(x)); }
 console.log('BAOBEI_REALM_SELECTION=APPROVED_ONLY ACCOUNT_SERVICE_DEDICATED_REALM_ONLY=YES');
 for(const name of ['baobei-web','baobei-api']){
  for(const image of [name+':latest',name+'@sha256:'+'a'.repeat(64),'sha256:'+'a'.repeat(64),'ghcr.io/other/'+name+'@sha256:'+'a'.repeat(64)]){
