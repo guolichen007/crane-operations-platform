@@ -1,25 +1,49 @@
-# 项目报备中心 / Project Intake
+# 项目报备中心 / Project Intake（Baobei）
 
 BAOBEI_DOMAIN=baobei.youdaozd.com
 BAOBEI_MAIN_MERGE=FORBIDDEN
 BAOBEI_R2_MERGE=FORBIDDEN
-BASE_SHA=29c6ec901f28e1fdc1c34b91f1d07e49de9a2b18
-BRANCH=product/baobei-v1
-CURRENT_BATCH=G5_C_U1_ROLE_SYNC
-DEPLOYED_SHA=7b9558084d73f5210cdd08e8240883ecc1659de8
-SCHEMA_VERSION=00008
-RELEASE_SHA=572c6aa609e06419b832f7652e73bf29e8c65c37
-CODE_SHA=ca41c3ba090a7dc17120f6565d0a54a2f8d644fd
-SERVER_PRECHECK=NOT_RUN
-G4_S1B1_DEPLOY_READY=NO
-PREVIEW_CODE_READY=YES
-PREVIEW_IMAGES_READY=NO
-PREVIEW_DEPLOYED=NO
-PRODUCTION_DEPLOYED=YES (7b95580; G4-S4 未部署)
+BRANCH=feature/baobei-v1.1-b
+PRODUCT_VERSION=V1.1
+RELEASE_STATE=PRODUCTION_GO_LIVE（投产初始化候选，待 OWNER 推送与 CI 8/8）
+BASE_SHA=056acfd5355f786ba7e375b163174b5f6ff60e01（CI 44460013041 a1 8/8，Schema 00015，Realm baobei；实际运行 SHA 以服务器回执为准）
+GO_LIVE_SCHEMA=00016（首次认领，增量迁移；00001–00015 未改）
+IDENTITY_REALM=baobei（https://crane.youdaozd.com/realms/baobei）
+RELEASE_TAG=baobei-v1.1.0（仅在实际运行 SHA 现场验收通过后创建）
+FEATURE_FREEZE=YES（只修缺陷与日常运维）
 
 目标：快速报项目、识别重复、明确归属并跟进。独立产品，永不合并 main/R2。
 
-## 当前实施：G5-C-U1 人员身份与角色操作闭环
+## 现行状态（唯一事实来源）
+
+| 项 | 值 |
+|---|---|
+| 正式网站 | https://baobei.youdaozd.com |
+| 身份 | 独立 Keycloak Realm `baobei`；账号服务 `baobei-account-service` 经专用内部网络 `u-dao-baobei-kc-admin`（`http://baobei-kc-admin:8080`）访问管理接口；公网 `/admin/` 一律拒绝 |
+| 数据库 | PostgreSQL 18.4（固定 digest），迁移 00001–00016，最小权限四角色，审批/提交/审计证据不可变 |
+| 正式组织 | OWNER（现有管理员）、备用管理员 1 名、销售 5 名，团队“销售一组”；均由网页或受保护初始化工具建立，不使用虚假手机号 |
+| 首次登录 | 管理员发放临时登录名（如 sales01）与一次性临时密码 → 本人改密 → 填写真实姓名与手机号 → 登录名改为手机号、临时登录名失效 → 用手机号重新登录 |
+| 安全例外 | SEC-EX-001（picomatch 开发依赖，至 2026-12-18 或官方修复后 7 天），见 54 号 |
+| 运行模式 | 功能冻结；缺陷修复与日常运维 |
+
+## 正式交付文档（V1.1）
+
+| 文档 | 用途 |
+|---|---|
+| [56-V1.1正式发布说明](56-V1.1正式发布说明.md) | 发布内容、基线、升级与回退要点 |
+| [57-V1.1最终验收报告](57-V1.1最终验收报告.md) | 唯一最终验收总报告（10 项 OWNER 清单、账号生命周期、安全反例、待现场项） |
+| [58-V1.1生产初始化说明](58-V1.1生产初始化说明.md) | 7 人 1 团队正式初始化（受保护工具、备份、干净库、切换、回退） |
+| [59-V1.1用户使用手册](59-V1.1用户使用手册.md) | 管理员、总监、主管、销售四类用户 |
+| [60-V1.1部署回滚与安全运维](60-V1.1部署回滚与安全运维.md) | 日常运维、部署、回滚、备份恢复、安全基线 |
+| [CHANGELOG](CHANGELOG.md) | 版本变更记录 |
+
+历史研发文档（01–55 号）保留原文作为证据，不再代表现行状态。
+
+## 历史：V1.1 研发至投产（2026-11-16 至 2026-11-19）
+
+V1.1 R0–R7（48–53 号）、最终质量与安全门禁（54–55 号）、Web 运行镜像安全补丁（nginx 1.30.6 + 同系列 apk upgrade）、HTTP-01 共享入口与 Web 版本分离测试、网页账号管理 503 修复（专用内部网络）、首次认领与正式初始化（56–60 号）。
+
+## 历史：G5-C-U1 人员身份与角色操作闭环
 
 基线 `a4d2046`（Run 43789241233 a1 8/8）。真实 Keycloak 26.8.1 + PG 18.4 验证：重新核验/晋升 → 同步登录角色 → 本人登录生效，后端无需修复；前端补“同步登录角色”入口（仅管理员）与“待身份处理 / 待本人重新登录 / 正式生效”状态。见 [47 号](47-G5-C-U1人员身份与角色操作闭环.md)。到此停止研发。
 

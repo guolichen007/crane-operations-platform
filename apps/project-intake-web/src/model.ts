@@ -135,6 +135,8 @@ export interface User {
   businessActions?: Record<string, ActionHint>;
   // V1.1 R3: own display name confirmed (first-login gate).
   profileCompleted?: boolean;
+  // V1.1 go-live: signed in with a temporary login name; must claim the account first.
+  claimRequired?: boolean;
 }
 // G3-2A: the only disclosure about related candidates the viewer cannot read.
 export interface RestrictedRelated {

@@ -44,7 +44,7 @@ export function activeEntry(path: string) {
   return path;
 }
 export function navigation(u: User | null | undefined): NavItem[] {
-  if (!u) return [];
+  if (!u || u.claimRequired) return [];
   const items: NavItem[] = [
     { path: '/', label: '工作台', icon: 'dashboard', group: 'workspace' },
     { path: '/followups', label: '跟进中心', icon: 'clock', group: 'workspace' },
@@ -83,6 +83,8 @@ export const navGroups: Record<NavItem['group'], string> = {
 export function routeAllowed(u: User | null | undefined, path: string): boolean {
   if (!u) return false;
   // V1.1 R3: until the name is confirmed only the profile page is reachable.
+  if (u.claimRequired) return path === '/claim';
+  if (path === '/claim') return false;
   if (u.profileCompleted === false) return path === '/profile';
   if (path === '/reviews' || path === '/duplicates') return can(u, 'project.review');
   if (path === '/unassigned') return can(u, 'project.unassigned');

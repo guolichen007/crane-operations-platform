@@ -48,6 +48,10 @@
                     "profileCompleted": {
                       "type": "boolean",
                       "description": "V1.1：本人姓名已确认；false 时业务 API 返回 403 PROFILE_INCOMPLETE"
+                    },
+                    "claimRequired": {
+                      "type": "boolean",
+                      "description": "V1.1 投产：以临时登录名登录、尚未首次认领；true 时除 GET /me 与 POST /me/claim 外一律 403 ACCOUNT_CLAIM_REQUIRED"
                     }
                   }
                 }
@@ -4408,6 +4412,91 @@
         }
       }
     },
+    "/api/v1/me/claim": {
+      "post": {
+        "operationId": "me.claim",
+        "summary": "V1.1 投产：首次认领账号（本人姓名与手机号）",
+        "description": "仅限以管理员发放的临时登录名登录、已在 Keycloak 设置新密码且待认领的本人会话；需要 Idempotency-Key。Keycloak 用户名由临时登录名改为手机号（临时登录名失效），手机号与姓名在同一事务写入（姓名经 SECURITY DEFINER claim_own_profile 并写 profile_audit），全部会话结束，须用手机号重新登录。账号操作状态机 CLAIM：幂等、租约、恢复、待核对与其他账号操作一致。staff_id、subject、身份链接、角色与团队不变。",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "phone"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  "phone": {
+                    "type": "string",
+                    "description": "本人中国大陆 11 位手机号"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已认领；会话已结束",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "claimed": {
+                      "type": "boolean"
+                    },
+                    "login": {
+                      "type": "string"
+                    },
+                    "replayed": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "姓名或手机号无效"
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "403": {
+            "description": "会话已变化"
+          },
+          "409": {
+            "description": "手机号已被使用、处理中、待核对或无需认领"
+          },
+          "503": {
+            "description": "账号服务暂不可用或结果待核对"
+          }
+        }
+      }
+    },
     "/api/v1/me/profile": {
       "get": {
         "operationId": "me.profile",
@@ -6645,6 +6734,10 @@
             "type": "string",
             "maxLength": 32,
             "description": "工作手机。新建必填；历史成员无手机号时编辑可留空，已有手机号不可清空。"
+          },
+          "claimLogin": {
+            "type": "string",
+            "description": "V1.1 投产：仅管理员、仅新增成员时；发放临时登录名（小写字母开头 3–32 位），此时不填工作手机，由成员本人首次登录时认领"
           }
         },
         "required": [
@@ -6855,6 +6948,19 @@
           "provisionReviewed": {
             "type": "boolean",
             "description": "管理员已审核该版本的开通申请。"
+          },
+          "claimLogin": {
+            "type": "string",
+            "description": "待认领时的临时登录名"
+          },
+          "claimState": {
+            "type": "string",
+            "enum": [
+              "NONE",
+              "PENDING",
+              "DONE"
+            ],
+            "description": "V1.1 投产首次认领状态"
           }
         },
         "required": [

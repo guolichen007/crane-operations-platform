@@ -30,7 +30,7 @@ export async function request<T>(
       method,
       credentials: 'same-origin',
       signal: controller.signal,
-      headers: { 'Content-Type': 'application/json', ...(creating ? { 'Idempotency-Key': idempotencyKey } : {}), ...(csrf ? { 'X-CSRF-Token': csrf } : {}) },
+      headers: { 'Content-Type': 'application/json', ...(creating || idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}), ...(csrf ? { 'X-CSRF-Token': csrf } : {}) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     const text = await r.text();

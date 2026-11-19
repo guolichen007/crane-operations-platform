@@ -383,6 +383,27 @@ func TestDatabaseProductionPrivileges(t *testing.T) {
 		}
 	}
 
+	// V1.1 go-live (00016): the claim columns and the definer function. The
+	// runtime may read the claim gate but not change it; only the staff
+	// connection updates it, and only the staff connection may run the claim
+	// function (which still refuses without an open CLAIM operation).
+	deny(runtime, "UPDATE app_users SET claim_state='DONE'")
+	deny(runtime, "SELECT claim_own_profile(gen_random_uuid())")
+	deny(maintenance, "SELECT claim_own_profile(gen_random_uuid())")
+	if _, err := runtime.Exec(ctx, "SELECT claim_state FROM app_users LIMIT 1"); err != nil {
+		t.Fatal("runtime cannot read the claim gate", err)
+	}
+	if _, err := runtime.Exec(ctx, "SELECT claim_login FROM app_users LIMIT 1"); err == nil {
+		t.Fatal("runtime reads temporary login names")
+	}
+	{
+		_, err := staff.Exec(ctx, "SELECT claim_own_profile(gen_random_uuid())")
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || pgErr.Code != "BB016" {
+			t.Fatal("claim function without an open claim", err)
+		}
+	}
+
 	summary, err := applyIdentity(ctx, maintenance, identityFixture(), "synthetic-operator", false)
 	if err != nil || summary.UsersChanged != 1 || summary.TeamsChanged != 1 {
 		t.Fatal("maintenance could not provision approved identity", summary, err)

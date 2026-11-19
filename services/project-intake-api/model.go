@@ -138,7 +138,10 @@ type User struct {
 	BusinessActions map[string]ActionHint `json:"businessActions"`
 	// V1.1 R3: the member confirmed their own display name (first-login gate).
 	ProfileCompleted bool `json:"profileCompleted"`
-	sessionHash      string
+	// V1.1 go-live (00016): signed in with a temporary login name; must claim
+	// the account (own name and phone) before anything else.
+	ClaimRequired bool `json:"claimRequired"`
+	sessionHash   string
 }
 
 var stages = strings.Fields("L0_LEAD L1_REQUIREMENT L2_TECHNICAL L3_SITE_SURVEY L4_SOLUTION L5_QUOTATION L6_TENDER L7_COMMERCIAL L8_PENDING_CONTRACT WON LOST HOLD")

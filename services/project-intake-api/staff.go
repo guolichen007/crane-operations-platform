@@ -252,8 +252,13 @@ type staffMember struct {
 	// Login account (dedicated realm): NONE, CREATING, READY, DISABLED or FAILED.
 	AccountState       string `json:"accountState"`
 	MustChangePassword bool   `json:"mustChangePassword"`
-	// LoginName: the 11 digits the member signs in with (detail only).
+	// LoginName: the 11 digits the member signs in with (detail only), or the
+	// temporary name while the first claim is pending.
 	LoginName string `json:"loginName,omitempty"`
+	// First claim (00016): NONE, PENDING (signs in with ClaimLogin, must enter
+	// own name and phone) or DONE.
+	ClaimLogin string `json:"claimLogin,omitempty"`
+	ClaimState string `json:"claimState"`
 	// AccountOperation: the latest account operation if it is still running,
 	// waiting for review or failed (cause shown with a safe retry).
 	AccountOperation *accountOpView `json:"accountOperation,omitempty"`
@@ -293,7 +298,7 @@ const staffColumns = `u.staff_id::text,u.subject,u.display_name,coalesce(u.work_
  (u.active AND u.staff_managed AND EXISTS(SELECT 1 FROM staff_audit a WHERE a.target_id=u.staff_id AND a.action='staff.activate')),
  EXISTS(SELECT 1 FROM staff_audit a WHERE a.target_id=u.staff_id AND a.action='staff.role-change'),
  EXISTS(SELECT 1 FROM staff_audit a WHERE a.target_id=u.staff_id AND a.action='staff.provision.review' AND a.version=u.staff_version),
- u.account_state,u.account_must_change_password,
+ u.account_state,u.account_must_change_password,coalesce(u.claim_login,''),u.claim_state,
  coalesce((SELECT row_to_json(x)::text FROM (SELECT o.id,o.operation,o.state,o.step,o.detail,coalesce(o.finished_at,o.updated_at) AS at
    FROM account_operations o WHERE o.staff_id=u.staff_id ORDER BY o.created_at DESC LIMIT 1) x),'')`
 const staffFrom = ` FROM app_users u LEFT JOIN teams t ON t.id=u.team_id `
@@ -304,7 +309,7 @@ func scanStaff(row interface{ Scan(...any) error }) (staffMember, error) {
 	var m staffMember
 	var mask int
 	var op string
-	err := row.Scan(&m.ID, &m.Subject, &m.Name, &m.Email, &m.Phone, &m.TeamID, &m.Team, &m.Role, &m.Status, &m.Version, &m.Note, &mask, &m.Projects, &m.LastLogin, &m.SyncStatus, &m.IdentityVerified, &m.RoleChanged, &m.ProvisionReviewed, &m.AccountState, &m.MustChangePassword, &op)
+	err := row.Scan(&m.ID, &m.Subject, &m.Name, &m.Email, &m.Phone, &m.TeamID, &m.Team, &m.Role, &m.Status, &m.Version, &m.Note, &mask, &m.Projects, &m.LastLogin, &m.SyncStatus, &m.IdentityVerified, &m.RoleChanged, &m.ProvisionReviewed, &m.AccountState, &m.MustChangePassword, &m.ClaimLogin, &m.ClaimState, &op)
 	m.AccountOperation = parseAccountOp([]byte(op))
 	m.Permissions = capabilityList(mask)
 	// A revoked invitation keeps its (permanent) subject but no longer has a login.
@@ -330,7 +335,7 @@ func readStaff(ctx context.Context, tx pgx.Tx, actor User, id string) (staffMemb
 	}
 	m.CanManage = staffWritable(actor, m.Subject, m.Role, m.TeamID) && m.Status != staffArchived && m.Status != staffRevoked
 	if m.AccountState != accountNone {
-		m.LoginName, _ = loginName(m.Phone)
+		m.LoginName, _ = memberLogin(m)
 	}
 	return m, err
 }
@@ -445,6 +450,9 @@ type staffProfileInput struct {
 	Version        int      `json:"version"`
 	Permissions    []string `json:"permissions,omitempty"`
 	VerifyIdentity bool     `json:"verifyIdentity,omitempty"`
+	// ClaimLogin (invite only): issue a temporary login name instead of the work
+	// phone; the member enters their own name and phone at the first sign-in.
+	ClaimLogin string `json:"claimLogin,omitempty"`
 }
 type staffMutation struct {
 	Version     int      `json:"version"`
@@ -519,7 +527,22 @@ func inviteStaff(ctx context.Context, tx pgx.Tx, actor User, at *time.Time, in s
 	if strings.TrimSpace(in.Reason) == "" {
 		in.Reason = "新增成员"
 	}
-	if err := validateProfile(ctx, tx, actor, &in, false, ""); err != nil {
+	in.ClaimLogin = strings.ToLower(strings.TrimSpace(in.ClaimLogin))
+	claim := in.ClaimLogin != ""
+	if claim {
+		// Only the administrator issues temporary names, and only without a phone:
+		// the member enters the real phone at the first sign-in.
+		if actor.Role != adminRole {
+			return nil, staffDenied
+		}
+		if !claimLoginPattern.MatchString(in.ClaimLogin) {
+			return nil, staffProblem{400, "STAFF_CLAIM_LOGIN_INVALID", "临时登录名须以小写字母开头，3–32 位小写字母、数字、下划线或短横线"}
+		}
+		if strings.TrimSpace(in.Phone) != "" {
+			return nil, staffProblem{400, "STAFF_CLAIM_LOGIN_WITH_PHONE", "发放临时登录名时不填写工作手机，由成员首次登录时本人填写"}
+		}
+	}
+	if err := validateProfile(ctx, tx, actor, &in, claim, ""); err != nil {
 		return nil, err
 	}
 	// Creating a member with an advanced role grants that role: sensitive.
@@ -536,10 +559,14 @@ func inviteStaff(ctx context.Context, tx pgx.Tx, actor User, at *time.Time, in s
 	}
 	var id string
 	err := tx.QueryRow(ctx, `WITH id AS (SELECT gen_random_uuid() AS v)
- INSERT INTO app_users(staff_id,subject,display_name,work_email,work_phone,role,team_id,active,staff_status,staff_note,staff_permissions,staff_managed)
- SELECT v,'pending:'||v::text,$1,NULLIF($2,''),$7,$3,NULLIF($4,'')::uuid,false,'PENDING_PROVISION',$5,$6,true FROM id RETURNING staff_id::text`,
-		in.Name, in.Email, in.Role, in.TeamID, in.Note, mask, in.Phone).Scan(&id)
+ INSERT INTO app_users(staff_id,subject,display_name,work_email,work_phone,role,team_id,active,staff_status,staff_note,staff_permissions,staff_managed,claim_login,claim_state)
+ SELECT v,'pending:'||v::text,$1,NULLIF($2,''),NULLIF($7,''),$3,NULLIF($4,'')::uuid,false,'PENDING_PROVISION',$5,$6,true,NULLIF($8,''),CASE WHEN $8<>'' THEN 'PENDING' ELSE 'NONE' END FROM id RETURNING staff_id::text`,
+		in.Name, in.Email, in.Role, in.TeamID, in.Note, mask, in.Phone, in.ClaimLogin).Scan(&id)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.ConstraintName == "claim_login_unique" {
+			return nil, staffProblem{409, "STAFF_CLAIM_LOGIN_DUPLICATE", "该临时登录名已被使用"}
+		}
 		return nil, err
 	}
 	if err = staffEnqueue(ctx, tx, id, 1, "PROVISION"); err != nil {
@@ -574,6 +601,9 @@ func editStaff(ctx context.Context, tx pgx.Tx, actor User, at *time.Time, m staf
 	// A login account's name is the work phone: once an account exists (or an
 	// account operation is unresolved) the phone changes only through
 	// "更换登录手机号", which changes Keycloak and Baobei together.
+	if m.ClaimState == claimPending && in.Phone != "" {
+		return nil, claimStillPending
+	}
 	if in.Phone != m.Phone && m.AccountState != accountNone {
 		return nil, staffProblem{409, "STAFF_PHONE_ACCOUNT_BOUND", "该成员已有登录账号，请使用“更换登录手机号”修改手机号"}
 	}

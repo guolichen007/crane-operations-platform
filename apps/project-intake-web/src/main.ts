@@ -13,6 +13,7 @@ import Detail from './Detail.vue';
 import StaffMembers from './StaffMembers.vue';
 import StaffTeams from './StaffTeams.vue';
 import Profile from './Profile.vue';
+import Claim from './Claim.vue';
 import Followups from './Followups.vue';
 import Customers from './Customers.vue';
 import { useApp } from './store';
@@ -43,6 +44,7 @@ const router = createRouter({
     { path: '/pipeline', component: Pipeline },
     { path: '/statistics', component: Statistics },
     { path: '/profile', component: Profile },
+    { path: '/claim', component: Claim },
     { path: '/new', component: Wizard },
     { path: '/projects/:id/edit', component: Wizard },
     { path: '/projects/:id', component: Detail },
@@ -67,8 +69,12 @@ router.beforeEach(async (to) => {
       return { path: draftPath(draft), query: { resume: draft.action }, replace: true };
     if (draft) clearStaffDraft();
   }
+  // V1.1 go-live: a temporary login name must be claimed (own name and phone) first.
+  if (app.user && app.user.claimRequired && to.path !== '/claim' && to.path !== '/login')
+    return { path: '/claim', replace: true };
+  if (app.user && !app.user.claimRequired && to.path === '/claim') return '/';
   // V1.1 R3: first login confirms the own name before anything else.
-  if (app.user && app.user.profileCompleted === false && to.path !== '/profile' && to.path !== '/login')
+  if (app.user && !app.user.claimRequired && app.user.profileCompleted === false && to.path !== '/profile' && to.path !== '/login')
     return { path: '/profile', query: { first: '1', next: to.fullPath }, replace: true };
   // Continuing an existing draft is authorized per project by Project.actions.
   if (to.path === '/new' && to.query.draft) return;

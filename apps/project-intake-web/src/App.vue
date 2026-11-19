@@ -74,7 +74,7 @@ function changePassword() {
 const reminder = ref<{ overdue: number; today: number } | null>(null);
 let reminderAt = 0;
 async function loadReminder(force = false) {
-  if (!app.user || app.user.profileCompleted === false) return;
+  if (!app.user || app.user.profileCompleted === false || app.user.claimRequired) return;
   if (!force && Date.now() - reminderAt < 60_000) return;
   reminderAt = Date.now();
   try {
@@ -152,7 +152,7 @@ window.addEventListener('error', showError);
         </form>
         <div class="top-actions">
           <ActionButton
-            v-if="(app.user.role === 'baobei_sales' || can(app.user, 'project.create')) && app.user.profileCompleted !== false"
+            v-if="(app.user.role === 'baobei_sales' || can(app.user, 'project.create')) && app.user.profileCompleted !== false && !app.user.claimRequired"
             :disabled="!can(app.user, 'project.create')"
             reason="当前账号未启用新建报备"
             action-id="project.create"

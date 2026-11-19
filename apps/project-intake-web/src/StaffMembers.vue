@@ -38,7 +38,9 @@ const total = ref(0);
 const pageSize = ref(20);
 const selected = ref<string[]>([]);
 const dialog = ref<Dialog | null>(null);
-const emptyForm = () => ({ name: '', phone: '', email: '', teamId: '', role: 'baobei_sales', note: '', reason: '', permissions: [] as string[] });
+const emptyForm = () => ({ name: '', phone: '', email: '', teamId: '', role: 'baobei_sales', note: '', reason: '', permissions: [] as string[], claimLogin: '' });
+// V1.1 go-live: issue a temporary login name; the member enters own name and phone at first sign-in.
+const useClaim = ref(false);
 const form = ref(emptyForm());
 const review = ref({ subject: '', username: '' });
 const receipt = ref(''); // review draft (unverified), shown for identity operations
@@ -191,6 +193,7 @@ async function findTargets() {
 }
 
 async function open(kind: Dialog) {
+  if (kind === 'invite') useClaim.value = false;
   accountKey.value = newIdempotencyKey();
   accountPhone.value = '';
   const existing = kind === 'invite' ? null : member.value;
@@ -201,7 +204,7 @@ async function open(kind: Dialog) {
   review.value = { subject: '', username: '' };
   form.value = existing ? {
     name: existing.name, phone: existing.phone, email: existing.email, teamId: existing.teamId, role: existing.role,
-    note: existing.note, reason: '', permissions: [...existing.permissions],
+    note: existing.note, reason: '', permissions: [...existing.permissions], claimLogin: '',
   } : { ...emptyForm(), teamId: supervisor.value ? app.user?.teamId ?? '' : '', permissions: Object.keys(capabilities) };
   if (kind === 'invite' || kind === 'edit') {
     teams.value = (await app.api<{items: StaffTeam[]}>('/api/v1/teams')).items;
@@ -218,8 +221,13 @@ function checkForm(): boolean {
   const kind = dialog.value;
   if (kind === 'invite' || kind === 'edit') {
     errors.value = validateStaff(form.value, {
-      phoneRequired: kind === 'invite' || !!member.value?.phone, reasonRequired: reasonRequired.value,
+      phoneRequired: kind === 'invite' && !useClaim.value || !!member.value?.phone, reasonRequired: reasonRequired.value,
     });
+    if (kind === 'invite' && useClaim.value) {
+      if (!/^[a-z][a-z0-9_-]{2,31}$/.test(form.value.claimLogin.trim().toLowerCase()))
+        errors.value = { ...errors.value, claimLogin: '临时登录名须以小写字母开头，3–32 位小写字母、数字、下划线或短横线' } as typeof errors.value;
+      if (form.value.phone.trim()) errors.value = { ...errors.value, phone: '使用临时登录名时不填写工作手机，由成员本人首次登录时填写' };
+    }
   } else if (kind === 'verify') {
     errors.value = validateStaff({ ...form.value, name: member.value?.name ?? 'x', phone: '' }, { phoneRequired: false, reasonRequired: true });
   } else if (kind === 'transfer' && (!target.value || !selected.value.length)) {
@@ -363,6 +371,7 @@ async function save() {
       if (kind === 'invite') {
         const created = await app.api<StaffMember>('/api/v1/staff/invitations', 'POST', {
           ...payload, permissions: payload.role === 'baobei_sales' ? f.permissions : Object.keys(capabilities),
+          ...(useClaim.value ? { phone: '', claimLogin: f.claimLogin.trim().toLowerCase() } : {}),
         });
         clearStaffDraft();
         dialog.value = null;
@@ -448,7 +457,7 @@ onMounted(async () => {
       return;
     }
     await open(draft.action);
-    form.value = { ...draft.form, permissions: [...draft.form.permissions] };
+    form.value = { claimLogin: '', ...draft.form, permissions: [...draft.form.permissions] };
     if (reauthActive.value) app.toast(`密码验证成功，${reauthMinutes.value} 分钟内可完成此操作`);
     else formIssue.value = '密码验证未完成或已超时，请重新验证。';
   } catch (error) { app.error = (error as Error).message; }
@@ -526,11 +535,11 @@ onMounted(async () => {
       <div class="staff-card panel">
         <div class="staff-title"><h2>{{ member.name }}</h2><span class="staff-status" :data-state="member.status">{{ statusLabel(member) }}</span></div>
         <dl class="staff-facts">
-          <div><dt>工作手机</dt><dd>{{ member.phone || '待补全' }}</dd></div>
+          <div><dt>工作手机</dt><dd>{{ member.phone || (member.claimState === 'PENDING' ? '待本人首次登录时填写' : '待补全') }}</dd></div>
           <div><dt>工作邮箱</dt><dd>{{ member.email || '未填写（选填）' }}</dd></div>
           <div><dt>{{ member.roleChanged && member.status !== 'ACTIVE' ? '团队与目标角色' : '团队与角色' }}</dt><dd>{{ member.team || '全局' }} · {{ roles[member.role] }}</dd></div>
           <div><dt>最近登录</dt><dd>{{ when(member.lastLogin) }}</dd></div>
-          <div v-if="administrator && accountService"><dt>登录账号</dt><dd data-testid="account-state">{{ member.loginName || '未开通' }} · {{ accountDisplayLabel[accountDisplayState(member)] ?? member.accountState }}<template v-if="member.mustChangePassword && accountDisplayState(member) === 'READY'">（待首次修改密码）</template></dd></div>
+          <div v-if="administrator && accountService"><dt>登录账号</dt><dd data-testid="account-state">{{ member.loginName || '未开通' }} · {{ accountDisplayLabel[accountDisplayState(member)] ?? member.accountState }}<template v-if="member.claimState === 'PENDING'">（临时登录名，待本人首次认领）</template><template v-else-if="member.mustChangePassword && accountDisplayState(member) === 'READY'">（待首次修改密码）</template></dd></div>
           <div v-else-if="administrator"><dt>企业账号</dt><dd>{{ member.identityVerified ? '已绑定并核验' : member.identityLinked ? '已绑定，待核验' : '尚未绑定' }}</dd></div>
           <div><dt>备注</dt><dd>{{ member.note || '—' }}</dd></div>
         </dl>
@@ -573,7 +582,7 @@ onMounted(async () => {
           <template v-else-if="administrator && accountService">
             <ActionButton
               v-if="['PENDING_PROVISION','PROVISION_FAILED'].includes(member.status) && member.accountState !== 'READY' || member.accountState === 'NONE' && member.status !== 'SUSPENDED'"
-              action-id="staff.account-create" primary :disabled="!member.phone" reason="请先编辑资料填写工作手机" :run="() => open('account-create')"
+              action-id="staff.account-create" primary :disabled="!member.phone && member.claimState !== 'PENDING'" reason="请先编辑资料填写工作手机" :run="() => open('account-create')"
             >
               开通登录账号
             </ActionButton>
@@ -672,7 +681,15 @@ onMounted(async () => {
             <input id="staff-name" v-model="form.name" data-field="name" maxlength="128" autocomplete="off" :aria-invalid="!!errors.name" aria-required="true" aria-describedby="staff-name-error" />
             <small v-if="errors.name" id="staff-name-error" class="field-error">{{ errors.name }}</small>
           </label>
-          <label :class="{ invalid: errors.phone }">工作手机 <span v-if="dialog === 'invite' || member?.phone" class="req" aria-hidden="true">*</span>
+          <label v-if="dialog === 'invite' && administrator && accountService" class="check">
+            <input v-model="useClaim" type="checkbox" name="useClaim" /> 发放临时登录名（成员首次登录时本人填写姓名和手机号）
+          </label>
+          <label v-if="dialog === 'invite' && useClaim" :class="{ invalid: (errors as Record<string, string>).claimLogin }">临时登录名 <span class="req" aria-hidden="true">*</span>
+            <input id="staff-claim-login" v-model="form.claimLogin" data-field="claimLogin" maxlength="32" placeholder="如 sales01" autocomplete="off" autocapitalize="off" spellcheck="false" aria-required="true" />
+            <small v-if="(errors as Record<string, string>).claimLogin" class="field-error">{{ (errors as Record<string, string>).claimLogin }}</small>
+            <small v-else class="muted">只用于首次登录；成员认领后改为本人手机号登录，临时登录名随即失效。</small>
+          </label>
+          <label v-if="!(dialog === 'invite' && useClaim)" :class="{ invalid: errors.phone }">工作手机 <span v-if="dialog === 'invite' || member?.phone" class="req" aria-hidden="true">*</span>
             <input id="staff-phone" v-model="form.phone" data-field="phone" type="tel" inputmode="tel" maxlength="32" placeholder="如 138 0000 0000" autocomplete="off" :aria-invalid="!!errors.phone" :aria-required="dialog === 'invite' || !!member?.phone" :readonly="dialog === 'edit' && accountService && member?.accountState !== 'NONE'" aria-describedby="staff-phone-error" />
             <small v-if="errors.phone" id="staff-phone-error" class="field-error">{{ errors.phone }}</small>
             <small v-else-if="dialog === 'edit' && accountService && member?.accountState !== 'NONE'" class="muted">手机号即登录账号，请使用“更换登录手机号”修改。</small>
@@ -702,7 +719,7 @@ onMounted(async () => {
           <dl class="staff-facts compact">
             <div><dt>成员</dt><dd>{{ member.name }}</dd></div>
             <div><dt>角色</dt><dd>{{ member.team || '全局' }} · {{ roles[member.role] }}</dd></div>
-            <div><dt>登录手机号</dt><dd>{{ member.loginName || (member.phone ? member.phone.replace(/^\+86/, '') : '未填写') }}</dd></div>
+            <div><dt>{{ member.claimState === 'PENDING' ? '临时登录名' : '登录手机号' }}</dt><dd>{{ member.loginName || member.claimLogin || (member.phone ? member.phone.replace(/^\+86/, '') : '未填写') }}</dd></div>
             <div><dt>账号状态</dt><dd>{{ accountDisplayLabel[accountDisplayState(member)] ?? member.accountState }}</dd></div>
           </dl>
           <label v-if="dialog === 'account-phone'" :class="{ invalid: errors.phone }">新登录手机号 <span class="req" aria-hidden="true">*</span>

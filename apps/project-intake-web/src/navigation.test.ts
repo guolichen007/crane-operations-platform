@@ -54,6 +54,13 @@ describe('V1.1 项目中心与首次姓名确认', () => {
     expect(activeEntry('/pipeline')).toBe('/projects');
     expect(routeAllowed(sales, '/pipeline')).toBe(true);
   });
+  it('临时登录名待认领时只能进入首次认领页，且没有导航', () => {
+    const sales = { ...user('baobei_sales', { 'project.create': true }), claimRequired: true, profileCompleted: false };
+    expect(routeAllowed(sales, '/claim')).toBe(true);
+    for (const p of ['/', '/profile', '/projects', '/new', '/statistics', '/settings/users']) expect(routeAllowed(sales, p)).toBe(false);
+    expect(navigation(sales)).toEqual([]);
+    expect(routeAllowed(user('baobei_sales', { 'project.create': true }), '/claim')).toBe(false);
+  });
   it('姓名未确认时只能进入个人资料页', () => {
     const sales = { ...user('baobei_sales', { 'project.create': true }), profileCompleted: false };
     expect(routeAllowed(sales, '/profile')).toBe(true);

@@ -99,3 +99,10 @@ GRANT UPDATE (version,status,project_nature,scenario,workshop,production_line,si
 GRANT UPDATE (answer,answered_by_subject,status,version,updated_at) ON project_technical_questions TO baobei_runtime;
 GRANT SELECT, INSERT ON project_technical_brief_revisions, project_technical_question_events TO baobei_runtime;
 GRANT SELECT ON project_technical_briefs, project_technical_questions, project_technical_brief_revisions, project_technical_question_events TO baobei_maintenance;
+-- V1.1 go-live (00016): first-time account claim. The runtime reads the claim
+-- gate; the staff connection drives the CLAIM operation and changes the name
+-- only through the definer function.
+GRANT SELECT (claim_state) ON app_users TO baobei_runtime;
+GRANT UPDATE (claim_login,claim_state) ON app_users TO baobei_staff_api;
+GRANT INSERT (claim_login,claim_state) ON app_users TO baobei_staff_api;
+GRANT EXECUTE ON FUNCTION claim_own_profile(uuid) TO baobei_staff_api;

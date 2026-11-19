@@ -42,7 +42,7 @@ export interface AccountOperation {
 
 export const accountOperationLabel: Record<string, string> = {
   CREATE: '开通登录账号', RESET_PASSWORD: '重置密码', CHANGE_PHONE: '更换登录手机号',
-  DISABLE: '停用登录', ENABLE: '恢复登录', SET_ROLE: '同步登录角色', REVOKE: '撤销开户',
+  DISABLE: '停用登录', ENABLE: '恢复登录', SET_ROLE: '同步登录角色', REVOKE: '撤销开户', CLAIM: '本人首次认领',
 };
 
 const causes: Record<string, string> = {

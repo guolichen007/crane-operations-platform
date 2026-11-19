@@ -9,6 +9,7 @@ import (
 	"errors"
 	"math/big"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -94,6 +95,22 @@ func loginName(phone string) (string, error) {
 		return "", accountMainlandOnly
 	}
 	return phone[3:], nil
+}
+
+// claimLoginPattern: an administrator-issued temporary login name (首次认领),
+// never 11 digits, so it can never equal a phone login.
+var claimLoginPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{2,31}$`)
+
+// memberLogin: the Keycloak username of a member's login. A member whose first
+// claim is pending signs in with the temporary name; everyone else with the phone.
+func memberLogin(m staffMember) (string, error) {
+	if m.ClaimState == claimPending {
+		if !claimLoginPattern.MatchString(m.ClaimLogin) {
+			return "", staffConflict
+		}
+		return m.ClaimLogin, nil
+	}
+	return loginName(m.Phone)
 }
 
 // temporaryPassword: 12 characters from an unambiguous alphabet with at least one
@@ -343,10 +360,10 @@ func (a *App) openAccountOp(ctx context.Context, pool *pgxpool.Pool, actor User,
 			!migrating && (m.IdentityLinked || m.Status != staffPending && m.Status != staffFailed) {
 			return nil, staffMember{}, nil, staffConflict
 		}
-		if m.Phone == "" {
+		if m.Phone == "" && m.ClaimState != claimPending {
 			return nil, staffMember{}, nil, accountNoPhone
 		}
-		if o.targetLogin, err = loginName(m.Phone); err != nil {
+		if o.targetLogin, err = memberLogin(m); err != nil {
 			return nil, staffMember{}, nil, err
 		}
 	case "RESET_PASSWORD", "DISABLE":
@@ -356,6 +373,9 @@ func (a *App) openAccountOp(ctx context.Context, pool *pgxpool.Pool, actor User,
 	case "CHANGE_PHONE":
 		if !m.IdentityLinked || m.AccountState == accountNone {
 			return nil, staffMember{}, nil, staffConflict
+		}
+		if m.ClaimState == claimPending {
+			return nil, staffMember{}, nil, claimStillPending
 		}
 		if phone == m.Phone {
 			return nil, staffMember{}, nil, staffProblem{400, "ACCOUNT_PHONE_UNCHANGED", "新手机号与当前手机号相同"}
@@ -384,7 +404,7 @@ func (a *App) openAccountOp(ctx context.Context, pool *pgxpool.Pool, actor User,
 			return nil, staffMember{}, nil, staffProblem{409, "STAFF_REVOKE_NO_ACCOUNT", "该成员尚无登录账号，请直接撤销开户"}
 		}
 		// The login name this revocation must prove free (recovery re-checks it).
-		if o.targetLogin, err = loginName(m.Phone); err != nil {
+		if o.targetLogin, err = memberLogin(m); err != nil {
 			return nil, staffMember{}, nil, staffConflict
 		}
 	}
@@ -660,7 +680,11 @@ func (a *App) accountCreate(ctx context.Context, pool *pgxpool.Pool, o *accountO
 		if !strings.HasPrefix(m.Subject, "pending:") {
 			label = "迁移登录账号 "
 		}
-		return auditOp(ctx, tx, o, "staff.account.create", label+maskedPhone(m.Phone)+" · "+o.reason)
+		shown := maskedPhone(m.Phone)
+		if m.ClaimState == claimPending {
+			label, shown = "临时登录名 ", o.targetLogin
+		}
+		return auditOp(ctx, tx, o, "staff.account.create", label+shown+" · "+o.reason)
 	})
 	if err != nil {
 		// Not stored: the password is not shown; recovery disables this login and
@@ -793,7 +817,7 @@ func (a *App) failBeforeProvider(ctx context.Context, pool *pgxpool.Pool, o *acc
 // lost is never repeated: nobody knows that password, the member's sessions are
 // ended, and the administrator simply resets again.
 func (a *App) accountReset(ctx context.Context, pool *pgxpool.Pool, o *accountOp, m staffMember) (*credential, error) {
-	login, err := loginName(m.Phone)
+	login, err := memberLogin(m)
 	if err != nil {
 		return nil, a.failBeforeProvider(ctx, pool, o, err)
 	}

@@ -129,9 +129,9 @@ func (a *App) user(r *http.Request) (User, error) {
 	// A session is valid only under the issuer and epoch this database trusts now
 	// (identity_epoch): a session from another realm or an earlier epoch is dead
 	// even if its row was somehow not deleted at the switch.
-	e = a.db.QueryRow(r.Context(), `SELECT u.subject,u.display_name,u.role,coalesce(u.team_id::text,''),s.csrf,u.staff_permissions,u.profile_completed_at IS NOT NULL
+	e = a.db.QueryRow(r.Context(), `SELECT u.subject,u.display_name,u.role,coalesce(u.team_id::text,''),s.csrf,u.staff_permissions,u.profile_completed_at IS NOT NULL,u.claim_state='PENDING'
  FROM app_sessions s JOIN app_users u ON u.subject=s.subject JOIN identity_epoch i ON i.issuer=s.issuer AND i.epoch=s.identity_epoch
- WHERE s.token_hash=$1 AND s.expires_at>now() AND u.active`, u.sessionHash).Scan(&u.Subject, &u.Name, &u.Role, &u.TeamID, &u.CSRF, &mask, &u.ProfileCompleted)
+ WHERE s.token_hash=$1 AND s.expires_at>now() AND u.active`, u.sessionHash).Scan(&u.Subject, &u.Name, &u.Role, &u.TeamID, &u.CSRF, &mask, &u.ProfileCompleted, &u.ClaimRequired)
 	u.Permissions = capabilityList(mask)
 	return u, e
 }

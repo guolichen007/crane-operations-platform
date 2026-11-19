@@ -132,6 +132,9 @@ export interface StaffMember {
   accountState: string;
   mustChangePassword: boolean;
   loginName?: string;
+  // V1.1 go-live first claim: NONE, PENDING (temporary login name) or DONE.
+  claimLogin?: string;
+  claimState?: string;
   accountOperation?: AccountOperation | null;
 }
 

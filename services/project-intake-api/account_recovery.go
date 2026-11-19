@@ -200,6 +200,8 @@ func (a *App) reconcile(ctx context.Context, pool *pgxpool.Pool, o *accountOp) e
 			return a.finishEnable(ctx, pool, o)
 		}
 		return a.abandonEnable(ctx, pool, o, nil)
+	case "CLAIM":
+		return a.reconcileClaim(ctx, pool, o)
 	case "REVOKE":
 		// Same checks as the first pass (ownership, deletion, free login name);
 		// never completed from the database alone.

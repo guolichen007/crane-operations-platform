@@ -57,6 +57,18 @@ func (a *App) api(w http.ResponseWriter, r *http.Request, u User) error {
 	// V1.1 R3: until the member confirmed their own name, only the session
 	// (GET /me) and the name confirmation itself are served. Login, password
 	// change and sign-out live under /auth/ and are never gated.
+	// V1.1 go-live (00016): a member issued a temporary login name must claim the
+	// account first (own name and phone); nothing else is served until then.
+	if u.ClaimRequired {
+		if path == "/api/v1/me/claim" {
+			return a.claimHandler(w, r, u)
+		}
+		if !(path == "/api/v1/me" && method == "GET") {
+			return claimRequired
+		}
+	} else if path == "/api/v1/me/claim" {
+		return claimNotPending
+	}
 	if path == "/api/v1/me/profile" {
 		return a.profileHandler(w, r, u)
 	}
