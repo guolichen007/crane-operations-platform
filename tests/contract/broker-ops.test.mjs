@@ -8,7 +8,7 @@ import { mkdtempSync, writeFileSync, readFileSync, readdirSync, statSync, rmSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import YAML from 'yaml';
-import { status, preflight, recover, dependencyGate, pinnedBroker, RESTART_POLICY } from '../../deploy/scripts/broker-ops.mjs';
+import { status, preflight, preload, recover, dependencyGate, pinnedBroker, RESTART_POLICY } from '../../deploy/scripts/broker-ops.mjs';
 import { ACTIVE_OVERRIDE } from '../../deploy/scripts/local-dev-deploy.mjs';
 
 const root = process.cwd();
@@ -41,12 +41,18 @@ function fixture(t, over = {}) {
     postgres: { image: 'postgres@sha256:' + 'a'.repeat(64), health: 'healthy', running: true, policy: RESTART_POLICY },
     keycloak: { image: 'keycloak@sha256:' + 'b'.repeat(64), health: 'healthy', running: true, policy: RESTART_POLICY },
     mosquitto: { image: 'eclipse-mosquitto:2.0.22@sha256:' + '1'.repeat(64), health: 'none', running: false, status: 'exited', exit: 134, restarts: 0, policy: RESTART_POLICY, hc: null },
-    ...over,
+    ...Object.fromEntries(Object.entries(over).filter(([k]) => k !== 'loaded')),
   };
   const calls = [];
   let cloudConnected = 0;
+  const local = { loaded: over.loaded ?? true };
   const execute = (cmd, args) => {
     calls.push(args.join(' '));
+    if (args[0] === 'image' && args[1] === 'inspect') {
+      if (!local.loaded) return { status: 1, stdout: '', stderr: 'No such image' };
+      return { status: 0, stdout: JSON.stringify(['eclipse-mosquitto@' + PINNED.split('@')[1]]) + '\n' };
+    }
+    if (args[0] === 'pull') { assert.equal(args.at(-1), PINNED, 'only the pinned digest is pulled'); local.loaded = true; return { status: 0, stdout: '' }; }
     if (args[0] === 'compose') {
       const svcName = args.at(-1);
       if (args.includes('ps')) return { status: 0, stdout: 'c-' + svcName + '\n' };
@@ -75,7 +81,7 @@ function fixture(t, over = {}) {
     throw Error('unexpected docker ' + args.join(' '));
   };
   const logs = [];
-  return { env, state, svc, calls, logs, opts: { root, execute, log: (l) => logs.push(l), now: () => new Date('2026-11-19T10:00:00Z'), sleep: () => {} } };
+  return { env, state, svc, calls, logs, local, opts: { root, execute, log: (l) => logs.push(l), now: () => new Date('2026-11-19T10:00:00Z'), sleep: () => {} } };
 }
 
 test('status reports drift; gate refuses an exited broker; recover recreates only mosquitto to the pinned image and keeps evidence private', async (t) => {
@@ -110,4 +116,23 @@ test('status reports drift; gate refuses an exited broker; recover recreates onl
   assert.throws(() => recover(f.env, { reason: 'again' }, f.opts), /nothing to recover/);
   const forced = recover(f.env, { reason: 'operator check', force: true }, f.opts);
   assert.equal(forced.action, 'restart');
+});
+
+test('preload pulls only the pinned digest once; recover never pulls and refuses a recreate when the image is not local', async (t) => {
+  const fs = await import('node:fs');
+  const f = fixture(t, { loaded: false });
+  fs.mkdirSync(f.state, { recursive: true });
+  writeFileSync(join(f.state, ACTIVE_OVERRIDE), 'services: {}\n', { mode: 0o600 });
+  assert.throws(() => recover(f.env, { reason: 'upgrade to 2.0.23', actor: 'ops' }, f.opts), /preload first/);
+  assert.ok(!f.calls.some((c) => c.includes(' up ') || c.startsWith('pull')), 'nothing recreated or pulled by recover');
+  preload(f.env, f.opts);
+  assert.equal(f.calls.filter((c) => c.startsWith('pull')).length, 1);
+  assert.ok(f.logs.includes(`BROKER_IMAGE_PRELOAD=PASS image=${PINNED}`));
+  preload(f.env, f.opts); // already local: no second pull
+  assert.equal(f.calls.filter((c) => c.startsWith('pull')).length, 1);
+  const r = recover(f.env, { reason: 'upgrade to 2.0.23', actor: 'ops' }, f.opts);
+  assert.equal(r.action, 'recreate');
+  const up = f.calls.find((c) => c.includes(' up '));
+  assert.match(up, /--pull never/);
+  assert.equal(f.calls.filter((c) => c.startsWith('pull')).length, 1, 'recover itself never pulls');
 });

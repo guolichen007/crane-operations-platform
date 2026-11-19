@@ -492,7 +492,7 @@ func grantsOf(ctx context.Context, q queryer, id string) (portfolio, project []G
 var personnelActions = []string{"personnel_created", "account_enabled", "account_disabled", "password_reset", "sessions_revoked",
 	"profile_updated", "system_role_changed", "portfolio_role_changed", "project_role_changed", "account_adopted",
 	"account_provision_failed", "account_provision_cancelled", "identity_sync", "login_success", "logout", "identity_bound",
-	"personnel_archived", "personnel_purged", "identity_protection_changed"}
+	"personnel_archived", "personnel_purged", "identity_protection_changed", "identity_test_account_changed"}
 
 // Get returns one person with grants, live identity-provider status and security history.
 func (s *Service) Get(ctx context.Context, a Actor, id string) (PersonDetail, error) {

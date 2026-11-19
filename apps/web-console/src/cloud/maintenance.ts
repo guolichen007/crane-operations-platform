@@ -12,12 +12,13 @@ export type PointView = {
   acquisitionSource: string; confirmationStatus: string; quality: string; version: number; sourceRow: number; brandModel: string | null;
   lifeText: string | null; reviewFlags: string[]; openIssues: number; meters: string[];
 };
-export type IssueView = { id: string; issueCode: string; pointCode: string | null; sourceRow: number | null; detail: Record<string, unknown>; status: string; resolvedBy: string | null; resolution: string | null };
-export type PendingView = { subject: string; attribute: string; candidate: unknown; basis: string; status: string };
+export type IssueView = { id: string; issueCode: string; pointCode: string | null; sourceRow: number | null; detail: Record<string, unknown>; status: string; resolvedBy: string | null; resolution: string | null; configChangeId?: string | null };
+export type PendingView = { id?: string; subject: string; attribute: string; candidate: unknown; basis: string; status: string; version?: number; confirmedValue?: unknown; decidedBy?: string | null; decidedAt?: string | null; decisionBasis?: string | null };
 export type MeterView = {
   id: string; meterCode: string; pointCode: string; metric: string; kind: 'CUMULATIVE' | 'DAILY' | 'STATE'; unit: string; scope: string; equipmentSlot: string | null;
   formula: string; status: string; sourceMode: SourceMode | null; runtimeDeviceId: string | null; lastRawValue: number | null; accumulated: number | null;
   equipmentUsage: number | null; lastSampledAt: string | null; lastQuality: string | null; readings: number; today: number | null;
+  trustState?: 'OK' | 'DECREASE_PENDING' | null; pendingRawValue?: number | null; pendingSince?: string | null; baselineKnown?: boolean;
 };
 export type ReadingView = { sampledAt: string; sourceMode: SourceMode; rawValue: number | null; quality: string; delta: number; accumulated: number; anomaly: string | null; bootId: string; sequence: number };
 export type RuleView = {
@@ -25,6 +26,7 @@ export type RuleView = {
   intervalDays: number | null; intervalMeter: number | null; leadDays: number[]; warnPercents: number[]; basis: string; approvalStatus: string; approvedBy: string | null;
   effectiveFrom: string | null; testOnly: boolean; sourceMode: SourceMode | null; cycleNo: number | null; status: string | null; nextDueAt: string | null;
   nextDueMeter: number | null; progressPercent: number | null; daysLeft: number | null; evaluatedAt: string | null;
+  dataGaps?: ('TIME' | 'METER')[]; reason?: string | null; sourceRow?: number | null; approvedAt?: string | null;
 };
 export type AlertView = { id: string; ruleId: string; ruleName: string; assetId: string; sourceMode: SourceMode; cycleNo: number; stage: string; triggeredAt: string; status: string; workOrderId: string | null; detail: Record<string, unknown> };
 export type WorkOrder = {
@@ -66,6 +68,46 @@ export const transitionWorkOrder = (id: string, version: number, t: Transition) 
   api<WorkOrder>(`work-orders/${encodeURIComponent(id)}/transitions`, { method: 'POST', body: t, ifMatch: version });
 export const resolveIssue = (assetId: string, issueId: string, status: 'RESOLVED' | 'ACCEPTED', resolution: string) =>
   api<void>(`${a(assetId)}/point-issues/${encodeURIComponent(issueId)}/resolve`, { method: 'POST', body: { status, resolution } });
+
+// ---------------------------------------------------------------------------------------------
+// R9 收口 — real-asset readiness (platform_admin writes; If-Match on every decision)
+// ---------------------------------------------------------------------------------------------
+export type ReadinessSlot = { equipmentSlot: string; equipmentInstallationId: string; equipmentCode: string; typeCode: string; installedAt: string | null; version: number };
+export type ReadinessBaseline = { equipmentSlot: string; meterCode: string; sourceMode: SourceMode; initialUsage: number | null; baselineKind: string; recordedBy: string; recordedAt: string };
+export type Readiness = {
+  assetVersion: number; ratedCapacityT: number | null; spanM: number | null; useRegistrationNo: string | null; latestInspectionDate: string | null; inspectionValidUntil: string | null;
+  pointsTotal: number; pointsConfirmed: number; issuesOpen: number; pendingOpen: number; slotsTotal: number; slotsWithInstalledAt: number;
+  rulesApproved: number; rulesDraft: number; realRuntimeRegistered: boolean; realBaselines: number; slots: ReadinessSlot[]; baselines: ReadinessBaseline[]; blockers: string[];
+};
+export type PointChange = { id: string; pointCode: string; fromVersion: number; toVersion: number; before: Record<string, unknown>; after: Record<string, unknown>; basis: string; actor: string; changedAt: string; resolvedIssues: string[] | null };
+export const getReadiness = (id: string) => api<Readiness>(`${a(id)}/readiness`);
+export const listPointChanges = (id: string) => api<PointChange[]>(`${a(id)}/point-changes`);
+export const decidePending = (id: string, pendingId: string, version: number, body: { status: 'CONFIRMED' | 'REJECTED'; value: unknown; basis: string }) =>
+  api<void>(`${a(id)}/pending-attributes/${encodeURIComponent(pendingId)}/decision`, { method: 'POST', body, ifMatch: version });
+export const setInstalledAt = (id: string, slot: string, version: number, installedAt: string, basis: string) =>
+  api<void>(`${a(id)}/equipment-slots/${encodeURIComponent(slot)}/installed-at`, { method: 'POST', body: { installedAt, basis }, ifMatch: version });
+export type PointConfirmation = { status: 'CONFIRMED' | 'REJECTED'; plcAddressRaw?: string | null; activeLevel?: 'HIGH' | 'LOW'; edge?: 'RISING' | 'FALLING' | 'BOTH';
+  rawDataType?: 'INT' | 'FLOAT' | 'STRING' | 'BOOL'; unit?: 'count' | 'h' | 't' | 'none'; basis: string; resolveIssues: string[] };
+export const confirmPoint = (id: string, point: string, version: number, body: PointConfirmation) =>
+  api<void>(`${a(id)}/points/${encodeURIComponent(point)}/confirmation`, { method: 'POST', body, ifMatch: version });
+export const recordBaseline = (id: string, body: { equipmentSlot: string; meterCode: string; initialUsage: number; note: string }) =>
+  api<void>(`${a(id)}/meter-baselines`, { method: 'POST', body });
+export const approveRule = (id: string, rule: string, version: number, body: { intervalDays: number | null; intervalMeter: number | null; effectiveFrom: string; basis: string }) =>
+  api<void>(`${a(id)}/maintenance-rules/${encodeURIComponent(rule)}/approve`, { method: 'POST', body, ifMatch: version });
+export const setStatutoryInspection = (id: string, version: number, body: { useRegistrationNo: string | null; latestInspectionDate: string; inspectionValidUntil: string; basis: string }) =>
+  api<void>(`${a(id)}/statutory-inspection`, { method: 'POST', body, ifMatch: version });
+export const confirmCounterReset = (id: string, meter: string, body: { sourceMode: SourceMode; reason: string }) =>
+  api<void>(`${a(id)}/meters/${encodeURIComponent(meter)}/counter-reset`, { method: 'POST', body });
+
+export const GAP_TEXT: Record<string, string> = { TIME: '日期条件数据不足', METER: '计量条件数据不足' };
+/** Rule status line: a partial (HYBRID one-condition) result is shown as such, never as plain 正常. */
+export function ruleStatusText(r: Pick<RuleView, 'status' | 'approvalStatus' | 'dataGaps' | 'type'>): string {
+  const base = statusView(r.status ?? (r.approvalStatus === 'APPROVED' ? 'INSUFFICIENT_DATA' : 'DRAFT')).text;
+  const gaps = r.dataGaps ?? [];
+  if (!r.status || !gaps.length) return base;
+  if (r.type === 'HYBRID' && gaps.length === 1) return r.status === 'INSUFFICIENT_DATA' ? '部分数据不足' : `${base}（部分数据不足）`;
+  return r.status === 'INSUFFICIENT_DATA' ? base : `${base}（${gaps.map((g) => GAP_TEXT[g] ?? g).join('、')}）`;
+}
 
 // ---------------------------------------------------------------------------------------------
 // Presentation

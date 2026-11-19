@@ -29,6 +29,7 @@ export const REQUIRED = [
   'TestR8ZeroBusinessStartToFirstSimulatedCrane',
   'TestR9BrokerCrashIsMonitoredAndRecovers',
   'TestR9LHKFirstAssetSimulatedMeteringEndToEnd',
+  'TestR9LHKSimScenarioToolOverMQTT',
 ];
 
 /**
@@ -118,14 +119,21 @@ if (import.meta.main) {
     const wrapper = join(root, 'mosquitto');
     writeFileSync(wrapper, `#!/bin/sh
 # R7 SIM-E2E: run the pinned Mosquitto image with the generated config (arg: -c <conf>).
+# R9: "--crash <conf>" SIGKILLs the broker CONTAINER of that config (killing the docker CLI alone
+# would leave the container running, so a crash test would never see the broker go down).
+if [ "$1" = "--crash" ]; then
+  ids="$(docker ps -q --filter label=r7-sim-e2e=${name} --filter "label=r7-sim-conf=$(dirname "$2")")"
+  [ -n "$ids" ] || { echo "no broker container for $2" >&2; exit 1; }
+  exec docker kill --signal KILL $ids
+fi
 conf="$2"; dir="$(dirname "$conf")"
-exec docker run --rm --init --label r7-sim-e2e=${name} --network host --user "$(id -u):$(id -g)" -v "$dir:$dir" ${images.mosquitto} mosquitto -c "$conf"
+exec docker run --rm --init --label r7-sim-e2e=${name} --label "r7-sim-conf=$dir" --network host --user "$(id -u):$(id -g)" -v "$dir:$dir" ${images.mosquitto} mosquitto -c "$conf"
 `, { mode: 0o700 });
     const only = process.env.R7_SIM_ONLY ? process.env.R7_SIM_ONLY.split(',') : null;
     if (only && only.some((t) => !REQUIRED.includes(t))) throw Error('R7_SIM_ONLY must name required tests');
     const selected = only ?? REQUIRED;
     const runDir = join(resolve('test-results-r7'), `run-${new Date().toISOString().replace(/[:.]/g, '-')}-${process.pid}`);
-    const testEnv = { ...process.env, R7_SIM_E2E: '1', MOSQUITTO_BIN: wrapper, R7_SIM_EVIDENCE: join(runDir, 'sim-evidence.jsonl'),
+    const testEnv = { ...process.env, R7_SIM_E2E: '1', MOSQUITTO_BIN: wrapper, MOSQUITTO_CRASH_VIA_WRAPPER: '1', R7_SIM_EVIDENCE: join(runDir, 'sim-evidence.jsonl'),
       // Restore drill: pg_dump / pg_restore of the server's own version, inside the DB container.
       R7_RESTORE_DRILL: '1', R7_PG_EXEC: `docker exec -i -e PGPASSWORD=${password} ${pg}`,
       A1_TEST_DATABASE_URL: `postgres://a1test:${password}@127.0.0.1:${port}/a1test?sslmode=disable` };

@@ -135,20 +135,21 @@ func TestMeterIngestNeverLosesOrZeroesAccumulatedValue(t *testing.T) {
 	if a := acc(t, db, "LHK-P003.hours", "SIMULATION"); a != 4 {
 		t.Fatalf("out of order changed acc: %v", a)
 	}
-	// Device restart with counter reset (new bootId, lower raw value): delta = new value, never negative.
+	// Device restart with a lower counter (new bootId): a SUSPECTED reset — recorded, never counted
+	// automatically (an administrator confirms a real reset); the value never goes negative or zero.
 	s.boot, s.bootSeq, s.seq = "boot-b", 2, 0
 	r = s.send(t0.Add(5*time.Hour), []contract.MeterSample{sample("LHK-P003", "hours", v(0.5))})
-	if r.Anomalies["COUNTER_RESET"] != 1 || acc(t, db, "LHK-P003.hours", "SIMULATION") != 4.5 {
+	if r.Anomalies["COUNTER_RESET"] != 1 || acc(t, db, "LHK-P003.hours", "SIMULATION") != 4 {
 		t.Fatalf("reset %+v acc %v", r, acc(t, db, "LHK-P003.hours", "SIMULATION"))
 	}
-	// Same boot, value decreases: DECREASE, no change.
+	// Same boot, value decreases further: DECREASE, no change.
 	r = s.send(t0.Add(6*time.Hour), []contract.MeterSample{sample("LHK-P003", "hours", v(0.2))})
-	if r.Anomalies["DECREASE"] != 1 || acc(t, db, "LHK-P003.hours", "SIMULATION") != 4.5 {
+	if r.Anomalies["DECREASE"] != 1 || acc(t, db, "LHK-P003.hours", "SIMULATION") != 4 {
 		t.Fatalf("decrease %+v", r)
 	}
 	// BAD quality: stored, no delta.
 	r = s.send(t0.Add(7*time.Hour), []contract.MeterSample{{PointCode: "LHK-P003", Metric: "hours", Value: v(99), Quality: "BAD"}})
-	if r.Anomalies["QUALITY"] != 1 || acc(t, db, "LHK-P003.hours", "SIMULATION") != 4.5 {
+	if r.Anomalies["QUALITY"] != 1 || acc(t, db, "LHK-P003.hours", "SIMULATION") != 4 {
 		t.Fatalf("bad quality %+v", r)
 	}
 	// One raw signal, two meters (brake contactor cycles + mechanism running hours).
@@ -320,7 +321,9 @@ func TestThresholdsAlertsWorkOrderReplacementAndNextCycle(t *testing.T) {
 	if acc(t, db, "LHK-P001.cycles", "SIMULATION") != 1000001 {
 		t.Fatal("raw cumulative meter changed by replacement")
 	}
-	// Next cycle: anchored at completion → cycle 2, meter progress restarts at 0 %, next due date +365 d.
+	// Next cycle: anchored at completion → cycle 2, meter progress restarts at 0 %, next due date +365 d
+	// (with a current reading — a NORMAL conclusion needs fresh evidence).
+	sim.send(done, []contract.MeterSample{sample("LHK-P001", "cycles", v(1000001))})
 	evs, _ := EvaluateAll(ctx, db, "LHK-CRANE-001", done)
 	var next Evaluation
 	for _, x := range evs {

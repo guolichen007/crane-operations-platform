@@ -292,10 +292,11 @@ func purgeReferences(ctx context.Context, q queryer, id string) (map[string]int,
 
 // PurgeCheck is what the UI needs to offer (or not) a permanent purge.
 type PurgeCheck struct {
-	Archived   bool           `json:"archived"`
-	Protected  bool           `json:"protected"`
-	References map[string]int `json:"references"`
-	Purgeable  bool           `json:"purgeable"`
+	Archived    bool           `json:"archived"`
+	Protected   bool           `json:"protected"`
+	TestAccount bool           `json:"testAccount"` // only an explicitly marked test account can ever be purged
+	References  map[string]int `json:"references"`
+	Purgeable   bool           `json:"purgeable"`
 }
 
 // CheckPurge reports whether a person could be purged now (read only).
@@ -305,7 +306,7 @@ func (s *Service) CheckPurge(ctx context.Context, a Actor, id string) (PurgeChec
 		return out, err
 	}
 	var protected sql.NullString
-	err := s.DB.QueryRowContext(ctx, `SELECT archived_at IS NOT NULL, protected_reason FROM users WHERE id=$1 AND (issuer IS NOT NULL OR username IS NOT NULL)`, id).Scan(&out.Archived, &protected)
+	err := s.DB.QueryRowContext(ctx, `SELECT archived_at IS NOT NULL, protected_reason, test_account FROM users WHERE id=$1 AND (issuer IS NOT NULL OR username IS NOT NULL)`, id).Scan(&out.Archived, &protected, &out.TestAccount)
 	if errors.Is(err, sql.ErrNoRows) {
 		return out, ErrNotFound
 	}
@@ -316,7 +317,7 @@ func (s *Service) CheckPurge(ctx context.Context, a Actor, id string) (PurgeChec
 	if out.References, err = purgeReferences(ctx, s.DB, id); err != nil {
 		return out, err
 	}
-	out.Purgeable = out.Archived && !out.Protected && len(out.References) == 0
+	out.Purgeable = out.Archived && out.TestAccount && !out.Protected && len(out.References) == 0
 	return out, nil
 }
 
@@ -348,6 +349,10 @@ func (s *Service) Purge(ctx context.Context, a Actor, id, confirm string) error 
 			}
 			if !t.archived {
 				return t, InvalidError{"state", "只能永久删除已删除（归档）的测试账号；请先删除该人员"}
+			}
+			if !t.testAccount {
+				// Real staff are only ever archived (history and responsibility stay attached).
+				return t, ErrNotTestAccount
 			}
 			refs, err := purgeReferences(ctx, tx, id)
 			if err != nil {
@@ -411,7 +416,7 @@ WHERE username=$1 AND state='COMPLETED'`, t.username); err != nil {
 				return err
 			}
 		}
-		res, err := tx.ExecContext(ctx, `DELETE FROM users WHERE id=$1 AND archived_at IS NOT NULL AND protected_reason IS NULL`, id)
+		res, err := tx.ExecContext(ctx, `DELETE FROM users WHERE id=$1 AND archived_at IS NOT NULL AND protected_reason IS NULL AND test_account`, id)
 		if err != nil {
 			return err
 		}
@@ -485,9 +490,9 @@ func (s *Service) PlanCleanup(ctx context.Context, list CleanupList) (CleanupPla
 	for _, e := range list.Accounts {
 		it := CleanupItem{CleanupEntry: e}
 		var username, protected sql.NullString
-		var archived, isAdmin bool
+		var archived, isAdmin, testAccount bool
 		err := s.DB.QueryRowContext(ctx, `SELECT username, protected_reason, archived_at IS NOT NULL,
-EXISTS(SELECT 1 FROM system_memberships m WHERE m.user_id=u.id AND m.role='system_admin') FROM users u WHERE id=$1`, e.ID).Scan(&username, &protected, &archived, &isAdmin)
+EXISTS(SELECT 1 FROM system_memberships m WHERE m.user_id=u.id AND m.role='system_admin'), test_account FROM users u WHERE id=$1`, e.ID).Scan(&username, &protected, &archived, &isAdmin, &testAccount)
 		switch {
 		case seen[e.ID]:
 			it.Action, it.Reason = CleanupRefused, "duplicate entry"
@@ -501,6 +506,9 @@ EXISTS(SELECT 1 FROM system_memberships m WHERE m.user_id=u.id AND m.role='syste
 			it.Action, it.Reason = CleanupRefused, "protected identity ("+protected.String+")"
 		case isAdmin && !archived:
 			it.Action, it.Reason = CleanupRefused, "holds system_admin; remove the role through the reviewed path first"
+		case !testAccount:
+			// The cleanup list is for test accounts only; a real employee is never in it.
+			it.Action, it.Reason = CleanupRefused, "not marked as a test account (identity mark-test first; staff are archived on the web, never purged)"
 		default:
 			refs, err := purgeReferences(ctx, s.DB, e.ID)
 			if err != nil {
@@ -564,6 +572,45 @@ func (s *Service) ApplyCleanup(ctx context.Context, a Actor, list CleanupList, a
 	return plan, nil
 }
 
+// MarkTestAccount marks (or clears) an EXPLICITLY named account as a test account (host tool only,
+// audited). Only a marked test account can ever be purged permanently; protected identities
+// (OWNER / SERVICE / SYSTEM) and system administrators can never be marked.
+func (s *Service) MarkTestAccount(ctx context.Context, a Actor, id, username string, mark bool) error {
+	if !a.Host {
+		return ErrForbidden
+	}
+	return s.withPeople(ctx, []string{id}, func() error {
+		tx, err := s.DB.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		t, err := lockTarget(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if username == "" || t.username != username {
+			return InvalidError{"username", "id and username must identify the same managed person"}
+		}
+		if mark && t.protected != "" {
+			return ErrProtectedIdentity
+		}
+		if mark && t.hasRole(RoleSystemAdmin) {
+			return InvalidError{"role", "a system administrator is never a test account"}
+		}
+		if t.testAccount == mark {
+			return tx.Commit()
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE users SET test_account=$2, version=version+1, updated_at=now() WHERE id=$1`, id, mark); err != nil {
+			return err
+		}
+		if err = auditlog.Write(ctx, tx, a.event("identity_test_account_changed", "success", id, "system", map[string]any{"testAccount": mark, "username": username})); err != nil {
+			return err
+		}
+		return tx.Commit()
+	})
+}
+
 // SetProtected marks / clears the protection of an identity (host recovery tool only, audited).
 func (s *Service) SetProtected(ctx context.Context, a Actor, id, reason string) error {
 	if !a.Host {
@@ -591,7 +638,7 @@ func (s *Service) SetProtected(ctx context.Context, a Actor, id, reason string) 
 		if t.archived {
 			return ErrArchived
 		}
-		if _, err = tx.ExecContext(ctx, `UPDATE users SET protected_reason=NULLIF($2,''), version=version+1, updated_at=now() WHERE id=$1`, id, reason); err != nil {
+		if _, err = tx.ExecContext(ctx, `UPDATE users SET protected_reason=NULLIF($2,''), test_account=test_account AND $2='', version=version+1, updated_at=now() WHERE id=$1`, id, reason); err != nil {
 			return err
 		}
 		if err = auditlog.Write(ctx, tx, a.event("identity_protection_changed", "success", id, "system", map[string]any{"from": t.protected, "to": reason})); err != nil {

@@ -31,6 +31,7 @@ import { canWriteProject } from '../cloud/auth-state';
 import { useDraftSession, allowClose, allowRebase, draftText, fieldDiff, sameData } from '../cloud/draft';
 import { ledgerReturnQuery } from '../cloud/project-scope';
 import AssetMaintenancePanel from '../components/AssetMaintenancePanel.vue';
+import AssetReadinessPanel from '../components/AssetReadinessPanel.vue';
 import type { AssetMasterData, AssetLocation, EquipmentInstallation } from '../../../../contracts/typescript/types.gen';
 
 const route = useRoute();
@@ -92,12 +93,17 @@ const kindLabel = (k: string) => KIND_TEXT[k] ?? k;
 const pathLabel = (p: Parameters<typeof locationPathText>[0]) => locationPathText(p, KIND_TEXT);
 /** 位置中心 deep link that scopes to the asset's project and highlights the location. */
 const locationLink = (locationId: string) => ({ path: '/locations', query: { project: asset.value?.projectId ?? '', location: locationId } });
-type DetailTab = 'overview' | 'equipment' | 'ledger' | 'monitor' | 'maintenance' | 'history';
+type DetailTab = 'overview' | 'equipment' | 'ledger' | 'monitor' | 'maintenance' | 'history' | 'readiness';
 const tab = ref<DetailTab>('overview');
 // R9 B6: maintenance execution follows CapMaintenanceWrite (maintainer, platform_admin).
 const canMaintain = computed(() => {
   const project = asset.value?.projectId ?? '';
   return !!webSession.value?.projects.some((p) => p.projectId === project && (p.role === 'maintainer' || p.role === 'platform_admin'));
+});
+// R9 收口: real-asset readiness decisions follow CapAssetMasterWrite (platform_admin).
+const canAdminAsset = computed(() => {
+  const project = asset.value?.projectId ?? '';
+  return !!webSession.value?.projects.some((p) => p.projectId === project && p.role === 'platform_admin');
 });
 const moveTargets = computed(() => (locationsQuery.data.value ?? []) as AssetLocation[]);
 
@@ -547,8 +553,10 @@ const statusText: Record<string, string> = {
         <button :class="{ active: tab === 'monitor' }" data-testid="tab-monitor" @click="tab = 'monitor'">运行监测</button>
         <button :class="{ active: tab === 'maintenance' }" data-testid="tab-maintenance" @click="tab = 'maintenance'">寿命与维护</button>
         <button :class="{ active: tab === 'history' }" data-testid="tab-history" @click="tab = 'history'">历史</button>
+        <button :class="{ active: tab === 'readiness' }" data-testid="tab-readiness" @click="tab = 'readiness'">接入准备</button>
       </div>
       <AssetMaintenancePanel v-if="tab === 'ledger' || tab === 'monitor' || tab === 'maintenance' || tab === 'history'" :asset-id="asset.id" :tab="tab" :can-maintain="canMaintain" />
+      <AssetReadinessPanel v-if="tab === 'readiness'" :asset-id="asset.id" :can-admin="canAdminAsset" />
 
       <template v-if="tab === 'overview'">
       <div class="detail-grid">

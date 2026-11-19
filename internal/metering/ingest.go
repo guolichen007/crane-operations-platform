@@ -5,15 +5,25 @@
 //     source_mode (REAL / SIMULATION / TEST) comes from the devices row, NEVER from the message,
 //     and a payload claiming another mode is refused (a simulator can never write REAL meters);
 //   - (meter, mode, runtime, bootId, sequence) is unique: duplicates are no-ops (idempotent);
-//   - counting happens at the PLC / edge; the cloud persists the cumulative value and its history:
-//     value ≥ last (same boot)          → delta = value - last
-//     value < last (same boot)          → DECREASE, delta 0 (never subtracts)
-//     new bootId and value < last       → COUNTER_RESET, delta = value (the counter restarted)
+//   - counting happens at the PLC / edge; the cloud persists the cumulative value and its history.
+//     last_raw_value is the TRUSTED HIGH-WATER MARK of the device counter:
+//     value ≥ mark                      → delta = value - mark, mark = value (also right after an
+//     edge restart: the edge keeps its counters)
+//     value < mark (any boot)           → DECREASE (same boot) / COUNTER_RESET (new boot) row,
+//     delta 0, the mark does NOT move and the meter is held
+//     DECREASE_PENDING; it recovers only when the value is back
+//     at the mark (a glitch: nothing in between is counted
+//     twice) or when an administrator confirms a real PLC
+//     counter reset (ConfirmCounterReset). A process restart is
+//     never taken as a counter reset.
+//     1000 → 1100 → 900 → 1100 → 1200  ⇒  trusted accumulated 200 (not 400)
 //     older (bootSeq, sequence) arriving late → OUT_OF_ORDER, stored, does not move the state
-//     value NULL / quality MISSING      → MISSING row, delta 0, last value kept (never zero)
-//     quality BAD                       → QUALITY row, delta 0
-//     so `accumulated` only ever grows: a network outage, a restart or a counter reset never
-//     zeroes a real cumulative value; back-filled samples (spool replay) are applied in order;
+//     value NULL / quality MISSING      → MISSING row, delta 0, mark kept (never zero)
+//     quality BAD / UNCERTAIN           → QUALITY row, delta 0, mark kept (the next GOOD value
+//     carries the usage of the period)
+//     so `accumulated` only ever grows and never counts the same usage twice: a network outage,
+//     a restart or a counter glitch never zeroes or inflates it; back-filled samples (spool
+//     replay) are applied in order;
 //   - daily metrics keep the latest value of the day (by sequence); fault events are unique by
 //     (mode, runtime, eventId).
 package metering
@@ -134,8 +144,9 @@ func apply(ctx context.Context, tx *sql.Tx, r meterRef, mode string, m contract.
 	var lastBoot sql.NullString
 	var lastBootSeq, lastSeq sql.NullInt64
 	var acc float64
-	if err := tx.QueryRowContext(ctx, `SELECT last_raw_value, last_boot_id, last_boot_seq, last_sequence, accumulated FROM meter_states WHERE meter_id=$1 AND source_mode=$2 FOR UPDATE`, r.id, mode).
-		Scan(&last, &lastBoot, &lastBootSeq, &lastSeq, &acc); err != nil {
+	var trust string
+	if err := tx.QueryRowContext(ctx, `SELECT last_raw_value, last_boot_id, last_boot_seq, last_sequence, accumulated, trust_state FROM meter_states WHERE meter_id=$1 AND source_mode=$2 FOR UPDATE`, r.id, mode).
+		Scan(&last, &lastBoot, &lastBootSeq, &lastSeq, &acc, &trust); err != nil {
 		return false, "", err
 	}
 	var exists bool
@@ -147,11 +158,12 @@ func apply(ctx context.Context, tx *sql.Tx, r meterRef, mode string, m contract.
 		return false, "", nil // duplicate delivery: idempotent
 	}
 	delta, anomaly, advance := 0.0, "", true
+	hold := false // cumulative value below the trusted mark: recorded, mark kept, meter held pending
 	quality := s.Quality
 	switch {
 	case s.Value == nil || quality == "MISSING":
 		quality, anomaly, advance = "MISSING", "GAP", false
-	case quality == "BAD":
+	case quality == "BAD" || quality == "UNCERTAIN":
 		anomaly, advance = "QUALITY", false
 	case lastSeq.Valid && (m.BootSeq < lastBootSeq.Int64 || (m.BootSeq == lastBootSeq.Int64 && m.BootId == lastBoot.String && m.Sequence < lastSeq.Int64)):
 		anomaly, advance = "OUT_OF_ORDER", false // late sample: stored as history, never rewinds the state
@@ -159,10 +171,13 @@ func apply(ctx context.Context, tx *sql.Tx, r meterRef, mode string, m contract.
 		// Daily / state values are not accumulated here.
 	case !last.Valid:
 		anomaly = "FIRST" // first reading establishes the base; no usage is invented before it
-	case m.BootId != lastBoot.String && *s.Value < last.Float64:
-		delta, anomaly = *s.Value, "COUNTER_RESET"
 	case *s.Value < last.Float64:
-		anomaly = "DECREASE"
+		// Below the trusted mark. Same boot: a decrease; new boot: a suspected reset. Neither is
+		// counted and neither moves the mark (a later return to the mark must not count twice).
+		anomaly, hold = "DECREASE", true
+		if m.BootId != lastBoot.String {
+			anomaly = "COUNTER_RESET"
+		}
 	default:
 		delta = *s.Value - last.Float64
 	}
@@ -180,8 +195,18 @@ func apply(ctx context.Context, tx *sql.Tx, r meterRef, mode string, m contract.
 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NULLIF($13,''))`, r.id, mode, m.DeviceId, m.MessageId, m.BootId, m.BootSeq, m.Sequence, sampled, raw, quality, delta, acc, anomaly); err != nil {
 		return false, "", err
 	}
-	if advance {
-		if _, err := tx.ExecContext(ctx, `UPDATE meter_states SET last_raw_value=$3, last_boot_id=$4, last_boot_seq=$5, last_sequence=$6, last_sampled_at=$7, accumulated=$8, last_quality=$9, readings=readings+1, updated_at=now()
+	if hold {
+		// Ordering advances (later samples of this boot are not "late"), the mark and the
+		// accumulated value stay; the pending window records what was seen for the review.
+		if _, err := tx.ExecContext(ctx, `UPDATE meter_states SET last_boot_id=$3, last_boot_seq=$4, last_sequence=$5, last_sampled_at=$6, last_quality=$7, readings=readings+1, updated_at=now(),
+trust_state='DECREASE_PENDING', pending_since=COALESCE(pending_since,$6), pending_first_raw=COALESCE(pending_first_raw,$8), pending_last_raw=$8
+WHERE meter_id=$1 AND source_mode=$2`, r.id, mode, m.BootId, m.BootSeq, m.Sequence, sampled, quality, *s.Value); err != nil {
+			return false, "", err
+		}
+	} else if advance {
+		// Back at (or above) the mark: a pending decrease was a glitch and is cleared.
+		if _, err := tx.ExecContext(ctx, `UPDATE meter_states SET last_raw_value=$3, last_boot_id=$4, last_boot_seq=$5, last_sequence=$6, last_sampled_at=$7, accumulated=$8, last_quality=$9, readings=readings+1, updated_at=now(),
+trust_state='OK', pending_since=NULL, pending_first_raw=NULL, pending_last_raw=NULL
 WHERE meter_id=$1 AND source_mode=$2`, r.id, mode, *s.Value, m.BootId, m.BootSeq, m.Sequence, sampled, acc, quality); err != nil {
 			return false, "", err
 		}

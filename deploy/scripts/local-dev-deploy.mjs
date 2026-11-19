@@ -63,7 +63,7 @@ import { dependencyGate } from './broker-ops.mjs';
 export const LOCAL_REPO = 'crane-local';
 export const DEPLOYABLE = ['cloud-api', 'web-console'];
 export const BUILDABLE = {
-  'cloud-api': { dockerfile: 'deploy/Dockerfile.backend', go: true, args: [], inputs: ['go.mod', 'go.sum', 'contracts', 'internal', 'services', 'edge', 'tools/identity', 'tools/equipment-types', 'tools/runtime-identity', 'tools/provision-keycloak', 'tools/onboarding', 'deploy/postgres', 'deploy/Dockerfile.backend', 'licenses', 'THIRD_PARTY_NOTICES.md'] },
+  'cloud-api': { dockerfile: 'deploy/Dockerfile.backend', go: true, args: [], inputs: ['go.mod', 'go.sum', 'contracts', 'internal', 'services', 'edge', 'tools/identity', 'tools/equipment-types', 'tools/runtime-identity', 'tools/provision-keycloak', 'tools/onboarding', 'tools/lhk-sim', 'deploy/postgres', 'deploy/Dockerfile.backend', 'licenses', 'THIRD_PARTY_NOTICES.md'] },
   'web-console': { dockerfile: 'deploy/Dockerfile.web-production', go: false, args: [], inputs: ['package.json', 'package-lock.json', 'apps/web-console', 'contracts', 'deploy/nginx/production.conf', 'deploy/Dockerfile.web-production', 'licenses', 'THIRD_PARTY_NOTICES.md'] },
   'device-simulator': { dockerfile: 'deploy/Dockerfile.backend', go: true, args: ['TARGET=simulators/device-simulator'], inputs: ['go.mod', 'go.sum', 'contracts', 'internal', 'edge', 'simulators', 'deploy/Dockerfile.backend'] },
 };
@@ -416,8 +416,18 @@ export function composeMaintenance(environmentArgument, args, options) {
   const ctx = defaults(options);
   const { envFile, environment } = loadEnv(ctx, environmentArgument);
   const verb = args.find((a) => !a.startsWith('-'));
+  // `-v` is ambiguous (volume REMOVAL for down/rm, a bind mount for run): it is always refused, a run
+  // mount must be written `--volume host:container[:ro]` (R9 收口), and --volumes never passes.
   if (!verb || FORBIDDEN_MAINTENANCE.has(verb) || args.includes('-v') || args.includes('--volumes') || (verb === 'up' && !args.includes('--no-deps')))
-    throw Error('maintenance compose refuses down/pull/push/build/rm/kill/create, volume removal and `up` without --no-deps');
+    throw Error('maintenance compose refuses down/pull/push/build/rm/kill/create, volume removal, `-v` (write --volume for a run mount) and `up` without --no-deps');
+  if (args.includes('--volume') && verb !== 'run') throw Error('maintenance compose accepts --volume only with `run`');
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] !== '--volume') continue;
+    const spec = args[i + 1] ?? '';
+    // host path : container path [: ro] — absolute host path, no named volumes, no device / socket paths.
+    if (!/^\/[^:]+:\/[^:]+(:ro)?$/.test(spec) || /^\/(var\/run|run|proc|sys|dev)(\/|$)/.test(spec) || spec.split(':')[0].includes('..'))
+      throw Error(`maintenance compose --volume needs an absolute host path mount (host:/container[:ro]): ${spec}`);
+  }
   const extra = verb === 'up' ? ['--no-build', '--pull', 'never'] : verb === 'run' ? ['--pull', 'never'] : [];
   const i = args.indexOf(verb);
   return docker(ctx, [...activeComposeArgs(ctx, envFile, environment), ...args.slice(0, i + 1), ...extra, ...args.slice(i + 1)], false);

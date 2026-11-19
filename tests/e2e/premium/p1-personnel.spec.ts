@@ -97,7 +97,7 @@ async function mock(page: Page, opts: { roles?: string[]; failProvisionOnce?: bo
       }
       if (action === 'purge-check') {
         const refs = referenced.has(target.id) ? { audit_actions: 3 } : {};
-        return r.fulfill({ json: { archived: !!target.archivedAt, protected: !!target.protected, references: refs, purgeable: !!target.archivedAt && !Object.keys(refs).length } });
+        return r.fulfill({ json: { archived: !!target.archivedAt, protected: !!target.protected, testAccount: target.id.startsWith('tester-'), references: refs, purgeable: !!target.archivedAt && target.id.startsWith('tester-') && !Object.keys(refs).length } });
       }
       if (action === 'purge') {
         if (!target.archivedAt || referenced.has(target.id)) return r.fulfill({ status: 409, json: { error: 'referenced', code: 'REFERENCED' } });
@@ -264,13 +264,13 @@ test('删除人员：输入原因与用户名确认 → 归档并撤销授权；
   await pd.getByTestId('purge-submit').click();
   await expect(page.getByTestId('personnel-center')).toBeVisible();
   expect(api.people.some((x) => x.id === 'tester-9')).toBe(false);
-  // Referenced person: archive allowed, purge refused (only archive).
+  // Real employee (not a marked test account, with history): archive allowed, purge never offered.
   await page.evaluate(() => { location.hash = '#/system/people/worker-1'; });
   await d.getByTestId('person-delete').click();
   await dlg.getByTestId('delete-reason').fill('离职');
   await dlg.getByTestId('delete-confirm').fill('worker-1');
   await dlg.getByTestId('delete-submit').click();
-  await expect(d.getByTestId('purge-blocked')).toContainText('操作日志 3');
+  await expect(d.getByTestId('purge-blocked')).toContainText('非测试账号');
   await expect(d.getByTestId('person-purge-open')).toHaveCount(0);
   // Protected OWNER and oneself: no delete button.
   await page.evaluate(() => { location.hash = '#/system/people/root-admin'; });

@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query';
 import {
   listPoints, listIssues, listPending, listMeters, listReadings, listRules, listAlerts, listWorkOrders, listHistory,
   createWorkOrder, transitionWorkOrder, resolveIssue,
-  sourceModeBadge, statusView, daysLeftText, formatNumber, groupByMechanism,
+  sourceModeBadge, statusView, ruleStatusText, daysLeftText, formatNumber, groupByMechanism,
   STAGE_TEXT, RULE_TYPE_TEXT, KIND_TEXT, APPROVAL_TEXT, WO_STATUS_TEXT, WO_TYPE_TEXT, METRIC_TEXT, ADDRESS_KIND_TEXT, CONFIRM_TEXT,
   ISSUE_TEXT, PENDING_TEXT, HISTORY_TEXT, ROPE_CONCLUSION_TEXT,
   type WorkOrder, type MeterView, type Transition,
@@ -186,7 +186,8 @@ const usageOf = (slot: string | null, mode: string | null) =>
               <td data-label="指标"><b>{{ m.pointCode }}</b> {{ METRIC_TEXT[m.metric] ?? m.metric }}<div class="cell-sub">{{ m.formula }}</div></td>
               <td data-label="来源"><span class="r9-tag" :class="sourceModeBadge(m.sourceMode).tone" :data-mode-badge="m.sourceMode ?? ''">{{ sourceModeBadge(m.sourceMode).text }}</span></td>
               <td data-label="累计 / 当日">{{ m.kind === 'DAILY' ? formatNumber(m.today, m.unit) : formatNumber(m.accumulated, m.unit) }}<div v-if="m.status !== 'ACTIVE'" class="cell-sub warn">{{ m.status === 'UNIT_CONFLICT_PENDING' ? '单位冲突待确认' : '口径待审核' }}</div></td>
-              <td data-label="器件使用量">{{ m.equipmentUsage === null ? (m.kind === 'CUMULATIVE' && m.sourceMode ? '数据不足（无基准）' : '—') : formatNumber(m.equipmentUsage, m.unit) }}</td>
+              <td data-label="器件使用量">{{ m.equipmentUsage === null ? (m.kind === 'CUMULATIVE' && m.sourceMode ? '数据不足（无基准或初始使用量未知）' : '—') : formatNumber(m.equipmentUsage, m.unit) }}
+                <div v-if="m.trustState === 'DECREASE_PENDING'" class="cell-sub warn" data-testid="r9-meter-pending">计数低于可信累计（原始值 {{ formatNumber(m.pendingRawValue ?? null) }}），未计入，待恢复或管理员确认复位</div></td>
               <td data-label="最近采样">{{ formatCloudTime(m.lastSampledAt) }}</td>
               <td data-label="质量">{{ m.lastQuality ?? '—' }}</td>
             </tr>
@@ -228,8 +229,9 @@ const usageOf = (slot: string | null, mode: string | null) =>
                 <span v-if="r.testOnly" class="r9-tag sim">模拟测试规则</span><span v-else class="r9-tag" :class="r.approvalStatus === 'APPROVED' ? 'ok' : 'warn'">{{ APPROVAL_TEXT[r.approvalStatus] }}</span></td>
               <td data-label="类型">{{ RULE_TYPE_TEXT[r.type] }}</td>
               <td data-label="周期">{{ r.intervalDays ? r.intervalDays + ' 天' : '' }}{{ r.intervalDays && r.intervalMeter ? ' / ' : '' }}{{ r.intervalMeter ? formatNumber(r.intervalMeter) : '' }}{{ !r.intervalDays && !r.intervalMeter ? '待定义' : '' }}</td>
-              <td data-label="状态"><span class="r9-status" :data-tone="statusView(r.status ?? (r.approvalStatus === 'APPROVED' ? 'INSUFFICIENT_DATA' : 'DRAFT')).tone" :data-status="r.status ?? ''">{{ statusView(r.status ?? (r.approvalStatus === 'APPROVED' ? 'INSUFFICIENT_DATA' : 'DRAFT')).text }}</span>
-                <div v-if="r.progressPercent !== null" class="cell-sub">使用量 {{ r.progressPercent }}%</div></td>
+              <td data-label="状态"><span class="r9-status" :data-tone="statusView(r.status ?? (r.approvalStatus === 'APPROVED' ? 'INSUFFICIENT_DATA' : 'DRAFT')).tone" :data-status="r.status ?? ''" :data-gaps="(r.dataGaps ?? []).join(',')">{{ ruleStatusText(r) }}</span>
+                <div v-if="r.progressPercent !== null" class="cell-sub">使用量 {{ r.progressPercent }}%</div>
+                <div v-if="r.reason" class="cell-sub warn" data-testid="r9-rule-reason">{{ r.reason }}</div></td>
               <td data-label="下次到期">{{ r.nextDueAt ? formatCloudTime(r.nextDueAt) : '—' }}<div class="cell-sub">{{ daysLeftText(r.daysLeft) }}{{ r.cycleNo ? ' · 第 ' + r.cycleNo + ' 周期' : '' }}</div></td>
               <td data-label="依据"><small>{{ r.basis }}</small></td>
             </tr>

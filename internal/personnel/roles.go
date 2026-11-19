@@ -99,6 +99,9 @@ var (
 	ErrProtectedIdentity = errors.New("protected identity")
 	// ErrReferenced: a purge was refused because business history references the person (HTTP 409).
 	ErrReferenced = errors.New("the person is referenced by business history; archive only")
+	// ErrNotTestAccount (R9 收口): permanent purge is limited to accounts explicitly marked as
+	// test accounts by the host tool; real staff are only ever archived (HTTP 409).
+	ErrNotTestAccount = errors.New("not a marked test account")
 	// ErrNotConfigured: the deployment has no account service credential (HTTP 503).
 	ErrNotConfigured = errors.New("account service is not configured on this deployment")
 )

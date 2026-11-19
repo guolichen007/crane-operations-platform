@@ -102,7 +102,14 @@ VALUES(decode(repeat('ab',32),'hex'),'leaver',decode(repeat('cd',32),'hex'),now(
 	if _, err := f.svc.AdoptAdministrator(ctx, f.host, "leaver", ""); !errors.Is(err, ErrArchived) {
 		t.Fatalf("adopt archived: %v", err)
 	}
-	// Referenced by business history: purge refused, person stays archived.
+	// A real (unmarked) employee is never purged; even marked as a test account, business
+	// history still refuses the purge: the person stays archived.
+	if err := f.svc.Purge(ctx, root, "leaver", "leaver"); !errors.Is(err, ErrNotTestAccount) {
+		t.Fatalf("purge unmarked: %v", err)
+	}
+	if err := f.svc.MarkTestAccount(ctx, f.host, "leaver", "leaver", true); err != nil {
+		t.Fatal(err)
+	}
 	if err := f.svc.Purge(ctx, root, "leaver", "leaver"); !errors.Is(err, ErrReferenced) {
 		t.Fatalf("purge referenced: %v", err)
 	}
@@ -181,8 +188,35 @@ func TestPurgeOnlyArchivedUnreferencedAndReservesUsername(t *testing.T) {
 	if _, err := f.svc.Archive(ctx, root, "tmp-tester", 0, "测试账号清理", "tmp-tester"); err != nil {
 		t.Fatal(err)
 	}
+	// Not marked as a test account: a real employee is only ever archived, never purged.
+	if chk, err := f.svc.CheckPurge(ctx, root, "tmp-tester"); err != nil || chk.Purgeable || chk.TestAccount {
+		t.Fatalf("unmarked purgeable %+v %v", chk, err)
+	}
+	if err := f.svc.Purge(ctx, root, "tmp-tester", "tmp-tester"); !errors.Is(err, ErrNotTestAccount) {
+		t.Fatalf("purge of an unmarked account: %v", err)
+	}
+	// Marking needs the host tool, the exact username, and is refused for OWNER / admins.
+	if err := f.svc.MarkTestAccount(ctx, root, "tmp-tester", "tmp-tester", true); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("web actor marked a test account: %v", err)
+	}
+	if err := f.svc.MarkTestAccount(ctx, f.host, "tmp-tester", "other", true); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("mismatched username: %v", err)
+	}
+	if err := f.svc.MarkTestAccount(ctx, f.host, root.ID, root.ID, true); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("system admin marked as test account: %v", err)
+	}
+	f.open(t, root, "owner-x")
+	if err := f.svc.SetProtected(ctx, f.host, "owner-x", "OWNER"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.MarkTestAccount(ctx, f.host, "owner-x", "owner-x", true); !errors.Is(err, ErrProtectedIdentity) {
+		t.Fatalf("OWNER marked as test account: %v", err)
+	}
+	if err := f.svc.MarkTestAccount(ctx, f.host, "tmp-tester", "tmp-tester", true); err != nil {
+		t.Fatal(err)
+	}
 	chk, err := f.svc.CheckPurge(ctx, root, "tmp-tester")
-	if err != nil || !chk.Purgeable {
+	if err != nil || !chk.Purgeable || !chk.TestAccount {
 		t.Fatalf("check %+v %v", chk, err)
 	}
 	kc, _ := f.idp.FindByUsername(ctx, "tmp-tester")
@@ -193,12 +227,13 @@ func TestPurgeOnlyArchivedUnreferencedAndReservesUsername(t *testing.T) {
 		t.Fatal("keycloak user survived purge")
 	}
 	for q, want := range map[string]int{
-		`SELECT count(*) FROM users WHERE id='tmp-tester'`:                                                  0,
-		`SELECT count(*) FROM purged_usernames WHERE username='tmp-tester'`:                                 1,
-		`SELECT count(*) FROM account_provisions WHERE username='tmp-tester' AND state='PURGED'`:            1,
-		`SELECT count(*) FROM account_provisions WHERE username='tmp-tester' AND request::text LIKE '%员工%'`: 0,
-		`SELECT count(*) FROM audit_logs WHERE target_user_id='tmp-tester' AND action='personnel_purged'`:   1,
-		`SELECT count(*) FROM audit_logs WHERE target_user_id='tmp-tester' AND action='personnel_created'`:  1, // history kept
+		`SELECT count(*) FROM users WHERE id='tmp-tester'`:                                                             0,
+		`SELECT count(*) FROM purged_usernames WHERE username='tmp-tester'`:                                            1,
+		`SELECT count(*) FROM account_provisions WHERE username='tmp-tester' AND state='PURGED'`:                       1,
+		`SELECT count(*) FROM account_provisions WHERE username='tmp-tester' AND request::text LIKE '%员工%'`:            0,
+		`SELECT count(*) FROM audit_logs WHERE target_user_id='tmp-tester' AND action='personnel_purged'`:              1,
+		`SELECT count(*) FROM audit_logs WHERE target_user_id='tmp-tester' AND action='personnel_created'`:             1, // history kept
+		`SELECT count(*) FROM audit_logs WHERE target_user_id='tmp-tester' AND action='identity_test_account_changed'`: 1,
 	} {
 		if n := count(t, f.db, q); n != want {
 			t.Fatalf("%s = %d, want %d", q, n, want)
@@ -219,6 +254,16 @@ func TestCleanupExplicitListOnly(t *testing.T) {
 	f.open(t, root, "uat-a")
 	f.open(t, root, "uat-b")
 	f.open(t, root, "uat-keep") // similar name, NOT listed: must be untouched
+	f.open(t, root, "staff-1")  // a real employee: not a marked test account
+	for _, u := range []string{"uat-a", "uat-b", "uat-keep"} {
+		if err := f.svc.MarkTestAccount(ctx, f.host, u, u, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	staff := CleanupList{Reason: "UAT 清理", Accounts: []CleanupEntry{{ID: "staff-1", Username: "staff-1"}}}
+	if plan, err := f.svc.PlanCleanup(ctx, staff); err != nil || plan.Items[0].Action != CleanupRefused {
+		t.Fatalf("real employee in the cleanup list: %+v %v", plan, err)
+	}
 	if _, err := f.db.Exec(`INSERT INTO entity_revisions(project_id,entity_type,entity_id,recorded_at,effective_at,changed_by) SELECT id,'x','y',now(),now(),'uat-b' FROM projects LIMIT 1`); err != nil {
 		t.Fatal(err)
 	}
@@ -251,6 +296,7 @@ func TestCleanupExplicitListOnly(t *testing.T) {
 		`SELECT count(*) FROM users WHERE id='uat-a'`:                                        0,
 		`SELECT count(*) FROM users WHERE id='uat-b' AND archived_at IS NOT NULL`:            1,
 		`SELECT count(*) FROM users WHERE id='uat-keep' AND archived_at IS NULL AND enabled`: 1,
+		`SELECT count(*) FROM users WHERE id='staff-1' AND archived_at IS NULL AND enabled`:  1,
 	} {
 		if n := count(t, f.db, q); n != want {
 			t.Fatalf("%s = %d, want %d", q, n, want)

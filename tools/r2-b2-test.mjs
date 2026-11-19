@@ -175,6 +175,7 @@ const h21aPackages = [
     'TestMigration12To13PreservesPopulatedData',
     'TestMigration13To14PersonnelArchive',
     'TestMigration14To15MeteringIsAdditiveAndIsolated',
+    'TestMigration15To16TrustAndReadinessAreAdditive',
   ]],
   ['p1-personnel-http', './services/cloud-api/internal/app', [
     'TestPersonnelAPIAnonymousAndUnauthorizedAreRefused',
@@ -197,9 +198,15 @@ const h21aPackages = [
     'TestTimeRuleProgressesWithoutTelemetry',
     'TestWireRopeInspectionNeedsInspectorConclusion',
     'TestCalibrationRuleDueCreatesCalibrationWorkOrder',
+    // R9 收口: trusted mark (1000→1100→900→1100→1200 = 200), confirmed reset, quality, stale,
+    // NULL initial usage, HYBRID partial data.
+    'TestCounterDecreaseIsHeldAndNeverCountedTwice',
+    'TestEvidenceGovernsConclusions',
+    'TestNullInitialUsageAndStaleValueOnDatabase',
   ]],
   ['r9-maintenance-http', './services/cloud-api/internal/app', [
     'TestMaintenanceHTTPScopeRolesAndWorkOrderFlow',
+    'TestRealAssetReadinessHTTP',
   ]],
   // R9 B7: the b4 fixture that seeds / verifies LHK-CRANE-001 for the real-browser run.
   ['r9-lhk-fixture', './tests/integration/a1fixture', [

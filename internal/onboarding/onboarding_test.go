@@ -160,6 +160,10 @@ func TestImportPlanApplyVerifyIdempotent(t *testing.T) {
 	if err != nil || !rep.Consistent {
 		t.Fatalf("verify %+v %v", rep.Actual, err)
 	}
+	// Inventory project only: no portfolio, intake, approval / acceptance history, no members.
+	if rep.Scope.PortfolioScopeID != nil || rep.Scope.IntakeRecords != 0 || rep.Scope.ApprovalAudits != 0 || rep.Scope.Members != 0 {
+		t.Fatalf("import created portfolio / approval state: %+v", rep.Scope)
+	}
 	// Re-apply: plan is all EXISTING, apply is a noop, nothing duplicated.
 	p2, _, _ := PlanImport(ctx, db, b)
 	rec2, err := Apply(ctx, db, b, p2.Digest, "ops-admin", "r2")

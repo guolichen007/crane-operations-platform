@@ -143,34 +143,118 @@ func (h *apiHandler) registerMaintenance(api *http.ServeMux) {
 	})
 
 	// Rule approval (platform_admin): a DRAFT real rule becomes effective only with explicit
-	// approval, interval and effective date; test-only rules can never be approved (DB CHECK).
+	// approval, interval, effective date and basis; If-Match = the rule version shown to the
+	// approver (optional for older clients); test-only rules can never be approved.
 	api.HandleFunc("POST /api/v1/assets/{id}/maintenance-rules/{rule}/approve", func(w http.ResponseWriter, r *http.Request) {
-		asset, project, ok := h.assetFor(w, r, identity.CapAssetMasterWrite)
+		asset, _, ok := h.assetFor(w, r, identity.CapAssetMasterWrite)
 		if !ok {
 			return
 		}
+		var in metering.RuleApproval
+		if err := decodeStrict(r, &in); err != nil {
+			respondAPI(w, 400, map[string]string{"error": "invalid body"})
+			return
+		}
+		version := 0
+		if v, ok := ifMatchVersion(r); ok {
+			version = int(v)
+		} else if err := h.db.QueryRowContext(r.Context(), `SELECT version FROM maintenance_rules WHERE id=$1 AND asset_id=$2`, r.PathValue("rule"), asset).Scan(&version); err != nil {
+			respondAPI(w, 404, map[string]string{"error": "not found"})
+			return
+		}
+		if err := metering.ApproveRule(r.Context(), h.db, asset, r.PathValue("rule"), version, in, currentPrincipal(r).user, requestID(r)); err != nil {
+			meteringError(w, err)
+			return
+		}
+		select {
+		case h.evaluate <- asset:
+		default:
+		}
+		w.WriteHeader(204)
+	})
+
+	// R9 收口 — real-asset readiness (platform_admin writes; every read is CapRead).
+	read("readiness", func(w http.ResponseWriter, r *http.Request, a string) {
+		v, err := metering.ReadinessOf(r.Context(), h.db, a)
+		reply(w, v, err)
+	})
+	read("point-changes", func(w http.ResponseWriter, r *http.Request, a string) {
+		v, err := metering.PointChanges(r.Context(), h.db, a)
+		reply(w, v, err)
+	})
+	adminWrite := func(pattern string, fn func(w http.ResponseWriter, r *http.Request, asset string, version int64) error) {
+		api.HandleFunc("POST /api/v1/assets/{id}/"+pattern, func(w http.ResponseWriter, r *http.Request) {
+			asset, _, ok := h.assetFor(w, r, identity.CapAssetMasterWrite)
+			if !ok {
+				return
+			}
+			version, ok := ifMatchVersion(r)
+			if !ok {
+				respondAPI(w, 428, map[string]string{"error": "precondition required"})
+				return
+			}
+			if err := fn(w, r, asset, version); err != nil {
+				meteringError(w, err)
+				return
+			}
+			select {
+			case h.evaluate <- asset:
+			default:
+			}
+			w.WriteHeader(204)
+		})
+	}
+	adminWrite("pending-attributes/{pending}/decision", func(w http.ResponseWriter, r *http.Request, asset string, version int64) error {
+		var in metering.PendingDecision
+		if err := decodeStrict(r, &in); err != nil {
+			return metering.ErrInvalid
+		}
+		return metering.DecidePending(r.Context(), h.db, asset, r.PathValue("pending"), version, in, currentPrincipal(r).user, requestID(r))
+	})
+	adminWrite("equipment-slots/{slot}/installed-at", func(w http.ResponseWriter, r *http.Request, asset string, version int64) error {
 		var in struct {
-			IntervalDays  *int      `json:"intervalDays"`
-			IntervalMeter *float64  `json:"intervalMeter"`
-			EffectiveFrom time.Time `json:"effectiveFrom"`
-			Basis         string    `json:"basis"`
+			InstalledAt time.Time `json:"installedAt"`
+			Basis       string    `json:"basis"`
 		}
-		if err := decodeStrict(r, &in); err != nil || in.EffectiveFrom.IsZero() || len(strings.TrimSpace(in.Basis)) < 2 {
-			respondAPI(w, 422, map[string]string{"error": "effectiveFrom and basis required"})
+		if err := decodeStrict(r, &in); err != nil {
+			return metering.ErrInvalid
+		}
+		return metering.SetInstalledAt(r.Context(), h.db, asset, r.PathValue("slot"), version, in.InstalledAt, in.Basis, currentPrincipal(r).user, requestID(r), time.Now())
+	})
+	adminWrite("points/{point}/confirmation", func(w http.ResponseWriter, r *http.Request, asset string, version int64) error {
+		var in metering.PointConfirmation
+		if err := decodeStrict(r, &in); err != nil {
+			return metering.ErrInvalid
+		}
+		return metering.ConfirmPoint(r.Context(), h.db, asset, r.PathValue("point"), version, in, currentPrincipal(r).user, requestID(r))
+	})
+	adminWrite("statutory-inspection", func(w http.ResponseWriter, r *http.Request, asset string, version int64) error {
+		var in metering.StatutoryInspection
+		if err := decodeStrict(r, &in); err != nil {
+			return metering.ErrInvalid
+		}
+		_, err := metering.SetStatutoryInspection(r.Context(), h.db, asset, version, in, currentPrincipal(r).user, requestID(r))
+		return err
+	})
+	// A REAL counter below its trusted mark is resolved only by an administrator decision.
+	api.HandleFunc("POST /api/v1/assets/{id}/meters/{meter}/counter-reset", func(w http.ResponseWriter, r *http.Request) {
+		asset, _, ok := h.assetFor(w, r, identity.CapAssetMasterWrite)
+		if !ok {
 			return
 		}
-		res, err := h.db.ExecContext(r.Context(), `UPDATE maintenance_rules SET approval_status='APPROVED', approved_by=$3, approved_at=now(), effective_from=$4,
-interval_days=COALESCE($5,interval_days), interval_meter=COALESCE($6,interval_meter), basis=basis||' ｜ 审批依据：'||$7
-WHERE id=$1 AND asset_id=$2 AND approval_status='DRAFT_UNAPPROVED' AND NOT test_only`, r.PathValue("rule"), asset, currentPrincipal(r).user, in.EffectiveFrom, in.IntervalDays, in.IntervalMeter, strings.TrimSpace(in.Basis))
-		if err != nil {
-			respondAPI(w, 422, map[string]string{"error": "rule cannot be approved with these values (interval required for its type)"})
+		var in metering.CounterResetInput
+		if err := decodeStrict(r, &in); err != nil {
+			respondAPI(w, 400, map[string]string{"error": "invalid body"})
 			return
 		}
-		if n, _ := res.RowsAffected(); n != 1 {
-			respondAPI(w, 409, map[string]string{"error": "rule is not an unapproved real rule"})
+		if err := metering.ConfirmCounterReset(r.Context(), h.db, asset, r.PathValue("meter"), in, currentPrincipal(r).user, requestID(r)); err != nil {
+			meteringError(w, err)
 			return
 		}
-		h.audit(r, project, "maintenance_rule_approved", r.PathValue("rule"))
+		select {
+		case h.evaluate <- asset:
+		default:
+		}
 		w.WriteHeader(204)
 	})
 
@@ -188,6 +272,12 @@ WHERE id=$1 AND asset_id=$2 AND approval_status='DRAFT_UNAPPROVED' AND NOT test_
 		}
 		if err := decodeStrict(r, &in); err != nil {
 			respondAPI(w, 400, map[string]string{"error": "invalid body"})
+			return
+		}
+		if in.InitialUsage == nil || *in.InitialUsage < 0 || len([]rune(strings.TrimSpace(in.Note))) < 2 {
+			// A REAL baseline is a site record: the initial usage (0 for a new part) and its basis
+			// are required; "unknown" is simply not recorded (the rule stays 数据不足).
+			respondAPI(w, 422, map[string]string{"error": "initialUsage (≥ 0) and note (basis) required"})
 			return
 		}
 		if err := metering.RecordBaseline(r.Context(), h.db, asset, in.Slot, in.MeterCode, "REAL", in.InitialUsage, currentPrincipal(r).user, in.Note); err != nil {

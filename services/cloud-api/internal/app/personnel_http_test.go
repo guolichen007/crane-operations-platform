@@ -299,10 +299,17 @@ func TestPersonnelAPIArchiveStopsEverythingAndKeepsHistory(t *testing.T) {
 	if code, res = f.jsonCall(t, admin, as.CsrfToken, "POST", "/api/v1/admin/people/user-operator/enable", map[string]string{"If-Match": `"` + itoa64(version+1) + `"`}, nil); code != 409 || res["code"] != "ARCHIVED" {
 		t.Fatal("enable archived", code, res)
 	}
-	// Business history (login + live session audit) → purge refused, stays archived.
+	// Business history (login + live session audit) → purge refused, stays archived. An unmarked
+	// account is a real employee: refused before any reference check.
 	code, chk := f.jsonCall(t, admin, as.CsrfToken, "GET", "/api/v1/admin/people/user-operator/purge-check", nil, nil)
-	if code != 200 || chk["purgeable"] != false {
+	if code != 200 || chk["purgeable"] != false || chk["testAccount"] != false {
 		t.Fatal("purge-check", code, chk)
+	}
+	if code, res = f.jsonCall(t, admin, as.CsrfToken, "POST", "/api/v1/admin/people/user-operator/purge", nil, map[string]any{"confirmUsername": "user-operator"}); code != 409 || res["code"] != "NOT_TEST_ACCOUNT" {
+		t.Fatal("purge unmarked", code, res)
+	}
+	if _, err = f.db.Exec(`UPDATE users SET test_account=true WHERE id='user-operator'`); err != nil {
+		t.Fatal(err)
 	}
 	if code, res = f.jsonCall(t, admin, as.CsrfToken, "POST", "/api/v1/admin/people/user-operator/purge", nil, map[string]any{"confirmUsername": "user-operator"}); code != 409 || res["code"] != "REFERENCED" {
 		t.Fatal("purge referenced", code, res)

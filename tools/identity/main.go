@@ -10,6 +10,9 @@
 //	list-admins  enabled/disabled system administrators (no secrets).
 //	system-role  --id U --role R [--remove]   (host recovery; still refuses to remove the last admin)
 //	protect      --id U --reason OWNER|SERVICE|SYSTEM | --clear   (R9: never archivable / purgeable)
+//	mark-test    --id U --username N [--clear]   mark (or clear) an explicitly named account as a
+//	             test account; only marked test accounts can ever be purged (never OWNER / SERVICE /
+//	             SYSTEM, never a system_admin); audited
 //	cleanup-plan --list FILE      read-only classification of an EXPLICIT test-account list
 //	             ({"reason": "...", "accounts": [{"id": "...", "username": "..."}]}); never a pattern
 //	cleanup-apply --list FILE --approve DIGEST   archive (+ purge when unreferenced) exactly the
@@ -39,11 +42,11 @@ import (
 )
 
 var operations = map[string]bool{"bind": true, "grant": true, "revoke": true, "list-grants": true, "adopt-admin": true, "list-admins": true, "system-role": true,
-	"protect": true, "cleanup-plan": true, "cleanup-apply": true}
+	"protect": true, "cleanup-plan": true, "cleanup-apply": true, "mark-test": true}
 
 func execute(args []string, output io.Writer) error {
 	if len(args) == 0 || !operations[args[0]] {
-		return errors.New("usage: identity bind|grant|revoke|list-grants|adopt-admin|list-admins|system-role|protect|cleanup-plan|cleanup-apply")
+		return errors.New("usage: identity bind|grant|revoke|list-grants|adopt-admin|list-admins|system-role|protect|mark-test|cleanup-plan|cleanup-apply")
 	}
 	flags := flag.NewFlagSet("identity", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -65,8 +68,8 @@ func execute(args []string, output io.Writer) error {
 		return errors.New("invalid explicit identity arguments")
 	}
 	op := args[0]
-	needsID := op == "bind" || op == "grant" || op == "revoke" || op == "list-grants" || op == "system-role" || op == "protect"
-	if (needsID && *id == "") || (op == "adopt-admin" && *username == "") || (strings.HasPrefix(op, "cleanup-") && *list == "") ||
+	needsID := op == "bind" || op == "grant" || op == "revoke" || op == "list-grants" || op == "system-role" || op == "protect" || op == "mark-test"
+	if (needsID && *id == "") || ((op == "adopt-admin" || op == "mark-test") && *username == "") || (strings.HasPrefix(op, "cleanup-") && *list == "") ||
 		(op == "cleanup-apply" && *approve == "") || (op == "protect" && (*reason == "") == !*clear) {
 		return errors.New("invalid explicit identity arguments")
 	}
@@ -130,6 +133,8 @@ func execute(args []string, output io.Writer) error {
 		return json.NewEncoder(output).Encode(out)
 	case "protect":
 		err = svc.SetProtected(ctx, host, *id, *reason)
+	case "mark-test":
+		err = svc.MarkTestAccount(ctx, host, *id, *username, !*clear)
 	case "cleanup-plan", "cleanup-apply":
 		raw, e := os.ReadFile(*list)
 		if e != nil {
@@ -253,6 +258,8 @@ func main() {
 			msg = "Rejected: conflicting identity or role state (re-plan if the cleanup plan changed)."
 		case errors.Is(err, personnel.ErrProtectedIdentity):
 			msg = "Rejected: protected identity (OWNER / SERVICE / SYSTEM)."
+		case errors.Is(err, personnel.ErrNotTestAccount):
+			msg = "Rejected: not a marked test account (identity mark-test --id U --username N first)."
 		case errors.Is(err, personnel.ErrInvalid):
 			msg = "Rejected: " + err.Error()
 		}

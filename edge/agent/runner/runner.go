@@ -241,6 +241,7 @@ func RunDevice(ctx context.Context, c platform.Config, descriptor fleet.Device) 
 				if !lastMeter.IsZero() {
 					minutes = now.Sub(lastMeter).Minutes()
 				}
+				minutes *= float64(max(c.MeterSpeedup, 1)) // simulated operating time (SIMULATION / TEST only)
 				samples, err := meters.Step(now, minutes)
 				if err != nil {
 					return err

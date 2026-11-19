@@ -45,7 +45,7 @@ export type ProvisionResult = { provisionId: string; state: string; person: Pers
 export type AccountResult = { person: Person; identitySync: 'SYNCED' | 'PENDING' | 'UNMANAGED'; sessionsRevoked: number; temporaryPassword?: string };
 export type Provision = { id: string; actor: string; username: string; state: string; failure: string; request: ProvisionRequest; createdAt: string; updatedAt: string };
 export type ArchiveResult = AccountResult & { revoked: { systemRoles: string[]; portfolio: string[]; projects: string[] } };
-export type PurgeCheck = { archived: boolean; protected: boolean; references: Record<string, number>; purgeable: boolean };
+export type PurgeCheck = { archived: boolean; protected: boolean; testAccount: boolean; references: Record<string, number>; purgeable: boolean };
 export type Candidate = { userId: string; displayName: string; username: string; departmentName: string; jobTitle: string };
 
 export const getSystemAccess = () => api<SystemAccess>('admin/me');
@@ -145,7 +145,7 @@ export const ACTION_TEXT: Record<string, string> = {
   sessions_revoked: '撤销会话', profile_updated: '修改资料', system_role_changed: '调整系统角色', portfolio_role_changed: '调整项目组合角色',
   project_role_changed: '调整项目权限', account_adopted: '宿主机纳管', account_provision_failed: '开户失败', account_provision_cancelled: '开户已取消',
   login_success: '登录', logout: '退出', identity_bound: '绑定身份',
-  personnel_archived: '删除人员（归档）', personnel_purged: '永久删除测试账号', identity_protection_changed: '调整受保护标记',
+  personnel_archived: '删除人员（归档）', personnel_purged: '永久删除测试账号', identity_protection_changed: '调整受保护标记', identity_test_account_changed: '标记测试账号',
 };
 
 /** Purge reference keys → user-facing names (why a person can only stay archived). */

@@ -9,6 +9,9 @@
 //            read-only dependency gate before any deploy: postgres + keycloak + mosquitto healthy,
 //            mosquitto image == pinned source digest, restart policy unless-stopped, ACL + broker
 //            certificate files readable inside the container, cloud-api MQTT connected (if running)
+//   node deploy/scripts/broker-ops.mjs preload   <private.env>
+//            pulls the pinned digest image once (content-addressed) and checks RepoDigests; no container
+//            is touched. recover never pulls: it refuses a recreate when the pinned image is not local.
 //   node deploy/scripts/broker-ops.mjs recover   <private.env> --reason "<text>" [--actor <admin>]
 //            controlled recovery: refuses while healthy unless --force; records the pre-state
 //            (RestartCount, ExitCode, OOMKilled, last 200 log lines → private state dir, mode 0600);
@@ -128,6 +131,32 @@ export function preflight(environmentArgument, options) {
   return { ok: true, checks };
 }
 
+/**
+ * R9 收口: preload the pinned broker image (repo@sha256 from deploy/production/images.json) so that a
+ * later `recover` (which always runs with --pull never) never depends on the registry. `docker pull`
+ * of a digest reference is content-addressed: the local RepoDigests must then contain exactly the
+ * pinned digest, otherwise STOP. Touches no container.
+ */
+export function preload(environmentArgument, options) {
+  const ctx = defaults(options);
+  loadEnv(ctx, environmentArgument);
+  const pinned = pinnedBroker(ctx.root);
+  if (!/@sha256:[a-f0-9]{64}$/.test(pinned)) throw new Stop(`pinned broker image is not a digest reference: ${pinned}`);
+  if (!localImagePresent(ctx, pinned)) docker(ctx, ['pull', '-q', pinned], false);
+  if (!localImagePresent(ctx, pinned)) throw new Stop(`${pinned} is not present locally after pull`);
+  ctx.log(`BROKER_IMAGE_PRELOAD=PASS image=${pinned}`);
+  return { image: pinned };
+}
+
+/** True when the exact pinned digest is in the local image store (RepoDigests). */
+export function localImagePresent(ctx, pinned) {
+  let digests;
+  try { digests = JSON.parse(docker(ctx, ['image', 'inspect', '--format', '{{json .RepoDigests}}', pinned]).trim() || '[]'); } catch { return false; }
+  const [repo, digest] = pinned.split('@');
+  const name = repo.replace(/:[^/:]+$/, '');
+  return Array.isArray(digests) && digests.some((d) => d === `${name}@${digest}` || d.endsWith(`/${name}@${digest}`) || d.split('@')[1] === digest);
+}
+
 /** Controlled broker recovery (see header). */
 export function recover(environmentArgument, { reason, actor = '', force = false } = {}, options) {
   const ctx = defaults(options);
@@ -148,6 +177,8 @@ export function recover(environmentArgument, { reason, actor = '', force = false
   writeFileSync(join(dir, `recover-${stamp}.json`), JSON.stringify({ reason, actor, force, drift, before, pinned }, null, 2) + '\n', { mode: 0o600 });
   writeFileSync(join(dir, `recover-${stamp}.log`), logs, { mode: 0o600 });
   // Definition drift (image upgrade, restart policy, healthcheck) needs a recreate; otherwise restart.
+  // The recreate never pulls (--pull never): the pinned image must already be local (preload).
+  if (drift && !localImagePresent(ctx, pinned)) throw new Stop(`${pinned} is not loaded locally; run broker-ops.mjs preload first (recover never pulls)`);
   if (drift) docker(ctx, [...args, 'up', '-d', '--no-deps', '--no-build', '--pull', 'never', '--wait', '--wait-timeout', '120', BROKER], false);
   else docker(ctx, [...args, 'restart', '-t', '20', BROKER], false);
   let after = inspectService(ctx, args, BROKER);
@@ -166,8 +197,9 @@ if (import.meta.main) {
   const flag = (name) => { const i = rest.indexOf(name); return i >= 0 ? rest[i + 1] : undefined; };
   const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
   try {
-    if (!envFile) throw Error('usage: broker-ops.mjs status|preflight|recover <private.env> [--reason text] [--actor id] [--force]');
+    if (!envFile) throw Error('usage: broker-ops.mjs status|preflight|preload|recover <private.env> [--reason text] [--actor id] [--force]');
     if (mode === 'status') status(envFile, { sleep });
+    else if (mode === 'preload') preload(envFile, { sleep });
     else if (mode === 'preflight') preflight(envFile, { sleep });
     else if (mode === 'recover') recover(envFile, { reason: flag('--reason'), actor: flag('--actor'), force: rest.includes('--force') }, { sleep });
     else throw Error('unknown mode');

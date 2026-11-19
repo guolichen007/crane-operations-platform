@@ -290,6 +290,7 @@ type simEnv struct {
 	cloud       *runtimeLoop
 
 	meterSeconds int // R9: meter batch interval of simulated devices (0 = no meter batches, the R7 behaviour)
+	meterSpeedup int // R9: simulated operating minutes per real minute (0/1 = real time)
 
 	devMu   sync.Mutex
 	devices map[string]*simDevice
@@ -492,7 +493,7 @@ func (e *simEnv) startDevice(id, scenario string) {
 	}
 	ctx, cancel := context.WithCancel(e.ctx)
 	d := &simDevice{cancel: cancel, done: make(chan error, 1)}
-	c := platform.Config{MQTTURL: p.url(), CertDir: e.pki.dir, DataDir: filepath.Join(e.root, "spool"), Scenario: scenario, WillDelay: 5, MeterSeconds: e.meterSeconds}
+	c := platform.Config{MQTTURL: p.url(), CertDir: e.pki.dir, DataDir: filepath.Join(e.root, "spool"), Scenario: scenario, WillDelay: 5, MeterSeconds: e.meterSeconds, MeterSpeedup: max(e.meterSpeedup, 1)}
 	go func() { d.done <- runner.RunDevice(ctx, c, desc) }()
 	e.devices[id] = d
 }

@@ -90,7 +90,8 @@ func TestMaintenanceHTTPScopeRolesAndWorkOrderFlow(t *testing.T) {
 		}
 	}
 	send(1, 0)
-	if err := metering.RecordBaseline(ctx, f.db, "LHK-CRANE-001", "GANTRY-01", "LHK-P001.cycles", "SIMULATION", nil, "test", ""); err != nil {
+	zero := 0.0 // simulated new part: initial usage explicitly 0 (an unknown value stays 数据不足)
+	if err := metering.RecordBaseline(ctx, f.db, "LHK-CRANE-001", "GANTRY-01", "LHK-P001.cycles", "SIMULATION", &zero, "test", ""); err != nil {
 		t.Fatal(err)
 	}
 	interval := 100.0

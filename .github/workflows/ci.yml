@@ -33,7 +33,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
         with: { go-version: '1.27.4', cache: true }
-      - run: go test -race ./services/... ./internal/... ./contracts/... ./deploy/postgres/... ./tools/certs/... ./tools/identity/... ./tools/equipment-types/... ./tools/runtime-identity/... ./tools/onboarding/... ./tools/provision-keycloak/... ./tools/astguard/...
+      - run: go test -race ./services/... ./internal/... ./contracts/... ./deploy/postgres/... ./tools/certs/... ./tools/identity/... ./tools/equipment-types/... ./tools/runtime-identity/... ./tools/onboarding/... ./tools/lhk-sim/... ./tools/provision-keycloak/... ./tools/astguard/...
       - run: go vet ./...
       - name: gofmt gate（打印未格式化文件）
         run: |
@@ -68,7 +68,10 @@ jobs:
       - run: go test -race ./edge/... ./simulators/...
   frontend:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # R9: the full Playwright suite (demo + cloud + premium incl. R9 specs) outgrew 30 min on a
+    # shared runner (CI 44490231138 cancelled at 30m10s inside test:e2e). Only the time budget
+    # changes; every spec still runs, nothing is skipped or retried.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1

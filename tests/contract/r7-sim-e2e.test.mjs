@@ -15,7 +15,7 @@ test('integration job runs the R7 SIM-E2E gate unconditionally', () => {
 });
 
 test('gate requires all six scenarios, the restore drill and the SIM certificate script, exact, no skip', () => {
-  assert.deepEqual(REQUIRED, ['TestR7Sim1DeviceFullLoop', 'TestR7Sim3DevicesIndependent', 'TestR7SimSpoolAckLossNoDuplicates', 'TestR7SimMQTTAbuseAndOrdering', 'TestR7Sim5DevicesRolesIsolationRevocation', 'TestR7Sim20DevicesSoak', 'TestR7IsolatedRestoreDrill', 'TestR8SimCertScriptIssuesUsableIdentity', 'TestR8ZeroBusinessStartToFirstSimulatedCrane', 'TestR9BrokerCrashIsMonitoredAndRecovers', 'TestR9LHKFirstAssetSimulatedMeteringEndToEnd']);
+  assert.deepEqual(REQUIRED, ['TestR7Sim1DeviceFullLoop', 'TestR7Sim3DevicesIndependent', 'TestR7SimSpoolAckLossNoDuplicates', 'TestR7SimMQTTAbuseAndOrdering', 'TestR7Sim5DevicesRolesIsolationRevocation', 'TestR7Sim20DevicesSoak', 'TestR7IsolatedRestoreDrill', 'TestR8SimCertScriptIssuesUsableIdentity', 'TestR8ZeroBusinessStartToFirstSimulatedCrane', 'TestR9BrokerCrashIsMonitoredAndRecovers', 'TestR9LHKFirstAssetSimulatedMeteringEndToEnd', 'TestR9LHKSimScenarioToolOverMQTT']);
   const src = readFileSync('tools/r7-sim-e2e.mjs', 'utf8');
   // The CI step sets no R7_SIM_ONLY, so the exact gate runs over all of REQUIRED; a manual subset
   // (server soak) may only name required tests and prints a SUBSET marker, never R7_SIM_E2E=PASS.
@@ -46,6 +46,10 @@ test('harness drives the real chain: no route interception or canned responses',
   assert.match(readFileSync('services/cloud-api/internal/app/r8_zero_start_test.go', 'utf8'), /func TestR8ZeroBusinessStartToFirstSimulatedCrane\(/);
   assert.match(readFileSync('services/cloud-api/internal/app/r9_broker_test.go', 'utf8'), /func TestR9BrokerCrashIsMonitoredAndRecovers\(/);
   assert.match(readFileSync('services/cloud-api/internal/app/r9_lhk_sim_test.go', 'utf8'), /func TestR9LHKFirstAssetSimulatedMeteringEndToEnd\(/);
+  assert.match(readFileSync('services/cloud-api/internal/app/r9_lhk_scenario_test.go', 'utf8'), /func TestR9LHKSimScenarioToolOverMQTT\(/);
+  // The broker crash test must kill the CONTAINER through the wrapper, not just the docker CLI.
+  assert.match(readFileSync('tools/r7-sim-e2e.mjs', 'utf8'), /MOSQUITTO_CRASH_VIA_WRAPPER: '1'/);
+  assert.match(readFileSync('tools/r7-sim-e2e.mjs', 'utf8'), /docker kill --signal KILL/);
   assert.match(readFileSync('services/cloud-api/internal/app/r7_restore_drill_test.go', 'utf8'), /crane_drill_/);
 });
 

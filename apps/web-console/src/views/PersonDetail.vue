@@ -244,6 +244,7 @@ const changeText = (c: unknown) => {
         <span>登录、授权与会话均已撤销；其历史操作、审批与责任记录保留，不可恢复启用。</span>
         <template v-if="caps.personnel_archive">
           <span v-if="purgeInfo.data.value?.purgeable" class="form-hint">该账号没有任何业务历史引用，可作为测试账号永久删除。</span>
+          <span v-else-if="purgeInfo.data.value && !purgeInfo.data.value.testAccount" class="form-hint" data-testid="purge-blocked">非测试账号（正式员工或未标记），只能保留为归档，不能永久删除。</span>
           <span v-else-if="purgeInfo.data.value" class="form-hint" data-testid="purge-blocked">存在业务历史（{{ referenceText || '受保护' }}），只能保留为归档，不能永久删除。</span>
           <button v-if="purgeInfo.data.value?.purgeable" class="danger-action" data-testid="person-purge-open" @click="purgeConfirm = ''; deleteError = ''; purgeOpen = true"><Trash2 :size="14" />永久删除测试账号</button>
         </template>

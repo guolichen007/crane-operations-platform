@@ -181,7 +181,7 @@ type ReplacementInput struct {
 	SerialNumber  string   `json:"serialNumber"`
 	CatalogItemID string   `json:"catalogItemId"`
 	Reason        string   `json:"reason"`
-	InitialUsage  *float64 `json:"initialUsage"` // usage of the new instance before installation (normally 0 / null)
+	InitialUsage  *float64 `json:"initialUsage"` // usage of the new instance before installation (null = new part = 0)
 }
 
 type RopeInspectionInput struct {
@@ -336,6 +336,15 @@ VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11)`, platform.ID(), w.AssetID, w.
 		return err
 	}
 	// New baselines for every meter measuring the slot (current accumulated value of that mode).
+	// A replacement installs a NEW part: its usage before installation is 0 unless the order states
+	// otherwise (a used / refurbished part) — recorded explicitly, never left unknown.
+	initial := 0.0
+	if in.InitialUsage != nil {
+		if *in.InitialUsage < 0 {
+			return fmt.Errorf("%w: initialUsage must be ≥ 0", ErrInvalid)
+		}
+		initial = *in.InitialUsage
+	}
 	target := old
 	if newID != nil {
 		target = newID.(string)
@@ -363,13 +372,13 @@ VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11)`, platform.ID(), w.AssetID, w.
 			// Simulated replacement: re-base the simulated instance on the same (old) installation row.
 			if _, err = tx.ExecContext(ctx, `INSERT INTO equipment_meter_baselines(id,equipment_installation_id,meter_id,source_mode,baseline_accumulated,initial_usage,baseline_kind,recorded_by,note)
 VALUES($1,$2,$3,$4,$5,$6,'REPLACEMENT',$7,$8) ON CONFLICT (equipment_installation_id,meter_id,source_mode) DO UPDATE SET baseline_accumulated=excluded.baseline_accumulated,initial_usage=excluded.initial_usage,baseline_kind='REPLACEMENT',recorded_by=excluded.recorded_by,recorded_at=now(),note=excluded.note`,
-				platform.ID(), target, x.meter, w.SourceMode, x.acc, in.InitialUsage, actor, "模拟更换（工单 "+w.Code+"）"); err != nil {
+				platform.ID(), target, x.meter, w.SourceMode, x.acc, initial, actor, "模拟更换（工单 "+w.Code+"）"); err != nil {
 				return err
 			}
 			continue
 		}
 		if _, err = tx.ExecContext(ctx, `INSERT INTO equipment_meter_baselines(id,equipment_installation_id,meter_id,source_mode,baseline_accumulated,initial_usage,baseline_kind,recorded_by,note) VALUES($1,$2,$3,'REAL',$4,$5,'REPLACEMENT',$6,$7)`,
-			platform.ID(), target, x.meter, x.acc, in.InitialUsage, actor, "更换（工单 "+w.Code+"）"); err != nil {
+			platform.ID(), target, x.meter, x.acc, initial, actor, "更换（工单 "+w.Code+"）"); err != nil {
 			return err
 		}
 	}

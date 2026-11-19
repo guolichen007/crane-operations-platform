@@ -57,6 +57,8 @@ func (h *apiHandler) personnelError(w http.ResponseWriter, r *http.Request, err 
 		respondAPI(w, 409, map[string]string{"error": "该人员已删除（归档），不能再执行此操作", "code": "ARCHIVED"})
 	case errors.Is(err, personnel.ErrProtectedIdentity):
 		h.deny(w, r, 403, "", "", "protected_identity")
+	case errors.Is(err, personnel.ErrNotTestAccount):
+		respondAPI(w, 409, map[string]string{"error": "只有经宿主机工具明确标记的测试账号才能永久删除；正式员工只能删除（归档）", "code": "NOT_TEST_ACCOUNT"})
 	case errors.Is(err, personnel.ErrReferenced):
 		respondAPI(w, 409, map[string]string{"error": "该人员存在业务历史记录，只能保留为已删除（归档），不能永久删除", "code": "REFERENCED"})
 	case errors.Is(err, personnel.ErrNotConfigured):

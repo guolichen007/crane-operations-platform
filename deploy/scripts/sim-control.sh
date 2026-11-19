@@ -4,6 +4,7 @@
 # simulator image built by local-dev-deploy.mjs (crane-local/device-simulator:<sha>), never pulled.
 #
 #   deploy/scripts/sim-control.sh start  <private.env> --fleet <sim-run-fleet.json> --certs <sim cert dir> [--scenario normal|intermittent|alarm-storm|offline]
+#                                        [--meter-seconds 1..3600] [--meter-speedup 1..600]   (R9 meter batches of the LHK SIM runtime)
 #   deploy/scripts/sim-control.sh stop   <private.env>
 #   deploy/scripts/sim-control.sh status <private.env>
 #
@@ -21,12 +22,14 @@ umask 077
 die() { echo "sim-control: $*" >&2; exit 1; }
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 op="${1:-}"; env_file="${2:-}"; shift 2 || die "usage: sim-control.sh start|stop|status <private.env> [...]"
-fleet="" certs="" scenario=normal
+fleet="" certs="" scenario=normal meter_seconds=60 meter_speedup=1
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --fleet) fleet="$2"; shift 2;;
     --certs) certs="$2"; shift 2;;
     --scenario) scenario="$2"; shift 2;;
+    --meter-seconds) meter_seconds="$2"; shift 2;;   # R9: meter batch interval (SIMULATION runtimes of LHK-CRANE-001)
+    --meter-speedup) meter_speedup="$2"; shift 2;;   # R9: simulated operating minutes per real minute (acceptance only)
     *) die "unknown argument $1";;
   esac
 done
@@ -49,6 +52,8 @@ pubhash() { openssl pkey "$@" -outform DER 2>/dev/null | openssl dgst -sha256 -r
 case "$op" in
   start)
     [[ "$scenario" =~ ^(normal|intermittent|alarm-storm|offline)$ ]] || die "unknown scenario"
+    [[ "$meter_seconds" =~ ^[0-9]+$ ]] && (( meter_seconds >= 1 && meter_seconds <= 3600 )) || die "--meter-seconds 1..3600"
+    [[ "$meter_speedup" =~ ^[0-9]+$ ]] && (( meter_speedup >= 1 && meter_speedup <= 600 )) || die "--meter-speedup 1..600"
     [[ -f "$fleet" && -d "$certs" ]] || die "--fleet and --certs required"
     [[ ! -e "$certs/ca.key" ]] || die "CA private key must not be in the simulator certificate directory"
     docker image inspect "$image" >/dev/null 2>&1 || die "$image not built (run local-dev-deploy.mjs build --services device-simulator)"
@@ -89,11 +94,12 @@ print(" ".join(ids))
       [[ "$owner" == "$SIM_UID" ]] || die "$vol is owned by uid $owner, not $SIM_UID (with the simulator stopped: docker volume rm $vol)"
     fi
     CRANE_SIMULATOR_IMAGE="$image" CRANE_FLEET_FILE="$(realpath "$fleet")" CRANE_SIMULATOR_CERT_DIR="$(realpath "$certs")" \
-      "${compose[@]}" --profile simulation run -d --no-deps --pull never --name u-dao-crane-ops-sim --rm device-simulator \
+      "${compose[@]}" --profile simulation run -d --no-deps --pull never --name u-dao-crane-ops-sim --rm \
+      -e SIM_METER_SECONDS="$meter_seconds" -e SIM_METER_SPEEDUP="$meter_speedup" device-simulator \
       --fleet-file /inventory/fleet.json --scenario "$scenario" >/dev/null
     sleep 5
     docker ps --filter name=^u-dao-crane-ops-sim$ --format '{{.Status}}' | grep -q '^Up' || die "simulator exited right after start (docker logs are removed with --rm; rerun with the same inputs and inspect)"
-    echo "SIM_START=PASS image=$image scenario=$scenario devices=$(wc -w <<<"$ids") ids=$(tr ' ' ',' <<<"$ids")"
+    echo "SIM_START=PASS image=$image scenario=$scenario meter_seconds=$meter_seconds meter_speedup=$meter_speedup devices=$(wc -w <<<"$ids") ids=$(tr ' ' ',' <<<"$ids")"
     ;;
   stop)
     if docker ps -q --filter name=^u-dao-crane-ops-sim$ | grep -q .; then docker stop --time 10 u-dao-crane-ops-sim >/dev/null; fi

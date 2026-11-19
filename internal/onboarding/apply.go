@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -317,6 +318,17 @@ type Report struct {
 	Expected   map[string]int `json:"expected"`
 	Actual     map[string]int `json:"actual"`
 	Plan       Plan           `json:"plan"`
+	// R9 收口: the scope the project lives in. The import registers an Inventory project only: no
+	// portfolio scope, no intake, no approval or acceptance history is created for it. A portfolio
+	// link (if the business decides one) is made through the reviewed portfolio flow, never here.
+	Scope ProjectScope `json:"projectScope"`
+}
+
+type ProjectScope struct {
+	PortfolioScopeID *string `json:"portfolioScopeId"`
+	IntakeRecords    int     `json:"intakeRecords"`
+	ApprovalAudits   int     `json:"approvalAudits"`
+	Members          int     `json:"projectMembers"`
 }
 
 // Verify re-plans (read-only) and counts every imported object: consistent means the plan has no
@@ -346,7 +358,13 @@ func Verify(ctx context.Context, q queryer, staging []byte) (Report, error) {
 		}
 		r.Actual[k] = n
 	}
-	r.Consistent = len(p.Conflicts) == 0 && len(p.New) == 0
+	if err = q.QueryRowContext(ctx, `SELECT p.portfolio_scope_id, (SELECT count(*) FROM project_intakes i WHERE i.formal_project_id=p.id),
+ (SELECT count(*) FROM audit_logs a WHERE a.project_id=p.id AND a.action IN ('intake_approved','schedule_approved','acceptance_recorded')),
+ (SELECT count(*) FROM project_memberships m WHERE m.project_id=p.id) FROM projects p WHERE p.id=$1`, ProjectID).
+		Scan(&r.Scope.PortfolioScopeID, &r.Scope.IntakeRecords, &r.Scope.ApprovalAudits, &r.Scope.Members); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return r, err
+	}
+	r.Consistent = len(p.Conflicts) == 0 && len(p.New) == 0 && r.Scope.IntakeRecords == 0 && r.Scope.ApprovalAudits == 0
 	for k, v := range r.Expected {
 		if r.Actual[k] != v {
 			r.Consistent = false

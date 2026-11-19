@@ -2,6 +2,7 @@ package app
 
 import (
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,12 +16,41 @@ import (
 
 // killBroker simulates a broker crash (SIGKILL, like an assertion abort); startBrokerAgain starts the
 // SAME configuration (same port, same persistence directory, same mTLS material and ACL).
+// With the CI container wrapper (MOSQUITTO_CRASH_VIA_WRAPPER=1) the broker is a container: the
+// wrapper SIGKILLs the container itself (killing only the docker CLI would leave the broker running);
+// the CLI process then exits on its own. With a native binary the process is killed directly.
 func (e *simEnv) killBroker() {
 	e.t.Helper()
-	if err := e.mosquitto.Signal(syscall.SIGKILL); err != nil {
-		e.t.Fatal("kill mosquitto:", err)
+	if os.Getenv("MOSQUITTO_CRASH_VIA_WRAPPER") == "1" {
+		out, err := exec.Command(os.Getenv("MOSQUITTO_BIN"), "--crash", filepath.Join(e.root, "mosquitto.conf")).CombinedOutput()
+		if err != nil {
+			e.t.Fatalf("crash mosquitto container: %v %s", err, out)
+		}
+		done := make(chan struct{})
+		go func() { _, _ = e.mosquitto.Wait(); close(done) }()
+		select {
+		case <-done:
+		case <-time.After(20 * time.Second):
+			_ = e.mosquitto.Kill()
+			<-done
+		}
+	} else {
+		if err := e.mosquitto.Signal(syscall.SIGKILL); err != nil {
+			e.t.Fatal("kill mosquitto:", err)
+		}
+		_, _ = e.mosquitto.Wait()
 	}
-	_, _ = e.mosquitto.Wait()
+	// The port must really be closed (no surviving broker): the crash is only then observable.
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		c, err := net.DialTimeout("tcp", e.broker, 200*time.Millisecond)
+		if err != nil {
+			return
+		}
+		_ = c.Close()
+		time.Sleep(100 * time.Millisecond)
+	}
+	e.t.Fatal("broker port still open after the crash")
 }
 
 func (e *simEnv) startBrokerAgain() {

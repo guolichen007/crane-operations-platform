@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/guolichen007/crane-operations-platform/deploy/postgres/migrations"
@@ -308,5 +309,59 @@ func TestMigration14To15MeteringIsAdditiveAndIsolated(t *testing.T) {
 	}
 	if err := goose.DownContext(ctx, db, "."); err == nil {
 		t.Fatal("00015 down must refuse")
+	}
+}
+
+// R9 收口: 00016 is additive. Existing meter states start trusted (OK, no pending window), existing
+// schedules get no data gaps, existing users are no test accounts (purge needs an explicit mark);
+// the new CHECKs refuse an inconsistent pending window and a protected test account.
+func TestMigration15To16TrustAndReadinessAreAdditive(t *testing.T) {
+	db := openIsolated(t)
+	setupGoose(t)
+	ctx := context.Background()
+	if err := goose.UpToContext(ctx, db, ".", 15); err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range []string{
+		`INSERT INTO tenants(id,name) VALUES('t1','t1') ON CONFLICT DO NOTHING`,
+		`INSERT INTO projects(id,tenant_id,name) VALUES('P','t1','P')`,
+		`INSERT INTO asset_devices(id,project_id,display_name,lifecycle,asset_code) VALUES('A','P','A','PLANNED','A-1')`,
+		`INSERT INTO users(id,subject,issuer,display_name,enabled,protected_reason) VALUES('owner','s-o','https://x','OWNER',true,'OWNER'),('staff','s-s','https://x','员工',true,NULL)`,
+		`INSERT INTO maintenance_rules(id,asset_id,rule_code,name,rule_kind,rule_type,interval_days,basis,created_by,test_only) VALUES('R-T','A','T','t','MAINTENANCE','TIME_BASED',30,'x','x',true)`,
+		`INSERT INTO maintenance_schedules(rule_id,source_mode,status) VALUES('R-T','SIMULATION','NORMAL')`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatal(stmt, err)
+		}
+	}
+	if err := goose.UpToContext(ctx, db, ".", 16); err != nil {
+		t.Fatalf("15 -> 16: %v", err)
+	}
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM users WHERE test_account`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("existing users marked as test accounts: %d %v", n, err)
+	}
+	if err := db.QueryRow(`SELECT count(*) FROM maintenance_schedules WHERE data_gaps='{}' AND reason IS NULL AND status='NORMAL'`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("existing schedule changed: %d %v", n, err)
+	}
+	for name, stmt := range map[string]string{
+		"protected test account": `UPDATE users SET test_account=true WHERE id='owner'`,
+	} {
+		if _, err := db.Exec(stmt); err == nil {
+			t.Fatalf("%s accepted", name)
+		}
+	}
+	// The pending window CHECK itself (a meter_states row needs a full point / meter chain; the
+	// constraint text is the evidence that OK ⇔ no window and the three window columns go together).
+	var def string
+	if err := db.QueryRow(`SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='meter_states_pending_consistent'`).Scan(&def); err != nil ||
+		!strings.Contains(def, "trust_state") || !strings.Contains(def, "pending_first_raw") || !strings.Contains(def, "pending_last_raw") {
+		t.Fatalf("pending window CHECK missing: %q %v", def, err)
+	}
+	if _, err := db.Exec(`UPDATE users SET test_account=true WHERE id='staff'`); err != nil {
+		t.Fatal("explicit test mark refused:", err)
+	}
+	if err := goose.DownContext(ctx, db, "."); err == nil {
+		t.Fatal("00016 down must refuse")
 	}
 }

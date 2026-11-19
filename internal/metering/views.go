@@ -81,10 +81,11 @@ type IssueView struct {
 	Status     string          `json:"status"`
 	ResolvedBy *string         `json:"resolvedBy"`
 	Resolution *string         `json:"resolution"`
+	ChangeID   *string         `json:"configChangeId"`
 }
 
 func Issues(ctx context.Context, db *sql.DB, assetID string) ([]IssueView, error) {
-	rows, err := db.QueryContext(ctx, `SELECT i.id,i.issue_code,p.point_code,s.source_row,i.detail::text,i.status,i.resolved_by,i.resolution
+	rows, err := db.QueryContext(ctx, `SELECT i.id,i.issue_code,p.point_code,s.source_row,i.detail::text,i.status,i.resolved_by,i.resolution,i.config_change_id
 FROM point_review_issues i LEFT JOIN telemetry_points p ON p.id=i.point_id LEFT JOIN onboarding_source_rows s ON s.id=i.source_row_id
 WHERE i.asset_id=$1 ORDER BY (i.status='OPEN') DESC, i.issue_code, s.source_row NULLS FIRST`, assetID)
 	if err != nil {
@@ -95,7 +96,7 @@ WHERE i.asset_id=$1 ORDER BY (i.status='OPEN') DESC, i.issue_code, s.source_row 
 	for rows.Next() {
 		var v IssueView
 		var d string
-		if err = rows.Scan(&v.ID, &v.Code, &v.PointCode, &v.SourceRow, &d, &v.Status, &v.ResolvedBy, &v.Resolution); err != nil {
+		if err = rows.Scan(&v.ID, &v.Code, &v.PointCode, &v.SourceRow, &d, &v.Status, &v.ResolvedBy, &v.Resolution, &v.ChangeID); err != nil {
 			return nil, err
 		}
 		v.Detail = json.RawMessage(d)
@@ -105,15 +106,22 @@ WHERE i.asset_id=$1 ORDER BY (i.status='OPEN') DESC, i.issue_code, s.source_row 
 }
 
 type PendingView struct {
-	Subject   string          `json:"subject"`
-	Attribute string          `json:"attribute"`
-	Candidate json.RawMessage `json:"candidate"`
-	Basis     string          `json:"basis"`
-	Status    string          `json:"status"`
+	ID             string          `json:"id"`
+	Subject        string          `json:"subject"`
+	Attribute      string          `json:"attribute"`
+	Candidate      json.RawMessage `json:"candidate"`
+	Basis          string          `json:"basis"`
+	Status         string          `json:"status"`
+	Version        int64           `json:"version"`
+	ConfirmedValue json.RawMessage `json:"confirmedValue"`
+	DecidedBy      *string         `json:"decidedBy"`
+	DecidedAt      *time.Time      `json:"decidedAt"`
+	DecisionBasis  *string         `json:"decisionBasis"`
 }
 
 func Pending(ctx context.Context, db *sql.DB, assetID string) ([]PendingView, error) {
-	rows, err := db.QueryContext(ctx, `SELECT subject,attribute,COALESCE(candidate::text,'null'),basis,status FROM asset_pending_attributes WHERE asset_id=$1 ORDER BY subject='asset' DESC, subject, attribute`, assetID)
+	rows, err := db.QueryContext(ctx, `SELECT id,subject,attribute,COALESCE(candidate::text,'null'),basis,status,version,COALESCE(confirmed_value::text,'null'),decided_by,decided_at,decision_basis
+FROM asset_pending_attributes WHERE asset_id=$1 ORDER BY subject='asset' DESC, subject, attribute`, assetID)
 	if err != nil {
 		return nil, err
 	}
@@ -121,11 +129,11 @@ func Pending(ctx context.Context, db *sql.DB, assetID string) ([]PendingView, er
 	out := []PendingView{}
 	for rows.Next() {
 		var v PendingView
-		var c string
-		if err = rows.Scan(&v.Subject, &v.Attribute, &c, &v.Basis, &v.Status); err != nil {
+		var c, cv string
+		if err = rows.Scan(&v.ID, &v.Subject, &v.Attribute, &c, &v.Basis, &v.Status, &v.Version, &cv, &v.DecidedBy, &v.DecidedAt, &v.DecisionBasis); err != nil {
 			return nil, err
 		}
-		v.Candidate = json.RawMessage(c)
+		v.Candidate, v.ConfirmedValue = json.RawMessage(c), json.RawMessage(cv)
 		out = append(out, v)
 	}
 	return out, rows.Err()
@@ -151,6 +159,10 @@ type MeterView struct {
 	LastQuality   *string    `json:"lastQuality"`
 	Readings      int64      `json:"readings"`
 	Today         *float64   `json:"today"`
+	TrustState    *string    `json:"trustState"`      // OK | DECREASE_PENDING (nil = no data)
+	PendingRaw    *float64   `json:"pendingRawValue"` // latest raw value below the trusted mark
+	PendingSince  *time.Time `json:"pendingSince"`
+	BaselineKnown bool       `json:"baselineKnown"` // initial usage of the current instance recorded (not NULL)
 }
 
 // Meters lists every meter with its state per source mode (one row per meter × mode present;
@@ -158,10 +170,13 @@ type MeterView struct {
 func Meters(ctx context.Context, db *sql.DB, assetID string) ([]MeterView, error) {
 	rows, err := db.QueryContext(ctx, `SELECT d.id,d.meter_code,p.point_code,d.metric,d.meter_kind,d.unit,d.scope,d.equipment_slot,d.formula,d.status,
 s.source_mode,s.runtime_device_id,s.last_raw_value,s.accumulated,
-(SELECT s.accumulated - b.baseline_accumulated + COALESCE(b.initial_usage,0) FROM equipment_meter_baselines b JOIN asset_equipment_installations e ON e.id=b.equipment_installation_id
-  WHERE b.meter_id=d.id AND b.source_mode=s.source_mode AND e.semantic_slot=d.equipment_slot AND e.asset_id=d.asset_id ORDER BY b.recorded_at DESC LIMIT 1),
+(SELECT s.accumulated - b.baseline_accumulated + b.initial_usage FROM equipment_meter_baselines b JOIN asset_equipment_installations e ON e.id=b.equipment_installation_id
+  WHERE b.meter_id=d.id AND b.source_mode=s.source_mode AND e.semantic_slot=d.equipment_slot AND e.asset_id=d.asset_id AND e.valid_to IS NULL ORDER BY b.recorded_at DESC LIMIT 1),
 s.last_sampled_at,s.last_quality,COALESCE(s.readings,0),
-(SELECT v.value FROM daily_metric_values v WHERE v.meter_id=d.id AND v.source_mode=s.source_mode ORDER BY v.day DESC LIMIT 1)
+(SELECT v.value FROM daily_metric_values v WHERE v.meter_id=d.id AND v.source_mode=s.source_mode ORDER BY v.day DESC LIMIT 1),
+s.trust_state, s.pending_last_raw, s.pending_since,
+COALESCE((SELECT b.initial_usage IS NOT NULL FROM equipment_meter_baselines b JOIN asset_equipment_installations e ON e.id=b.equipment_installation_id
+  WHERE b.meter_id=d.id AND b.source_mode=s.source_mode AND e.semantic_slot=d.equipment_slot AND e.asset_id=d.asset_id AND e.valid_to IS NULL ORDER BY b.recorded_at DESC LIMIT 1), false)
 FROM meter_definitions d JOIN telemetry_points p ON p.id=d.point_id LEFT JOIN meter_states s ON s.meter_id=d.id
 WHERE d.asset_id=$1 ORDER BY p.point_code, d.metric, s.source_mode`, assetID)
 	if err != nil {
@@ -172,7 +187,7 @@ WHERE d.asset_id=$1 ORDER BY p.point_code, d.metric, s.source_mode`, assetID)
 	for rows.Next() {
 		var v MeterView
 		if err = rows.Scan(&v.ID, &v.Code, &v.PointCode, &v.Metric, &v.Kind, &v.Unit, &v.Scope, &v.Slot, &v.Formula, &v.Status, &v.SourceMode, &v.Runtime, &v.LastRaw, &v.Accumulated, &v.Usage,
-			&v.LastSampledAt, &v.LastQuality, &v.Readings, &v.Today); err != nil {
+			&v.LastSampledAt, &v.LastQuality, &v.Readings, &v.Today, &v.TrustState, &v.PendingRaw, &v.PendingSince, &v.BaselineKnown); err != nil {
 			return nil, err
 		}
 		out = append(out, v)
@@ -238,11 +253,16 @@ type RuleView struct {
 	ProgressPercent *float64   `json:"progressPercent"`
 	DaysLeft        *int       `json:"daysLeft"`
 	EvaluatedAt     *time.Time `json:"evaluatedAt"`
+	DataGaps        []string   `json:"dataGaps"` // TIME / METER conditions that could not be computed
+	Reason          *string    `json:"reason"`
+	SourceRow       *int       `json:"sourceRow"`
+	ApprovedAt      *time.Time `json:"approvedAt"`
 }
 
 func ruleQuery(where string) string {
 	return `SELECT r.id,r.rule_code,r.version,r.name,r.rule_kind,r.rule_type,r.equipment_slot,d.meter_code,r.interval_days,r.interval_meter,array_to_json(r.lead_days)::text,array_to_json(r.warn_percents)::text,
-r.basis,r.approval_status,r.approved_by,r.effective_from,r.test_only,s.source_mode,s.cycle_no,s.status,s.next_due_at,s.next_due_meter,s.progress_percent,s.days_left,s.evaluated_at
+r.basis,r.approval_status,r.approved_by,r.effective_from,r.test_only,s.source_mode,s.cycle_no,s.status,s.next_due_at,s.next_due_meter,s.progress_percent,s.days_left,s.evaluated_at,
+COALESCE(array_to_json(s.data_gaps)::text,'[]'),s.reason,(SELECT o.source_row FROM onboarding_source_rows o WHERE o.id=r.source_row_id),r.approved_at
 FROM maintenance_rules r LEFT JOIN meter_definitions d ON d.id=r.meter_id LEFT JOIN maintenance_schedules s ON s.rule_id=r.id
 WHERE r.approval_status<>'RETIRED' AND ` + where
 }
@@ -252,10 +272,14 @@ func scanRules(rows *sql.Rows) ([]RuleView, error) {
 	out := []RuleView{}
 	for rows.Next() {
 		var v RuleView
-		var lead, warn string
+		var lead, warn, gaps string
 		if err := rows.Scan(&v.ID, &v.Code, &v.Version, &v.Name, &v.Kind, &v.Type, &v.Slot, &v.MeterCode, &v.IntervalDays, &v.IntervalMeter, &lead, &warn, &v.Basis, &v.ApprovalStatus, &v.ApprovedBy, &v.EffectiveFrom, &v.TestOnly,
-			&v.SourceMode, &v.CycleNo, &v.Status, &v.NextDueAt, &v.NextDueMeter, &v.ProgressPercent, &v.DaysLeft, &v.EvaluatedAt); err != nil {
+			&v.SourceMode, &v.CycleNo, &v.Status, &v.NextDueAt, &v.NextDueMeter, &v.ProgressPercent, &v.DaysLeft, &v.EvaluatedAt, &gaps, &v.Reason, &v.SourceRow, &v.ApprovedAt); err != nil {
 			return nil, err
+		}
+		_ = json.Unmarshal([]byte(gaps), &v.DataGaps)
+		if v.DataGaps == nil {
+			v.DataGaps = []string{}
 		}
 		_ = json.Unmarshal([]byte(lead), &v.LeadDays)
 		_ = json.Unmarshal([]byte(warn), &v.WarnPercents)

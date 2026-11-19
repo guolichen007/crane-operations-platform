@@ -27,7 +27,7 @@ async function mock(page: Page, role: string) {
   const wo = { id: 'wo1', code: 'SIM-WO-20261119-ABC123', projectId: 'LHK', assetId: asset.id, sourceMode: 'SIMULATION', equipmentInstallationId: 'eq1', equipmentSlot: 'GANTRY-01', ruleId: 'r1', alertId: 'al1',
     cycleNo: 1, type: 'REPLACEMENT', priority: 'HIGH', status: 'OPEN', title: '【模拟】总接触器 寿命（测试）', description: '', createdBy: 'u1', createdAt: now, assignedTo: null as string | null,
     plannedAt: null, dueAt: null, startedAt: null, completedAt: null as string | null, completedBy: null as string | null, result: null as string | null, basis: null as string | null, notes: '', version: 1 };
-  const state = { orders: [] as typeof wo[], alertStatus: 'OPEN', transitions: [] as unknown[], replacement: 0 };
+  const state = { orders: [] as typeof wo[], alertStatus: 'OPEN', transitions: [] as unknown[], replacement: 0, assetVersion: 3, rated: null as number | null, confirmed: [] as string[], decisions: [] as unknown[] };
   const rule = (over: object) => ({ id: 'r1', ruleCode: 'T-HYBRID', version: 1, name: '总接触器 混合规则（测试）', kind: 'REPLACEMENT', type: 'HYBRID', equipmentSlot: 'GANTRY-01', meterCode: 'LHK-P001.cycles',
     intervalDays: 365, intervalMeter: 1000000, leadDays: [90, 30, 7], warnPercents: [80, 90], basis: 'SIMULATION / TEST threshold fixture', approvalStatus: 'DRAFT_UNAPPROVED', approvedBy: null,
     effectiveFrom: null, testOnly: true, sourceMode: 'SIMULATION', cycleNo: 1, status: 'DUE', nextDueAt: '2026-12-19T08:00:00Z', nextDueMeter: 1000000, progressPercent: 100, daysLeft: 30, evaluatedAt: now, ...over });
@@ -47,7 +47,7 @@ async function mock(page: Page, role: string) {
       { id: 'i2', issueCode: 'DUPLICATE_PLC_ADDRESS_GROUP', pointCode: null, sourceRow: null, detail: { plcAddress: 'DB505.DBX10.1' }, status: 'OPEN', resolvedBy: null, resolution: null },
       { id: 'i3', issueCode: 'UNIT_CONFLICT_HOURS_VS_TONNES', pointCode: 'LHK-P053', sourceRow: 55, detail: {}, status: 'OPEN', resolvedBy: null, resolution: null }] });
     if (p === `assets/${asset.id}/pending-attributes`) return r.fulfill({ json: [
-      { subject: 'asset', attribute: 'ratedCapacityT', candidate: 10, basis: '由型号文本 QZ10t-31m 推断，待铭牌确认', status: 'PENDING' },
+      { id: 'pa1', version: 1, subject: 'asset', attribute: 'ratedCapacityT', candidate: 10, basis: '由型号文本 QZ10t-31m 推断，待铭牌确认', status: state.rated ? 'CONFIRMED' : 'PENDING', confirmedValue: state.rated },
       { subject: 'asset', attribute: 'spanM', candidate: 31, basis: '由型号文本 QZ10t-31m 推断，待铭牌确认', status: 'PENDING' },
       { subject: 'HOIST-38', attribute: 'ropeCount', candidate: null, basis: '清单仅一行钢丝绳', status: 'PENDING' }] });
     if (p === `assets/${asset.id}/meters`) return r.fulfill({ json: [
@@ -61,6 +61,7 @@ async function mock(page: Page, role: string) {
     if (p === `assets/${asset.id}/maintenance-rules`) {
       const completed = state.orders.some((o) => o.status === 'COMPLETED');
       return r.fulfill({ json: [rule(completed ? { cycleNo: 2, status: 'NORMAL', progressPercent: 0, nextDueAt: '2027-11-19T08:00:00Z', daysLeft: 365 } : {}),
+        rule({ id: 'r3', ruleCode: 'SIM-SCN-HYBRID-PARTIAL', name: '【模拟】小车总接触器 混合规则（计量基准未知）', status: 'OVERDUE', dataGaps: ['METER'], reason: '部分数据不足；缺少计量基准（安装时累计值 / 初始使用量）或计量数据，无法计算使用量', progressPercent: null }),
         rule({ id: 'r2', ruleCode: 'LIFE-GANTRY-03', name: '大车机构 变频器状态 设计寿命（年限，待审核）', type: 'TIME_BASED', testOnly: false, sourceMode: null, status: null, cycleNo: null, nextDueAt: null, progressPercent: null, daysLeft: null, intervalMeter: null, intervalDays: 3650, basis: '原始清单寿命：设计寿命10~15年' })] });
     }
     if (p === `assets/${asset.id}/maintenance-alerts`) return r.fulfill({ json: [{ id: 'al1', ruleId: 'r1', ruleName: '总接触器 混合规则（测试）', assetId: asset.id, sourceMode: 'SIMULATION', cycleNo: 1, stage: 'PCT_100', triggeredAt: now, status: state.alertStatus, workOrderId: state.orders[0]?.id ?? null, detail: {} }] });
@@ -83,6 +84,21 @@ async function mock(page: Page, role: string) {
         body.to === 'COMPLETED' ? { completedAt: now, completedBy: 'u1', result: body.result, basis: body.basis } : {});
       if (body.replacement) state.replacement++;
       return r.fulfill({ json: o });
+    }
+    if (p === `assets/${asset.id}/readiness`) return r.fulfill({ json: {
+      assetVersion: state.assetVersion, ratedCapacityT: state.rated, spanM: null, useRegistrationNo: null, latestInspectionDate: null, inspectionValidUntil: null,
+      pointsTotal: 55, pointsConfirmed: state.confirmed.length, issuesOpen: 82, pendingOpen: state.rated ? 2 : 3, slotsTotal: 51, slotsWithInstalledAt: 0,
+      rulesApproved: 0, rulesDraft: 53, realRuntimeRegistered: false, realBaselines: 0,
+      slots: [{ equipmentSlot: 'GANTRY-01', equipmentInstallationId: 'eq1', equipmentCode: 'LHK-CRANE-001-GANTRY-01', typeCode: 'CONTACTOR', installedAt: null, version: 1 }],
+      baselines: [{ equipmentSlot: 'GANTRY-01', meterCode: 'LHK-P001.cycles', sourceMode: 'SIMULATION', initialUsage: 960, baselineKind: 'INITIAL_RECORD', recordedBy: 'host:ops', recordedAt: now }],
+      blockers: ['未登记真实运行身份（真实硬件未接入）', '点位待现场确认 55 / 55', '维护规则均未审批（草案 53 条，未生效）'] } });
+    if (p === `assets/${asset.id}/point-changes`) return r.fulfill({ json: [] });
+    if (p.startsWith(`assets/${asset.id}/pending-attributes/`) && m === 'POST') {
+      if (role !== 'platform_admin') return r.fulfill({ status: 403, json: { error: 'Forbidden' } });
+      if (r.request().headers()['if-match'] !== '"1"') return r.fulfill({ status: 409, json: { error: 'stale' } });
+      state.decisions.push(r.request().postDataJSON());
+      state.rated = 10;
+      return r.fulfill({ status: 204, body: '' });
     }
     if (p === 'maintenance/center') return r.fulfill({ json: {
       rows: [
@@ -199,7 +215,7 @@ for (const [w, h] of [[375, 812], [1440, 900]] as const) {
     await mock(page, 'maintainer');
     const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     await page.goto(`/#/assets/${asset.id}`);
-    for (const tab of ['tab-ledger', 'tab-monitor', 'tab-maintenance', 'tab-history']) {
+    for (const tab of ['tab-ledger', 'tab-monitor', 'tab-maintenance', 'tab-history', 'tab-readiness']) {
       await page.getByTestId(tab).click();
       await page.waitForTimeout(200);
       expect(await overflow(), tab).toBeLessThanOrEqual(0);
@@ -216,3 +232,39 @@ for (const [w, h] of [[375, 812], [1440, 900]] as const) {
     await page.screenshot({ path: shot(`7-center-${w}`), fullPage: true });
   });
 }
+
+test('接入准备：阻断项、铭牌确认（平台管理员 + If-Match + 依据）；只读角色无入口；混合规则部分数据不足', async ({ page }) => {
+  const state = await mock(page, 'platform_admin');
+  await page.goto(`/#/assets/${asset.id}`);
+  const d = page.getByTestId('asset-detail');
+  await d.getByTestId('tab-readiness').click();
+  await expect(d.getByTestId('r9-ready-banner')).toContainText('未经确认的点位只能用于模拟验收');
+  await expect(d.getByTestId('r9-ready-blockers')).toContainText('真实硬件未接入');
+  await expect(d.getByTestId('r9-ready-blockers')).toContainText('草案 53 条');
+  await expect(d.locator('[data-kpi="points"]')).toContainText('0 / 55');
+  await d.getByTestId('r9-ready-nameplate').locator('[data-attr="ratedCapacityT"]').getByTestId('r9-pending-confirm').click();
+  const dlg = page.getByTestId('r9-ready-dialog');
+  await expect(dlg.getByTestId('r9-ready-save')).toBeDisabled();
+  await dlg.getByTestId('r9-ready-basis').fill('铭牌照片 IMG-001');
+  await dlg.getByTestId('r9-ready-save').click();
+  await expect(d.getByTestId('r9-ready-notice')).toContainText('已确认');
+  expect(state.decisions).toEqual([{ status: 'CONFIRMED', value: 10, basis: '铭牌照片 IMG-001' }]);
+  await expect(d.getByTestId('r9-ready-nameplate').locator('[data-attr="ratedCapacityT"]')).toContainText('已确认 10');
+  await page.screenshot({ path: shot('8-readiness'), fullPage: true });
+  await d.getByTestId('tab-maintenance').click();
+  await d.getByLabel('规则筛选').selectOption('ALL');
+  const partial = d.locator('[data-rule="SIM-SCN-HYBRID-PARTIAL"]');
+  await expect(partial).toContainText('逾期（部分数据不足）');
+  await expect(partial.getByTestId('r9-rule-reason')).toContainText('初始使用量');
+});
+
+test('接入准备：维护人员只读（无确认 / 审批入口）', async ({ page }) => {
+  await mock(page, 'maintainer');
+  await page.goto(`/#/assets/${asset.id}`);
+  const d = page.getByTestId('asset-detail');
+  await d.getByTestId('tab-readiness').click();
+  await expect(d.getByTestId('r9-ready-summary')).toBeVisible();
+  await expect(d.getByTestId('r9-pending-confirm')).toHaveCount(0);
+  await expect(d.getByTestId('r9-inspection-open')).toHaveCount(0);
+  await expect(d.getByTestId('r9-baseline-open')).toHaveCount(0);
+});

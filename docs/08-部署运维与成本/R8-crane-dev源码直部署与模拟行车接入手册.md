@@ -57,7 +57,7 @@ JSON
 chmod 0644 $S/req.json                                 # 不含机密；runtime-identity 容器以 10001 运行
 RI=(node $D compose "$ENV" -- run --rm --no-deps --entrypoint runtime-identity \
     -e DATABASE_URL='postgres://crane_app@postgres:5432/crane_app?sslmode=disable' \
-    -e DATABASE_PASSWORD_FILE=/run/secrets/app_db_password -v $S:/sim:ro cloud-api)
+    -e DATABASE_PASSWORD_FILE=/run/secrets/app_db_password --volume $S:/sim:ro cloud-api)   # R9 起维护 compose 拒绝 -v，挂载写 --volume
 "${RI[@]}" plan --request /sim/req.json > $S/plan.json
 "${RI[@]}" apply --request /sim/req.json --approve "$(jq -r .plan.digest $S/plan.json)" --actor <管理员>
 "${RI[@]}" verify --request /sim/req.json

@@ -94,7 +94,7 @@ function fakeDocker(r, { buildId = (tag) => 'sha256:' + Buffer.from(tag).toStrin
         return { status: 0, stdout: '' };
       }
       if (args.includes('ps')) return { status: 0, stdout: 'c-' + args.at(-1) + '\n' };
-      if (args.includes('logs') || args.includes('restart')) return { status: 0, stdout: '' };
+      if (args.includes('logs') || args.includes('restart') || args.includes('run')) return { status: 0, stdout: '' };
     }
     if (args[0] === 'ps' && args.includes(`name=^${SIM_CONTAINER}$`)) return { status: 0, stdout: state.simRunning && !state.simStopped ? 'abc\n' : '' };
     if (args[0] === 'stop' && args.at(-1) === SIM_CONTAINER) { state.simStopped = true; return { status: 0, stdout: '' }; }
@@ -211,8 +211,14 @@ test('single-instance lock; maintenance and Fleet/ACL updates use the ACTIVE ove
   apply(r.env, undefined, d.opts);
   composeMaintenance(r.env, ['restart', 'cloud-api'], d.opts);
   assert.match(d.state.calls.at(-1), new RegExp(`-f ${join(r.state, ACTIVE_OVERRIDE).replace(/[.]/g, '\\.')} restart cloud-api`));
-  for (const bad of [['down'], ['pull'], ['up', '-d', 'cloud-api'], ['rm', '-f'], ['down', '-v']])
+  for (const bad of [['down'], ['pull'], ['up', '-d', 'cloud-api'], ['rm', '-f'], ['down', '-v'], ['run', '--rm', '--no-deps', '-v', '/srv/x:/work:ro', 'cloud-api']])
     assert.throws(() => composeMaintenance(r.env, bad, d.opts), /refuses/, bad.join(' '));
+  // R9 收口: run mounts are written --volume (absolute host path); named volumes / sockets / up refused.
+  for (const bad of [['run', '--rm', '--volume', 'crane-mqtt:/data', 'cloud-api'], ['run', '--rm', '--volume', '/var/run/docker.sock:/s', 'cloud-api'],
+    ['run', '--rm', '--volume', '/srv/../etc:/e', 'cloud-api'], ['up', '-d', '--no-deps', '--volume', '/srv/x:/x', 'cloud-api']])
+    assert.throws(() => composeMaintenance(r.env, bad, d.opts), /--volume/, bad.join(' '));
+  composeMaintenance(r.env, ['run', '--rm', '--no-deps', '--entrypoint', 'onboarding', '--volume', '/srv/u-dao/releases/r9-lhk/work:/work:ro', 'cloud-api', 'plan'], d.opts);
+  assert.match(d.state.calls.at(-1), /run --pull never --rm --no-deps --entrypoint onboarding --volume \/srv\/u-dao\/releases\/r9-lhk\/work:\/work:ro cloud-api plan/);
   composeMaintenance(r.env, ['up', '-d', '--no-deps', 'cloud-api'], d.opts);
   assert.match(d.state.calls.at(-1), /up --no-build --pull never -d --no-deps cloud-api/);
   // Fleet: add one SIM identity, written in place (same inode), ACL reloaded, cloud-api recreated.

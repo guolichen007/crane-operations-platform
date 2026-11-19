@@ -15,11 +15,11 @@ import (
 
 // target is the locked state of the person an operation applies to.
 type target struct {
-	id, username, issuer, subject string
-	enabled, archived             bool
-	protected                     string
-	version                       int64
-	roles                         []SystemRole
+	id, username, issuer, subject  string
+	enabled, archived, testAccount bool
+	protected                      string
+	version                        int64
+	roles                          []SystemRole
 }
 
 func (t target) managed() bool {
@@ -38,9 +38,9 @@ func (t target) hasRole(r SystemRole) bool {
 func lockTarget(ctx context.Context, tx *sql.Tx, id string) (target, error) {
 	var t target
 	var username, issuer, subject sql.NullString
-	err := tx.QueryRowContext(ctx, `SELECT id, username, issuer, subject, enabled, archived_at IS NOT NULL, COALESCE(protected_reason,''), version
+	err := tx.QueryRowContext(ctx, `SELECT id, username, issuer, subject, enabled, archived_at IS NOT NULL, COALESCE(protected_reason,''), version, test_account
 FROM users WHERE id=$1 AND (issuer IS NOT NULL OR username IS NOT NULL) FOR UPDATE`, id).
-		Scan(&t.id, &username, &issuer, &subject, &t.enabled, &t.archived, &t.protected, &t.version)
+		Scan(&t.id, &username, &issuer, &subject, &t.enabled, &t.archived, &t.protected, &t.version, &t.testAccount)
 	if errors.Is(err, sql.ErrNoRows) {
 		return t, ErrNotFound
 	}
