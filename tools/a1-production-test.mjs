@@ -134,12 +134,22 @@ try {
       writeFileSync(join(r6Dir, `equipment-types-${name}.json`), text);
     }
     console.log('R6_EQUIPMENT_TYPES_BOOTSTRAP=PASS CREATED=MOTOR,PLC SECOND_APPLY=noop');
-    run(npm[0], [...b4Args, '--grep-invert', '@r6-empty-types'], b4Env);
+    run(npm[0], [...b4Args, '--grep-invert', '@r6-empty-types|@r9-lhk'], b4Env);
     run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-tool', '--operation', 'verify-b4-state', '--b4-run-id', b4RunId]);
     const personnelOut = run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-tool', '--operation', 'verify-personnel-state', '--b4-run-id', b4RunId], {}, true);
     process.stdout.write(personnelOut);
     assert.match(personnelOut, /P1_PERSONNEL_DB_STATE=VERIFIED/);
     console.log('P1_PERSONNEL_ACCEPTANCE=PASS KEYCLOAK=REAL BROWSER=REAL WEB_ACCOUNT_CREATE=PASS FIRST_LOGIN_PASSWORD_CHANGE=PASS');
+    // R9 B7: first real asset (production onboarding import + SIMULATION runtime + reviewed fixture
+    // batches + one test-only threshold rule), then the browser flow, then the PostgreSQL state.
+    const lhkSeed = run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-tool', '--operation', 'seed-lhk'], {}, true);
+    process.stdout.write(lhkSeed);
+    assert.match(lhkSeed, /R9_LHK_FIXTURE=READY RAW_ROWS=55 EQUIPMENT=51 OPERATION_ROWS=4 RUNTIME=SIMULATION METERS=57/);
+    run(npm[0], [...b4Args, '--grep', '@r9-lhk'], b4Env);
+    const lhkState = run(docker, [...compose, 'run', '--rm', '--no-deps', 'fixture-tool', '--operation', 'verify-lhk-state'], {}, true);
+    process.stdout.write(lhkState);
+    assert.match(lhkState, /R9_LHK_DB_STATE=VERIFIED RAW_ROWS_IMPORTED=55\/55 EQUIPMENT_SOURCE_ROWS=51\/51 OPERATION_RECORDS=4\/4 SIM_REAL_ISOLATION=PASS/);
+    console.log('R9_LHK_REAL_BROWSER_E2E=PASS KEYCLOAK=REAL BROWSER=REAL ONBOARDING=PRODUCTION_CODE METERING=SIMULATION WORK_ORDER=COMPLETED NEXT_CYCLE=PASS REAL_HARDWARE=NONE');
     console.log('B4_BUSINESS_ACCEPTANCE=PASS KEYCLOAK=REAL E2E_BROWSER_CRUD=REAL RBAC=REAL DB_STATE=VERIFIED');
   }
   // Backup CLI uses the same isolated project through a generated resolved Compose file; no secrets are emitted.

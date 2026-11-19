@@ -252,9 +252,15 @@ WHERE id=$1 AND asset_id=$2 AND approval_status='DRAFT_UNAPPROVED' AND NOT test_
 			meteringError(w, err)
 			return
 		}
-		select {
-		case h.evaluate <- out.AssetID:
-		default:
+		// A completed (or cancelled) order changes the cycle anchor: re-evaluate now so the answer
+		// and the next read already show the next cycle (the background loop is the fallback).
+		if out.Status == "COMPLETED" || out.Status == "CANCELLED" {
+			if _, err := metering.EvaluateAll(r.Context(), h.db, out.AssetID, time.Now()); err != nil {
+				select {
+				case h.evaluate <- out.AssetID:
+				default:
+				}
+			}
 		}
 		setETag(w, out.Version)
 		respondAPI(w, 200, out)

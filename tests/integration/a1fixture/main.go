@@ -502,6 +502,14 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 		err = seedPersonnel(ctx)
+	} else if *operation == "seed-lhk" {
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		defer cancel()
+		err = seedLHK(ctx)
+	} else if *operation == "verify-lhk-state" {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		err = verifyLHKState(ctx)
 	} else if *operation == "verify-personnel-state" {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()

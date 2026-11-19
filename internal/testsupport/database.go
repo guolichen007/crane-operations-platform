@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"net/url"
 	"os"
+	"sync"
 	"testing"
 
 	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
@@ -14,6 +15,25 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 )
+
+// urls remembers the connection string of every isolated database (for code under test that opens
+// its own pool, e.g. host tools).
+var (
+	urlsMu sync.Mutex
+	urls   = map[*sql.DB]string{}
+)
+
+// URL returns the connection string of an isolated database created by Database.
+func URL(t *testing.T, db *sql.DB) string {
+	t.Helper()
+	urlsMu.Lock()
+	u, ok := urls[db]
+	urlsMu.Unlock()
+	if !ok {
+		t.Fatal("not an isolated test database")
+	}
+	return u
+}
 
 func Database(t *testing.T) *sql.DB {
 	t.Helper()
@@ -41,6 +61,9 @@ func Database(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
+	urlsMu.Lock()
+	urls[db] = u.String()
+	urlsMu.Unlock()
 	t.Cleanup(func() {
 		db.Close()
 		_, err := root.Exec(`DROP DATABASE "` + name + `" WITH (FORCE)`)

@@ -174,9 +174,13 @@ func EvaluateAll(ctx context.Context, db *sql.DB, assetID string, now time.Time)
 	if err != nil {
 		return nil, err
 	}
+	simModes, err := simulatedModes(ctx, db, assetID)
+	if err != nil {
+		return nil, err
+	}
 	out := []Evaluation{}
 	for _, r := range rules {
-		for _, mode := range modesFor(r) {
+		for _, mode := range modesFor(r, simModes) {
 			ev, err := evaluateOne(ctx, db, r, mode, now)
 			if err != nil {
 				return nil, err
@@ -187,11 +191,33 @@ func EvaluateAll(ctx context.Context, db *sql.DB, assetID string, now time.Time)
 	return out, nil
 }
 
-func modesFor(r Rule) []string {
+// modesFor: a real rule runs on REAL data only; a test-only rule runs on the non-REAL modes the
+// asset actually has (its registered SIMULATION / TEST runtimes), SIMULATION when it has none.
+func modesFor(r Rule, simModes []string) []string {
 	if r.TestOnly {
-		return []string{"SIMULATION", "TEST"}
+		return simModes
 	}
 	return []string{"REAL"}
+}
+
+func simulatedModes(ctx context.Context, db *sql.DB, assetID string) ([]string, error) {
+	rows, err := db.QueryContext(ctx, `SELECT DISTINCT source_mode FROM devices WHERE asset_device_id=$1 AND source_mode<>'REAL' ORDER BY 1`, assetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var m string
+		if err = rows.Scan(&m); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	if len(out) == 0 {
+		out = []string{"SIMULATION"}
+	}
+	return out, rows.Err()
 }
 
 func loadRules(ctx context.Context, db *sql.DB, assetID string, now time.Time) ([]Rule, error) {

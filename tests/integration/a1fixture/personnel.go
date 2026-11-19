@@ -27,7 +27,10 @@ import (
 	"github.com/guolichen007/crane-operations-platform/internal/platform"
 )
 
-func fixtureDB() (*sql.DB, error) {
+// fixtureDB opens the fixture database; tests replace openFixtureDB with an isolated database.
+func fixtureDB() (*sql.DB, error) { return openFixtureDB() }
+
+var openFixtureDB = func() (*sql.DB, error) {
 	password, err := platform.PrivateSecret("/fixture/secrets/app_db_password", 32)
 	if err != nil {
 		return nil, err

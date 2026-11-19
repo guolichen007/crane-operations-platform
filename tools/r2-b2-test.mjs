@@ -200,6 +200,10 @@ const h21aPackages = [
   ['r9-maintenance-http', './services/cloud-api/internal/app', [
     'TestMaintenanceHTTPScopeRolesAndWorkOrderFlow',
   ]],
+  // R9 B7: the b4 fixture that seeds / verifies LHK-CRANE-001 for the real-browser run.
+  ['r9-lhk-fixture', './tests/integration/a1fixture', [
+    'TestSeedLHKOnIsolatedDatabase',
+  ]],
   // D1 synthetic acceptance dataset: exact-id cleanup, ownership refusal, server-side guard.
   ['h3-uatdata', './tools/uatdata', [
     'TestSeedVerifyReseedCleanup',
