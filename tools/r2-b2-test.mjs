@@ -160,17 +160,26 @@ const h21aPackages = [
     'TestProvisionIncompleteCannotBeBypassed',
     'TestUnfinishedHighPrivilegeProvisionNeedsMatchingCapability',
     'TestRaceResumeVersusRoleChange',
+    // R9 A1: delete = archive (system_admin only, guards, grants/sessions/live/login revoked, history kept),
+    // permanent purge only for unreferenced archived test accounts, explicit-list cleanup.
+    'TestArchiveRevokesEverythingKeepsHistoryAndIsFrozen',
+    'TestArchiveGuardsSelfLastAdminProtectedAndUnfinishedOpening',
+    'TestArchiveIdentityProviderDownIsRetryable',
+    'TestPurgeOnlyArchivedUnreferencedAndReservesUsername',
+    'TestCleanupExplicitListOnly',
   ]],
   ['p1-session-fence', './internal/webauth', [
     'TestCallbackRefusesAuthenticationBeforeSessionRevocation',
   ]],
   ['p1-migration', './deploy/postgres/migrations', [
     'TestMigration12To13PreservesPopulatedData',
+    'TestMigration13To14PersonnelArchive',
   ]],
   ['p1-personnel-http', './services/cloud-api/internal/app', [
     'TestPersonnelAPIAnonymousAndUnauthorizedAreRefused',
     'TestPersonnelAPIProvisionDisableResetAndLiveRevocation',
     'TestProjectMemberPickerIsScopedAndMinimal',
+    'TestPersonnelAPIArchiveStopsEverythingAndKeepsHistory',
   ]],
   // D1 synthetic acceptance dataset: exact-id cleanup, ownership refusal, server-side guard.
   ['h3-uatdata', './tools/uatdata', [
@@ -230,6 +239,7 @@ try {
   console.log('R2_R6_BIZ_DB_TEST=PASS');
   console.log('R2_P1_PERSONNEL_DB_TEST=PASS');
   console.log('R2_P1_MIGRATION_12_TO_13=PASS');
+  console.log('R2_R9_PERSONNEL_ARCHIVE=PASS');
 } finally {
   run(docker, [...compose, 'down', '--volumes', '--remove-orphans'], first);
 }
