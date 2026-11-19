@@ -88,6 +88,8 @@ for (const mutate of [
   (x) => { delete x.services['baobei-api'].environment.BAOBEI_KEYCLOAK_ADMIN_BASE; },
   (x) => { delete x.services['baobei-api'].networks['kc-admin']; },
   (x) => (x.networks['kc-admin'].name = 'u-dao-crane-ops_backend'),
+  (x) => (x.networks['kc-admin'].ipam = { config: [{ subnet: '10.240.20.0/24' }] }),
+  (x) => (x.networks['kc-admin'].external = false),
   (x) => (x.services['baobei-api'].networks['u-dao-crane-frontend'] = null),
   // CR-08C: the dedicated realm must not mount the shared crane Web secret.
   (x) => (x.secrets.oidc_client_secret.file = x.secrets.oidc_client_secret.file.replace('baobei_oidc_client_secret', 'oidc_client_secret')),

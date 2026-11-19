@@ -71,7 +71,10 @@ export function validateProduction(c) {
     assert.equal(env.BAOBEI_ACCOUNT_CLIENT_SECRET_FILE, '/run/secrets/account_client_secret');
     assert(!env.BAOBEI_ACCOUNT_CLIENT_SECRET);
     assert.equal(env.BAOBEI_KEYCLOAK_ADMIN_BASE, 'http://baobei-kc-admin:8080', 'account service uses the internal Keycloak address');
-    assert.deepEqual(c.networks['kc-admin'], { name: 'u-dao-baobei-kc-admin', external: true });
+    // `docker compose config` renders external networks with an empty `ipam: {}`.
+    const { ipam, ...kcAdmin } = c.networks['kc-admin'] ?? {};
+    assert.deepEqual(kcAdmin, { name: 'u-dao-baobei-kc-admin', external: true });
+    assert(ipam === undefined || (ipam && typeof ipam === 'object' && Object.keys(ipam).length === 0), 'kc-admin network must not define IPAM');
   } else {
     assert(!env.BAOBEI_KEYCLOAK_ADMIN_BASE && !c.networks['kc-admin'], 'shared realm has no account service network');
   }
