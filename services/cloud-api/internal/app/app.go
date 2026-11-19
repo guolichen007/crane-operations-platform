@@ -150,6 +150,12 @@ func Run(args []string) error {
 		fmt.Fprintf(w, "mqtt_connected_devices %d\nremote_sessions 0\nmqtt_messages_total %d\nalarms_total %d\npointcloud_frames_total 0\npointcloud_frames_dropped_total 0\nwebsocket_clients %d\ndb_query_errors_total %d\n", connected, mqttMessages.Load(), len(alarms), wsClients.Load(), dbErrors.Load())
 		fmt.Fprint(w, leases.Metrics(r.Context()))
 		fmt.Fprintf(w, "event_application_acks_total %d\nmqtt_reconnects_total %d\n", eventAcks.Load(), platform.MQTTReconnects.Load())
+		// R9 A3: broker connection monitoring (failed attempts, current outage length, up flag).
+		up := 0
+		if mqttUp.Load() {
+			up = 1
+		}
+		fmt.Fprintf(w, "mqtt_connected %d\nmqtt_connect_failures_total %d\nmqtt_down_seconds %d\n", up, platform.MQTTConnectFailures.Load(), platform.MQTTDownSeconds(time.Now()))
 	})
 	handlers := &apiHandler{config: c, db: db, store: store, leases: leases, active: activeRuntime, list: listRuntime,
 		logger: logger, wsClients: &wsClients, dbErrors: dbErrors, ops: opsConfig}

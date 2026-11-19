@@ -46,7 +46,9 @@
 //     argument only; go.sum and the Go checksum database stay in force (GOSUMDB/GOFLAGS untouched),
 //     no global Docker or system proxy is changed;
 //   - nothing is pushed; postgres / keycloak / other projects are never touched; mosquitto only
-//     receives SIGHUP in `fleet` mode (ACL reload, no restart).
+//     receives SIGHUP in `fleet` mode (ACL reload, no restart); its upgrade / recovery is the
+//     separate deploy/scripts/broker-ops.mjs (R9 A3);
+//   - apply refuses to start while postgres / keycloak / mosquitto are not healthy (dependency gate).
 // Exit: 0 ok · 1 refused/error · 2 STOP (human decision) · 3 smoke failed.
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, chmodSync, rmSync, renameSync, statSync } from 'node:fs';
@@ -56,6 +58,7 @@ import { join, resolve } from 'node:path';
 import { assertExactCheckout } from './source-check.mjs';
 import { defaults, loadEnv, docker, compose, smoke, dbSchema, Stop, verifyBackup } from './dev-upgrade.mjs';
 import { productionProject, validateProduction, devEnvironment, devOrigin, devOverlay } from '../../tools/production-contract.mjs';
+import { dependencyGate } from './broker-ops.mjs';
 
 export const LOCAL_REPO = 'crane-local';
 export const DEPLOYABLE = ['cloud-api', 'web-console'];
@@ -325,6 +328,8 @@ function applyLocked(environmentArgument, backupArgument, options) {
     verifyBackup(backupArgument, { source_sha: fallback.source_sha ?? '' }, p.schema, ctx.now());
   }
   assertExactCheckout(sha, ctx.root);
+  // R9 A3: never deploy onto unhealthy dependencies (PostgreSQL / Keycloak / Mosquitto).
+  (ctx.dependencyGate ?? dependencyGate)(ctx, composeArgs(ctx, envFile, overridePath));
   const record = { schema_version: 1, kind: 'crane-local-deploy', project: productionProject, environment: devEnvironment, source_sha: sha,
     images: Object.fromEntries(DEPLOYABLE.map((s) => [s, { tag: images[s].tag, id: images[s].id, revision: images[s].revision, platform: images[s].platform }])), db_schema_version: p.target, override: overridePath,
     rollback: `node deploy/scripts/local-dev-deploy.mjs rollback <private.env>  → ${fallback.kind}:${fallback.source_sha || 'baseline'}` };

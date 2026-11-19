@@ -163,14 +163,16 @@ certfile %s
 keyfile %s
 tls_version tlsv1.2
 acl_file %s
-persistence false
+persistence true
+persistence_location %s/
+autosave_interval 1
 max_queued_messages 1000
 message_size_limit 32768
 log_dest file %s
 log_type error
 log_type warning
 log_type notice
-`, port, filepath.Join(pki.broker, "ca.crt"), filepath.Join(pki.broker, "mosquitto.crt"), filepath.Join(pki.broker, "mosquitto.key"), aclPath, filepath.Join(root, "mosquitto.log"))
+`, port, filepath.Join(pki.broker, "ca.crt"), filepath.Join(pki.broker, "mosquitto.crt"), filepath.Join(pki.broker, "mosquitto.key"), aclPath, root, filepath.Join(root, "mosquitto.log"))
 	confPath := filepath.Join(root, "mosquitto.conf")
 	if err := os.WriteFile(confPath, []byte(conf), 0o600); err != nil {
 		t.Fatal(err)

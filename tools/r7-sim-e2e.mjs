@@ -27,6 +27,7 @@ export const REQUIRED = [
   'TestR7IsolatedRestoreDrill',
   'TestR8SimCertScriptIssuesUsableIdentity',
   'TestR8ZeroBusinessStartToFirstSimulatedCrane',
+  'TestR9BrokerCrashIsMonitoredAndRecovers',
 ];
 
 /**

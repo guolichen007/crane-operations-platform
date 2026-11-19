@@ -110,7 +110,7 @@ function fakeDocker(r, { buildId = (tag) => 'sha256:' + Buffer.from(tag).toStrin
     throw Error('unexpected docker ' + args.join(' '));
   };
   const probe = (u) => !smokeOk(state) ? { status: 502, body: '' } : u === 'https://crane.youdaozd.com/' ? { status: 200, body: '' } : u.includes('openid') ? { status: 200, body: JSON.stringify({ issuer: 'https://crane.youdaozd.com/realms/crane' }) } : u.includes('/api/') ? { status: 401 } : { status: 404 };
-  return { state, opts: { root: r.root, execute, probe, log: () => {}, now: () => new Date() } };
+  return { state, opts: { root: r.root, execute, probe, log: () => {}, now: () => new Date(), dependencyGate: (ctx, args) => { state.gate = (state.gate ?? 0) + 1; if (state.depsUnhealthy) throw Object.assign(Error('dependencies not healthy before deploy: mosquitto(exited)'), { code: 3 }); } } };
 }
 const read = (r, name) => JSON.parse(readFileSync(join(r.state, name), 'utf8'));
 
@@ -171,7 +171,13 @@ test('apply confirms only after image IDs + schema + smoke; then rollback to R6 
   assert.throws(() => apply(r.env, undefined, d.opts), /is not the built/);
   assert.equal(read(r, 'current.json').kind, 'crane-baseline');
   lie = false;
+  // R9 A3: unhealthy PostgreSQL / Keycloak / Mosquitto refuse the deploy before any container change.
+  d.state.depsUnhealthy = true; const ups = d.state.upCount;
+  assert.throws(() => apply(r.env, undefined, d.opts), /dependencies not healthy/);
+  assert.equal(d.state.upCount, ups, 'nothing recreated while dependencies are unhealthy');
+  d.state.depsUnhealthy = false;
   const first = apply(r.env, undefined, d.opts);
+  assert.ok(d.state.gate >= 2, 'dependency gate runs on every apply');
   assert.equal(first.images['cloud-api'].tag, localTag('cloud-api', r.sha()));
   assert.equal(read(r, 'current.json').source_sha, r.sha());
   assert.equal(read(r, 'previous.json').kind, 'crane-baseline');

@@ -66,7 +66,7 @@ services:
       retries: 30
   mosquitto:
     <<: *crane-security
-    image: eclipse-mosquitto:2.0.22@sha256:199ea8ef2e35ec2b1b37e59cfd1dbae538ed4dfa4a2251a121a52215a6248a21
+    image: eclipse-mosquitto:2.0.23@sha256:6a332cc7a8dbe011cbc076180cbb76b37c6f0f55809682ea08e7980ef0112ad9
     user: "1883:1883"
     volumes:
       - ../mosquitto/mosquitto.prod.conf:/mosquitto/config/mosquitto.conf:ro
@@ -75,6 +75,15 @@ services:
       - crane-mqtt:/mosquitto/data
     networks: [backend]
     # A2 has not authorized any host/public device listener.
+    # R9 A3: liveness of the TLS listener (busybox nc in the official image; a plain TCP connect, no
+    # TLS handshake, nothing logged at error/warning). End-to-end MQTT health (mTLS + subscriptions)
+    # is cloud-api's /health/ready, which depends on this service being healthy.
+    healthcheck:
+      test: [CMD, nc, -z, -w, "3", 127.0.0.1, "8883"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
   cloud-api:
     <<: *crane-security
     image: ${CRANE_CLOUD_IMAGE:?verified release image@sha256 required}
@@ -112,7 +121,7 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
       keycloak: {condition: service_healthy}
-      mosquitto: {condition: service_started}
+      mosquitto: {condition: service_healthy}
     healthcheck:
       test: [CMD, wget, -qO-, http://127.0.0.1:8081/health/ready]
       interval: 10s

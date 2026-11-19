@@ -68,7 +68,7 @@ function resolvedConfig() {
         secrets: secretRefs('keycloak_db_password', 'keycloak_bootstrap_password'),
       },
       mosquitto: {
-        image: 'eclipse-mosquitto:2.0.22@sha256:' + 'd'.repeat(64), networks: { backend: null },
+        image: 'eclipse-mosquitto:2.0.23@sha256:' + 'd'.repeat(64), networks: { backend: null },
         volumes: [bind(REPO + '/deploy/mosquitto/mosquitto.prod.conf', '/mosquitto/config/mosquitto.conf'), bind(PREVIEW.secretRoot + '/mqtt/broker', '/mosquitto/certs'), bind(PREVIEW.secretRoot + '/acl', '/mosquitto/acl'), named('b4-preview-mqtt', '/mosquitto/data')],
       },
       'cloud-api': {

@@ -17,6 +17,48 @@ import (
 type Broker struct{ CM *autopaho.ConnectionManager }
 
 var MQTTReconnects atomic.Int64
+
+// R9 A3 broker-connection monitoring (process-wide, read by /metrics and the broker preflight):
+// failed connection attempts (TCP / TLS / CONNACK refusal), the unix time the connection was last
+// lost (0 = never) and whether it is currently down. Never logs credentials or payloads.
+var (
+	MQTTConnectFailures atomic.Int64
+	MQTTDownSince       atomic.Int64
+	mqttLastError       atomic.Value // string: error class only
+)
+
+// MQTTLastErrorClass is the class of the last failed connection attempt ("" if none).
+func MQTTLastErrorClass() string {
+	if v, ok := mqttLastError.Load().(string); ok {
+		return v
+	}
+	return ""
+}
+
+// MQTTDownSeconds is how long the broker connection has been down (0 when up).
+func MQTTDownSeconds(now time.Time) int64 {
+	if since := MQTTDownSince.Load(); since > 0 {
+		return max(int64(0), now.Unix()-since)
+	}
+	return 0
+}
+
+func errorClass(err error) string {
+	var refused *autopaho.ConnackError
+	switch {
+	case errors.As(err, &refused):
+		return "connack_refused"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "timeout"
+	default:
+		var tlsErr interface{ Timeout() bool }
+		if errors.As(err, &tlsErr) && tlsErr.Timeout() {
+			return "timeout"
+		}
+		return "connect_failed"
+	}
+}
+
 var ErrMessageExpired = errors.New("message expired before publish")
 
 func Connect(ctx context.Context, c Config, id string, subscriptions []string, will func() contract.Envelope, receive func(string, []byte, time.Duration) error, up func(), down func()) (*Broker, error) {
@@ -59,7 +101,13 @@ func Connect(ctx context.Context, c Config, id string, subscriptions []string, w
 			return packet, nil
 		}
 	}
+	cfg.OnConnectError = func(err error) {
+		MQTTConnectFailures.Add(1)
+		mqttLastError.Store(errorClass(err))
+		MQTTDownSince.CompareAndSwap(0, time.Now().Unix())
+	}
 	cfg.OnConnectionDown = func() bool {
+		MQTTDownSince.CompareAndSwap(0, time.Now().Unix())
 		if down != nil {
 			down()
 		}
@@ -67,6 +115,7 @@ func Connect(ctx context.Context, c Config, id string, subscriptions []string, w
 	}
 	var connections atomic.Int64
 	cfg.OnConnectionUp = func(cm *autopaho.ConnectionManager, _ *paho.Connack) {
+		MQTTDownSince.Store(0)
 		if connections.Add(1) > 1 {
 			MQTTReconnects.Add(1)
 		}
