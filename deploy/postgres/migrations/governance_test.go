@@ -257,3 +257,56 @@ func TestMigration13To14PersonnelArchive(t *testing.T) {
 		t.Fatal("00014 down must refuse")
 	}
 }
+
+// R9 B: 14 → 15 is additive (no existing row changes), forward-only, and the database itself keeps
+// SIMULATION / TEST rules away from REAL schedules / alerts / work orders.
+func TestMigration14To15MeteringIsAdditiveAndIsolated(t *testing.T) {
+	db := openIsolated(t)
+	setupGoose(t)
+	ctx := context.Background()
+	if err := goose.UpToContext(ctx, db, ".", 14); err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range []string{
+		`INSERT INTO tenants(id,name) VALUES('t1','t1') ON CONFLICT DO NOTHING`,
+		`INSERT INTO projects(id,tenant_id,name) VALUES('P','t1','P')`,
+		`INSERT INTO asset_devices(id,project_id,display_name,lifecycle,asset_code) VALUES('A','P','A','PLANNED','A-1')`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatal(stmt, err)
+		}
+	}
+	var before string
+	_ = db.QueryRow(`SELECT md5(string_agg(id||display_name||asset_status||version::text, ',')) FROM asset_devices`).Scan(&before)
+	if err := goose.UpToContext(ctx, db, ".", 15); err != nil {
+		t.Fatalf("14 -> 15: %v", err)
+	}
+	var after string
+	_ = db.QueryRow(`SELECT md5(string_agg(id||display_name||asset_status||version::text, ',')) FROM asset_devices`).Scan(&after)
+	if after != before {
+		t.Fatal("00015 changed existing assets")
+	}
+	for _, stmt := range []string{
+		`INSERT INTO maintenance_rules(id,asset_id,rule_code,name,rule_kind,rule_type,interval_days,basis,created_by,test_only) VALUES('R-T','A','T','t','MAINTENANCE','TIME_BASED',30,'x','x',true),('R-R','A','R','r','MAINTENANCE','TIME_BASED',30,'x','x',false)`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatal(stmt, err)
+		}
+	}
+	for name, stmt := range map[string]string{
+		"test rule → REAL schedule":    `INSERT INTO maintenance_schedules(rule_id,source_mode) VALUES('R-T','REAL')`,
+		"real rule → SIMULATION alert": `INSERT INTO maintenance_alerts(id,rule_id,asset_id,source_mode,cycle_no,stage,triggered_at) VALUES('x','R-R','A','SIMULATION',1,'DUE',now())`,
+		"test rule approved":           `UPDATE maintenance_rules SET approval_status='APPROVED',approved_by='x',approved_at=now(),effective_from=now() WHERE id='R-T'`,
+		"negative meter accumulation":  `INSERT INTO meter_states(meter_id,source_mode,runtime_device_id,accumulated) VALUES('nope','REAL','d',-1)`,
+	} {
+		if _, err := db.Exec(stmt); err == nil {
+			t.Fatalf("%s accepted", name)
+		}
+	}
+	if _, err := db.Exec(`INSERT INTO maintenance_schedules(rule_id,source_mode) VALUES('R-T','SIMULATION'),('R-R','REAL')`); err != nil {
+		t.Fatal("legal schedules refused:", err)
+	}
+	if err := goose.DownContext(ctx, db, "."); err == nil {
+		t.Fatal("00015 down must refuse")
+	}
+}

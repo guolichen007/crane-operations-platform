@@ -434,6 +434,131 @@
         }
       }
     },
+    "MeterSample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pointCode",
+        "metric",
+        "value",
+        "quality"
+      ],
+      "properties": {
+        "pointCode": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]{1,80}$"
+        },
+        "metric": {
+          "type": "string",
+          "enum": [
+            "cycles",
+            "hours",
+            "mechanism_running_hours",
+            "daily_auto_hours",
+            "production_tonnes",
+            "daily_job_count",
+            "state"
+          ]
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quality": {
+          "type": "string",
+          "enum": [
+            "GOOD",
+            "UNCERTAIN",
+            "BAD",
+            "MISSING"
+          ]
+        }
+      }
+    },
+    "FaultSample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pointCode",
+        "eventId",
+        "code",
+        "text",
+        "occurredAt"
+      ],
+      "properties": {
+        "pointCode": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]{1,80}$"
+        },
+        "eventId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]{1,80}$"
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "MeterBatchPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceMode",
+        "testRunId",
+        "sampledAt",
+        "samples",
+        "faults"
+      ],
+      "properties": {
+        "sourceMode": {
+          "type": "string",
+          "enum": [
+            "REAL",
+            "SIMULATION",
+            "TEST"
+          ]
+        },
+        "testRunId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]{0,80}$"
+        },
+        "sampledAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "samples": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/$defs/MeterSample"
+          }
+        },
+        "faults": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/FaultSample"
+          }
+        }
+      }
+    },
     "Presence": {
       "type": "object",
       "additionalProperties": false,

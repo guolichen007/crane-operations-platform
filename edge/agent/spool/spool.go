@@ -1,4 +1,6 @@
-// Package spool keeps bounded critical events; telemetry is never spooled.
+// Package spool keeps bounded critical records (ALARM / EVENT and, R9, METER batches: cumulative
+// meter values must survive a network outage and be back-filled in order); live telemetry is never
+// spooled. Each record leaves the spool only after the cloud application ACK (EVENT_STORED_ACK).
 package spool
 
 import (
@@ -20,6 +22,8 @@ type Queue struct {
 
 var ErrFull = errors.New("critical spool full: operator action required")
 
+func critical(kind string) bool { return kind == "ALARM" || kind == "EVENT" || kind == "METER" }
+
 func Open(path string, limit int) (*Queue, error) {
 	q := &Queue{path: path, limit: limit}
 	b, e := os.ReadFile(path)
@@ -38,7 +42,7 @@ func Open(path string, limit int) (*Queue, error) {
 		if e = contract.Validate(m); e != nil {
 			return nil, e
 		}
-		if m.Kind != "ALARM" && m.Kind != "EVENT" {
+		if !critical(m.Kind) {
 			return nil, errors.New("non-critical spool record")
 		}
 	}
@@ -58,7 +62,7 @@ func (q *Queue) save(items []contract.Envelope) error {
 func (q *Queue) Push(m contract.Envelope) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	if m.Kind != "ALARM" && m.Kind != "EVENT" {
+	if !critical(m.Kind) {
 		return errors.New("only critical events may be queued")
 	}
 	if err := contract.Validate(m); err != nil {

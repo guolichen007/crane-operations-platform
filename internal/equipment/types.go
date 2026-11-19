@@ -61,6 +61,17 @@ var registry = []TypeInfo{
 	{"UPS", "不间断电源", "POWER"},
 	{"TRANSFORMER", "变压器", "POWER"},
 	{"CONDUCTOR_RAIL", "滑触线", "POWER"},
+	// R9 (老河口首台行车点位清单): types the 43 above cannot represent without a wrong category.
+	// Every code is a component type (never an asset type) with the generic spec schema; the
+	// LiDAR whose 2D/3D dimension is unconfirmed uses LIDAR (not LIDAR_2D / LIDAR_3D).
+	{"THERMAL_OVERLOAD_RELAY", "热过载继电器", "CONTROL"},
+	{"MOTOR_PROTECTOR", "电机保护器", "CONTROL"},
+	{"SOLENOID_VALVE", "电磁阀", "CONTROL"},
+	{"RFID_READER", "RFID 读写器", "PERCEPTION"},
+	{"RADAR", "雷达（微波 / 毫米波）", "PERCEPTION"},
+	{"LIDAR", "激光雷达（维度待确认）", "PERCEPTION"},
+	{"BARRIER_GATE", "道闸", "MECHANICAL"},
+	{"WIRE_ROPE", "钢丝绳", "MECHANICAL"},
 }
 
 // Types returns a copy of the registry in its fixed order.

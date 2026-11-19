@@ -241,15 +241,15 @@ func TestApplyDoesNotTouchInstallationsOrHistory(t *testing.T) {
 
 func ptr(s string) *string { return &s }
 
-// The operator runbook and the deployment acceptance initialize exactly 43 types; a registry
+// The operator runbook and the deployment acceptance initialize exactly 51 types (43 + 8 R9); a registry
 // change must update the runbook (docs/08-部署运维与成本/R6-Equipment设备类型目录初始化操作手册.md).
 func TestRegistryCountMatchesRunbook(t *testing.T) {
-	if n := len(equipment.Types()); n != 43 {
-		t.Fatalf("code registry lists %d types; the runbook and acceptance expect 43", n)
+	if n := len(equipment.Types()); n != 51 {
+		t.Fatalf("code registry lists %d types; the runbook and acceptance expect 51", n)
 	}
 	s, err := Scope(true, nil)
-	if err != nil || len(s) != 43 {
-		t.Fatalf("--all scope = %d (err=%v), want 43", len(s), err)
+	if err != nil || len(s) != 51 {
+		t.Fatalf("--all scope = %d (err=%v), want 51", len(s), err)
 	}
 }
 

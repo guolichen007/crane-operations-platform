@@ -63,7 +63,7 @@ import { dependencyGate } from './broker-ops.mjs';
 export const LOCAL_REPO = 'crane-local';
 export const DEPLOYABLE = ['cloud-api', 'web-console'];
 export const BUILDABLE = {
-  'cloud-api': { dockerfile: 'deploy/Dockerfile.backend', go: true, args: [], inputs: ['go.mod', 'go.sum', 'contracts', 'internal', 'services', 'edge', 'tools/identity', 'tools/equipment-types', 'tools/runtime-identity', 'tools/provision-keycloak', 'deploy/postgres', 'deploy/Dockerfile.backend', 'licenses', 'THIRD_PARTY_NOTICES.md'] },
+  'cloud-api': { dockerfile: 'deploy/Dockerfile.backend', go: true, args: [], inputs: ['go.mod', 'go.sum', 'contracts', 'internal', 'services', 'edge', 'tools/identity', 'tools/equipment-types', 'tools/runtime-identity', 'tools/provision-keycloak', 'tools/onboarding', 'deploy/postgres', 'deploy/Dockerfile.backend', 'licenses', 'THIRD_PARTY_NOTICES.md'] },
   'web-console': { dockerfile: 'deploy/Dockerfile.web-production', go: false, args: [], inputs: ['package.json', 'package-lock.json', 'apps/web-console', 'contracts', 'deploy/nginx/production.conf', 'deploy/Dockerfile.web-production', 'licenses', 'THIRD_PARTY_NOTICES.md'] },
   'device-simulator': { dockerfile: 'deploy/Dockerfile.backend', go: true, args: ['TARGET=simulators/device-simulator'], inputs: ['go.mod', 'go.sum', 'contracts', 'internal', 'edge', 'simulators', 'deploy/Dockerfile.backend'] },
 };

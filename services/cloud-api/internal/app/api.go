@@ -51,6 +51,9 @@ type apiHandler struct {
 	// transaction once its locks are held, and fail the in-transaction response read.
 	registrationAfterLock  func()
 	registrationBeforeRead func() error
+	// evaluate (R9) receives asset ids whose maintenance schedules must be re-evaluated (work order
+	// completion); nil-safe: the send is non-blocking and a nil channel is never selected.
+	evaluate chan string
 }
 
 type principal struct {
@@ -223,6 +226,7 @@ func (h *apiHandler) register(mux *http.ServeMux) error {
 	h.registerAssets(api)
 	h.registerOperations(api)
 	h.registerPersonnel(api)
+	h.registerMaintenance(api)
 	// Deployment environment sentinel: an operator-set, server-side value that a
 	// write-capable test suite reads (after login, before any write) to prove it is
 	// talking to the intended isolated environment. Unset → "" (production never

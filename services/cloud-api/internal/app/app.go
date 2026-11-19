@@ -9,6 +9,7 @@ import (
 	contract "github.com/guolichen007/crane-operations-platform/contracts/go"
 	"github.com/guolichen007/crane-operations-platform/deploy/postgres/migrations"
 	"github.com/guolichen007/crane-operations-platform/internal/geo"
+	"github.com/guolichen007/crane-operations-platform/internal/metering"
 	"github.com/guolichen007/crane-operations-platform/internal/operations"
 	"github.com/guolichen007/crane-operations-platform/services/cloud-api/internal/alarm"
 	"log/slog"
@@ -155,10 +156,10 @@ func Run(args []string) error {
 		if mqttUp.Load() {
 			up = 1
 		}
-		fmt.Fprintf(w, "mqtt_connected %d\nmqtt_connect_failures_total %d\nmqtt_down_seconds %d\n", up, platform.MQTTConnectFailures.Load(), platform.MQTTDownSeconds(time.Now()))
+		fmt.Fprintf(w, "mqtt_connected %d\nmqtt_connect_failures_total %d\nmqtt_down_seconds %d\nmeter_batches_total %d\n", up, platform.MQTTConnectFailures.Load(), platform.MQTTDownSeconds(time.Now()), meterBatches.Load())
 	})
 	handlers := &apiHandler{config: c, db: db, store: store, leases: leases, active: activeRuntime, list: listRuntime,
-		logger: logger, wsClients: &wsClients, dbErrors: dbErrors, ops: opsConfig}
+		logger: logger, wsClients: &wsClients, dbErrors: dbErrors, ops: opsConfig, evaluate: rt.evaluate}
 	if c.Env == "production" {
 		clientSecret, err := platform.PrivateSecret(c.Production.ClientSecretFile, 32)
 		if err != nil {
@@ -220,12 +221,21 @@ type runtimeLoop struct {
 	broker                            *platform.Broker
 	mqttUp                            atomic.Bool
 	mqttMessages, dbErrors, eventAcks atomic.Int64
+	evaluate                          chan string
 }
+
+// meterBatches counts accepted METER batches (process-wide, /metrics).
+var meterBatches atomic.Int64
 
 func startRuntime(ctx context.Context, c platform.Config, db *sql.DB, manifest contract.FleetManifest, store *device.Store, leases *session.Manager, logger *slog.Logger) (*runtimeLoop, error) {
 	rt := &runtimeLoop{}
 	mqttMessages, dbErrors, eventAcks, mqttUp := &rt.mqttMessages, &rt.dbErrors, &rt.eventAcks, &rt.mqttUp
 	ackQueue := make(chan contract.Envelope, 256)
+	// R9 B4: maintenance schedules are re-evaluated after new meter data (debounced per asset)
+	// and once a minute for calendar progress (offline devices keep progressing).
+	evaluate := make(chan string, 64)
+	rt.evaluate = evaluate
+	go maintenanceLoop(ctx, db, evaluate, logger)
 	reconcileAll := make(chan struct{}, 1)
 	cloudBoot := platform.ID()
 	var cloudSequence atomic.Int64
@@ -240,8 +250,28 @@ func startRuntime(ctx context.Context, c platform.Config, db *sql.DB, manifest c
 			err = nil
 			callCtx, done := context.WithTimeout(ctx, 5*time.Second)
 			switch m.Kind {
-			case "ALARM", "EVENT":
-				err = alarm.Record(callCtx, db, m)
+			case "ALARM", "EVENT", "METER":
+				if m.Kind == "METER" {
+					// R9 B3: one transaction per batch; a refused batch (unbound runtime, mode
+					// mismatch) is acknowledged as handled and logged (never retried forever), a
+					// database error withholds the ACK so the Edge keeps it in its spool.
+					var r metering.Result
+					r, err = metering.Ingest(callCtx, db, m)
+					if errors.Is(err, metering.ErrNotBound) || errors.Is(err, metering.ErrModeMismatch) {
+						logger.Warn("meter batch refused", "event", "meter_rejected", "deviceId", m.DeviceId, "messageId", m.MessageId, "reason", err.Error())
+						err = nil
+					} else if err == nil {
+						meterBatches.Add(1)
+						if r.Stored > 0 {
+							select {
+							case evaluate <- r.AssetID:
+							default:
+							}
+						}
+					}
+				} else {
+					err = alarm.Record(callCtx, db, m)
+				}
 				if err == nil {
 					ack := contract.WithPayload(contract.Envelope{SchemaVersion: 1, MessageId: platform.ID(), TenantId: m.TenantId, ProjectId: m.ProjectId, DeviceId: m.DeviceId, BootId: cloudBoot, BootSeq: 1, Sequence: cloudSequence.Add(1), SentAt: time.Now().UTC(), Kind: "EVENT_STORED_ACK", CorrelationId: m.MessageId}, contract.EventStoredAckPayload{SourceMessageId: m.MessageId, Result: "STORED"})
 					select {
@@ -349,4 +379,54 @@ func startRuntime(ctx context.Context, c platform.Config, db *sql.DB, manifest c
 		}
 	}()
 	return rt, nil
+}
+
+// maintenanceLoop evaluates the maintenance schedules of assets with new meter data (coalesced)
+// and every asset that has rules once a minute (calendar progress without telemetry).
+func maintenanceLoop(ctx context.Context, db *sql.DB, evaluate <-chan string, logger *slog.Logger) {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	run := func(asset string) {
+		call, done := context.WithTimeout(ctx, 20*time.Second)
+		defer done()
+		if _, err := metering.EvaluateAll(call, db, asset, time.Now()); err != nil {
+			logger.Warn("maintenance evaluation failed", "event", "maintenance_eval_failed", "assetId", asset)
+		}
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case asset := <-evaluate:
+			pending := map[string]bool{asset: true}
+			for drained := false; !drained; {
+				select {
+				case a := <-evaluate:
+					pending[a] = true
+				default:
+					drained = true
+				}
+			}
+			for a := range pending {
+				run(a)
+			}
+		case <-ticker.C:
+			call, done := context.WithTimeout(ctx, 10*time.Second)
+			rows, err := db.QueryContext(call, `SELECT DISTINCT asset_id FROM maintenance_rules WHERE approval_status='APPROVED' OR (test_only AND approval_status<>'RETIRED')`)
+			assets := []string{}
+			if err == nil {
+				for rows.Next() {
+					var a string
+					if rows.Scan(&a) == nil {
+						assets = append(assets, a)
+					}
+				}
+				rows.Close()
+			}
+			done()
+			for _, a := range assets {
+				run(a)
+			}
+		}
+	}
 }

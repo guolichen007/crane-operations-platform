@@ -30,10 +30,11 @@ type Config struct {
 	Grace         int              `json:"grace"`
 	Migrate       bool             `json:"migrate"`
 	WillDelay     int              `json:"willDelaySeconds"`
+	MeterSeconds  int              `json:"meterSeconds"` // R9: simulated meter batch interval (SIMULATION / TEST runtimes of the first asset)
 }
 
 func Load(args []string) (Config, error) {
-	c := Config{Env: "development", HTTP: ":8081", MQTTURL: "tls://localhost:8883", CertDir: "deploy/compose/runtime/certs", DataDir: "deploy/compose/runtime/spool", Count: 20, Scenario: "normal", TTL: 300, Grace: 45, WillDelay: 20}
+	c := Config{Env: "development", HTTP: ":8081", MQTTURL: "tls://localhost:8883", CertDir: "deploy/compose/runtime/certs", DataDir: "deploy/compose/runtime/spool", Count: 20, Scenario: "normal", TTL: 300, Grace: 45, WillDelay: 20, MeterSeconds: 60}
 	path := os.Getenv("APP_CONFIG")
 	for i, a := range args {
 		if a == "--config" && i+1 < len(args) {
@@ -54,7 +55,7 @@ func Load(args []string) (Config, error) {
 			*p = v
 		}
 	}
-	for k, p := range map[string]*int{"SIM_COUNT": &c.Count, "LIVE_TTL_SECONDS": &c.TTL, "LIVE_GRACE_SECONDS": &c.Grace, "MQTT_WILL_DELAY_SECONDS": &c.WillDelay} {
+	for k, p := range map[string]*int{"SIM_COUNT": &c.Count, "LIVE_TTL_SECONDS": &c.TTL, "LIVE_GRACE_SECONDS": &c.Grace, "MQTT_WILL_DELAY_SECONDS": &c.WillDelay, "SIM_METER_SECONDS": &c.MeterSeconds} {
 		if v, ok := os.LookupEnv(k); ok {
 			n, e := strconv.Atoi(v)
 			if e != nil {
@@ -78,7 +79,7 @@ func Load(args []string) (Config, error) {
 	if e := fs.Parse(args); e != nil {
 		return c, e
 	}
-	if (c.FleetFile == "" && (c.Count < 1 || c.Count > 20)) || c.TTL < 1 || c.TTL > 300 || c.Grace < 1 || c.Grace > 60 || c.WillDelay < 5 || c.WillDelay > 60 {
+	if (c.FleetFile == "" && (c.Count < 1 || c.Count > 20)) || c.TTL < 1 || c.TTL > 300 || c.Grace < 1 || c.Grace > 60 || c.WillDelay < 5 || c.WillDelay > 60 || c.MeterSeconds < 1 || c.MeterSeconds > 3600 {
 		return c, errors.New("configuration outside supported bounds")
 	}
 	switch c.Scenario {

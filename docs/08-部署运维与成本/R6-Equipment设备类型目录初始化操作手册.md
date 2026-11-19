@@ -2,7 +2,7 @@
 
 适用版本：包含 `equipment-types` 工具的 cloud-api 镜像（`feature/crane-r6-biz-closure` 及之后）。数据库 Schema 仍为 12，本手册不涉及迁移。
 
-本次初始化范围：**代码注册表全部 43 种类型**（`internal/equipment/types.go`；`TestRegistryCountMatchesRunbook` 锁定该数量，注册表变化时本手册必须同步修订）。
+本次初始化范围：**代码注册表全部 51 种类型**（R6 的 43 种 + R9 老河口首台资产新增 8 种：THERMAL_OVERLOAD_RELAY、MOTOR_PROTECTOR、SOLENOID_VALVE、RFID_READER、RADAR、LIDAR、BARRIER_GATE、WIRE_ROPE）（`internal/equipment/types.go`；`TestRegistryCountMatchesRunbook` 锁定该数量，注册表变化时本手册必须同步修订）。
 
 ## 1. 背景
 
@@ -50,27 +50,27 @@ TOOL=(docker compose --project-name u-dao-crane-ops --project-directory deploy/c
 ## 4. 执行
 
 ```bash
-# 4.1 只读计划（全部 43 种）
+# 4.1 只读计划（全部 51 种）
 "${TOOL[@]}" plan --all > "$WORK/plan.json"
 jq -e '.plan.target.database=="crane_app" and .plan.target.role=="crane_app" and .plan.target.schemaVersion==12' "$WORK/plan.json"
 jq '{toCreate:(.plan.toCreate|length), existing:(.plan.existing|length), disabled:.plan.disabled, conflicts:.plan.conflicts, unregistered:.plan.unregistered, digest:.plan.digest}' "$WORK/plan.json"
 ```
 
-审阅：首次初始化时期望 `toCreate=43`，`conflicts`、`unregistered` 为空。若有冲突或未注册行，**停止**并单独评审，不得缩小范围绕过。把 `digest` 交批准人。
+审阅：首次初始化时期望 `toCreate=51`；已初始化过 43 种的环境（R6–R8）期望 `toCreate=8`、`existing=43`，`conflicts`、`unregistered` 为空。若有冲突或未注册行，**停止**并单独评审，不得缩小范围绕过。把 `digest` 交批准人。
 
 ```bash
 # 4.2 执行（digest 必须来自 4.1 刚审阅的 plan.json）
 DIGEST=$(jq -r .plan.digest "$WORK/plan.json")
 "${TOOL[@]}" apply --all --approve "$DIGEST" --actor <管理员标识> > "$WORK/apply.json"
-jq -e '.record.result=="success" and (.record.created|length)==43' "$WORK/apply.json"
+jq -e '.record.result=="success" and ((.record.created|length)==51 or (.record.created|length)==8)' "$WORK/apply.json"
 ```
 
 区分两种成功：`result=="success"` 表示本次真正新增了 `created` 中的类型；`result=="noop"` 表示批准的计划里没有需要新增的类型（目录早已初始化），**只写了一条 noop 审计，并不代表本次完成了初始化**。首次初始化时出现 noop 必须停止核查（说明有人已提前执行过）。
 
 ```bash
-# 4.3 验证：一致且 43 种全部可安装
-"${TOOL[@]}" verify --all --expect-installable 43 > "$WORK/verify.json"
-jq -e '.report.consistent==true and (.report.installable|length)==43' "$WORK/verify.json"
+# 4.3 验证：一致且 51 种全部可安装
+"${TOOL[@]}" verify --all --expect-installable 51 > "$WORK/verify.json"
+jq -e '.report.consistent==true and (.report.installable|length)==51' "$WORK/verify.json"
 ls -l "$WORK"                      # 三个文件均应为 -rw-------
 ```
 
@@ -85,7 +85,7 @@ docker compose ... exec -T --user postgres postgres psql -XqAt -d crane_app -c \
 
 最新一条的 `request_id` 应等于 `apply.json` 的 `.record.requestId`，`user_id` 为 `host:<管理员标识>`，`result=success`。
 
-4.5 界面核对：打开任一测试资产 →「设备」→「安装 Equipment」，类型下拉含「电机（MOTOR）」等 43 项，不再显示初始化提示。
+4.5 界面核对：打开任一测试资产 →「设备」→「安装 Equipment」，类型下拉含「电机（MOTOR）」等 51 项，不再显示初始化提示。
 
 `$WORK` 中的 plan/apply/verify 三个 JSON 即本次完整操作记录，随运行记录一起归档。
 
@@ -97,7 +97,7 @@ docker compose ... exec -T --user postgres postgres psql -XqAt -d crane_app -c \
 | 用已成功执行过的旧 digest 再 apply | 拒绝：state changed | 这是预期保护；如确需复核，重新 plan |
 | 在另一个库的 plan 上 apply | 拒绝：digest 含目标库身份 | 核对 compose 项目与库 |
 | 范围内有 CONFLICT | 拒绝，无部分写入 | 单独评审冲突行 |
-| verify 退出 3 | 缺失/冲突/未注册行，或可安装数≠43 | 查看 `report.plan` 定位 |
+| verify 退出 3 | 缺失/冲突/未注册行，或可安装数≠51 | 查看 `report.plan` 定位 |
 | secret 权限或 URL 含密码 | 拒绝，原因不回显连接细节 | 修正私有配置 |
 
 ## 6. 停用类型

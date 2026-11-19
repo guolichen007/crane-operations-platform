@@ -6,12 +6,12 @@ RUN GOPROXY=${GOPROXY} go mod download
 COPY . .
 ARG TARGET=services/cloud-api/cmd/cloud-api
 RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/service ./${TARGET}
-RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/identity ./tools/identity && CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/provision-keycloak ./tools/provision-keycloak && CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/equipment-types ./tools/equipment-types && CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/runtime-identity ./tools/runtime-identity
+RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/identity ./tools/identity && CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/provision-keycloak ./tools/provision-keycloak && CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/equipment-types ./tools/equipment-types && CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/runtime-identity ./tools/runtime-identity && CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/onboarding ./tools/onboarding
 FROM alpine:3.23@sha256:ff7f0c727dd796aa36787bfcd9a64bf35a6ce72a73451b3359fde849b6703d63
 # /spool owned by 10001: an empty named volume mounted there (device-simulator) inherits the owner.
 RUN apk add --no-cache ca-certificates && addgroup -g 10001 app && adduser -D -u 10001 -G app app && install -d -o 10001 -g 10001 -m 0700 /spool
 COPY --from=build --chmod=0755 /out/service /usr/local/bin/service
-COPY --from=build --chmod=0755 /out/identity /out/provision-keycloak /out/equipment-types /out/runtime-identity /usr/local/bin/
+COPY --from=build --chmod=0755 /out/identity /out/provision-keycloak /out/equipment-types /out/runtime-identity /out/onboarding /usr/local/bin/
 COPY licenses /usr/share/licenses/crane/
 COPY THIRD_PARTY_NOTICES.md /usr/share/licenses/crane/THIRD_PARTY_NOTICES.md
 ARG SOURCE_SHA=development

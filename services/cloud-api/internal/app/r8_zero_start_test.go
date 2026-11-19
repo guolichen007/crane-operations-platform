@@ -131,7 +131,7 @@ func TestR8ZeroBusinessStartToFirstSimulatedCrane(t *testing.T) {
 	if len(e.manifest.Devices) != 0 || !e.cloud.mqttUp.Load() {
 		t.Fatalf("empty Fleet cloud not up: %+v", e.manifest)
 	}
-	// Foundation: portfolio scope + roles, 43 types, one manager and one planner (real OIDC login).
+	// Foundation: portfolio scope + roles, the full type directory, one manager and one planner (real OIDC login).
 	scope, err := equipmenttypes.Scope(true, nil)
 	if err != nil {
 		t.Fatal(err)

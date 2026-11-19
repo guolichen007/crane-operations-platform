@@ -67,6 +67,26 @@ export interface EventStoredAckPayload {
   sourceMessageId: string;
   result: "STORED";
 }
+export interface MeterSample {
+  pointCode: string;
+  metric: "cycles" | "hours" | "mechanism_running_hours" | "daily_auto_hours" | "production_tonnes" | "daily_job_count" | "state";
+  value: number | null;
+  quality: "GOOD" | "UNCERTAIN" | "BAD" | "MISSING";
+}
+export interface FaultSample {
+  pointCode: string;
+  eventId: string;
+  code: string;
+  text: string;
+  occurredAt: string;
+}
+export interface MeterBatchPayload {
+  sourceMode: "REAL" | "SIMULATION" | "TEST";
+  testRunId: string;
+  sampledAt: string;
+  samples: (MeterSample)[];
+  faults: (FaultSample)[];
+}
 export interface Presence {
   connectivity: "MQTT_CONNECTED" | "OFFLINE" | "UNKNOWN";
   edgeHealth: "EDGE_HEALTHY" | "DEGRADED" | "UNKNOWN";
@@ -597,4 +617,5 @@ export type Envelope = {
   | { kind: "WATCH_STOP"; payload: WatchCommandPayload }
   | { kind: "WATCH_ACK"; payload: WatchAckPayload }
   | { kind: "EVENT_STORED_ACK"; payload: EventStoredAckPayload }
+  | { kind: "METER"; payload: MeterBatchPayload }
 );

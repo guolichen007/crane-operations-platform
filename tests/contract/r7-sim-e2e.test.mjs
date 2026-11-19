@@ -15,7 +15,7 @@ test('integration job runs the R7 SIM-E2E gate unconditionally', () => {
 });
 
 test('gate requires all six scenarios, the restore drill and the SIM certificate script, exact, no skip', () => {
-  assert.deepEqual(REQUIRED, ['TestR7Sim1DeviceFullLoop', 'TestR7Sim3DevicesIndependent', 'TestR7SimSpoolAckLossNoDuplicates', 'TestR7SimMQTTAbuseAndOrdering', 'TestR7Sim5DevicesRolesIsolationRevocation', 'TestR7Sim20DevicesSoak', 'TestR7IsolatedRestoreDrill', 'TestR8SimCertScriptIssuesUsableIdentity', 'TestR8ZeroBusinessStartToFirstSimulatedCrane', 'TestR9BrokerCrashIsMonitoredAndRecovers']);
+  assert.deepEqual(REQUIRED, ['TestR7Sim1DeviceFullLoop', 'TestR7Sim3DevicesIndependent', 'TestR7SimSpoolAckLossNoDuplicates', 'TestR7SimMQTTAbuseAndOrdering', 'TestR7Sim5DevicesRolesIsolationRevocation', 'TestR7Sim20DevicesSoak', 'TestR7IsolatedRestoreDrill', 'TestR8SimCertScriptIssuesUsableIdentity', 'TestR8ZeroBusinessStartToFirstSimulatedCrane', 'TestR9BrokerCrashIsMonitoredAndRecovers', 'TestR9LHKFirstAssetSimulatedMeteringEndToEnd']);
   const src = readFileSync('tools/r7-sim-e2e.mjs', 'utf8');
   // The CI step sets no R7_SIM_ONLY, so the exact gate runs over all of REQUIRED; a manual subset
   // (server soak) may only name required tests and prints a SUBSET marker, never R7_SIM_E2E=PASS.
@@ -45,6 +45,7 @@ test('harness drives the real chain: no route interception or canned responses',
   assert.deepEqual(tests, REQUIRED.filter((t) => t.startsWith('TestR7Sim')).sort());
   assert.match(readFileSync('services/cloud-api/internal/app/r8_zero_start_test.go', 'utf8'), /func TestR8ZeroBusinessStartToFirstSimulatedCrane\(/);
   assert.match(readFileSync('services/cloud-api/internal/app/r9_broker_test.go', 'utf8'), /func TestR9BrokerCrashIsMonitoredAndRecovers\(/);
+  assert.match(readFileSync('services/cloud-api/internal/app/r9_lhk_sim_test.go', 'utf8'), /func TestR9LHKFirstAssetSimulatedMeteringEndToEnd\(/);
   assert.match(readFileSync('services/cloud-api/internal/app/r7_restore_drill_test.go', 'utf8'), /crane_drill_/);
 });
 

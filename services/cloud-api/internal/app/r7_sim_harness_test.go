@@ -289,6 +289,8 @@ type simEnv struct {
 	cloudCancel context.CancelFunc
 	cloud       *runtimeLoop
 
+	meterSeconds int // R9: meter batch interval of simulated devices (0 = no meter batches, the R7 behaviour)
+
 	devMu   sync.Mutex
 	devices map[string]*simDevice
 	proxies map[string]*simProxy
@@ -310,6 +312,7 @@ func simEnabled(t *testing.T) {
 type simSpec struct {
 	project string
 	runtime string
+	asset   string // existing asset to bind (R9 first real asset); "" = create a test asset
 	source  string // SIMULATION / TEST
 	bind    bool   // bind an installed PLC Equipment to the runtime
 }
@@ -318,11 +321,20 @@ type simSpec struct {
 // controlled runtime-identity tool, issues device certificates, generates the ACL from the Fleet,
 // and starts Mosquitto, the cloud runtime and the BFF.
 func newSimEnv(t *testing.T, ttl, grace time.Duration, specs []simSpec) *simEnv {
+	return newSimEnvWith(t, ttl, grace, specs, nil)
+}
+
+// newSimEnvWith runs prepare on the fresh database before the specs are registered (R9: the first
+// real asset is imported and its SIMULATION runtime registered through the controlled tools).
+func newSimEnvWith(t *testing.T, ttl, grace time.Duration, specs []simSpec, prepare func(*simEnv)) *simEnv {
 	t.Helper()
 	simEnabled(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	e := &simEnv{t: t, ctx: ctx, db: testsupport.Database(t), root: t.TempDir(), devices: map[string]*simDevice{}, proxies: map[string]*simProxy{}, assets: map[string]string{}}
+	if prepare != nil {
+		prepare(e)
+	}
 	if _, err := e.db.Exec(`INSERT INTO equipment_types(type_code,display_name,domain) VALUES('PLC','PLC 控制器','CONTROL') ON CONFLICT DO NOTHING`); err != nil {
 		t.Fatal(err)
 	}
@@ -335,15 +347,19 @@ func newSimEnv(t *testing.T, ttl, grace time.Duration, specs []simSpec) *simEnv 
 				t.Fatal(err)
 			}
 		}
-		code := fmt.Sprintf("R7SIM-%02d", i+1)
-		a, err := asset.CreateAsset(ctx, e.db, contract.AssetMasterData{ProjectId: s.project, AssetType: "CRANE", AssetCode: &code, DisplayName: s.runtime}, "r7-sim", "r7-sim", "")
-		if err != nil {
-			t.Fatal(err)
+		assetID := s.asset
+		if assetID == "" {
+			code := fmt.Sprintf("R7SIM-%02d", i+1)
+			a, err := asset.CreateAsset(ctx, e.db, contract.AssetMasterData{ProjectId: s.project, AssetType: "CRANE", AssetCode: &code, DisplayName: s.runtime}, "r7-sim", "r7-sim", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			assetID = a.Id
 		}
-		e.assets[s.runtime] = a.Id
-		entry := runtimeidentity.Entry{RuntimeDeviceId: s.runtime, ProjectId: s.project, AssetDeviceId: a.Id, SourceMode: s.source}
+		e.assets[s.runtime] = assetID
+		entry := runtimeidentity.Entry{RuntimeDeviceId: s.runtime, ProjectId: s.project, AssetDeviceId: assetID, SourceMode: s.source}
 		if s.bind {
-			eq, err := asset.CreateEquipment(ctx, e.db, contract.EquipmentInstallation{AssetId: a.Id, EquipmentCode: "PLC-" + s.runtime, TypeCode: "PLC", Criticality: "HIGH"}, json.RawMessage(`{}`), "r7-sim", "r7-sim", "")
+			eq, err := asset.CreateEquipment(ctx, e.db, contract.EquipmentInstallation{AssetId: assetID, EquipmentCode: "PLC-" + s.runtime, TypeCode: "PLC", Criticality: "HIGH"}, json.RawMessage(`{}`), "r7-sim", "r7-sim", "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -476,7 +492,7 @@ func (e *simEnv) startDevice(id, scenario string) {
 	}
 	ctx, cancel := context.WithCancel(e.ctx)
 	d := &simDevice{cancel: cancel, done: make(chan error, 1)}
-	c := platform.Config{MQTTURL: p.url(), CertDir: e.pki.dir, DataDir: filepath.Join(e.root, "spool"), Scenario: scenario, WillDelay: 5}
+	c := platform.Config{MQTTURL: p.url(), CertDir: e.pki.dir, DataDir: filepath.Join(e.root, "spool"), Scenario: scenario, WillDelay: 5, MeterSeconds: e.meterSeconds}
 	go func() { d.done <- runner.RunDevice(ctx, c, desc) }()
 	e.devices[id] = d
 }

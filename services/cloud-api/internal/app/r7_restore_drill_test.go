@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"github.com/guolichen007/crane-operations-platform/deploy/postgres/migrations"
+	"github.com/guolichen007/crane-operations-platform/internal/equipment"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -97,11 +98,11 @@ func fingerprintDB(t *testing.T, db *sql.DB) drillFingerprint {
 	return f
 }
 
-// R7 isolated restore drill: a schema-13 database (P1: incl. personnel, system roles, departments) with the 43-type directory, users, grants,
+// R7 isolated restore drill: a schema-13 database (P1: incl. personnel, system roles, departments) with the full type directory, users, grants,
 // assets, moves, equipment and audit is dumped (pg_dump -Fc) and restored into a NEW database that
 // is never a formal database. The restored copy must have the identical business fingerprint and
 // work through the real BFF: OIDC login of the existing user, historical asset and location
-// readback, 43 installable types, and a new install whose audit row appends to the restored log.
+// readback, all registry types installable, and a new install whose audit row appends to the restored log.
 func TestR7IsolatedRestoreDrill(t *testing.T) {
 	if os.Getenv("R7_RESTORE_DRILL") != "1" {
 		t.Skip("restore drill runs only with R7_RESTORE_DRILL=1 (needs pg_dump/pg_restore)")
@@ -155,7 +156,7 @@ func TestR7IsolatedRestoreDrill(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := fingerprintDB(t, src)
-	if before.Schema != migrations.Latest() || before.Types != 43 || before.ActiveTypes != 43 {
+	if before.Schema != migrations.Latest() || before.Types != len(equipment.Types()) || before.ActiveTypes != len(equipment.Types()) {
 		t.Fatalf("source fingerprint = %+v", before)
 	}
 
@@ -231,7 +232,7 @@ func TestR7IsolatedRestoreDrill(t *testing.T) {
 	if get("/api/v1/assets/"+a.Id, &got) != 200 || got.AssetCode == nil || *got.AssetCode != code ||
 		get("/api/v1/assets/"+a.Id+"/location", &loc) != 200 || loc.Current == nil || loc.Current.LocationId != ws.Id ||
 		get("/api/v1/assets/"+a.Id+"/installation-history", &hist) != 200 || hist.Total != 2 ||
-		get("/api/v1/equipment/types", &types) != 200 || len(types) != 43 {
+		get("/api/v1/equipment/types", &types) != 200 || len(types) != len(equipment.Types()) {
 		t.Fatalf("restored readback: asset=%+v loc=%+v hist=%d types=%d", got, loc.Current, hist.Total, len(types))
 	}
 	body := `{"equipmentCode":"DR-MOTOR","typeCode":"MOTOR","criticality":"MEDIUM","administrativeState":"IN_SERVICE","spec":{}}`

@@ -10,6 +10,7 @@ import (
 	"github.com/guolichen007/crane-operations-platform/edge/agent/internal/domain"
 	"github.com/guolichen007/crane-operations-platform/edge/agent/internal/mapper"
 	"github.com/guolichen007/crane-operations-platform/edge/agent/internal/watch"
+	"github.com/guolichen007/crane-operations-platform/edge/agent/metersim"
 	"github.com/guolichen007/crane-operations-platform/edge/agent/spool"
 	"github.com/guolichen007/crane-operations-platform/internal/fleet"
 	"github.com/guolichen007/crane-operations-platform/internal/platform"
@@ -149,6 +150,18 @@ func RunDevice(ctx context.Context, c platform.Config, descriptor fleet.Device) 
 		}
 		return broker.Publish(ctx, factory.New(kind, payload), suffix)
 	}
+	// R9 B3: a runtime bound to the first real asset publishes edge-accumulated meter batches
+	// (SIMULATION / TEST only; the fixture is never used for a REAL identity).
+	var meters *metersim.Source
+	meterMode := descriptor.SourceMode
+	if (meterMode == "SIMULATION" || meterMode == "TEST") && c.MeterSeconds > 0 {
+		if fx, err := metersim.LoadFixture(); err == nil && descriptor.AssetDeviceId != nil && *descriptor.AssetDeviceId == "LHK-CRANE-001" {
+			if meters, e = metersim.Open(filepath.Join(c.DataDir, id, "meters.json"), fx); e != nil {
+				return e
+			}
+		}
+	}
+	lastMeter := time.Time{}
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	lastState := domain.Silent
@@ -223,6 +236,24 @@ func RunDevice(ctx context.Context, c platform.Config, descriptor fleet.Device) 
 			if state == domain.Live {
 				_ = send("LIVE", "telemetry/live")
 			}
+			if meters != nil && now.Sub(lastMeter) >= time.Duration(c.MeterSeconds)*time.Second {
+				minutes := 1.0
+				if !lastMeter.IsZero() {
+					minutes = now.Sub(lastMeter).Minutes()
+				}
+				samples, err := meters.Step(now, minutes)
+				if err != nil {
+					return err
+				}
+				m := factory.New("METER", contract.MeterBatchPayload{SourceMode: meterMode, TestRunId: "", SampledAt: now.UTC(), Samples: samples, Faults: []contract.FaultSample{}})
+				if err := q.Push(m); err != nil {
+					if !errors.Is(err, spool.ErrFull) {
+						return err
+					}
+					logger.Error("critical spool capacity reached", "event", "spool_full", "messageId", m.MessageId)
+				}
+				lastMeter = now
+			}
 			if c.Scenario == "alarm-storm" && now.Sub(lastAlarm) >= 2*time.Second {
 				m := factory.New("ALARM", contract.AlarmPayload{Code: "MOCK_OVERLOAD", Text: "Simulated alarm"})
 				if err := q.Push(m); err != nil {
@@ -240,10 +271,7 @@ func RunDevice(ctx context.Context, c platform.Config, descriptor fleet.Device) 
 				lastEvent = m.MessageId
 				lastRetry = now
 				machine.BeginEvent()
-				suffix := "event"
-				if m.Kind == "ALARM" {
-					suffix = "alarm"
-				}
+				suffix := map[string]string{"ALARM": "alarm", "EVENT": "event", "METER": "meter"}[m.Kind]
 				// Broker PUBACK deliberately does not remove the critical record.
 				if err := broker.Publish(ctx, m, suffix); err != nil {
 					logger.Warn("critical event retry", "event", "event_retry", "messageId", m.MessageId)

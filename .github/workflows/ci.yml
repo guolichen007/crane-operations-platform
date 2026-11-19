@@ -33,12 +33,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417
         with: { go-version: '1.27.4', cache: true }
-      - run: go test -race ./services/... ./internal/... ./contracts/... ./deploy/postgres/... ./tools/certs/... ./tools/identity/... ./tools/equipment-types/... ./tools/runtime-identity/... ./tools/provision-keycloak/... ./tools/astguard/...
+      - run: go test -race ./services/... ./internal/... ./contracts/... ./deploy/postgres/... ./tools/certs/... ./tools/identity/... ./tools/equipment-types/... ./tools/runtime-identity/... ./tools/onboarding/... ./tools/provision-keycloak/... ./tools/astguard/...
       - run: go vet ./...
       - name: gofmt gate（打印未格式化文件）
         run: |
           unformatted="$(gofmt -l contracts internal services edge simulators \
-            tools/certs tools/fleet tools/inventory tools/identity tools/equipment-types tools/runtime-identity \
+            tools/certs tools/fleet tools/inventory tools/identity tools/equipment-types tools/runtime-identity tools/onboarding \
             tools/provision-keycloak tools/uatdata tools/diagnostics/mqtt-probe \
             tests/integration deploy/postgres)"
           if [ -n "$unformatted" ]; then

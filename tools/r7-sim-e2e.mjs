@@ -28,6 +28,7 @@ export const REQUIRED = [
   'TestR8SimCertScriptIssuesUsableIdentity',
   'TestR8ZeroBusinessStartToFirstSimulatedCrane',
   'TestR9BrokerCrashIsMonitoredAndRecovers',
+  'TestR9LHKFirstAssetSimulatedMeteringEndToEnd',
 ];
 
 /**

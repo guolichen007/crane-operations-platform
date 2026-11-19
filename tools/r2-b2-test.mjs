@@ -174,12 +174,31 @@ const h21aPackages = [
   ['p1-migration', './deploy/postgres/migrations', [
     'TestMigration12To13PreservesPopulatedData',
     'TestMigration13To14PersonnelArchive',
+    'TestMigration14To15MeteringIsAdditiveAndIsolated',
   ]],
   ['p1-personnel-http', './services/cloud-api/internal/app', [
     'TestPersonnelAPIAnonymousAndUnauthorizedAreRefused',
     'TestPersonnelAPIProvisionDisableResetAndLiveRevocation',
     'TestProjectMemberPickerIsScopedAndMinimal',
     'TestPersonnelAPIArchiveStopsEverythingAndKeepsHistory',
+  ]],
+  // R9 first real asset: lossless 55-row import (plan/apply/verify, idempotent, conflict refused),
+  // metering (gaps, resets, out of order, duplicates, SIM/REAL isolation), schedules / alerts /
+  // work orders / replacements / wire ropes, the HTTP surface with roles and the 13→15 migrations.
+  ['r9-onboarding', './internal/onboarding', [
+    'TestStagingDocumentIsCompleteAndConsistent',
+    'TestImportPlanApplyVerifyIdempotent',
+    'TestImportRefusesUninitializedTypes',
+  ]],
+  ['r9-metering', './internal/metering', [
+    'TestMeterIngestNeverLosesOrZeroesAccumulatedValue',
+    'TestSimulationNeverTouchesRealMeters',
+    'TestThresholdsAlertsWorkOrderReplacementAndNextCycle',
+    'TestTimeRuleProgressesWithoutTelemetry',
+    'TestWireRopeInspectionNeedsInspectorConclusion',
+  ]],
+  ['r9-maintenance-http', './services/cloud-api/internal/app', [
+    'TestMaintenanceHTTPScopeRolesAndWorkOrderFlow',
   ]],
   // D1 synthetic acceptance dataset: exact-id cleanup, ownership refusal, server-side guard.
   ['h3-uatdata', './tools/uatdata', [
@@ -240,6 +259,8 @@ try {
   console.log('R2_P1_PERSONNEL_DB_TEST=PASS');
   console.log('R2_P1_MIGRATION_12_TO_13=PASS');
   console.log('R2_R9_PERSONNEL_ARCHIVE=PASS');
+  console.log('R2_R9_LHK_ONBOARDING=PASS');
+  console.log('R2_R9_METERING_MAINTENANCE=PASS');
 } finally {
   run(docker, [...compose, 'down', '--volumes', '--remove-orphans'], first);
 }

@@ -56,7 +56,13 @@ test('REST inventory extension and frozen MQTT bindings remain compatible', asyn
   assert.ok(api.paths['/auth/logout'].post.parameters.some(p => p.name === 'X-CSRF-Token' && p.required));
   const async = YAML.parse(await readFile('contracts/asyncapi/edge-mqtt.yaml', 'utf8'));
   const model = await read('contracts/model.json');
-  assert.equal(Object.keys(async.channels).length, 10);
+  // R9 B3 adds exactly one edge-to-cloud channel (meter / METER, QoS 1); the 10 frozen bindings
+  // keep their address, kinds and QoS (old clients are unaffected).
+  assert.equal(Object.keys(async.channels).length, 11);
+  const frozen = { heartbeat: [0, ['HEARTBEAT']], 'shadow/reported': [1, ['BIRTH', 'SNAPSHOT', 'LWT', 'DEATH']], 'telemetry/live': [0, ['LIVE']], alarm: [1, ['ALARM']], event: [1, ['EVENT']],
+    'command/watch/start': [1, ['WATCH_START']], 'command/watch/renew': [1, ['WATCH_RENEW']], 'command/watch/stop': [1, ['WATCH_STOP']], 'command/ack': [1, ['WATCH_ACK']], 'event/ack': [1, ['EVENT_STORED_ACK']] };
+  for (const [topic, [qos, kinds]] of Object.entries(frozen)) { assert.equal(model.topics[topic].qos, qos, topic); assert.deepEqual(model.topics[topic].kinds, kinds, topic); }
+  assert.deepEqual(model.topics.meter, { qos: 1, direction: 'edge-to-cloud', kinds: ['METER'] });
   for (const topic of Object.keys(model.topics))
     assert.ok(Object.values(async.channels).some((c) => c.address.endsWith('/' + topic)));
   assert.equal(model.topics['alarm'].qos, 1);

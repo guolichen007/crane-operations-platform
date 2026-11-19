@@ -16,7 +16,7 @@ test('asset types: Go AssetTypes equals the web console ASSET_TYPES', () => {
 test('asset types never overlap the Equipment type registry', () => {
   const go = goList(readFileSync('internal/asset/asset.go', 'utf8'), 'AssetTypes');
   const equipment = [...readFileSync('internal/equipment/types.go', 'utf8').matchAll(/\{"([A-Z0-9_]+)", "/g)].map((m) => m[1]);
-  assert.equal(equipment.length, 43);
+  assert.equal(equipment.length, 51);
   for (const t of go) assert.ok(!equipment.includes(t), `${t} is also an Equipment type`);
 });
 

@@ -1,0 +1,1826 @@
+{
+  "format": "crane-lhk-onboarding-staging-v1",
+  "purpose": "原始55行无损导入暂存及实施核对；不是现有API请求体，不得直接向生产数据库写入。",
+  "source": {
+    "filename": "老河口行车监控平台点位.xlsx",
+    "sha256": "c35f5f39fb06eaeb3248f7b69addbe010bd42166949eb2e95f9b6859e8c6cf87",
+    "sheets": [
+      "Sheet1",
+      "Sheet2",
+      "Sheet3"
+    ],
+    "nonempty_sheet": "Sheet1",
+    "title": "老河口液压抓斗起重机QZ10t-31m"
+  },
+  "asset_draft": {
+    "proposed_project_code": "LHK",
+    "proposed_asset_code": "LHK-CRANE-001",
+    "display_name": "老河口液压抓斗起重机",
+    "model": "QZ10t-31m",
+    "rated_load_t_candidate": 10,
+    "span_m_candidate": 31,
+    "model_interpretation_status": "PENDING_NAMEPLATE_CONFIRMATION",
+    "physical_asset": true,
+    "actual_location": {
+      "place_label": "老河口",
+      "address": null,
+      "longitude": null,
+      "latitude": null,
+      "workshop": null,
+      "coordinate_system": "UNKNOWN"
+    },
+    "serial_number": null,
+    "installed_at": null,
+    "commissioned_at": null,
+    "registration_no": null,
+    "inspection_valid_until": null
+  },
+  "runtime_draft": {
+    "proposed_id": "SIM-LHK-CRANE-001",
+    "sourceMode": "SIMULATION",
+    "real_connected": false,
+    "real_registration_status": "NOT_AUTHORIZED_OR_PROVISIONED",
+    "simulated_values_must_never_update_real_meters": true
+  },
+  "counts": {
+    "total": 55,
+    "equipment_candidate_rows": 51,
+    "operation_rows": 4,
+    "by_group": {
+      "大车机构": 13,
+      "小车机构": 11,
+      "起升机构": 14,
+      "抓斗机构": 5,
+      "门禁系统": 4,
+      "数采系统": 4,
+      "自动作业": 4
+    },
+    "by_raw_type": {
+      "INT": 33,
+      "FLOAT": 21,
+      "STRING": 1
+    },
+    "nonempty_plc_address_rows": 48,
+    "distinct_plc_address_strings": 45,
+    "duplicate_address_groups": {
+      "DB505.DBX10.1": [
+        26,
+        38
+      ],
+      "DB504.DBX54.0": [
+        43,
+        51
+      ],
+      "DB505.DBX0.0": [
+        45,
+        47
+      ]
+    }
+  },
+  "proposed_new_equipment_types": [
+    "BARRIER_GATE",
+    "MOTOR_PROTECTOR",
+    "RADAR",
+    "RFID_READER",
+    "SOLENOID_VALVE",
+    "THERMAL_OVERLOAD_RELAY",
+    "WIRE_ROPE"
+  ],
+  "records": [
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 3,
+      "source_index": 1,
+      "group": "大车机构",
+      "name": "总接触器",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX32.0",
+        "statistic": "次",
+        "brand_model": "施耐德 LC1G205KUEC",
+        "life_text": "电寿命约100万次（AC-3）；机械寿命约1000万次",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "GANTRY-01",
+        "point_code": "LHK-P001",
+        "equipment_type_candidate": "CONTACTOR",
+        "new_type_required": false,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 4,
+      "source_index": 2,
+      "group": "大车机构",
+      "name": "抱闸接触器",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX32.1",
+        "statistic": "次",
+        "brand_model": "施耐德 LC1D09M7C",
+        "life_text": "电寿命约100万次（AC-3）；机械寿命约1000万次",
+        "remarks": "大车运行时间也用这个"
+      },
+      "proposed": {
+        "stable_slot": "GANTRY-02",
+        "point_code": "LHK-P002",
+        "equipment_type_candidate": "CONTACTOR",
+        "new_type_required": false,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ONE_SIGNAL_MULTIPLE_DERIVED_METERS",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 5,
+      "source_index": 3,
+      "group": "大车机构",
+      "name": "变频器状态（通讯）",
+      "raw": {
+        "variable_type": "FLOAT",
+        "plc_address": "DB505.DBX32.2",
+        "statistic": "小时",
+        "brand_model": "ABB\nACS880-01-045A-\n3+N7518+FPNO-21",
+        "life_text": "设计寿命10~15年；电解电容建议5~8年更换",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "GANTRY-03",
+        "point_code": "LHK-P003",
+        "equipment_type_candidate": "VFD",
+        "new_type_required": false,
+        "metric_candidate": "hours",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 6,
+      "source_index": 4,
+      "group": "大车机构",
+      "name": "编码器通讯",
+      "raw": {
+        "variable_type": "FLOAT",
+        "plc_address": "DB505.DBX32.3",
+        "statistic": "小时",
+        "brand_model": "倍加福",
+        "life_text": "MTBF≥50万h；设计寿命≥10年",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "GANTRY-04",
+        "point_code": "LHK-P004",
+        "equipment_type_candidate": "ENCODER",
+        "new_type_required": false,
+        "metric_candidate": "hours",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 7,
+      "source_index": 5,
+      "group": "大车机构",
+      "name": "RFID通讯",
+      "raw": {
+        "variable_type": "FLOAT",
+        "plc_address": "DB505.DBX32.4",
+        "statistic": "小时",
+        "brand_model": "晨控智能",
+        "life_text": "设计寿命8~10年",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "GANTRY-05",
+        "point_code": "LHK-P005",
+        "equipment_type_candidate": "RFID_READER",
+        "new_type_required": true,
+        "metric_candidate": "hours",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 8,
+      "source_index": 6,
+      "group": "大车机构",
+      "name": "1#热继",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX32.5",
+        "statistic": "次",
+        "brand_model": "施耐德 LRD14C+LAD7B106C",
+        "life_text": "约10年（与接触器同期维护）",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "GANTRY-06",
+        "point_code": "LHK-P006",
+        "equipment_type_candidate": "THERMAL_OVERLOAD_RELAY",
+        "new_type_required": true,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 9,
+      "source_index": 7,
+      "group": "大车机构",
+      "name": "2#热继",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX32.6",
+        "statistic": "次",
+        "brand_model": "施耐德 LRD14C+LAD7B106C",
+        "life_text": "约10年（与接触器同期维护）",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "GANTRY-07",
+        "point_code": "LHK-P007",
+        "equipment_type_candidate": "THERMAL_OVERLOAD_RELAY",
+        "new_type_required": true,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 10,
+      "source_index": 8,
+      "group": "大车机构",
+      "name": "3#热继",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX32.7",
+        "statistic": "次",
+        "brand_model": "施耐德 LRD14C+LAD7B106C",
+        "life_text": "约10年（与接触器同期维护）",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "GANTRY-08",
+        "point_code": "LHK-P008",
+        "equipment_type_candidate": "THERMAL_OVERLOAD_RELAY",
+        "new_type_required": true,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 11,
+      "source_index": 9,
+      "group": "大车机构",
+      "name": "4#热继",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX33.0",
+        "statistic": "次",
+        "brand_model": "施耐德 LRD14C+LAD7B106C",
+        "life_text": "约10年（与接触器同期维护）",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "GANTRY-09",
+        "point_code": "LHK-P009",
+        "equipment_type_candidate": "THERMAL_OVERLOAD_RELAY",
+        "new_type_required": true,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 12,
+      "source_index": 10,
+      "group": "大车机构",
+      "name": "机械前限位",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX48.0",
+        "statistic": "次",
+        "brand_model": "国产优质",
+        "life_text": "机械寿命≥100万次",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "GANTRY-10",
+        "point_code": "LHK-P010",
+        "equipment_type_candidate": "LIMIT_SWITCH",
+        "new_type_required": false,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 13,
+      "source_index": 11,
+      "group": "大车机构",
+      "name": "机械前减速",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX48.1",
+        "statistic": "次",
+        "brand_model": "国产优质",
+        "life_text": "机械寿命≥100万次",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "GANTRY-11",
+        "point_code": "LHK-P011",
+        "equipment_type_candidate": "LIMIT_SWITCH",
+        "new_type_required": false,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 14,
+      "source_index": 12,
+      "group": "大车机构",
+      "name": "机械后限位",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX48.2",
+        "statistic": "次",
+        "brand_model": "国产优质",
+        "life_text": "机械寿命≥100万次",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "GANTRY-12",
+        "point_code": "LHK-P012",
+        "equipment_type_candidate": "LIMIT_SWITCH",
+        "new_type_required": false,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 15,
+      "source_index": 13,
+      "group": "大车机构",
+      "name": "机械后减速",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX48.3",
+        "statistic": "次",
+        "brand_model": "国产优质",
+        "life_text": "机械寿命≥100万次",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "GANTRY-13",
+        "point_code": "LHK-P013",
+        "equipment_type_candidate": "LIMIT_SWITCH",
+        "new_type_required": false,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 16,
+      "source_index": 14,
+      "group": "小车机构",
+      "name": "总接触器",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX50.0",
+        "statistic": "次",
+        "brand_model": "施耐德 LC1D18M7C",
+        "life_text": "电寿命约100万次（AC-3）；机械寿命约1000万次",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "TROLLEY-14",
+        "point_code": "LHK-P014",
+        "equipment_type_candidate": "CONTACTOR",
+        "new_type_required": false,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 17,
+      "source_index": 15,
+      "group": "小车机构",
+      "name": "抱闸接触器",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX50.1",
+        "statistic": "次",
+        "brand_model": "施耐德 LC1D09M7C",
+        "life_text": "电寿命约100万次（AC-3）；机械寿命约1000万次",
+        "remarks": "小车运行时间也用这个"
+      },
+      "proposed": {
+        "stable_slot": "TROLLEY-15",
+        "point_code": "LHK-P015",
+        "equipment_type_candidate": "CONTACTOR",
+        "new_type_required": false,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ONE_SIGNAL_MULTIPLE_DERIVED_METERS",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 18,
+      "source_index": 16,
+      "group": "小车机构",
+      "name": "变频器状态（通讯）",
+      "raw": {
+        "variable_type": "FLOAT",
+        "plc_address": "DB505.DBX50.2",
+        "statistic": "小时",
+        "brand_model": "ABB\nACS880-01-025A-\n3+N7518+FPNO-21",
+        "life_text": "设计寿命10~15年；电解电容建议5~8年更换",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "TROLLEY-16",
+        "point_code": "LHK-P016",
+        "equipment_type_candidate": "VFD",
+        "new_type_required": false,
+        "metric_candidate": "hours",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 19,
+      "source_index": 17,
+      "group": "小车机构",
+      "name": "编码器通讯",
+      "raw": {
+        "variable_type": "FLOAT",
+        "plc_address": "DB505.DBX50.3",
+        "statistic": "小时",
+        "brand_model": "倍加福",
+        "life_text": "MTBF≥50万h；设计寿命≥10年",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "TROLLEY-17",
+        "point_code": "LHK-P017",
+        "equipment_type_candidate": "ENCODER",
+        "new_type_required": false,
+        "metric_candidate": "hours",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 20,
+      "source_index": 18,
+      "group": "小车机构",
+      "name": "RFID通讯",
+      "raw": {
+        "variable_type": "FLOAT",
+        "plc_address": "DB505.DBX50.4",
+        "statistic": "小时",
+        "brand_model": "晨控智能",
+        "life_text": "设计寿命8~10年",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "TROLLEY-18",
+        "point_code": "LHK-P018",
+        "equipment_type_candidate": "RFID_READER",
+        "new_type_required": true,
+        "metric_candidate": "hours",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 21,
+      "source_index": 19,
+      "group": "小车机构",
+      "name": "1#热继",
+      "raw": {
+        "variable_type": "FLOAT",
+        "plc_address": "DB505.DBX50.5",
+        "statistic": "小时",
+        "brand_model": "施耐德 LRD10C+LAD7B106C",
+        "life_text": "约10年（与接触器同期维护）",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "TROLLEY-19",
+        "point_code": "LHK-P019",
+        "equipment_type_candidate": "THERMAL_OVERLOAD_RELAY",
+        "new_type_required": true,
+        "metric_candidate": "hours",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "CHECK_THERMAL_RELAY_HOURS_VS_TRIP_COUNT",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 22,
+      "source_index": 20,
+      "group": "小车机构",
+      "name": "2#热继",
+      "raw": {
+        "variable_type": "FLOAT",
+        "plc_address": "DB505.DBX50.6",
+        "statistic": "小时",
+        "brand_model": "施耐德 LRD10C+LAD7B106C",
+        "life_text": "约10年（与接触器同期维护）",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "TROLLEY-20",
+        "point_code": "LHK-P020",
+        "equipment_type_candidate": "THERMAL_OVERLOAD_RELAY",
+        "new_type_required": true,
+        "metric_candidate": "hours",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "CHECK_THERMAL_RELAY_HOURS_VS_TRIP_COUNT",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 23,
+      "source_index": 21,
+      "group": "小车机构",
+      "name": "机械左限位",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX66",
+        "statistic": "次",
+        "brand_model": "国产优质",
+        "life_text": "机械寿命≥100万次",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "TROLLEY-21",
+        "point_code": "LHK-P021",
+        "equipment_type_candidate": "LIMIT_SWITCH",
+        "new_type_required": false,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "MISSING_BIT_INDEX",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 24,
+      "source_index": 22,
+      "group": "小车机构",
+      "name": "机械左减速",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX66.1",
+        "statistic": "次",
+        "brand_model": "国产优质",
+        "life_text": "机械寿命≥100万次",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "TROLLEY-22",
+        "point_code": "LHK-P022",
+        "equipment_type_candidate": "LIMIT_SWITCH",
+        "new_type_required": false,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 25,
+      "source_index": 23,
+      "group": "小车机构",
+      "name": "机械右限位",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX66.2",
+        "statistic": "次",
+        "brand_model": "国产优质",
+        "life_text": "机械寿命≥100万次",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "TROLLEY-23",
+        "point_code": "LHK-P023",
+        "equipment_type_candidate": "LIMIT_SWITCH",
+        "new_type_required": false,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 26,
+      "source_index": 24,
+      "group": "小车机构",
+      "name": "机械右减速",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX66.3",
+        "statistic": "次",
+        "brand_model": "国产优质",
+        "life_text": "机械寿命≥100万次",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "TROLLEY-24",
+        "point_code": "LHK-P024",
+        "equipment_type_candidate": "LIMIT_SWITCH",
+        "new_type_required": false,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 27,
+      "source_index": 25,
+      "group": "起升机构",
+      "name": "总接触器",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX10.0",
+        "statistic": "次",
+        "brand_model": "施耐德 LC1D95M7C",
+        "life_text": "电寿命约100万次（AC-3）；机械寿命约1000万次",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "HOIST-25",
+        "point_code": "LHK-P025",
+        "equipment_type_candidate": "CONTACTOR",
+        "new_type_required": false,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 28,
+      "source_index": 26,
+      "group": "起升机构",
+      "name": "抱闸接触器",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX10.1",
+        "statistic": "次",
+        "brand_model": "施耐德 LC1D09M7C",
+        "life_text": "电寿命约100万次（AC-3）；机械寿命约1000万次",
+        "remarks": "起升运行时间也用这个"
+      },
+      "proposed": {
+        "stable_slot": "HOIST-26",
+        "point_code": "LHK-P026",
+        "equipment_type_candidate": "CONTACTOR",
+        "new_type_required": false,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ONE_SIGNAL_MULTIPLE_DERIVED_METERS",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN",
+        "ADDRESS_SHARED_REVIEW_REQUIRED"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 29,
+      "source_index": 27,
+      "group": "起升机构",
+      "name": "风机接触器",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX10.2",
+        "statistic": "次",
+        "brand_model": "施耐德 LC1D09M7C",
+        "life_text": "电寿命约100万次（AC-3）；机械寿命约1000万次",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "HOIST-27",
+        "point_code": "LHK-P027",
+        "equipment_type_candidate": "CONTACTOR",
+        "new_type_required": false,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 30,
+      "source_index": 28,
+      "group": "起升机构",
+      "name": "变频器状态（通讯）",
+      "raw": {
+        "variable_type": "FLOAT",
+        "plc_address": "DB505.DBX10.3",
+        "statistic": "小时",
+        "brand_model": "ABB\nACS880-01-169A-\n3+D150+N7518+FPNO-21+FEN-\n31",
+        "life_text": "设计寿命10~15年；电解电容建议5~8年更换",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "HOIST-28",
+        "point_code": "LHK-P028",
+        "equipment_type_candidate": "VFD",
+        "new_type_required": false,
+        "metric_candidate": "hours",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 31,
+      "source_index": 29,
+      "group": "起升机构",
+      "name": "编码器通讯",
+      "raw": {
+        "variable_type": "FLOAT",
+        "plc_address": "DB505.DBX10.4",
+        "statistic": "小时",
+        "brand_model": "倍加福",
+        "life_text": "MTBF≥50万h；设计寿命≥10年",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "HOIST-29",
+        "point_code": "LHK-P029",
+        "equipment_type_candidate": "ENCODER",
+        "new_type_required": false,
+        "metric_candidate": "hours",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 32,
+      "source_index": 30,
+      "group": "起升机构",
+      "name": "机械上限位",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX30.0",
+        "statistic": "次",
+        "brand_model": "国产优质",
+        "life_text": "机械寿命≥100万次",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "HOIST-30",
+        "point_code": "LHK-P030",
+        "equipment_type_candidate": "LIMIT_SWITCH",
+        "new_type_required": false,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 33,
+      "source_index": 31,
+      "group": "起升机构",
+      "name": "机械上减速",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX30.1",
+        "statistic": "次",
+        "brand_model": "国产优质",
+        "life_text": "机械寿命≥100万次",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "HOIST-31",
+        "point_code": "LHK-P031",
+        "equipment_type_candidate": "LIMIT_SWITCH",
+        "new_type_required": false,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 34,
+      "source_index": 32,
+      "group": "起升机构",
+      "name": "机械下限位",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX30.2",
+        "statistic": "次",
+        "brand_model": "国产优质",
+        "life_text": "机械寿命≥100万次",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "HOIST-32",
+        "point_code": "LHK-P032",
+        "equipment_type_candidate": "LIMIT_SWITCH",
+        "new_type_required": false,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 35,
+      "source_index": 33,
+      "group": "起升机构",
+      "name": "机械下减速",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX30.3",
+        "statistic": "次",
+        "brand_model": "国产优质",
+        "life_text": "机械寿命≥100万次",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "HOIST-33",
+        "point_code": "LHK-P033",
+        "equipment_type_candidate": "LIMIT_SWITCH",
+        "new_type_required": false,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 36,
+      "source_index": 34,
+      "group": "起升机构",
+      "name": "左卷筒脱槽限位",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX31.1",
+        "statistic": "次",
+        "brand_model": "国产优质",
+        "life_text": "机械寿命≥100万次",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "HOIST-34",
+        "point_code": "LHK-P034",
+        "equipment_type_candidate": "LIMIT_SWITCH",
+        "new_type_required": false,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 37,
+      "source_index": 35,
+      "group": "起升机构",
+      "name": "右卷筒脱槽限位",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX31.2",
+        "statistic": "次",
+        "brand_model": "国产优质",
+        "life_text": "机械寿命≥100万次",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "HOIST-35",
+        "point_code": "LHK-P035",
+        "equipment_type_candidate": "LIMIT_SWITCH",
+        "new_type_required": false,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 38,
+      "source_index": 36,
+      "group": "起升机构",
+      "name": "左卷筒出卷筒限位",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX31.3",
+        "statistic": "次",
+        "brand_model": "国产优质",
+        "life_text": "机械寿命≥100万次",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "HOIST-36",
+        "point_code": "LHK-P036",
+        "equipment_type_candidate": "LIMIT_SWITCH",
+        "new_type_required": false,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 39,
+      "source_index": 37,
+      "group": "起升机构",
+      "name": "右卷筒出卷筒限位",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX31.4",
+        "statistic": "次",
+        "brand_model": "国产优质",
+        "life_text": "机械寿命≥100万次",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "HOIST-37",
+        "point_code": "LHK-P037",
+        "equipment_type_candidate": "LIMIT_SWITCH",
+        "new_type_required": false,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 40,
+      "source_index": 38,
+      "group": "起升机构",
+      "name": "钢丝绳",
+      "raw": {
+        "variable_type": "FLOAT",
+        "plc_address": "DB505.DBX10.1",
+        "statistic": "时间",
+        "brand_model": "φ16进口钢丝绳 1+8+8*k26-φ16-2160",
+        "life_text": "约2~3年；按GB/T 5972检查断丝/磨损报废",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "HOIST-38",
+        "point_code": "LHK-P038",
+        "equipment_type_candidate": "WIRE_ROPE",
+        "new_type_required": true,
+        "metric_candidate": "hours",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "SHARED_HOIST_BRAKE_SOURCE",
+        "ROPE_COUNT_AND_INSTALLATION_UNKNOWN",
+        "INSPECTION_REQUIRED_NO_AUTO_DISCARD",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN",
+        "ADDRESS_SHARED_REVIEW_REQUIRED"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 41,
+      "source_index": 39,
+      "group": "抓斗机构",
+      "name": "抓斗接触器",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX70.0",
+        "statistic": "次",
+        "brand_model": "施耐德 LC1D65M7C",
+        "life_text": "电寿命约100万次（AC-3）；机械寿命约1000万次",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "GRAB-39",
+        "point_code": "LHK-P039",
+        "equipment_type_candidate": "CONTACTOR",
+        "new_type_required": false,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 42,
+      "source_index": 40,
+      "group": "抓斗机构",
+      "name": "电机保护器",
+      "raw": {
+        "variable_type": "FLOAT",
+        "plc_address": "DB505.DBX70.1",
+        "statistic": "小时",
+        "brand_model": "正泰 NJBK2-200/50",
+        "life_text": "约10年",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "GRAB-40",
+        "point_code": "LHK-P040",
+        "equipment_type_candidate": "MOTOR_PROTECTOR",
+        "new_type_required": true,
+        "metric_candidate": "hours",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 43,
+      "source_index": 41,
+      "group": "抓斗机构",
+      "name": "开电磁阀",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX70.2",
+        "statistic": "次",
+        "brand_model": "亚德客",
+        "life_text": "机械寿命≥3000万次",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "GRAB-41",
+        "point_code": "LHK-P041",
+        "equipment_type_candidate": "SOLENOID_VALVE",
+        "new_type_required": true,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 44,
+      "source_index": 42,
+      "group": "抓斗机构",
+      "name": "关电磁阀",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX70.3",
+        "statistic": "次",
+        "brand_model": "亚德客",
+        "life_text": "机械寿命≥3000万次",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "GRAB-42",
+        "point_code": "LHK-P042",
+        "equipment_type_candidate": "SOLENOID_VALVE",
+        "new_type_required": true,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 45,
+      "source_index": 43,
+      "group": "抓斗机构",
+      "name": "称重传感器",
+      "raw": {
+        "variable_type": "FLOAT",
+        "plc_address": "DB504.DBX54.0",
+        "statistic": "小时",
+        "brand_model": "10吨SBT-CW模块型 恒达",
+        "life_text": "设计寿命≥10年；定期校准",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "GRAB-43",
+        "point_code": "LHK-P043",
+        "equipment_type_candidate": "LOAD_CELL",
+        "new_type_required": false,
+        "metric_candidate": "hours",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "DUPLICATE_ADDRESS_DIFFERENT_EQUIPMENT",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN",
+        "ADDRESS_SHARED_REVIEW_REQUIRED"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 46,
+      "source_index": 44,
+      "group": "门禁系统",
+      "name": "1#门道闸",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX6.1",
+        "statistic": "次",
+        "brand_model": "海康威视",
+        "life_text": "起落寿命≥500万次",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "ACCESS-44",
+        "point_code": "LHK-P044",
+        "equipment_type_candidate": "BARRIER_GATE",
+        "new_type_required": true,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 47,
+      "source_index": 45,
+      "group": "门禁系统",
+      "name": "1#门车检雷达",
+      "raw": {
+        "variable_type": "FLOAT",
+        "plc_address": "DB505.DBX0.0",
+        "statistic": "小时",
+        "brand_model": "国产优质",
+        "life_text": "约8年",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "ACCESS-45",
+        "point_code": "LHK-P045",
+        "equipment_type_candidate": "RADAR",
+        "new_type_required": true,
+        "metric_candidate": "hours",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "DUPLICATE_ADDRESS_MAY_BE_SHARED_STATUS",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN",
+        "ADDRESS_SHARED_REVIEW_REQUIRED"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 48,
+      "source_index": 46,
+      "group": "门禁系统",
+      "name": "2#门道闸",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": "DB505.DBX8.1",
+        "statistic": "次",
+        "brand_model": "海康威视",
+        "life_text": "起落寿命≥500万次",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "ACCESS-46",
+        "point_code": "LHK-P046",
+        "equipment_type_candidate": "BARRIER_GATE",
+        "new_type_required": true,
+        "metric_candidate": "cycles",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 49,
+      "source_index": 47,
+      "group": "门禁系统",
+      "name": "2#门车检雷达",
+      "raw": {
+        "variable_type": "FLOAT",
+        "plc_address": "DB505.DBX0.0",
+        "statistic": "小时",
+        "brand_model": "国产优质",
+        "life_text": "约8年",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "ACCESS-47",
+        "point_code": "LHK-P047",
+        "equipment_type_candidate": "RADAR",
+        "new_type_required": true,
+        "metric_candidate": "hours",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "DUPLICATE_ADDRESS_MAY_BE_SHARED_STATUS",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN",
+        "ADDRESS_SHARED_REVIEW_REQUIRED"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 50,
+      "source_index": 48,
+      "group": "数采系统",
+      "name": "1#激光点云雷达",
+      "raw": {
+        "variable_type": "FLOAT",
+        "plc_address": "/",
+        "statistic": "小时",
+        "brand_model": "SICK",
+        "life_text": "激光光源寿命≥5万h；整机≥8年",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "ACQ-48",
+        "point_code": "LHK-P048",
+        "equipment_type_candidate": "LIDAR_3D",
+        "new_type_required": false,
+        "metric_candidate": "hours",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "NON_PLC_SOURCE_UNKNOWN",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 51,
+      "source_index": 49,
+      "group": "数采系统",
+      "name": "2#激光点云雷达",
+      "raw": {
+        "variable_type": "FLOAT",
+        "plc_address": "/",
+        "statistic": "小时",
+        "brand_model": "SICK",
+        "life_text": "激光光源寿命≥5万h；整机≥8年",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "ACQ-49",
+        "point_code": "LHK-P049",
+        "equipment_type_candidate": "LIDAR_3D",
+        "new_type_required": false,
+        "metric_candidate": "hours",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "NON_PLC_SOURCE_UNKNOWN",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 52,
+      "source_index": 50,
+      "group": "数采系统",
+      "name": "进料口激光雷达",
+      "raw": {
+        "variable_type": "FLOAT",
+        "plc_address": "/",
+        "statistic": "小时",
+        "brand_model": "速腾",
+        "life_text": "激光光源寿命≥5万h；整机约8年",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "ACQ-50",
+        "point_code": "LHK-P050",
+        "equipment_type_candidate": null,
+        "new_type_required": false,
+        "metric_candidate": "hours",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "NON_PLC_SOURCE_UNKNOWN",
+        "LIDAR_2D_OR_3D_UNCONFIRMED",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 53,
+      "source_index": 51,
+      "group": "数采系统",
+      "name": "投料口毫米波雷达",
+      "raw": {
+        "variable_type": "FLOAT",
+        "plc_address": "DB504.DBX54.0",
+        "statistic": "小时",
+        "brand_model": "科星创",
+        "life_text": "约8~10年",
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": "ACQ-51",
+        "point_code": "LHK-P051",
+        "equipment_type_candidate": "RADAR",
+        "new_type_required": true,
+        "metric_candidate": "hours",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "DRAFT_UNAPPROVED",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE",
+        "DUPLICATE_ADDRESS_DIFFERENT_EQUIPMENT",
+        "ACTUAL_INSTALLATION_DATE_AND_COUNTER_BASELINE_UNKNOWN",
+        "ADDRESS_SHARED_REVIEW_REQUIRED"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 54,
+      "source_index": 52,
+      "group": "自动作业",
+      "name": "当日自动作业时长",
+      "raw": {
+        "variable_type": "FLOAT",
+        "plc_address": null,
+        "statistic": "小时",
+        "brand_model": null,
+        "life_text": null,
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": null,
+        "point_code": "LHK-P052",
+        "equipment_type_candidate": null,
+        "new_type_required": false,
+        "metric_candidate": "daily_auto_hours",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "NOT_APPLICABLE",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "SOURCE_NOT_SPECIFIED"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 55,
+      "source_index": 53,
+      "group": "自动作业",
+      "name": "当日作业吨数",
+      "raw": {
+        "variable_type": "FLOAT",
+        "plc_address": null,
+        "statistic": "小时",
+        "brand_model": null,
+        "life_text": null,
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": null,
+        "point_code": "LHK-P053",
+        "equipment_type_candidate": null,
+        "new_type_required": false,
+        "metric_candidate": "production_tonnes",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "NOT_APPLICABLE",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "SOURCE_NOT_SPECIFIED",
+        "UNIT_CONFLICT_HOURS_VS_TONNES"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 56,
+      "source_index": 54,
+      "group": "自动作业",
+      "name": "当日作业次数",
+      "raw": {
+        "variable_type": "INT",
+        "plc_address": null,
+        "statistic": "次",
+        "brand_model": null,
+        "life_text": null,
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": null,
+        "point_code": "LHK-P054",
+        "equipment_type_candidate": null,
+        "new_type_required": false,
+        "metric_candidate": "daily_job_count",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "NOT_APPLICABLE",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "SOURCE_NOT_SPECIFIED"
+      ]
+    },
+    {
+      "source_sheet": "Sheet1",
+      "source_row": 57,
+      "source_index": 55,
+      "group": "自动作业",
+      "name": "历史故障列表",
+      "raw": {
+        "variable_type": "STRING",
+        "plc_address": null,
+        "statistic": null,
+        "brand_model": null,
+        "life_text": null,
+        "remarks": null
+      },
+      "proposed": {
+        "stable_slot": null,
+        "point_code": "LHK-P055",
+        "equipment_type_candidate": null,
+        "new_type_required": false,
+        "metric_candidate": "fault_events",
+        "physical_input_status": "UNVERIFIED",
+        "rule_status": "NOT_APPLICABLE",
+        "actual_baseline": null,
+        "installed_at": null
+      },
+      "review_flags": [
+        "SOURCE_NOT_SPECIFIED"
+      ]
+    }
+  ],
+  "simulation_acceptance": {
+    "mode": "SIMULATION_ONLY",
+    "clock": "injected test clock / relative time, never actual commissioning date",
+    "production_thresholds_approved": false,
+    "scenarios": [
+      {
+        "id": "COUNT_80_90_100",
+        "point_index": 1,
+        "metric": "cycles",
+        "simulation_only_limit": 1000000,
+        "samples": [
+          0,
+          799999,
+          800000,
+          899999,
+          900000,
+          999999,
+          1000000,
+          1000001
+        ],
+        "expected": "阈值边界及同一告警防重；阈值只是样板测试"
+      },
+      {
+        "id": "HOURS_GAP",
+        "point_index": 3,
+        "metric": "hours",
+        "samples": [
+          100,
+          101,
+          null,
+          103,
+          0
+        ],
+        "expected": "缺失不归零；下降触发计数器复核而非直接认定换件"
+      },
+      {
+        "id": "SHARED_HOIST",
+        "point_indices": [
+          26,
+          38
+        ],
+        "expected": "同一原始源可派生多个明确来源的指标，绳使用量仅代理量，不自动判定报废"
+      },
+      {
+        "id": "TIME_DUE",
+        "point_index": 43,
+        "relative_days_to_due": [
+          31,
+          30,
+          8,
+          7,
+          1,
+          0,
+          -1
+        ],
+        "expected": "提前预警、当天到期、逾期；无遥测亦推进"
+      },
+      {
+        "id": "CALENDAR_AND_METER",
+        "point_index": 1,
+        "expected": "先到先触发，重复数据和重启不重复事件"
+      },
+      {
+        "id": "SIM_REAL_ISOLATION",
+        "expected": "模拟计量、工单和告警不得进入真实使用量、合规记录或正式报警统计"
+      }
+    ]
+  }
+}

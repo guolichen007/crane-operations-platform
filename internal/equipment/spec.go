@@ -73,6 +73,15 @@ var specFileByType = map[string]string{
 	"UPS":                   "generic",
 	"TRANSFORMER":           "generic",
 	"CONDUCTOR_RAIL":        "generic",
+	// R9
+	"THERMAL_OVERLOAD_RELAY": "generic",
+	"MOTOR_PROTECTOR":        "generic",
+	"SOLENOID_VALVE":         "generic",
+	"RFID_READER":            "generic",
+	"RADAR":                  "generic",
+	"LIDAR":                  "generic",
+	"BARRIER_GATE":           "generic",
+	"WIRE_ROPE":              "generic",
 }
 
 // specFileFor returns the schema file for typeCode, if registered.
