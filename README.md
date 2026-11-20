@@ -45,3 +45,11 @@ Phase1-A0 已 fast-forward 封板 main=d827891375cd3665041936890ec21b70f52b2b9c�
 生产说明见[身份权限模型](docs/04-身份与权限/Phase1-A1生产身份与权限模型.md)、[生产部署手册](docs/08-部署运维与成本/Phase1-A1生产部署手册.md)、[备份恢复](docs/08-部署运维与成本/Phase1-A1备份恢复手册.md)、[安全反证](docs/07-测试与验收/Phase1-A1安全反证矩阵.md)与[威胁模型](docs/09-安全/Phase1-A1威胁模型.md)。验证入口：node tools/task.mjs production-contract、a1-test、a1-production-test；Windows 本地候选镜像使用 node tools/build-production.mjs，正式镜像仅认完整 CI 的 release-manifest.json 与 registry digest。
 
 已完成公开基线以baseline/phase0、baseline/t0.5、baseline/s3.5、baseline/phase1-a0四个annotated tag保留；已被main包含的旧功能分支可清理。早期客户版历史仅保留在本地私有bundle，不能推送其tag或历史；禁止git push --all、--mirror或批量--tags。
+
+## 项目报备中心（Baobei，独立产品）
+
+独立产品，只在 `product/baobei-v1` 分支，不合并 main。**V1.1.0 已正式发布**（Tag `baobei-v1.1.0` → `805a70b`，[Release](https://github.com/guolichen007/crane-operations-platform/releases/tag/baobei-v1.1.0)），当前处于生产维护模式，功能已冻结。
+
+- **入口**：[运行状态（00 号 SSOT）](docs/项目报备中心/00-项目总览与SSOT.md) · [文档导航](docs/项目报备中心/README.md) · [维护准则](docs/项目报备中心/61-V1.1维护准则.md) · [工程约束](AGENTS.md)
+- **代码**：`apps/project-intake-web`（Web）、`services/project-intake-api`（API）、`deploy/baobei`（部署）、`tests/baobei`（测试）、`contracts/project-intake`（接口契约）
+- **验证**：`node tools/task.mjs baobei <contract|lint|test|build|integration|e2e|security|compose>`

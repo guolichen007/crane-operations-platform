@@ -32,7 +32,9 @@ MODE=PRODUCTION_MAINTENANCE
 | 运营遗留 | SEC-EX-001 到 2026-12-18；Keycloak 专用网络接入在 KC 重建后需恢复；旧 KC 测试用户停用；6 名员工首次认领；明细见 57 号 §5 |
 | 模式 | 功能冻结，研发关闭；只做运行维护与必要安全补丁 |
 
-GitHub Release “Baobei V1.1 — Production Release”：待确认（截至 2026-11-20 公开接口未见已发布的 Release）。
+**正式发布**：GitHub Release “Baobei V1.1 — Production Release” 已发布（2026-11-20，非 Draft，5 个附件，SHA256 已核对）：https://github.com/guolichen007/crane-operations-platform/releases/tag/baobei-v1.1.0
+
+**最终验收依据**：Release 附件 `baobei-v1.1.0-acceptance-signed.md`（即 57 号，OWNER 2026-11-19 签署 GO）。57 号中“待服务器回执原文”的逐项明细只用于归档补充，不是产品阻断项；此前各文档中的“待确认”状态均以本签署为准结束。
 
 ## 正式交付文档（V1.1）
 
@@ -43,7 +45,9 @@ GitHub Release “Baobei V1.1 — Production Release”：待确认（截至 202
 | [58-V1.1生产初始化说明](58-V1.1生产初始化说明.md) | 7 人 1 团队正式初始化（受保护工具、备份、干净库、切换、回退） |
 | [59-V1.1用户使用手册](59-V1.1用户使用手册.md) | 管理员、总监、主管、销售四类用户 |
 | [60-V1.1部署回滚与安全运维](60-V1.1部署回滚与安全运维.md) | 日常运维、部署、回滚、备份恢复、安全基线 |
+| [61-V1.1维护准则](61-V1.1维护准则.md) | 缺陷处理流程、补丁与 Tag 规则、V1.2 候选清单 |
 | [CHANGELOG](CHANGELOG.md) | 版本变更记录 |
+| [文档导航](README.md) | 产品、工程、测试、发布、运维分类与 01–55 历史索引 |
 
 历史研发文档（01–55 号）保留原文作为证据，不再代表现行状态。
 
