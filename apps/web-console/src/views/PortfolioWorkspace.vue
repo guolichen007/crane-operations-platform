@@ -186,7 +186,6 @@ const fmtDate = (v: string | null) => (v ? new Date(v).toLocaleDateString('zh-CN
   <section class="workspace-page portfolio-workspace" data-testid="portfolio-workspace">
     <header class="workspace-page-head">
       <div>
-        <span class="eyebrow">PORTFOLIO / 项目组合</span>
         <h1>项目组合与资源排期</h1>
         <p>项目登记 → 评审 → 规划 → 批准生成正式项目；项目授权、资产登记与地图定位是之后的独立步骤</p>
       </div>

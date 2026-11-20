@@ -80,7 +80,7 @@ test('首页权威统计：KPI 等于本账号 summary；同一浏览器退出�
     realConnected: String(api.body.metrics.real.connected),
     noRuntime: String(api.body.metrics.assets.noRuntime),
   });
-  await expect(page.locator('[data-kpi=real-connected] .home-kpi-label')).toHaveText('REAL 在线');
+  await expect(page.locator('[data-kpi=real-connected] .home-kpi-label')).toHaveText('真实在线');
   // Logout (real Keycloak end-session), then the zero-grant account in the SAME browser context.
   await page.getByRole('button', { name: '退出', exact: true }).click();
   await page.locator('#kc-logout').click();

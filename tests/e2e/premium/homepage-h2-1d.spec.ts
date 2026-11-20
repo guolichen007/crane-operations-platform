@@ -59,7 +59,7 @@ test('1/2/3 五张 KPI 精确等于 summary 字段；REAL 在线不从本地 Sha
   await expect(kpis(page)).toHaveAttribute('data-state', 'ready');
   const expected = { registered: '37台', 'real-connected': '4台', 'alarm-real': '2台', 'pending-review': '3台', 'no-runtime': '11台' };
   for (const [id, v] of Object.entries(expected)) await expect(kpi(page, id)).toHaveText(v);
-  await expect(page.locator('[data-kpi=real-connected] .home-kpi-label')).toHaveText('REAL 在线');
+  await expect(page.locator('[data-kpi=real-connected] .home-kpi-label')).toHaveText('真实在线');
   await expect(kpis(page)).not.toContainText('真实运行');
   await expect(page.locator('[data-kpi]')).toHaveCount(5);
   // Attention: independent fields, each its own number.
@@ -75,7 +75,7 @@ test('3 REAL 离线 + SIM 在线告警：服务端 REAL 在线 0、REAL 告警 0
   await expect(kpi(page, 'real-connected')).toHaveText('0台');
   await expect(kpi(page, 'alarm-real')).toHaveText('0台');
   await expect(attention(page, 'real-offline')).toHaveText('1');
-  await expect(page.locator('[data-kpi=real-connected]')).toContainText('REAL 绑定 1 · SIM 绑定 1（SIM 不计入）');
+  await expect(page.locator('[data-kpi=real-connected]')).toContainText('真实绑定 1 · 模拟绑定 1（模拟不计入）');
 });
 
 test('4 当前告警 0、历史 150 条：卡片 0，时间窗总数 150（不是最近 100 条明细长度）；切换时间窗重新请求', async ({ page }) => {
@@ -269,7 +269,7 @@ test('待复核：显示「前 N 条 / 共 M 台」，每条打开有权限的�
   await expect(page.locator('.review-asset')).toHaveCount(100);
   await expect(page.getByTestId('review-list')).not.toContainText('查看全部');
   await expect(page.locator('.review-asset').first()).toHaveAttribute('href', '#/assets/ASSET-R000');
-  await expect(page.locator('.review-asset').first()).toContainText('REAL 告警');
+  await expect(page.locator('.review-asset').first()).toContainText('真实告警');
 });
 
 test('业务钻取：非精确 KPI 打开同范围 Inventory 清单并明确标注「不是精确筛选」；登记卡无此标注', async ({ page }) => {
@@ -279,7 +279,7 @@ test('业务钻取：非精确 KPI 打开同范围 Inventory 清单并明确标�
   await page.locator('[data-kpi=real-connected]').click();
   await expect(page).toHaveURL(/#\/devices\?region=330000&kpi=real-connected/);
   await expect(page.getByTestId('inventory-kpi-note')).toContainText('不是');
-  await expect(page.getByTestId('inventory-kpi-note')).toContainText('REAL 在线');
+  await expect(page.getByTestId('inventory-kpi-note')).toContainText('真实在线');
   await page.goBack();
   await page.locator('[data-kpi=registered]').click();
   await expect(page).toHaveURL(/#\/devices\?region=330000$/);

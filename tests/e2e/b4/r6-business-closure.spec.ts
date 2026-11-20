@@ -35,17 +35,17 @@ test('@r6-empty-types 全新 schema12 类型目录为空：安装入口提示管
   const a = await createAsset(page, csrf, { projectId: 'P001', assetType: 'CRANE', assetCode: code('CRN', 'R6-EMPTY') });
   await page.goto(`/#/assets/${a.id}`);
   await detail(page).locator('.tabs').getByRole('button', { name: '设备', exact: true }).click();
-  await detail(page).getByRole('button', { name: '安装 Equipment', exact: true }).click();
+  await detail(page).getByRole('button', { name: '安装器件', exact: true }).click();
   const form = page.getByTestId('equipment-create-form');
   await expect(form.getByTestId('equipment-types-empty')).toHaveText('尚未配置可安装的设备类型，请联系管理员初始化类型目录');
-  await form.getByLabel('Equipment 编号').fill(code('EQ', 'R6-EMPTY'));
+  await form.getByLabel('器件编号').fill(code('EQ', 'R6-EMPTY'));
   await expect(form.getByTestId('equipment-create-submit')).toBeDisabled();
   await page.screenshot({ path: 'test-results-r6/r6-empty-types.png' });
   const direct = await apiJSON(page, 'POST', `/api/v1/assets/${a.id}/equipment`, csrf, { equipmentCode: code('EQ', 'R6-DIRECT'), typeCode: 'MOTOR', criticality: 'MEDIUM', administrativeState: 'IN_SERVICE', spec: {} });
   expect(direct.status).toBe(422);
 });
 
-test('R6 初始化后：资产当前位置空态 → 界面移动 → 完整路径与历史 → 位置中心定位 → 安装 Equipment', async ({ page }) => {
+test('R6 初始化后：资产当前位置空态 → 界面移动 → 完整路径与历史 → 位置中心定位 → 安装器件', async ({ page }) => {
   await login(page, 'b4-admin');
   await assertWriteTarget(page);
   const csrf = await sessionCsrf(page);
@@ -64,7 +64,7 @@ test('R6 初始化后：资产当前位置空态 → 界面移动 → 完整路�
   const moveForm = page.getByTestId('asset-move-form');
   for (const [name, id] of [[ws1Name, ws1.json!.id], [ws2Name, ws2.json!.id]] as const) {
     await actions(page).getByRole('button', { name: '移动', exact: true }).click();
-    await moveForm.getByLabel('目标位置').selectOption({ label: `${name}（WORKSHOP）` });
+    await moveForm.getByLabel('目标位置').selectOption({ label: `${name}（车间）` });
     await moveForm.getByRole('button', { name: '移动', exact: true }).click();
     await expect(moveForm).toBeHidden();
     await expect(section(page).getByTestId('asset-location-current')).toHaveAttribute('data-location-id', String(id));
@@ -99,12 +99,12 @@ test('R6 初始化后：资产当前位置空态 → 界面移动 → 完整路�
   // Equipment business loop on the initialized directory.
   await page.goto(`/#/assets/${a.id}`);
   await detail(page).locator('.tabs').getByRole('button', { name: '设备', exact: true }).click();
-  await detail(page).getByRole('button', { name: '安装 Equipment', exact: true }).click();
+  await detail(page).getByRole('button', { name: '安装器件', exact: true }).click();
   const form = page.getByTestId('equipment-create-form');
   await expect(form.getByTestId('equipment-types-empty')).toHaveCount(0);
   await form.getByLabel('设备类型选择').selectOption('MOTOR');
   const eqCode = code('EQ', 'R6-MOTOR');
-  await form.getByLabel('Equipment 编号').fill(eqCode);
+  await form.getByLabel('器件编号').fill(eqCode);
   await form.getByTestId('equipment-create-submit').click();
   await expect(form).toBeHidden();
   await expect(detail(page).locator('table.data-table')).toContainText(eqCode);

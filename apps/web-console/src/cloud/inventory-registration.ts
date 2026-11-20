@@ -7,6 +7,7 @@
 import type { InventoryProject, ProjectInventoryRegistration } from '../../../../contracts/typescript/types.gen';
 import type { GeoManifest, GeoManifestEntry } from '../scene/geo-manifest';
 import { ApiError, NetworkWriteError } from './client';
+import { errorZh, validationZh } from './zh';
 import { ScopeChangedError } from './scope-fence';
 
 export const LIFECYCLES = [
@@ -91,15 +92,15 @@ export function registrationErrorMessage(e: unknown): { text: string; provenUnwr
   if (e instanceof ApiError) {
     switch (e.status) {
       case 400: return { text: '请求格式错误，未被受理。', provenUnwritten: true };
-      case 422: return { text: `输入不符合要求，未被受理：${e.message}`, provenUnwritten: true };
+      case 422: return { text: `输入不符合要求，未被受理：${validationZh(e.message)}`, provenUnwritten: true };
       case 401: return { text: '登录已失效。', provenUnwritten: false };
       case 403: return { text: '服务端拒绝：需要该项目的「项目管理员」权限，您的授权可能刚被调整。', provenUnwritten: false };
       case 404: return { text: '项目不存在、尚未批准，或您已没有该项目的授权。', provenUnwritten: false };
-      case 409: return { text: '该项目已存在 Inventory 登记（可能由其他操作完成）。', provenUnwritten: false };
+      case 409: return { text: '该项目已完成运营登记（可能由其他操作完成）。', provenUnwritten: false };
       case 503:
         if (e.message.includes('administrative')) return { text: '服务端行政区数据暂不可用，请求未被受理，可稍后重试。', provenUnwritten: true };
         return { text: '服务暂不可用。', provenUnwritten: false };
-      default: return { text: `请求失败（${e.status}）：${e.message}`, provenUnwritten: false };
+      default: return { text: errorZh(e), provenUnwritten: false };
     }
   }
   if (e instanceof ScopeChangedError) return { text: e.message, provenUnwritten: true };

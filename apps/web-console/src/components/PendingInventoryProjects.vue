@@ -17,6 +17,7 @@ import {
   registrationErrorMessage, verifyOutcome, type RegistrationForm,
 } from '../cloud/inventory-registration';
 import { intakeErrorMessage } from '../cloud/intake';
+import { zh, PROJECT_ROLE_ZH } from '../cloud/zh';
 import type { InventoryProject, PendingInventoryProject } from '../../../../contracts/typescript/types.gen';
 const registerFence = createScopeFence();
 
@@ -133,13 +134,13 @@ const lifecycleText = (v: string) => LIFECYCLES.find((l) => l.value === v)?.labe
     </p>
     <template v-else-if="pendingQuery.data.value?.length">
       <h2><MapPinned :size="15" />待登记运营信息的正式项目</h2>
-      <p class="hint">这些项目已批准并已授权给您，但尚未登记 Inventory（生命周期与行政区），因此还不在项目列表和全国地图中。</p>
+      <p class="hint">这些项目已批准并已授权给您，但尚未完成运营登记（生命周期与行政区），因此还不在项目列表和全国地图中。</p>
       <table class="data-table" data-testid="pending-table">
         <thead><tr><th>正式项目</th><th>您的项目角色</th><th>已登记资产</th><th></th></tr></thead>
         <tbody>
           <tr v-for="p in pendingQuery.data.value" :key="p.id" :data-pending-id="p.id">
             <td>{{ p.name }}<div class="sub">{{ p.id }}</div></td>
-            <td>{{ p.role }}</td>
+            <td>{{ zh(PROJECT_ROLE_ZH, p.role) }}</td>
             <td>{{ p.assetCount }}</td>
             <td>
               <button v-if="p.canRegister" class="primary-action" data-testid="register-open" @click="open(p)">登记运营信息</button>

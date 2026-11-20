@@ -315,3 +315,25 @@ func TestCallbackRefusesAuthenticationBeforeSessionRevocation(t *testing.T) {
 		t.Fatal("authentication at the revocation instant must be refused", code)
 	}
 }
+
+// R9-UX LOGIN_ZH_CN: the authorization redirect asks Keycloak for the Chinese login / first-password
+// pages regardless of the browser language; PKCE, state and nonce are unchanged.
+func TestLoginRedirectRequestsChineseUI(t *testing.T) {
+	_, _, handler, _ := fixture(t)
+	result := httptest.NewRecorder()
+	handler.ServeHTTP(result, httptest.NewRequest("GET", origin+"/auth/login", nil))
+	if result.Code != http.StatusFound {
+		t.Fatal("begin login failed", result.Code)
+	}
+	location, err := url.Parse(result.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := location.Query()
+	if q.Get("ui_locales") != "zh-CN" {
+		t.Fatalf("ui_locales=%q, want zh-CN", q.Get("ui_locales"))
+	}
+	if q.Get("code_challenge_method") != "S256" || q.Get("code_challenge") == "" || q.Get("state") == "" || q.Get("nonce") == "" {
+		t.Fatal("PKCE / state / nonce must stay on the redirect", location.RawQuery)
+	}
+}

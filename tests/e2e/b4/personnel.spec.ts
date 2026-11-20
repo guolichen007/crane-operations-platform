@@ -20,6 +20,9 @@ async function keycloakLogin(page: Page, user: string, password: string): Promis
   await page.goto('/');
   await page.getByRole('link', { name: '账号登录', exact: true }).click();
   await expect(page.locator('#username')).toBeVisible();
+  // R9-UX LOGIN_ZH_CN: the real Keycloak login page is Chinese.
+  await expect(page.locator('#kc-login')).toHaveValue('安全登录');
+  await expect(page.locator('body')).not.toContainText(/Sign in to your account|Username or email|Forgot Password/i);
   await page.locator('#username').fill(user);
   await page.locator('#password').fill(password);
   // Submitting always navigates (POST to Keycloak's login-actions); wait for that response so the
@@ -105,6 +108,11 @@ test('P1 人员与账号：网页开户 → 首次登录改密 → 授权生效 
   const userCtx = await browser.newContext();
   const user = await userCtx.newPage();
   expect(await keycloakLogin(user, username, temporary)).toBe('update');
+  // R9-UX LOGIN_ZH_CN: the real Keycloak first-password-change page is Chinese (u-dao theme zh-CN).
+  await expect(user.locator('#kc-page-title')).toContainText('设置新密码');
+  await expect(user.locator('label[for="password-new"]')).toContainText('新密码');
+  await expect(user.locator('label[for="password-confirm"]')).toContainText('确认新密码');
+  await expect(user.locator('body')).not.toContainText(/Update password|New Password|Confirm password|You need to change your password/i);
   const chosen = `P1-${RUN_ID}-Chg9x`;
   await user.locator('#password-new').fill(chosen);
   await user.locator('#password-confirm').fill(chosen);

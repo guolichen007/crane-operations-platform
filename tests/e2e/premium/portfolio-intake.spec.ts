@@ -4,6 +4,10 @@
 // 403/409/422/503 messages, failure never shown as "暂无", draft guard and double submit.
 // The same flow against the real BFF + PostgreSQL is TestPortfolioIntakeRegistrationFlowHTTP.
 import { test, expect, type Page } from '@playwright/test';
+import { expectChineseUI } from './zh-guard';
+
+// R9-UX: the final screen of every flow keeps business text in Chinese (enum / formula / error leaks fail).
+test.afterEach(async ({ page }, info) => { if (info.status === 'passed') await expectChineseUI(page, info.title); });
 
 type Role = 'portfolio_manager' | 'portfolio_planner' | 'none';
 type Intake = Record<string, unknown> & { id: string; intakeCode: string; status: string; formalProjectId: string | null; portfolioScopeId: string; projectName: string };

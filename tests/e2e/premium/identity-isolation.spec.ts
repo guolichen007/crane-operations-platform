@@ -5,7 +5,11 @@
 // response of the previous identity must not overwrite the new identity's data.
 // Real browser against a stateful mocked BFF (no server writes).
 import { test, expect, type Page } from '@playwright/test';
+import { expectChineseUI } from './zh-guard';
 import { inventorySummary, routeSummary } from '../summary-mock';
+
+// R9-UX: the final screen of every flow keeps business text in Chinese (enum / formula / error leaks fail).
+test.afterEach(async ({ page }, info) => { if (info.status === 'passed') await expectChineseUI(page, info.title); });
 
 type Grant = { projectId: string; projectName: string; role: string };
 type Who = { user: string; grants: Grant[] };

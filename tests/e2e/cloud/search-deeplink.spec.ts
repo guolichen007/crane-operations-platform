@@ -156,7 +156,7 @@ test('无遥测资产不伪造 0/自动/闭合/无故障', async ({ page }) => {
   await page.goto('/#/overview?asset=A2');
   const panel = page.getByTestId('device-panel');
   await expect(panel).toHaveAttribute('data-device-id', 'A2');
-  await expect(panel).toContainText('NO TELEMETRY');
+  await expect(panel).toContainText('无遥测');
   await expect(panel).toContainText('未接入运行数据');
   // 未知数据必须显示占位，不得伪造现场事实。
   await expect(panel).not.toContainText('无活动故障');
@@ -177,7 +177,7 @@ test('Cloud SIMULATION twin 保留来源标识并显示结构示意，不被演�
   const panel = page.getByTestId('device-panel');
   await expect(panel).toHaveAttribute('data-device-id', 'A1');
   await expect(panel.getByTestId('device-source-badge')).toContainText(
-    'REAL ASSET · SIMULATION TELEMETRY'
+    '登记资产 · 模拟遥测'
   );
   // SIMULATION 即使有 MQTT Shadow 也不得运行本地 demo 正弦动画。
   await expect(page.getByTestId('crane-twin').locator('.twin-hud small')).toContainText(

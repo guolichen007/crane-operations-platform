@@ -80,7 +80,7 @@ test('真实 Keycloak 浏览器：资产与 Equipment 完整业务 CRUD（新建
 
   await page.goto(`/#/assets/${assetId}`);
   await page.getByRole('button', { name: '移动', exact: true }).click();
-  await moveForm.getByLabel('目标位置').selectOption({ label: `${workshopName}（WORKSHOP）` });
+  await moveForm.getByLabel('目标位置').selectOption({ label: `${workshopName}（车间）` });
   await moveForm.getByRole('button', { name: '移动', exact: true }).click();
   await expect(moveForm).toBeHidden();
   await expect(page.getByTestId('asset-moved')).toContainText(workshopName);
@@ -89,10 +89,10 @@ test('真实 Keycloak 浏览器：资产与 Equipment 完整业务 CRUD（新建
 
   // 8. 安装 MOTOR Equipment。
   await page.locator('.tabs').getByRole('button', { name: '设备', exact: true }).click();
-  await page.getByRole('button', { name: '安装 Equipment' }).click();
+  await page.getByRole('button', { name: '安装器件' }).click();
   const eqForm = page.getByTestId('equipment-create-form');
   await eqForm.getByLabel('设备类型选择').selectOption('MOTOR');
-  await eqForm.getByLabel('Equipment 编号').fill(equipmentCode);
+  await eqForm.getByLabel('器件编号').fill(equipmentCode);
   await eqForm.getByRole('button', { name: '安装' }).click();
   await expect(page.locator('table.data-table')).toContainText(equipmentCode);
 
@@ -339,21 +339,21 @@ test('Equipment 安装表单 DirtyGuard：干净关闭不提示，有输入需�
     else await d.dismiss();
   });
   const form = page.getByTestId('equipment-create-form');
-  await page.getByRole('button', { name: '安装 Equipment' }).click();
+  await page.getByRole('button', { name: '安装器件' }).click();
   await page.keyboard.press('Escape');
   await expect(form).toHaveCount(0);
-  await page.getByRole('button', { name: '安装 Equipment' }).click();
+  await page.getByRole('button', { name: '安装器件' }).click();
   await form.getByRole('button', { name: '取消' }).click();
   await expect(form).toHaveCount(0);
   expect(prompts).toBe(0);
 
-  await page.getByRole('button', { name: '安装 Equipment' }).click();
-  await form.getByLabel('Equipment 编号').fill(code('EQ', 'DIRTY'));
+  await page.getByRole('button', { name: '安装器件' }).click();
+  await form.getByLabel('器件编号').fill(code('EQ', 'DIRTY'));
   await page.keyboard.press('Escape');
   await page.locator('.modal-backdrop').click({ position: { x: 5, y: 5 } });
   await form.getByRole('button', { name: '取消' }).click();
   expect(prompts).toBe(3);
-  await expect(form.getByLabel('Equipment 编号')).toHaveValue(code('EQ', 'DIRTY'));
+  await expect(form.getByLabel('器件编号')).toHaveValue(code('EQ', 'DIRTY'));
   accept = true;
   await form.getByRole('button', { name: '取消' }).click();
   expect(prompts).toBe(4);

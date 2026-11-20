@@ -20,7 +20,7 @@ test('@r9-lhk 真实浏览器：老河口首台资产 计量 → 寿命预警 �
   await expect(d.locator('[data-point]')).toHaveCount(55);
   await expect(d.locator('[data-point="LHK-P001"]')).toContainText('DB505.DBX32.0');
   await expect(d.locator('[data-point="LHK-P021"]')).toContainText('地址待核（无法解析）');
-  await expect(d.getByTestId('r9-pending')).toContainText('额定起重量（t）');
+  await expect(d.getByTestId('r9-pending')).toContainText('额定起重量（吨）');
   await expect(d.getByTestId('r9-pending')).toContainText('待确认');
   await expect(d.getByTestId('r9-issues')).toContainText('重复 PLC 地址组');
   await page.screenshot({ path: 'test-results/b4-visual/r9-lhk-ledger.png' });

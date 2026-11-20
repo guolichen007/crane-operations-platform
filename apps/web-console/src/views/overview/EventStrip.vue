@@ -19,7 +19,7 @@ const recordText = computed(() => {
   <section class="event-strip" aria-label="最近事件" data-testid="home-events">
     <div class="event-label">
       <span class="live-dot"></span><strong>最近事件</strong>
-      <small data-testid="event-records">{{ demo ? 'DEMO / 模拟事件' : `CLOUD / ${recordText} · 下列为最近记录明细${state === 'stale' ? ' · 已过期' : ''}` }}</small>
+      <small data-testid="event-records">{{ demo ? '演示 · 模拟事件' : `云端 · ${recordText} · 下列为最近记录明细${state === 'stale' ? ' · 已过期' : ''}` }}</small>
     </div>
     <p v-if="state === 'loading'" class="event-empty">正在读取告警记录…</p>
     <p v-else-if="state === 'unavailable'" class="event-empty">告警记录明细不可用</p>

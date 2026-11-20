@@ -5,6 +5,7 @@ import { ChevronDown, LogOut, Maximize, ShieldCheck, UserRound, Play } from 'luc
 import BrandMark from './BrandMark.vue';
 import { webSession, productionAuth, logoutWebSession } from '../cloud/session';
 import { isViewerOnly } from '../cloud/auth-state';
+import { errorZh } from '../cloud/zh';
 import { scopeMode } from '../cloud/project-scope';
 const route = useRoute(),
   router = useRouter(),
@@ -42,7 +43,7 @@ async function logout() {
     const redirect = await logoutWebSession();
     if (redirect) location.assign(redirect);
   } catch (e) {
-    error.value = (e as Error).message;
+    error.value = `退出失败：${errorZh(e)}`;
   }
 }
 async function fullscreen() {
@@ -68,7 +69,7 @@ async function tour() {
     <RouterLink to="/overview" class="command-brand"
       ><BrandMark />
       <div>
-        <b>友道智造 <span>/</span> 全国行车设备运营平台</b><small>CRANE OPERATIONS CENTER</small>
+        <b>友道智造 <span>·</span> 行车综合管理平台</b><small>运营管理中心</small>
       </div></RouterLink
     >
     <div class="command-scope">

@@ -176,7 +176,7 @@ watch(canRead, (v) => {
   <section class="workspace-page personnel-center" data-testid="personnel-center">
     <header class="workspace-page-head">
       <div>
-        <span class="eyebrow">SYSTEM / 系统管理</span>
+        <span class="eyebrow">系统管理</span>
         <h1>人员与账号</h1>
         <p>开户、启停用、重置密码与权限配置 · 系统权限独立于项目与项目组合权限</p>
       </div>
@@ -195,7 +195,7 @@ watch(canRead, (v) => {
     </p>
     <template v-else>
       <p v-if="canManage && !access.data.value?.accountServiceConfigured" class="workspace-error" role="alert" data-testid="account-service-missing">
-        本部署尚未配置账号服务（crane-account-service），暂不能开户或重置密码。人员资料与权限仍可查看。
+        本部署尚未配置账号服务，暂不能开户或重置密码（需在服务器开通账号服务）。人员资料与权限仍可查看。
       </p>
 
       <section v-if="deptOpen && canDepartments" class="dept-panel" data-testid="dept-panel">

@@ -32,6 +32,7 @@ import { useDraftSession, allowClose, allowRebase, draftText, fieldDiff, sameDat
 import { ledgerReturnQuery } from '../cloud/project-scope';
 import AssetMaintenancePanel from '../components/AssetMaintenancePanel.vue';
 import AssetReadinessPanel from '../components/AssetReadinessPanel.vue';
+import { zh, errorZh, ASSET_TYPE_ZH } from '../cloud/zh';
 import type { AssetMasterData, AssetLocation, EquipmentInstallation } from '../../../../contracts/typescript/types.gen';
 
 const route = useRoute();
@@ -148,9 +149,9 @@ function errorText(e: unknown, fallback: string): string {
   if (!(e instanceof ApiError)) return fallback;
   if (e.status === 403) return '没有执行此操作的权限。';
   if (e.status === 404) return '资产不存在或已不在您的授权范围内。';
-  if (e.status === 422) return `输入不符合要求：${e.message}`;
+  if (e.status === 422) return `输入不符合要求：${errorZh(e).replace(/^输入不符合要求，?/, '')}`;
   if (e.status === 503) return '服务暂不可用，请稍后重试（草稿已保留）。';
-  return e.message || fallback;
+  return errorZh(e) || fallback;
 }
 
 function openEdit() {
@@ -210,12 +211,12 @@ const updateMutation = useMutation({
     } else if (e instanceof NetworkWriteError && e.sent) {
       // Outcome unknown: read the server's current version. The draft stays pinned to its base
       // version, so resubmitting can never apply twice (the server would answer 409).
-      editError.value = e.message;
+      editError.value = errorZh(e);
       const pinned = edit.baseVersion.value;
       const fresh = await refreshForConflict().then(() => edit.latest.value).catch(() => null);
       if (fresh) {
         editConflict.value = fresh.version !== pinned;
-        editError.value = `${e.message} 服务器当前为 v${fresh.version}（编辑基于 v${pinned}）${fresh.version !== pinned ? '：版本已变化，修改很可能已生效，请对比后再决定。' : '：版本未变化，修改未生效，可重新提交。'}`;
+        editError.value = `${errorZh(e)} 服务器当前为 v${fresh.version}（编辑基于 v${pinned}）${fresh.version !== pinned ? '：版本已变化，修改很可能已生效，请对比后再决定。' : '：版本未变化，修改未生效，可重新提交。'}`;
       }
     } else {
       editError.value = errorText(e, '更新失败');
@@ -460,7 +461,7 @@ const removeEquipmentMutation = useMutation({
   },
   onError: (e) => {
     removeError.value = e instanceof ApiError && e.status === 409
-      ? '该 Equipment 已被他人修改或存在活动 Runtime Binding，未拆卸。请取消后重新打开，核对最新版本再操作。'
+      ? '该器件已被他人修改，或存在活动的运行身份绑定，未拆卸。请取消后重新打开，核对最新版本再操作。'
       : errorText(e, '拆卸失败');
   },
 });
@@ -494,7 +495,7 @@ const updateEquipmentMutation = useMutation({
   },
   onError: (e) => {
     if (e instanceof ApiError && e.status === 409) {
-      equipmentEditError.value = '版本冲突：该 Equipment 已被他人修改。您的草稿已保留，请取消后重新打开以获取最新版本。';
+      equipmentEditError.value = '版本冲突：该器件已被他人修改。您的草稿已保留，请取消后重新打开以获取最新版本。';
     } else {
       equipmentEditError.value = errorText(e, '更新失败');
     }
@@ -509,6 +510,7 @@ function backToLedger() {
 }
 const criticalityText: Record<string, string> = { LOW: '低', MEDIUM: '中', HIGH: '高', SAFETY_CRITICAL: '安全关键' };
 const adminStateText: Record<string, string> = { IN_SERVICE: '在用', MAINTENANCE: '维护中', OUT_OF_SERVICE: '停用', FAULT_REPORTED: '已报故障' };
+const diffValue = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : typeof v === 'string' ? (ASSET_TYPE_ZH[v] ?? statusText[v] ?? v) : String(v));
 const statusText: Record<string, string> = {
   DRAFT: '草稿',
   ACTIVE: '在用',
@@ -524,10 +526,10 @@ const statusText: Record<string, string> = {
       </button>
       <div v-if="asset" class="detail-title">
         <span class="status-pill" :data-status="asset.assetStatus">{{
-          statusText[asset.assetStatus] ?? asset.assetStatus
+          zh(statusText, asset.assetStatus)
         }}</span>
         <h1>{{ asset.displayName || asset.assetCode || asset.id }}</h1>
-        <p>{{ asset.assetType }} · {{ asset.manufacturerSnapshot || '未关联制造商' }} · v{{ asset.version }}</p>
+        <p>{{ zh(ASSET_TYPE_ZH, asset.assetType, '其他类型') }} · {{ asset.manufacturerSnapshot || '未关联制造商' }} · v{{ asset.version }}</p>
       </div>
       <div v-if="canWrite" class="detail-actions">
         <button class="ghost-action" @click="openEdit"><Pencil :size="14" />编辑</button>
@@ -563,7 +565,7 @@ const statusText: Record<string, string> = {
         <div class="detail-cell"><span>资产名称</span><b>{{ asset.displayName || '—' }}</b></div>
         <div class="detail-cell"><span>资产编号</span><b v-if="assetCodeDisplay(asset).code">{{ assetCodeDisplay(asset).code }}</b
           ><b v-else class="code-missing" data-testid="asset-code-missing">编号待补全<small>内部 ID {{ asset.id }} · 项目 {{ asset.projectId }}</small></b></div>
-        <div class="detail-cell"><span>类型</span><b>{{ asset.assetType }}</b></div>
+        <div class="detail-cell"><span>类型</span><b>{{ zh(ASSET_TYPE_ZH, asset.assetType, '其他类型') }}</b></div>
         <div class="detail-cell"><span>制造商</span><b>{{ asset.manufacturerSnapshot || '—' }}</b></div>
         <div class="detail-cell"><span>品牌</span><b>{{ asset.brandSnapshot || '—' }}</b></div>
         <div class="detail-cell"><span>型号</span><b>{{ asset.modelSnapshot || '—' }}</b></div>
@@ -602,28 +604,28 @@ const statusText: Record<string, string> = {
       <div v-else-if="tab === 'equipment'">
         <div class="equipment-toolbar">
           <button v-if="canWrite" class="primary-action" @click="openEquipmentAdd">
-            <Plus :size="14" />安装 Equipment
+            <Plus :size="14" />安装器件
           </button>
         </div>
         <p v-if="equipmentQuery.isLoading.value" class="skeleton table-skeleton" aria-busy="true" data-testid="equipment-loading"></p>
         <p v-else-if="equipmentQuery.isError.value" class="workspace-error" role="alert" data-testid="equipment-error">
-          {{ errorText(equipmentQuery.error.value, 'Equipment 加载失败') }}
+          {{ errorText(equipmentQuery.error.value, '器件加载失败') }}
           <button type="button" class="ghost-action" @click="equipmentQuery.refetch()">重试</button>
         </p>
-        <p v-else-if="!equipmentQuery.data.value?.length" class="workspace-empty" data-testid="equipment-empty">该资产暂无 Equipment。</p>
+        <p v-else-if="!equipmentQuery.data.value?.length" class="workspace-empty" data-testid="equipment-empty">该资产暂无已安装的器件。</p>
         <table v-else class="data-table">
           <thead>
             <tr>
-              <th>Equipment 编号</th><th>类型</th><th>关键度</th><th>行政状态</th><th>版本</th><th v-if="canWrite">操作</th>
+              <th>器件编号</th><th>类型</th><th>关键度</th><th>使用状态</th><th>版本</th><th v-if="canWrite">操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="e in equipmentQuery.data.value" :key="e.id" class="data-row">
               <td>{{ e.equipmentCode }}</td>
               <td>{{ typeLabel(e.typeCode) }}</td>
-              <td>{{ criticalityText[e.criticality] ?? e.criticality }}</td>
+              <td>{{ zh(criticalityText, e.criticality) }}</td>
               <td>
-                {{ adminStateText[e.administrativeState] ?? e.administrativeState }}
+                {{ zh(adminStateText, e.administrativeState) }}
                 <span v-if="e.removedAt" class="tiny-badge">已拆卸</span>
               </td>
               <td>v{{ e.version }}</td>
@@ -655,7 +657,7 @@ const statusText: Record<string, string> = {
         <label>资产编号<input v-model="edit.draft.value.assetCode" maxlength="160" /></label>
         <label>类型
           <select v-model="edit.draft.value.assetType" required aria-label="类型">
-            <option v-for="o in assetTypeOptions(edit.base.value?.assetType)" :key="o.value" :value="o.value">{{ o.legacy ? `${o.value}（旧类型，保持不变）` : o.value }}</option>
+            <option v-for="o in assetTypeOptions(edit.base.value?.assetType)" :key="o.value" :value="o.value">{{ o.legacy ? `旧类型（编码 ${o.value}，保持不变）` : zh(ASSET_TYPE_ZH, o.value, '其他类型') }}</option>
           </select>
         </label>
         <div v-if="editError" class="form-error" role="alert" data-testid="asset-edit-error">
@@ -664,7 +666,7 @@ const statusText: Record<string, string> = {
             <table v-if="conflictDiff.length" class="conflict-diff" data-testid="asset-conflict-diff">
               <thead><tr><th>字段</th><th>您的草稿</th><th>服务器最新（v{{ edit.latest.value?.version }}）</th></tr></thead>
               <tbody>
-                <tr v-for="d in conflictDiff" :key="d.field"><td>{{ d.field }}</td><td>{{ d.mine ?? '—' }}</td><td>{{ d.theirs ?? '—' }}</td></tr>
+                <tr v-for="d in conflictDiff" :key="d.field"><td>{{ d.field }}</td><td>{{ diffValue(d.mine) }}</td><td>{{ diffValue(d.theirs) }}</td></tr>
               </tbody>
             </table>
             <div class="modal-actions">
@@ -703,7 +705,7 @@ const statusText: Record<string, string> = {
           <select v-model="move.draft.value.locationId" required aria-label="目标位置">
             <option value="" disabled>选择位置</option>
             <option v-for="l in moveTargets" :key="l.id" :value="l.id">
-              {{ l.name }}（{{ l.kind }}）
+              {{ l.name }}（{{ kindLabel(l.kind) }}）
             </option>
           </select>
         </label>
@@ -718,7 +720,7 @@ const statusText: Record<string, string> = {
     <div v-if="retire.open.value" class="modal-backdrop" @click.self="closeRetire">
       <div class="workspace-modal" data-testid="asset-retire-dialog">
         <h2>确认退役（基于 v{{ retire.baseVersion.value }}）</h2>
-        <p>退役是终态，不可恢复。存在活动 Runtime Binding 时将拒绝。</p>
+        <p>退役是终态，不可恢复。存在活动的运行身份绑定时将被拒绝。</p>
         <p v-if="retireError" class="form-error" role="alert">{{ retireError }}</p>
         <div class="modal-actions">
           <button class="ghost-action" :disabled="retireMutation.isPending.value" @click="closeRetire">取消</button>
@@ -729,7 +731,7 @@ const statusText: Record<string, string> = {
 
     <div v-if="equipmentAdding" class="modal-backdrop" @click.self="closeEquipmentAdd">
       <form class="workspace-modal" data-testid="equipment-create-form" @submit.prevent="createEquipmentMutation.mutate()">
-        <h2>安装 Equipment</h2>
+        <h2>安装器件</h2>
         <label>设备类型
           <select v-model="equipmentDraft.typeCode" required aria-label="设备类型选择">
             <option value="" disabled>{{ typesQuery.isLoading.value ? '加载类型…' : typesQuery.isError.value ? '类型字典加载失败' : noInstallableTypes ? '暂无可安装类型' : '选择已注册类型' }}</option>
@@ -741,14 +743,14 @@ const statusText: Record<string, string> = {
           设备类型字典加载失败，无法选择类型。
           <button type="button" class="ghost-action" @click="typesQuery.refetch()">重试</button>
         </p>
-        <label>Equipment 编号<input v-model="equipmentDraft.equipmentCode" required /></label>
+        <label>器件编号<input v-model="equipmentDraft.equipmentCode" required /></label>
         <label>序列号<input v-model="equipmentDraft.serialNumber" /></label>
         <label>关键度
           <select v-model="equipmentDraft.criticality">
             <option v-for="(label, value) in criticalityText" :key="value" :value="value">{{ label }}</option>
           </select>
         </label>
-        <p class="muted small">规格字段按后端版本化 Schema 校验，未知参数留空，不凭空填写设备参数。</p>
+        <p class="muted small">规格参数按类型的版本化规格校验；未知参数留空，不凭空填写设备参数。</p>
         <p v-if="equipmentAddError" class="form-error" role="alert" data-testid="equipment-create-error">{{ equipmentAddError }}</p>
         <div class="modal-actions">
           <button type="button" class="ghost-action" :disabled="createEquipmentMutation.isPending.value" @click="closeEquipmentAdd">取消</button>
@@ -765,15 +767,15 @@ const statusText: Record<string, string> = {
         data-testid="equipment-edit-form"
         @submit.prevent="updateEquipmentMutation.mutate(equipmentEditing)"
       >
-        <h2>编辑 Equipment（基于 v{{ equipmentEditBase?.version }}）</h2>
-        <label>Equipment 编号<input v-model="equipmentEditing.equipmentCode" required /></label>
+        <h2>编辑器件（基于 v{{ equipmentEditBase?.version }}）</h2>
+        <label>器件编号<input v-model="equipmentEditing.equipmentCode" required /></label>
         <label>序列号<input v-model="equipmentEditing.serialNumber" /></label>
         <label>关键度
           <select v-model="equipmentEditing.criticality">
             <option v-for="(label, value) in criticalityText" :key="value" :value="value">{{ label }}</option>
           </select>
         </label>
-        <p class="muted small">设备类型、Catalog 与 Spec 在此不修改（后端边界一致）。</p>
+        <p class="muted small">器件类型、型号目录与规格参数在此不修改；如需更换请拆卸后重新安装。</p>
         <p v-if="equipmentEditError" class="form-error" role="alert">{{ equipmentEditError }}</p>
         <div class="modal-actions">
           <button type="button" class="ghost-action" :disabled="updateEquipmentMutation.isPending.value" @click="closeEquipmentEdit">取消</button>
@@ -786,9 +788,9 @@ const statusText: Record<string, string> = {
 
     <div v-if="removeConfirm" class="modal-backdrop" @click.self="closeRemove">
       <div class="workspace-modal" data-testid="equipment-remove-dialog">
-        <h2>确认拆卸 Equipment</h2>
+        <h2>确认拆卸器件</h2>
         <p data-testid="equipment-remove-target">{{ removeTarget?.code }}（基于 v{{ removeTarget?.version }}）</p>
-        <p>拆卸将关闭安装有效期并保留历史记录，不会硬删除。存在活动 Runtime Binding 时后端将拒绝。</p>
+        <p>拆卸将结束安装有效期并保留历史记录，不会删除数据。存在活动的运行身份绑定时将被拒绝。</p>
         <p v-if="removeError" class="form-error" role="alert">{{ removeError }}</p>
         <div class="modal-actions">
           <button class="ghost-action" :disabled="removeEquipmentMutation.isPending.value" @click="closeRemove">取消</button>

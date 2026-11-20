@@ -109,10 +109,10 @@ test('Equipment 安装表单：A 的安装草稿不能安装到 B', async ({ pag
   page.on('dialog', async (d) => (accept ? d.accept() : d.dismiss()));
   await page.goto('/#/assets/A');
   await page.locator('.tabs').getByRole('button', { name: '设备', exact: true }).click();
-  await page.getByRole('button', { name: '安装 Equipment' }).click();
+  await page.getByRole('button', { name: '安装器件' }).click();
   const form = page.getByTestId('equipment-create-form');
   await form.getByLabel('设备类型选择').selectOption('MOTOR');
-  await form.getByLabel('Equipment 编号').fill('A-MOTOR');
+  await form.getByLabel('器件编号').fill('A-MOTOR');
   await gotoB(page);
   await expect(detail(page)).toHaveAttribute('data-asset-id', 'A');
   accept = true;

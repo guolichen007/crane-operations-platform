@@ -150,8 +150,8 @@ export function homeKpis(
     return [
       // The Inventory card opens the Inventory device list for the same scope (a
       // workflow, not a status filter — see the scope contract).
-      { id: 'devices', label: 'Inventory 设备', value: v(m?.devices ?? 0), unit: '台', detail: m ? `${m.projects} 个项目 · 无空间位置 ${m.unlocated}` : '—', hint: '点击打开同范围的 Inventory 设备清单', filter: 'all', tone: 'neutral', tag: 'INVENTORY' },
-      { id: 'real-running', label: '真实运行', value: v(m?.realRunning ?? 0), unit: '台', detail: m ? `REAL 在线 ${m.realOnline} · SIM 绑定 ${m.simulationBound}` : '—', filter: 'REAL_RUNNING', tone: 'ok' },
+      { id: 'devices', label: '登记设备', value: v(m?.devices ?? 0), unit: '台', detail: m ? `${m.projects} 个项目 · 无空间位置 ${m.unlocated}` : '—', hint: '点击打开同范围的登记设备清单', filter: 'all', tone: 'neutral', tag: '登记' },
+      { id: 'real-running', label: '真实运行', value: v(m?.realRunning ?? 0), unit: '台', detail: m ? `真实在线 ${m.realOnline} · 模拟绑定 ${m.simulationBound}` : '—', filter: 'REAL_RUNNING', tone: 'ok' },
       { id: 'alarm', label: '告警设备', value: v(m?.alarmDevices ?? 0), unit: '台', detail: !m || alarmRecords === null ? '告警记录未加载' : `最近告警记录 ${alarmRecords} 条（非未处理数）`, hint: '告警记录为全部授权范围最近 ≤100 条，不随来源/行政区变化；卡片数字为当前范围内的告警设备', filter: 'ALARM', tone: 'critical' },
       { id: 'offline', label: '离线 / 状态未知', value: v(m?.offline ?? 0), unit: '台', detail: '有 Runtime Binding 但未连接', filter: 'OFFLINE', tone: 'muted' },
       { id: 'not-commissioned', label: '尚未投运', value: v(m?.notCommissioned ?? 0), unit: '台', detail: '无 Runtime Binding', filter: 'NOT_COMMISSIONED', tone: 'warning' },

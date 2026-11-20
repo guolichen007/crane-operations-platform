@@ -6,6 +6,7 @@
 //   项目权限 (viewer / operator / maintainer / platform_admin) — one project's assets & devices.
 // A system role never grants project or portfolio business access.
 import { api, ApiError, NetworkWriteError } from './client';
+import { errorZh, validationZh } from './zh';
 
 export type SystemRole = 'system_admin' | 'account_manager';
 export const SYSTEM_ROLES: SystemRole[] = ['system_admin', 'account_manager'];
@@ -122,10 +123,10 @@ export function personnelErrorMessage(error: unknown): string {
       case 401: return '登录已失效，请重新登录。';
       case 403: return '没有执行此操作的系统权限（或目标人员持有您无权管理的系统角色）。';
       case 404: return '人员或部门不存在，可能已被其他管理员修改。';
-      case 409: return /username|用户名/i.test(error.message) ? '该登录用户名已存在，请换一个。' : `数据已被他人修改或已是目标状态：${error.message}`;
-      case 422: return error.message;
+      case 409: return /username|用户名/i.test(error.message) ? '该登录用户名已存在，请换一个。' : `数据已被他人修改或已是目标状态${/[一-鿿]/.test(error.message) ? '：' + error.message : '，请刷新后核对。'}`;
+      case 422: return validationZh(error.message);
       case 428: return '缺少版本信息，请刷新后重试。';
-      default: return `请求失败（${error.status}）：${error.message}`;
+      default: return errorZh(error);
     }
   }
   if (error instanceof NetworkWriteError) return error.message;
@@ -146,7 +147,16 @@ export const ACTION_TEXT: Record<string, string> = {
   project_role_changed: '调整项目权限', account_adopted: '宿主机纳管', account_provision_failed: '开户失败', account_provision_cancelled: '开户已取消',
   login_success: '登录', logout: '退出', identity_bound: '绑定身份',
   personnel_archived: '删除人员（归档）', personnel_purged: '永久删除测试账号', identity_protection_changed: '调整受保护标记', identity_test_account_changed: '标记测试账号',
+  identity_sync: '同步身份',
 };
+
+/** Audit result codes → Chinese. Unknown codes never show raw (R9-UX). */
+export const RESULT_TEXT: Record<string, string> = {
+  success: '成功', pending: '待重试', conflict: '版本冲突', identity_provider_failed: '身份服务失败',
+  failure: '失败', failed: '失败', denied: '被拒绝', enabled: '已启用', disabled: '已停用', cancelled: '已取消',
+};
+export const actionText = (a: string): string => ACTION_TEXT[a] ?? '其他操作';
+export const resultText = (r: string): string => RESULT_TEXT[r] ?? '结果未知';
 
 /** Purge reference keys → user-facing names (why a person can only stay archived). */
 export const REFERENCE_TEXT: Record<string, string> = {

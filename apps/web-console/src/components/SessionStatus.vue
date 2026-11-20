@@ -1,19 +1,20 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue';
 import { queryWebSession, logoutWebSession, webSession } from '../cloud/session';
+import { errorZh } from '../cloud/zh';
 const error = ref(''), loading = ref(true);
 function expired() { error.value = ''; }
 async function refresh() {
   loading.value = true;
   try { await queryWebSession(); error.value = ''; }
-  catch (failure) { error.value = (failure as Error).message; }
+  catch (failure) { error.value = `登录状态查询失败：${errorZh(failure, 'load')}`; }
   finally { loading.value = false; }
 }
 async function logout() {
   try {
     const redirect = await logoutWebSession();
     if (redirect) location.assign(redirect);
-  } catch (failure) { error.value = (failure as Error).message; }
+  } catch (failure) { error.value = `退出失败：${errorZh(failure)}`; }
 }
 onMounted(() => { window.addEventListener('cloud-session-expired', expired); void refresh(); });
 onUnmounted(() => window.removeEventListener('cloud-session-expired', expired));

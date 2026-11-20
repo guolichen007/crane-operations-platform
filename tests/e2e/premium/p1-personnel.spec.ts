@@ -3,6 +3,7 @@
 // writes). The same rules against the real BFF + PostgreSQL: personnel_http_test.go /
 // internal/personnel; against real Keycloak 26.8.1: tests/e2e/b4/personnel.spec.ts.
 import { test, expect, type Page } from '@playwright/test';
+import { expectChineseUI } from './zh-guard';
 
 type P = Record<string, unknown> & { id: string; username: string; displayName: string; enabled: boolean; systemRoles: string[]; version: number };
 const shot = (name: string) => `test-results/p1-personnel/${name}.png`;
@@ -135,6 +136,7 @@ test('系统管理员：三步开户 → 一次性初始密码 → 人员详情�
   await page.goto('/#/overview');
   await page.getByTestId('rail-system').click();
   await expect(page.getByTestId('people-table')).toContainText('系统管理员');
+  await expectChineseUI(page, '人员中心列表');
   await page.screenshot({ path: shot('1-list') });
   await page.getByTestId('person-create').click();
   const wiz = page.getByTestId('person-wizard');
@@ -151,6 +153,7 @@ test('系统管理员：三步开户 → 一次性初始密码 → 人员详情�
   await wiz.getByTestId('wiz-add-scope').click();
   await wiz.getByTestId('wiz-scope-0').selectOption('PS-A');
   await wiz.getByTestId('wiz-scope-role-0').selectOption('portfolio_planner');
+  await expectChineseUI(page, '开户向导·权限');
   await page.screenshot({ path: shot('2-wizard-permissions') });
   await wiz.getByTestId('wiz-next').click();
   await expect(wiz.getByTestId('wiz-summary')).toContainText('华东项目组合：项目组合规划者');
@@ -209,6 +212,7 @@ test('人员详情：停用/启用（If-Match）、重置密码只显示一次�
   await d.getByTestId('detail-scope-add').click();
   await expect(d.getByTestId('detail-portfolio')).toContainText('华东项目组合');
   await expect(d.getByTestId('person-history')).toContainText('开户');
+  await expectChineseUI(page, '人员详情（含操作历史）');
   await page.screenshot({ path: shot('4-detail'), fullPage: true });
   // Self: no disable, no self role change.
   await page.evaluate(() => { location.hash = '#/system/people/root-admin'; });
@@ -223,6 +227,7 @@ test('无系统角色：侧栏无入口，直接访问提示无权限且不发�
   await expect(page.getByTestId('rail-system')).toHaveCount(0);
   await page.getByTestId('side-rail').evaluate(() => { location.hash = '#/system/people'; });
   await expect(page.getByTestId('personnel-forbidden')).toBeVisible();
+  await expectChineseUI(page, '人员中心无权限');
   expect(api.calls.filter((c) => c.path.startsWith('admin/') && c.path !== 'admin/me')).toHaveLength(0);
 });
 
@@ -238,6 +243,7 @@ test('删除人员：输入原因与用户名确认 → 归档并撤销授权；
   await dlg.getByTestId('delete-confirm').fill('tester-');
   await expect(dlg.getByTestId('delete-submit')).toBeDisabled();
   await dlg.getByTestId('delete-confirm').fill('tester-9');
+  await expectChineseUI(dlg, '删除确认对话框');
   await page.screenshot({ path: shot('7-delete-dialog') });
   await dlg.getByTestId('delete-submit').click();
   await expect(d.getByTestId('person-notice')).toContainText('已删除（归档）');
@@ -301,6 +307,7 @@ for (const [w, h] of [[375, 812], [390, 844]] as const) {
     await expect(page.getByTestId('people-table')).toBeVisible();
     await expect(page.locator('[data-person="tester-9"] td[data-label="姓名"]')).toBeVisible();
     await noOverflow('list');
+    await expectChineseUI(page, `手机 ${w} 人员列表`);
     await page.screenshot({ path: shot(`8-list-${w}`), fullPage: true });
     // Add: three steps reachable, summary visible.
     await page.getByTestId('person-create').click();
@@ -334,6 +341,7 @@ for (const [w, h] of [[375, 812], [390, 844]] as const) {
     await d.getByTestId('detail-scope-add').click();
     await expect(d.getByTestId('detail-portfolio')).toContainText('华东项目组合');
     await noOverflow('detail');
+    await expectChineseUI(page, `手机 ${w} 人员详情`);
     await page.screenshot({ path: shot(`9-detail-${w}`), fullPage: true });
     // Delete dialog.
     await d.getByTestId('person-delete').click();
@@ -341,6 +349,7 @@ for (const [w, h] of [[375, 812], [390, 844]] as const) {
     await dlg.getByTestId('delete-reason').fill('移动端删除');
     await dlg.getByTestId('delete-confirm').fill('tester-9');
     await noOverflow('delete-dialog');
+    await expectChineseUI(dlg, `手机 ${w} 删除确认对话框`);
     await dlg.getByTestId('delete-submit').click();
     await expect(d.getByTestId('person-archived')).toBeVisible();
     await noOverflow('archived');

@@ -5,6 +5,10 @@
 // (approve / override) must not stay offered. Mock follows the server: every list is filtered by the
 // CURRENT membership and every write re-checks it.
 import { test, expect, type Page } from '@playwright/test';
+import { expectChineseUI } from './zh-guard';
+
+// R9-UX: the final screen of every flow keeps business text in Chinese (enum / formula / error leaks fail).
+test.afterEach(async ({ page }, info) => { if (info.status === 'passed') await expectChineseUI(page, info.title); });
 
 type Role = 'portfolio_manager' | 'portfolio_planner' | null;
 const session = { userId: 'u', displayName: 'pm', projects: [], csrfToken: 'x'.repeat(32), expiresAt: '2099-01-01T00:00:00Z', idleExpiresAt: '2099-01-01T00:00:00Z' };

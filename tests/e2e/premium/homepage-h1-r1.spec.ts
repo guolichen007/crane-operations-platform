@@ -392,8 +392,8 @@ test('R1-3/H2-1D-5 页头显示服务端取样时间（上海），标注三种�
   // Fixture sampledAt 2026-11-09T04:05:51Z → 12:05:51 Shanghai; generatedAt …04:05:51.394Z.
   await expect(asof(page)).toContainText('统计取样 2026-11-09 12:05:51 · 每 60 秒更新');
   await expect(asof(page)).not.toContainText('数据截至');
-  await expect(asof(page)).toHaveAttribute('title', /统计取样 sampledAt 2026-11-09 12:05:51/);
-  await expect(asof(page)).toHaveAttribute('title', /生成完成 generatedAt 2026-11-09 12:05:51/);
+  await expect(asof(page)).toHaveAttribute('title', /统计取样 2026-11-09 12:05:51（服务端单一快照）/);
+  await expect(asof(page)).toHaveAttribute('title', /生成完成 2026-11-09 12:05:51（服务端）/);
   await expect(asof(page)).toHaveAttribute('title', /浏览器接收 \d{4}-\d\d-\d\d \d\d:\d\d:\d\d/);
   await expect(asof(page)).toHaveAttribute('title', /不是设备遥测的观测时间/);
   await expect(page.getByTestId('cloud-runtime-cycle')).toContainText('不刷新首页指标');

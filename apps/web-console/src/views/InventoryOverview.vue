@@ -137,7 +137,6 @@ onUnmounted(() => {
   <main class="premium-overview inventory-overview">
     <div class="premium-page-heading">
       <div>
-        <p class="premium-eyebrow">NATIONAL OPERATIONS / 全国运营态势</p>
         <h1>全国运营中枢 <span>资产可见 · 运行可知</span></h1>
       </div>
       <div class="data-origin"><i></i> CLOUD API <span>/</span> 行政区级定位</div>
@@ -286,7 +285,7 @@ onUnmounted(() => {
         ><span
           >连接 <b>{{ runtime?.online ?? '—' }}</b></span
         ><span
-          >LIVE <b>{{ runtime?.live ?? '—' }}</b></span
+          >实时查看 <b>{{ runtime?.live ?? '—' }}</b></span
         ><span
           >告警记录 <b>{{ data?.alarms.length ?? '—' }}</b></span
         >
@@ -297,7 +296,7 @@ onUnmounted(() => {
         {{ summary?.realOnline ?? '—'
         }}<span> · SIM 为模拟设备，不能代表现场在线；行政区未配置时不生成地图点</span>
       </p>
-      <small>U-DAO / A1.1 PREMIUM</small>
+      <small>友道智造 · 版本 A1.1</small>
     </footer>
   </main>
 </template>

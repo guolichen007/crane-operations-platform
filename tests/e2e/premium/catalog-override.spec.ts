@@ -3,6 +3,10 @@
 //  - Conflict override: the button follows CapScheduleOverride (portfolio_manager on the owning scope)
 //    and the hard-conflict rule; the server still decides (portfolio_security_test / scheduling tests).
 import { test, expect, type Page } from '@playwright/test';
+import { expectChineseUI } from './zh-guard';
+
+// R9-UX: the final screen of every flow keeps business text in Chinese (enum / formula / error leaks fail).
+test.afterEach(async ({ page }, info) => { if (info.status === 'passed') await expectChineseUI(page, info.title); });
 
 const session = (role = 'platform_admin') => ({ userId: 'u', displayName: 'u', projects: [{ projectId: 'P001', projectName: 'Project-A', role }], csrfToken: 'x'.repeat(32), expiresAt: '2099-01-01T00:00:00Z', idleExpiresAt: '2099-01-01T00:00:00Z' });
 

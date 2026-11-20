@@ -19,7 +19,7 @@ describe('R9 maintenance presentation', () => {
   });
   it('formats counts and units', () => {
     expect(formatNumber(1000000, 'count')).toBe('1,000,000 次');
-    expect(formatNumber(103.016667, 'h')).toBe('103.017 h');
+    expect(formatNumber(103.016667, 'h')).toBe('103.017 小时'); // R9-UX: Chinese business units
     expect(formatNumber(null)).toBe('—');
   });
   it('groups points by mechanism in source order', () => {

@@ -75,12 +75,12 @@ function focusDevice(id: string) {
         <p v-if="!review" class="muted small">运营统计不可用，无法列出待复核设备。</p>
         <p v-else-if="!review.total" class="muted small" data-testid="inspector-empty">当前范围没有待复核设备。</p>
         <p v-else class="muted small" data-testid="review-cap">
-          服务端返回前 {{ review.items.length }} 条 / 共 {{ review.total }} 台（按资产编号排序）。草稿或停用资产上出现了新鲜的 REAL 连接，请在资产详情中确认状态。
+          服务端返回前 {{ review.items.length }} 条 / 共 {{ review.total }} 台（按资产编号排序）。草稿或停用资产上出现了新鲜的真实连接，请在资产详情中确认状态。
         </p>
         <RouterLink v-for="a in review?.items ?? []" :key="a.id" class="plan-item inspector-device review-asset" :data-review-id="a.id" :to="'/assets/' + encodeURIComponent(a.id)">
           <div class="plan-content">
             <div><strong>{{ a.id }}</strong><ArrowUpRight :size="12" /></div>
-            <p>{{ reviewStatus[a.assetStatus] }}<template v-if="a.alarm"> · <span class="review-alarm">REAL 告警</span></template></p>
+            <p>{{ reviewStatus[a.assetStatus] }}<template v-if="a.alarm"> · <span class="review-alarm">真实告警</span></template></p>
           </div>
         </RouterLink>
       </section>
@@ -88,7 +88,7 @@ function focusDevice(id: string) {
     <template v-else-if="filtering">
       <section class="inspector-list">
         <div class="panel-title">
-          <h3>{{ statusText[status as keyof typeof statusText] ?? (status === 'UNLOCATED' ? '无空间位置' : status === 'REAL_RUNNING' ? 'REAL 运行（演示口径）' : status === 'PENDING_REVIEW' ? '待复核设备' : '登记项目') }}</h3>
+          <h3>{{ statusText[status as keyof typeof statusText] ?? (status === 'UNLOCATED' ? '无空间位置' : status === 'REAL_RUNNING' ? '真实运行（演示口径）' : status === 'PENDING_REVIEW' ? '待复核设备' : '登记项目') }}</h3>
           <span data-testid="inspector-total" :data-total="devicesTotal">{{ devicesTotal }} 台 · {{ scopeName }}</span>
         </div>
         <p v-if="!devicesTotal" class="muted small" data-testid="inspector-empty">当前范围内没有符合该过滤条件的设备。</p>
@@ -120,7 +120,7 @@ function focusDevice(id: string) {
         </button>
       </section>
       <div class="right-note">
-        <Info :size="13" /><span>{{ demo ? '匿名登记项目尚未投运；金色连接表示计划接入' : 'Cloud 最近同步运行态 · 无遥测设备显示尚未投运' }}</span>
+        <Info :size="13" /><span>{{ demo ? '匿名登记项目尚未投运；金色连接表示计划接入' : '云端最近同步运行态 · 无遥测设备显示为尚未投运' }}</span>
       </div>
     </template>
   </aside>

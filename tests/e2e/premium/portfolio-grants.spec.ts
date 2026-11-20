@@ -3,6 +3,10 @@
 // The same flows against the real BFF + PostgreSQL: portfolio_projects_http_test.go; against
 // real Keycloak: tests/e2e/b4/portfolio-grants.spec.ts.
 import { test, expect, type Page } from '@playwright/test';
+import { expectChineseUI } from './zh-guard';
+
+// R9-UX: the final screen of every flow keeps business text in Chinese (enum / formula / error leaks fail).
+test.afterEach(async ({ page }, info) => { if (info.status === 'passed') await expectChineseUI(page, info.title); });
 
 type Member = { userId: string; displayName: string; role: string; enabled: boolean };
 const shot = (name: string) => `test-results/q2-grants/${name}.png`;

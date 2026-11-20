@@ -67,8 +67,8 @@ const names = computed(() => new Map(data.value?.projects.map((p) => [p.id, p.na
 // H2-1D-4: arriving from a homepage KPI whose server predicate this list cannot reproduce (REAL 在线 /
 // 当前 REAL 告警 / 无运行身份). The list is the same authorization + region, NOT the KPI's exact set.
 const kpiNotes: Record<string, string> = {
-  'real-connected': 'REAL 在线',
-  'alarm-real': '当前 REAL 告警',
+  'real-connected': '真实在线',
+  'alarm-real': '当前真实告警',
   'no-runtime': '无运行身份',
 };
 const kpiNote = computed(() => (typeof route.query.kpi === 'string' ? kpiNotes[route.query.kpi] ?? '' : ''));
@@ -77,11 +77,10 @@ const kpiNote = computed(() => (typeof route.query.kpi === 'string' ? kpiNotes[r
   <main class="premium-workspace">
     <div class="premium-page-heading">
       <div>
-        <p class="premium-eyebrow">EQUIPMENT FLEET / 设备中心</p>
         <h1>行车资产 <span>业务档案与运行身份独立</span></h1>
       </div>
       <RouterLink class="premium-link" to="/runtime"
-        >查看 Runtime Shadow <ArrowUpRight :size="14"
+        >查看运行状态 <ArrowUpRight :size="14"
       /></RouterLink>
     </div>
     <div class="premium-filterbar">
@@ -96,7 +95,7 @@ const kpiNote = computed(() => (typeof route.query.kpi === 'string' ? kpiNotes[r
       >
     </div>
     <p v-if="kpiNote" class="kpi-not-exact" role="note" data-testid="inventory-kpi-note">
-      来自首页「{{ kpiNote }}」：此处是同授权、同行政区的全部 Inventory 资产，<b>不是</b>该指标的精确筛选结果——
+      来自首页「{{ kpiNote }}」：此处是同授权、同行政区的全部登记资产，<b>不是</b>该指标的精确筛选结果——
       指标由服务端按运行身份、连接新鲜度与资产状态统计，目前尚无相同口径的明细接口。
     </p>
     <p v-if="error" role="status">{{ error }}</p>
@@ -108,10 +107,10 @@ const kpiNote = computed(() => (typeof route.query.kpi === 'string' ? kpiNotes[r
       行政区 {{ region }} 不存在；<RouterLink to="/devices">查看全部授权设备</RouterLink>。
     </p>
     <p v-else-if="!assets.length && regionName" class="no-data" data-testid="inventory-region-empty">
-      {{ regionName }} 范围内没有您有权查看的 Inventory 设备。
+      {{ regionName }} 范围内没有您有权查看的登记设备。
     </p>
     <p v-else-if="!assets.length" class="no-data">
-      设备档案待补充 · 尚未接入Cloud；不代表离线故障。
+      设备档案待补充 · 尚未接入云端；不代表离线故障。
     </p>
     <p v-if="regionState === 'malformed'" role="status" data-testid="inventory-region-ignored">
       无效的行政区参数「{{ rawRegion }}」，已忽略并显示全部授权设备。

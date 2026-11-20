@@ -3,6 +3,10 @@
 // 冲突页：可覆盖的经理覆盖、硬约束不可覆盖 → 撤回硬资源预约 → 批准 → 已批准排期（基线） → 经理取消（If-Match + 原因，基线保留）。
 // 规划员：无批准、日历只读、无覆盖；重复点击批准只发一次请求。
 import { test, expect, type Page, type Route } from '@playwright/test';
+import { expectChineseUI } from './zh-guard';
+
+// R9-UX: the final screen of every flow keeps business text in Chinese (enum / formula / error leaks fail).
+test.afterEach(async ({ page }, info) => { if (info.status === 'passed') await expectChineseUI(page, info.title); });
 
 type Role = 'portfolio_manager' | 'portfolio_planner';
 const session = { userId: 'u', displayName: 'u', projects: [], csrfToken: 'x'.repeat(32), expiresAt: '2099-01-01T00:00:00Z', idleExpiresAt: '2099-01-01T00:00:00Z' };

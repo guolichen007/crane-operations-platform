@@ -10,8 +10,8 @@ const { data, error, loading, refresh } = useCloudQuery(async () => {
   return { ...summarizeDevices(devices), devices, alarms: alarms.length };
 });
 const metrics = computed(() => [
-  [props.inventoryMode ? 'Runtime连接' : 'Cloud接入设备', data.value?.total, '台'],
-  [props.inventoryMode ? 'Runtime MQTT在线（含模拟）' : 'MQTT在线', data.value?.online, '台'],
+  [props.inventoryMode ? '运行身份连接' : '云端接入设备', data.value?.total, '台'],
+  [props.inventoryMode ? '运行身份在线（含模拟）' : '在线', data.value?.online, '台'],
   ['实时查看', data.value?.live, '台设备'],
   ['当前告警记录', data.value?.alarms, '条'],
 ]);
@@ -33,10 +33,10 @@ const sources = computed(() => {
 });
 </script>
 <template>
-  <section class="cloud-runtime" :class="{ compact }" aria-label="Cloud实际运行状态" data-testid="cloud-runtime">
+  <section class="cloud-runtime" :class="{ compact }" aria-label="云端实际运行状态" data-testid="cloud-runtime">
     <div class="runtime-title">
-      <strong>CLOUD RUNTIME · Cloud API</strong
-      ><small v-if="compact" class="runtime-cycle" data-testid="cloud-runtime-cycle">独立轮询 15 s · 不刷新首页指标</small
+      <strong>云端运行状态</strong
+      ><small v-if="compact" class="runtime-cycle" data-testid="cloud-runtime-cycle">每 15 秒独立轮询 · 不刷新首页指标</small
       ><router-link to="/devices">云端设备 →</router-link>
     </div>
     <div class="runtime-metrics">
@@ -50,21 +50,19 @@ const sources = computed(() => {
       {{ error }}；{{ data ? '保留上次结果，当前状态待刷新' : '尚无云端统计' }}
       <button @click="refresh">重试</button>
     </p>
-    <p v-else-if="loading">正在读取 Cloud API…</p>
+    <p v-else-if="loading">正在读取云端运行状态…</p>
     <component :is="compact ? 'details' : 'div'" class="runtime-notes">
       <summary v-if="compact">口径说明</summary>
       <p v-if="!inventoryMode">
-        {{ data?.total }}台云设备已接入，位置元数据未配置；SIM 为模拟设备。实时查看按上游 LIVE
-        的设备数统计；告警为 API 最近最多100条记录，不代表未处理数量。
+        {{ data?.total }} 台云端设备已接入，位置元数据未配置；SIM 为模拟设备。实时查看按实时采集中的设备数统计；告警为最近最多 100 条记录，不代表未处理数量。
       </p>
       <p v-if="inventoryMode">
-        模拟运行源在线 {{ sources.simulation }} · 真实运行源在线 {{ sources.real }}；SIM
-        为模拟设备，不能代表现场在线。实时查看按上游LIVE设备计数；告警为最近最多100条记录，不代表未处理数量。
+        模拟运行身份在线 {{ sources.simulation }} · 真实运行身份在线 {{ sources.real }}；SIM 为模拟设备，不能代表现场在线。实时查看按实时采集中的设备计数；告警为最近最多 100 条记录，不代表未处理数量。
       </p>
       <p v-if="inventoryMode">
-        项目位置来自Inventory行政区配置；未配置时不生成地图点。历史/测试运行源不计作真实接入。
+        项目位置来自运营登记的行政区；未登记时不生成地图点。历史 / 测试运行身份不计作真实接入。
       </p>
-      <p v-else>空间分布来自已授权项目的行政区登记，与 Cloud 运行统计分开展示。</p>
+      <p v-else>空间分布来自已授权项目的行政区登记，与云端运行统计分开展示。</p>
     </component>
   </section>
 </template>

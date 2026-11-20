@@ -86,7 +86,7 @@ const showChildren = computed(() => collapsed.value || assetsOpen.value);
 <template>
   <aside class="side-rail" :class="{ collapsed }" data-testid="side-rail">
     <div class="rail-head">
-      <span v-if="!collapsed" class="rail-brand">OPS 工作台</span>
+      <span v-if="!collapsed" class="rail-brand">运营工作台</span>
       <span v-else class="rail-index">OPS</span>
       <button
         v-if="!phone"
@@ -140,6 +140,6 @@ const showChildren = computed(() => collapsed.value || assetsOpen.value);
         ><component :is="n.icon" :size="19" :stroke-width="1.7" /><span>{{ n.name }}</span></RouterLink
       >
     </nav>
-    <div class="rail-foot"><span class="rail-version-dot"></span><small v-if="!collapsed">A1.1</small></div>
+    <div class="rail-foot"><span class="rail-version-dot"></span><small v-if="!collapsed">版本 A1.1</small></div>
   </aside>
 </template>

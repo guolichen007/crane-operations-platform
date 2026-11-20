@@ -308,11 +308,15 @@ type AlertView struct {
 	Status      string          `json:"status"`
 	WorkOrderID *string         `json:"workOrderId"`
 	Detail      json.RawMessage `json:"detail"`
+	Slot        *string         `json:"equipmentSlot"` // R9-UX: additive, for the device name
+	SlotName    *string         `json:"equipmentName"`
+	Mechanism   *string         `json:"mechanism"`
 }
 
 func Alerts(ctx context.Context, db *sql.DB, assetIDs []string, mode string) ([]AlertView, error) {
-	rows, err := db.QueryContext(ctx, `SELECT a.id,a.rule_id,r.name,a.asset_id,a.source_mode,a.cycle_no,a.stage,a.triggered_at,a.status,a.work_order_id,a.detail::text
-FROM maintenance_alerts a JOIN maintenance_rules r ON r.id=a.rule_id WHERE a.asset_id = ANY($1) AND ($2='' OR a.source_mode=$2) ORDER BY a.triggered_at DESC, a.stage LIMIT 500`, assetIDs, mode)
+	rows, err := db.QueryContext(ctx, `SELECT a.id,a.rule_id,r.name,a.asset_id,a.source_mode,a.cycle_no,a.stage,a.triggered_at,a.status,a.work_order_id,a.detail::text,r.equipment_slot,tp.name,tp.mechanism
+FROM maintenance_alerts a JOIN maintenance_rules r ON r.id=a.rule_id
+LEFT JOIN LATERAL (SELECT name, mechanism FROM telemetry_points t WHERE t.asset_id=r.asset_id AND t.equipment_slot=r.equipment_slot ORDER BY t.point_code LIMIT 1) tp ON true WHERE a.asset_id = ANY($1) AND ($2='' OR a.source_mode=$2) ORDER BY a.triggered_at DESC, a.stage LIMIT 500`, assetIDs, mode)
 	if err != nil {
 		return nil, err
 	}
@@ -321,7 +325,7 @@ FROM maintenance_alerts a JOIN maintenance_rules r ON r.id=a.rule_id WHERE a.ass
 	for rows.Next() {
 		var v AlertView
 		var d string
-		if err = rows.Scan(&v.ID, &v.RuleID, &v.RuleName, &v.AssetID, &v.SourceMode, &v.CycleNo, &v.Stage, &v.TriggeredAt, &v.Status, &v.WorkOrderID, &d); err != nil {
+		if err = rows.Scan(&v.ID, &v.RuleID, &v.RuleName, &v.AssetID, &v.SourceMode, &v.CycleNo, &v.Stage, &v.TriggeredAt, &v.Status, &v.WorkOrderID, &d, &v.Slot, &v.SlotName, &v.Mechanism); err != nil {
 			return nil, err
 		}
 		v.Detail = json.RawMessage(d)
@@ -394,6 +398,7 @@ type CenterRow struct {
 	AssetCode       *string    `json:"assetCode"`
 	Mechanism       *string    `json:"mechanism"`
 	Slot            *string    `json:"equipmentSlot"`
+	EquipmentName   *string    `json:"equipmentName"` // R9-UX: the device name of the slot (source list), additive
 	EquipmentType   *string    `json:"equipmentType"`
 	Category        string     `json:"category"` // MAINTENANCE_DUE | CALIBRATION_DUE | INSPECTION_DUE | REPLACEMENT_DUE | STATUTORY_INSPECTION
 	RuleID          *string    `json:"ruleId"`
@@ -410,7 +415,7 @@ type CenterRow struct {
 // Center returns the due rows of the given (authorized) projects.
 func Center(ctx context.Context, db *sql.DB, projects []string, now time.Time) ([]CenterRow, error) {
 	rows, err := db.QueryContext(ctx, `
-SELECT a.project_id, p.name, a.id, a.display_name, a.asset_code, tp.mechanism, r.equipment_slot, e.type_code,
+SELECT a.project_id, p.name, a.id, a.display_name, a.asset_code, tp.mechanism, r.equipment_slot, tp.name, e.type_code,
   CASE r.rule_kind WHEN 'CALIBRATION' THEN 'CALIBRATION_DUE' WHEN 'INSPECTION' THEN 'INSPECTION_DUE' WHEN 'REPLACEMENT' THEN 'REPLACEMENT_DUE' ELSE 'MAINTENANCE_DUE' END,
   r.id, r.name, r.approval_status, COALESCE(s.source_mode, CASE WHEN r.test_only THEN 'SIMULATION' ELSE 'REAL' END),
   COALESCE(s.status, CASE WHEN r.approval_status='APPROVED' THEN 'INSUFFICIENT_DATA' ELSE 'DRAFT' END),
@@ -419,10 +424,10 @@ SELECT a.project_id, p.name, a.id, a.display_name, a.asset_code, tp.mechanism, r
 FROM maintenance_rules r JOIN asset_devices a ON a.id=r.asset_id JOIN projects p ON p.id=a.project_id
 LEFT JOIN maintenance_schedules s ON s.rule_id=r.id
 LEFT JOIN asset_equipment_installations e ON e.asset_id=r.asset_id AND e.semantic_slot=r.equipment_slot AND e.valid_to IS NULL
-LEFT JOIN LATERAL (SELECT mechanism FROM telemetry_points t WHERE t.asset_id=r.asset_id AND t.equipment_slot=r.equipment_slot LIMIT 1) tp ON true
+LEFT JOIN LATERAL (SELECT mechanism, name FROM telemetry_points t WHERE t.asset_id=r.asset_id AND t.equipment_slot=r.equipment_slot ORDER BY t.point_code LIMIT 1) tp ON true
 WHERE a.project_id = ANY($1) AND r.approval_status<>'RETIRED'
 UNION ALL
-SELECT a.project_id, p.name, a.id, a.display_name, a.asset_code, NULL, NULL, NULL, 'STATUTORY_INSPECTION', NULL, '法定定期检验', 'SOURCE',
+SELECT a.project_id, p.name, a.id, a.display_name, a.asset_code, NULL, NULL, NULL, NULL, 'STATUTORY_INSPECTION', NULL, '法定定期检验', 'SOURCE',
   'REAL', CASE WHEN a.inspection_valid_until IS NULL THEN 'INSUFFICIENT_DATA' WHEN a.inspection_valid_until < $2::date THEN 'OVERDUE' WHEN a.inspection_valid_until = $2::date THEN 'DUE'
    WHEN a.inspection_valid_until <= $2::date + 30 THEN 'DUE_SOON' ELSE 'NORMAL' END,
   a.inspection_valid_until::timestamptz, NULL, (a.inspection_valid_until - $2::date), 0
@@ -435,7 +440,7 @@ ORDER BY 1, 3`, projects, now.Format("2006-01-02"))
 	out := []CenterRow{}
 	for rows.Next() {
 		var v CenterRow
-		if err = rows.Scan(&v.ProjectID, &v.ProjectName, &v.AssetID, &v.AssetName, &v.AssetCode, &v.Mechanism, &v.Slot, &v.EquipmentType, &v.Category, &v.RuleID, &v.RuleName, &v.ApprovalStatus, &v.SourceMode, &v.Status,
+		if err = rows.Scan(&v.ProjectID, &v.ProjectName, &v.AssetID, &v.AssetName, &v.AssetCode, &v.Mechanism, &v.Slot, &v.EquipmentName, &v.EquipmentType, &v.Category, &v.RuleID, &v.RuleName, &v.ApprovalStatus, &v.SourceMode, &v.Status,
 			&v.NextDueAt, &v.ProgressPercent, &v.DaysLeft, &v.OpenWorkOrders); err != nil {
 			return nil, err
 		}

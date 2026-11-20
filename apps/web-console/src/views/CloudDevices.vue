@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { zh, errorZh, UPSTREAM_STATUS_ZH, HEALTH_ZH, OPERATING_STATE_ZH, DISCONNECT_REASON_ZH } from '../cloud/zh';
 import { ref, computed, onMounted, onUnmounted, watch, shallowRef } from 'vue';
 import { useRoute } from 'vue-router';
 import type { Shadow } from '../../../../contracts/typescript/types.gen';
@@ -56,7 +57,7 @@ async function refresh() {
     }
     error.value = '';
   } catch (e) {
-    if (!disposed && request === revision) error.value = (e as Error).message;
+    if (!disposed && request === revision) error.value = errorZh(e, 'load');
   }
 }
 function sessionExpired() {
@@ -105,34 +106,33 @@ const projectName = computed(
 );
 const active = computed(() => viewer.value.state !== 'STOPPED');
 const streamHeading = computed(() => {
-  if (viewer.value.state === 'STOPPED') return 'Last Known State · 最近状态';
+  if (viewer.value.state === 'STOPPED') return '最近状态';
   if (viewer.value.state === 'RECONNECTING') return '实时流中断 · 正在重连';
   if (viewer.value.state === 'POLLING_FALLBACK') return '最近状态可用 · 实时流正在恢复';
   if (viewer.value.state === 'CONNECTING') return '正在连接实时流';
-  return `LIVE 上游：${current.value?.upstreamStatus}`;
+  return `实时查看：${zh(UPSTREAM_STATUS_ZH, current.value?.upstreamStatus, '状态未知')}`;
 });
 </script>
 <template>
   <main class="cloud-devices">
-    <p class="eyebrow">CLOUD SHADOW / MQTT 5 · TLS</p>
-    <h1>{{ detail ? `设备 ${detail}` : '云端设备台账' }}</h1>
+    <h1>{{ detail ? `运行身份 ${detail}` : '运行状态' }}</h1>
     <p role="status">
       {{
         error ||
         viewer.error ||
         (detail
-          ? 'Cloud API · 运行身份与业务资产分开管理'
-          : `已接收 ${devices.length} 个运行身份；运行源不等于现场设备，读取缓存不唤醒现场`)
+          ? '运行身份与业务资产分开管理'
+          : `已接收 ${devices.length} 个运行身份；运行身份不等于现场设备，读取最近状态不会唤醒现场`)
       }}
     </p>
     <p class="silent-note">{{ silentExplanation }}</p>
     <template v-if="detail">
-      <router-link to="/runtime">← 返回Runtime台账</router-link>
+      <router-link to="/runtime">← 返回运行状态</router-link>
       <p v-if="asset">
         {{ projectName }} · {{ asset.displayName }} · {{ asset.craneModel ?? '型号待补充' }} ·
         数据来源：{{ assetSource(asset) }}
       </p>
-      <p v-else>未关联业务资产 · 历史/测试运行源；不代表真实现场设备。</p>
+      <p v-else>未关联业务资产 · 历史 / 测试运行身份，不代表真实现场设备。</p>
       <div v-if="current" class="device-detail-layout">
         <div class="device-twin-column">
           <CraneTwin
@@ -168,7 +168,7 @@ const streamHeading = computed(() => {
           <section class="glass-panel">
             <div class="panel-heading">
               <h2>状态时间线</h2>
-              <small>LAST KNOWN STATE</small>
+              <small>最近状态</small>
             </div>
             <p class="inspector-copy">最近快照 · {{ formatCloudTime(current.updatedAt) }}</p>
             <p class="inspector-copy">
@@ -187,11 +187,10 @@ const streamHeading = computed(() => {
             最后更新时间：<time :title="current.updatedAt" :datetime="current.updatedAt">{{
               formatCloudTime(current.updatedAt)
             }}</time
-            >（Asia/Shanghai） · 版本 {{ current.version }}
+            >（北京时间） · 版本 {{ current.version }}
           </p>
           <p>
-            {{ deviceState(current) }} / {{ current.presence.edgeHealth }} /
-            {{ current.presence.controllerHealth }}
+            {{ deviceState(current) }} · 边缘端{{ zh(HEALTH_ZH, current.presence.edgeHealth) }} · 控制器{{ zh(HEALTH_ZH, current.presence.controllerHealth) }}
           </p>
           <p>
             最后心跳：<time
@@ -201,8 +200,8 @@ const streamHeading = computed(() => {
             >
           </p>
           <p>
-            采集状态 {{ current.reported.operatingState }} · 下线原因
-            {{ current.presence.disconnectReason }}
+            采集状态 {{ zh(OPERATING_STATE_ZH, current.reported.operatingState) }} · 下线原因
+            {{ zh(DISCONNECT_REASON_ZH, current.presence.disconnectReason) }}
           </p>
           <dl>
             <dt>X / Y / Z</dt>
@@ -218,7 +217,7 @@ const streamHeading = computed(() => {
             :disabled="!active && !canWatchProject(current.projectId)"
             @click="active ? live.stop() : live.start(detail)"
           >
-            {{ active ? '停止实时查看' : '申请 LIVE · 1 Hz' }}
+            {{ active ? '停止实时查看' : '开启实时查看（每秒 1 次）' }}
           </button>
           <p v-if="productionAuth && !canWatchProject(current.projectId)">当前项目为只读权限。</p>
           <p v-if="viewer.session">
@@ -226,14 +225,13 @@ const streamHeading = computed(() => {
               :title="viewer.session.expiresAt"
               :datetime="viewer.session.expiresAt"
               >{{ formatCloudTime(viewer.session.expiresAt) }}</time
-            >。上游仅在设备应用回执确认后显示 LIVE。
+            >。设备回执确认后才显示为实时采集中。
           </p>
           <p>
-            离开/刷新会尽力关闭 Viewer；浏览器异常或断网时由云端 TTL + Grace
-            兜底。刷新后回到最近状态。
+            离开或刷新页面会尽力关闭实时查看；浏览器异常或断网时由云端的有效期与宽限期兜底关闭。刷新后回到最近状态。
           </p>
-          <p>Point Cloud / Remote Local Web：Phase 2 未启用。</p>
-          <router-link to="/alarms">Alarm · 告警记录 →</router-link>
+          <p>点云与远程本地页面：二期功能，未启用。</p>
+          <router-link to="/alarms">告警记录 →</router-link>
         </section>
       </div>
     </template>
@@ -247,7 +245,7 @@ const streamHeading = computed(() => {
       >
         <h2>{{ device.deviceId }}</h2>
         <p>{{ device.projectId }}</p>
-        <p :title="`${device.presence.connectivity} · ${device.reported.operatingState}`">
+        <p>
           {{ deviceState(device) }}
         </p>
         <small
@@ -255,7 +253,7 @@ const streamHeading = computed(() => {
           <time :title="device.updatedAt" :datetime="device.updatedAt">{{
             formatCloudTime(device.updatedAt)
           }}</time>
-          · 上海</small
+          · 北京时间</small
         >
       </router-link>
     </div>

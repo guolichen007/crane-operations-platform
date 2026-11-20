@@ -30,12 +30,11 @@ const filtered = computed(() =>
       <div>
         <span>关联设备</span><b>{{ deviceIds.length }}</b>
       </div>
-      <div><span>处理状态</span><strong>API 尚未提供</strong></div>
-      <div><span>告警分级</span><strong>源协议尚未提供</strong></div>
+      <div><span>处理状态</span><strong>暂不支持</strong></div>
+      <div><span>告警分级</span><strong>设备协议未提供</strong></div>
     </div>
     <p class="cloud-alarm-note">
-      数据来源：Cloud API · 最近最多100条已上报告警记录；API
-      未提供处理状态或云端确认能力。时间：Asia/Shanghai。
+      数据来源：云端告警记录 · 最近最多 100 条已上报告警；平台暂不提供告警处理状态与云端确认。时间：北京时间。
     </p>
     <div class="filter-toolbar">
       <label class="search-box"
@@ -51,7 +50,7 @@ const filtered = computed(() =>
       <input v-model="date" type="date" aria-label="告警日期" />
     </div>
     <p v-if="error" role="status">{{ error }}{{ data ? '；以下保留上次读取的记录' : '' }}</p>
-    <p v-else-if="loading" role="status">正在读取 Cloud Alarm…</p>
+    <p v-else-if="loading" role="status">正在读取告警记录…</p>
     <div class="table-wrap">
       <table>
         <thead>
@@ -60,7 +59,7 @@ const filtered = computed(() =>
             <th>告警码</th>
             <th>等级</th>
             <th>描述</th>
-            <th>上报时间 · 上海</th>
+            <th>上报时间（北京时间）</th>
             <th>来源</th>
           </tr>
         </thead>
@@ -79,7 +78,7 @@ const filtered = computed(() =>
                 formatCloudTime(alarm.sentAt)
               }}</time>
             </td>
-            <td><StatusPill label="Cloud API" /></td>
+            <td><StatusPill label="云端上报" /></td>
           </tr>
         </tbody>
       </table>

@@ -118,9 +118,9 @@ test('native WebSocket reconnects without another Viewer, then active stop preve
     ws.send(JSON.stringify({ ...cloudDevice(), upstreamStatus: 'LIVE' }));
   });
   await page.goto('/#/devices/SIM-001');
-  await expect(page.getByRole('heading', { name: /Last Known State/ })).toBeVisible();
-  await page.getByRole('button', { name: '申请 LIVE · 1 Hz', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'LIVE 上游：LIVE', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '最近状态', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '开启实时查看（每秒 1 次）', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '实时查看：实时采集中', exact: true })).toBeVisible();
   expect(await page.evaluate((key) => sessionStorage.getItem(key), viewerStorageKey)).toBe(
     'viewer-1'
   );
@@ -135,7 +135,7 @@ test('native WebSocket reconnects without another Viewer, then active stop preve
     h.calls.filter((r) => r.method === 'POST' && r.path.endsWith('/live-sessions'))
   ).toHaveLength(1);
   await page.getByRole('button', { name: '停止实时查看', exact: true }).click();
-  await expect(page.getByRole('heading', { name: /Last Known State/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '最近状态', exact: true })).toBeVisible();
   expect(await page.evaluate((key) => sessionStorage.getItem(key), viewerStorageKey)).toBeNull();
   await page.waitForTimeout(2200);
   expect(sockets).toHaveLength(2);
@@ -149,7 +149,7 @@ test('pagehide sends keepalive DELETE; reload clears stale id without reopening 
     ws.send(JSON.stringify(cloudDevice()))
   );
   await page.goto('/#/devices/SIM-001');
-  await page.getByRole('button', { name: '申请 LIVE · 1 Hz', exact: true }).click();
+  await page.getByRole('button', { name: '开启实时查看（每秒 1 次）', exact: true }).click();
   await expect(page.locator('h2[data-stream-state]')).toHaveAttribute('data-stream-state', 'LIVE');
   await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
   await expect.poll(() => h.calls.filter((r) => r.method === 'DELETE').length).toBe(1);
@@ -158,7 +158,7 @@ test('pagehide sends keepalive DELETE; reload clears stale id without reopening 
   await expect
     .poll(() => h.calls.some((r) => r.path.endsWith('/stale-after-crash') && r.method === 'DELETE'))
     .toBe(true);
-  await expect(page.getByRole('heading', { name: /Last Known State/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '最近状态', exact: true })).toBeVisible();
   expect(await page.evaluate((key) => sessionStorage.getItem(key), viewerStorageKey)).toBeNull();
   expect(h.calls.filter((r) => r.method === 'POST')).toHaveLength(1);
 });

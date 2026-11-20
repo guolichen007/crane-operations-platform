@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ASSET_TYPES } from '../cloud/asset-types';
+import { zh, errorZh, ASSET_TYPE_ZH } from '../cloud/zh';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query';
 import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router';
@@ -105,7 +106,7 @@ const createMutation = useMutation({
     // creating twice.
     formError.value = e instanceof NetworkWriteError || e instanceof ScopeChangedError ? e.message
       : e instanceof ApiError && e.status === 422 && /displayName or assetCode/.test(e.message) ? NAME_REQUIRED
-        : e instanceof ApiError ? e.message : '创建失败';
+        : e instanceof ApiError ? errorZh(e) : '创建失败';
   },
 });
 
@@ -176,9 +177,8 @@ const statusText: Record<string, string> = {
   <section class="workspace-page asset-center" data-testid="asset-center">
     <header class="workspace-page-head">
       <div>
-        <span class="eyebrow">ASSET CENTER / 资产中心</span>
         <h1>资产台账</h1>
-        <p>服务端分页、搜索、状态与类型筛选 · If-Match 乐观并发 · 幂等创建</p>
+        <p>整机资产档案 · 按编号、名称、状态与类型查询</p>
       </div>
       <button v-if="canCreate" class="primary-action" data-testid="asset-create" @click="openCreate">
         <Plus :size="15" />新建资产
@@ -192,11 +192,11 @@ const statusText: Record<string, string> = {
       </div>
       <select v-model="status" aria-label="状态筛选">
         <option value="">全部状态</option>
-        <option v-for="s in statusOptions" :key="s" :value="s">{{ statusText[s] ?? s }}</option>
+        <option v-for="s in statusOptions" :key="s" :value="s">{{ zh(statusText, s) }}</option>
       </select>
       <select v-model="type" aria-label="类型筛选">
         <option value="">全部类型</option>
-        <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
+        <option v-for="t in typeOptions" :key="t" :value="t">{{ zh(ASSET_TYPE_ZH, t, '其他类型') }}</option>
       </select>
       <button class="ghost-action" @click="apply">筛选</button>
       <button class="ghost-action" :aria-label="'刷新'" @click="queryClient.invalidateQueries({ queryKey: ['assets'] })">
@@ -209,7 +209,7 @@ const statusText: Record<string, string> = {
     </p>
     <div v-else-if="state === 'session-loading' || assetsQuery.isLoading.value" class="skeleton table-skeleton" aria-busy="true" data-testid="asset-loading"></div>
     <p v-else-if="assetsQuery.isError.value" class="workspace-error" role="alert">
-      资产加载失败：{{ (assetsQuery.error.value as Error).message }}
+      资产加载失败：{{ errorZh(assetsQuery.error.value, 'load') }}
     </p>
     <p v-else-if="!assetsQuery.data.value?.length" class="workspace-empty">
       暂无资产，点击「新建资产」开始录入。
@@ -238,9 +238,9 @@ const statusText: Record<string, string> = {
             </td>
             <td data-col="displayName">{{ a.displayName || a.assetCode || '—' }}</td>
             <td>{{ projectLabel(a.projectId, grants) }}</td>
-            <td>{{ a.assetType }}</td>
+            <td>{{ zh(ASSET_TYPE_ZH, a.assetType, '其他类型') }}</td>
             <td>
-              <span class="status-pill" :data-status="a.assetStatus">{{ statusText[a.assetStatus] ?? a.assetStatus }}</span>
+              <span class="status-pill" :data-status="a.assetStatus">{{ zh(statusText, a.assetStatus) }}</span>
             </td>
             <td>{{ a.manufacturerSnapshot || '—' }}</td>
             <td>{{ a.modelSnapshot || '—' }}</td>
@@ -284,7 +284,7 @@ const statusText: Record<string, string> = {
         <p id="asset-name-hint" class="form-hint">名称与编号至少填写一项；未填名称时以编号作为名称。</p>
         <label>类型
           <select v-model="newAsset.assetType">
-            <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
+            <option v-for="t in typeOptions" :key="t" :value="t">{{ zh(ASSET_TYPE_ZH, t, '其他类型') }}</option>
           </select>
         </label>
         <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>

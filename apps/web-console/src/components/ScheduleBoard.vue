@@ -14,6 +14,7 @@ import {
   type CalendarRule,
 } from '../cloud/portfolio';
 import { ApiError, NetworkWriteError } from '../cloud/client';
+import { errorZh, validationZh } from '../cloud/zh';
 import { createScopeFence, ScopeChangedError } from '../cloud/scope-fence';
 import { resetPortfolioScope } from '../cloud/queryClient';
 import type { PortfolioScope, Resource, ScheduleItem, ScheduleConflict } from '../../../../contracts/typescript/types.gen';
@@ -51,12 +52,12 @@ function errText(e: unknown): string {
     if (e.status === 404) return '对象不存在或不在您的项目组合内。';
     if (e.status === 409 && e.code === 'version_conflict') return '数据已被他人修改，请刷新后重试。';
     if (e.status === 409 && e.code === 'schedule_conflict') return '存在未解决的阻断冲突，未批准。请到「冲突」页处理（覆盖或调整资源/时段）后再批准。';
-    if (e.status === 409) return `状态不允许此操作：${e.message}`;
-    if (e.status === 422) return `输入不符合要求：${e.message}`;
+    if (e.status === 409) return `当前状态不允许此操作：${errorZh(e)}`;
+    if (e.status === 422) return `输入不符合要求：${validationZh(e.message)}`;
     if (e.status === 503) return '服务暂不可用，请稍后重试（输入已保留）。';
-    return e.message;
+    return errorZh(e);
   }
-  return '操作失败';
+  return errorZh(e);
 }
 const actionError = ref('');
 function failed(e: unknown) {
@@ -350,7 +351,7 @@ function override(c: ScheduleConflict) {
 
     <div v-if="calendarFor" class="modal-backdrop" @click.self="calendarFor = null">
       <form class="workspace-modal" data-testid="calendar-form" @submit.prevent="calendarMutation.mutate()">
-        <h2>「{{ calendarFor.name }}」每周可用时间（Asia/Shanghai，v{{ calendarVersion }}）</h2>
+        <h2>「{{ calendarFor.name }}」每周可用时间（北京时间，第 {{ calendarVersion }} 版）</h2>
         <p v-if="actionError" class="form-error" role="alert" data-testid="schedule-action-error">{{ actionError }}</p>
         <p v-if="calendarLoading" class="skeleton" aria-busy="true" style="height: 32px"></p>
         <p v-else-if="!calendarRules.length" class="muted small">未设置规则：全周全天可用。</p>

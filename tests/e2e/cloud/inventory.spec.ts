@@ -72,7 +72,7 @@ test('three completed projects have no invented device, model or telemetry', asy
     await expect(card).not.toContainText('OFFLINE');
   }
   await page.goto('/#/devices?project=P007');
-  await expect(page.getByText('设备档案待补充 · 尚未接入Cloud；不代表离线故障。')).toBeVisible();
+  await expect(page.getByText('设备档案待补充 · 尚未接入云端；不代表离线故障。')).toBeVisible();
   await expect(page.getByTestId('inventory-asset')).toHaveCount(0);
   await page.goto('/#/devices');
   await expect(page.getByTestId('inventory-asset')).toHaveCount(10);

@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/vue-query';
 import { BookOpen, RefreshCw } from 'lucide-vue-next';
 import { listManufacturers, listCatalog } from '../cloud/asset';
 import { ApiError } from '../cloud/client';
+import { zh, errorZh, equipmentTypeName, CATALOG_STATUS_ZH } from '../cloud/zh';
 
 const tab = ref<'manufacturer' | 'catalog'>('manufacturer');
 
@@ -20,7 +21,7 @@ const catalogQuery = useQuery({
 function loadError(e: unknown): string {
   if (e instanceof ApiError && e.status === 403) return '没有查看权限。';
   if (e instanceof ApiError && e.status === 503) return '服务暂不可用，目录未能加载。';
-  if (e instanceof ApiError) return `加载失败（${e.status}）：${e.message}`;
+  if (e instanceof ApiError) return `未能加载：${errorZh(e, 'load')}`;
   return '网络连接失败或请求超时，目录未能加载。';
 }
 </script>
@@ -28,9 +29,8 @@ function loadError(e: unknown): string {
   <section class="workspace-page catalog-center" data-testid="catalog-center">
     <header class="workspace-page-head">
       <div>
-        <span class="eyebrow">EQUIPMENT CATALOG / 设备目录</span>
         <h1>设备目录</h1>
-        <p>设备类型 · 制造商 · 型号目录 · Global 只读</p>
+        <p>制造商与型号目录 · 平台公共目录只读，项目目录随项目维护</p>
       </div>
       <BookOpen :size="20" />
     </header>
@@ -55,9 +55,9 @@ function loadError(e: unknown): string {
               <td>{{ m.name }}</td>
               <td>{{ m.shortName || '—' }}</td>
               <td>{{ m.countryRegion ?? '—' }}</td>
-              <td>{{ m.status }}</td>
+              <td>{{ zh(CATALOG_STATUS_ZH, m.status) }}</td>
               <td>
-                <span v-if="m.projectId === null" class="status-pill" data-status="DRAFT">GLOBAL · 只读</span>
+                <span v-if="m.projectId === null" class="status-pill" data-status="DRAFT">平台公共 · 只读</span>
                 <span v-else class="status-pill" data-status="ACTIVE">项目级</span>
               </td>
             </tr>
@@ -79,12 +79,12 @@ function loadError(e: unknown): string {
           <tbody>
             <tr v-for="c in catalogQuery.data.value" :key="c.id" class="data-row">
               <td>{{ c.name }}</td>
-              <td>{{ c.typeCode }}</td>
+              <td>{{ equipmentTypeName(c.typeCode) }}</td>
               <td>{{ c.brand }}</td>
               <td>{{ c.model }}</td>
-              <td>{{ c.specSchemaVersion }}</td>
+              <td>第 {{ c.specSchemaVersion }} 版</td>
               <td>
-                <span v-if="c.projectId === null" class="status-pill" data-status="DRAFT">GLOBAL · 只读</span>
+                <span v-if="c.projectId === null" class="status-pill" data-status="DRAFT">平台公共 · 只读</span>
                 <span v-else class="status-pill" data-status="ACTIVE">项目级</span>
               </td>
             </tr>

@@ -2,6 +2,10 @@
 // work orders and the maintenance & due center. Every list carries sourceMode; SIMULATION / TEST
 // values are always marked (sourceModeBadge) and never mixed into REAL counters.
 import { api } from './client';
+import {
+  APPROVAL_ZH, CONCLUSION_ZH, GAP_ZH, HISTORY_CATEGORY_ZH, ISSUE_ZH, METRIC_ZH, PENDING_ATTR_ZH, RULE_KIND_ZH, RULE_TYPE_ZH, SCHEDULE_STATUS_ZH, STAGE_ZH,
+  WO_STATUS_ZH, WO_TYPE_ZH, unitZh,
+} from './zh';
 
 export type SourceMode = 'REAL' | 'SIMULATION' | 'TEST';
 
@@ -28,7 +32,8 @@ export type RuleView = {
   nextDueMeter: number | null; progressPercent: number | null; daysLeft: number | null; evaluatedAt: string | null;
   dataGaps?: ('TIME' | 'METER')[]; reason?: string | null; sourceRow?: number | null; approvedAt?: string | null;
 };
-export type AlertView = { id: string; ruleId: string; ruleName: string; assetId: string; sourceMode: SourceMode; cycleNo: number; stage: string; triggeredAt: string; status: string; workOrderId: string | null; detail: Record<string, unknown> };
+export type AlertView = { id: string; ruleId: string; ruleName: string; assetId: string; sourceMode: SourceMode; cycleNo: number; stage: string; triggeredAt: string; status: string; workOrderId: string | null; detail: Record<string, unknown>;
+  equipmentSlot?: string | null; equipmentName?: string | null; mechanism?: string | null };
 export type WorkOrder = {
   id: string; code: string; projectId: string; assetId: string; sourceMode: SourceMode; equipmentInstallationId: string | null; equipmentSlot: string | null;
   ruleId: string | null; alertId: string | null; cycleNo: number | null; type: string; priority: string; status: 'OPEN' | 'ASSIGNED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
@@ -38,7 +43,7 @@ export type WorkOrder = {
 export type HistoryEntry = { at: string; category: string; sourceMode: SourceMode; actor: string; summary: string; reference: string };
 export type CenterRow = {
   projectId: string; projectName: string; assetId: string; assetName: string; assetCode: string | null; mechanism: string | null; equipmentSlot: string | null;
-  equipmentType: string | null; category: string; ruleId: string | null; ruleName: string; approvalStatus: string; sourceMode: SourceMode; status: string;
+  equipmentName?: string | null; equipmentType: string | null; category: string; ruleId: string | null; ruleName: string; approvalStatus: string; sourceMode: SourceMode; status: string;
   nextDueAt: string | null; progressPercent: number | null; daysLeft: number | null; openWorkOrders: number;
 };
 export type AttentionCounts = {
@@ -100,6 +105,7 @@ export const confirmCounterReset = (id: string, meter: string, body: { sourceMod
   api<void>(`${a(id)}/meters/${encodeURIComponent(meter)}/counter-reset`, { method: 'POST', body });
 
 export const GAP_TEXT: Record<string, string> = { TIME: '日期条件数据不足', METER: '计量条件数据不足' };
+export { GAP_ZH };
 /** Rule status line: a partial (HYBRID one-condition) result is shown as such, never as plain 正常. */
 export function ruleStatusText(r: Pick<RuleView, 'status' | 'approvalStatus' | 'dataGaps' | 'type'>): string {
   const base = statusView(r.status ?? (r.approvalStatus === 'APPROVED' ? 'INSUFFICIENT_DATA' : 'DRAFT')).text;
@@ -119,55 +125,40 @@ export function sourceModeBadge(mode: SourceMode | null | undefined): { text: st
   return mode === 'REAL' ? { text: '真实', tone: 'real' } : { text: mode === 'TEST' ? '测试数据' : '模拟数据', tone: 'sim' };
 }
 
+// R9-UX: every map below is the shared Chinese dictionary of cloud/zh.ts (single source); the names
+// stay for the existing imports. statusView never falls back to the raw enum.
 export const STATUS_TEXT: Record<string, { text: string; tone: 'ok' | 'warn' | 'due' | 'over' | 'none' }> = {
-  NORMAL: { text: '正常', tone: 'ok' },
-  DUE_SOON: { text: '即将到期', tone: 'warn' },
-  DUE: { text: '到期', tone: 'due' },
-  OVERDUE: { text: '逾期', tone: 'over' },
-  INSUFFICIENT_DATA: { text: '数据不足', tone: 'none' },
-  DRAFT: { text: '待审核（未生效）', tone: 'none' },
+  NORMAL: { text: SCHEDULE_STATUS_ZH.NORMAL, tone: 'ok' },
+  DUE_SOON: { text: SCHEDULE_STATUS_ZH.DUE_SOON, tone: 'warn' },
+  DUE: { text: SCHEDULE_STATUS_ZH.DUE, tone: 'due' },
+  OVERDUE: { text: SCHEDULE_STATUS_ZH.OVERDUE, tone: 'over' },
+  INSUFFICIENT_DATA: { text: SCHEDULE_STATUS_ZH.INSUFFICIENT_DATA, tone: 'none' },
+  DRAFT: { text: SCHEDULE_STATUS_ZH.DRAFT, tone: 'none' },
 };
-export const statusView = (s: string | null | undefined) => STATUS_TEXT[s ?? ''] ?? { text: s ?? '—', tone: 'none' as const };
+export const statusView = (s: string | null | undefined) => (s ? STATUS_TEXT[s] ?? { text: '状态未知', tone: 'none' as const } : { text: '—', tone: 'none' as const });
 
-export const STAGE_TEXT: Record<string, string> = {
-  LEAD_90: '提前 90 天', LEAD_30: '提前 30 天', LEAD_7: '提前 7 天', DUE: '到期', OVERDUE: '逾期', PCT_80: '使用量 80%', PCT_90: '使用量 90%', PCT_100: '使用量 100%',
-};
-export const RULE_TYPE_TEXT: Record<string, string> = { TIME_BASED: '按时间', METER_BASED: '按计量', HYBRID: '时间/计量先到者' };
-export const KIND_TEXT: Record<string, string> = { MAINTENANCE: '保养', CALIBRATION: '校准', INSPECTION: '检查', REPLACEMENT: '寿命/更换' };
-export const APPROVAL_TEXT: Record<string, string> = { DRAFT_UNAPPROVED: '待审核（未生效）', APPROVED: '已批准', RETIRED: '已停用' };
-export const WO_STATUS_TEXT: Record<string, string> = { OPEN: '待分配', ASSIGNED: '已分配', IN_PROGRESS: '执行中', COMPLETED: '已完成', CANCELLED: '已取消' };
-export const WO_TYPE_TEXT: Record<string, string> = { PREVENTIVE: '预防性维护', CALIBRATION: '校准', INSPECTION: '检查', CORRECTIVE: '纠正性维修', REPLACEMENT: '更换' };
+export const STAGE_TEXT = STAGE_ZH;
+export const RULE_TYPE_TEXT = RULE_TYPE_ZH;
+export const KIND_TEXT = RULE_KIND_ZH;
+export const APPROVAL_TEXT = APPROVAL_ZH;
+export const WO_STATUS_TEXT = WO_STATUS_ZH;
+export const WO_TYPE_TEXT = WO_TYPE_ZH;
 export const CATEGORY_TEXT: Record<string, string> = {
-  MAINTENANCE_DUE: '维护到期', CALIBRATION_DUE: '校准到期', INSPECTION_DUE: '检查到期', REPLACEMENT_DUE: '寿命/更换到期', STATUTORY_INSPECTION: '法定检验',
+  MAINTENANCE_DUE: '维护到期', CALIBRATION_DUE: '校准到期', INSPECTION_DUE: '检查到期', REPLACEMENT_DUE: '寿命 / 更换到期', STATUTORY_INSPECTION: '法定检验',
 };
-export const METRIC_TEXT: Record<string, string> = {
-  cycles: '动作次数', hours: '运行小时', mechanism_running_hours: '机构运行小时', daily_auto_hours: '当日自动作业时长', production_tonnes: '当日作业吨数',
-  daily_job_count: '当日作业次数', state: '状态',
-};
-export const ADDRESS_KIND_TEXT: Record<string, string> = { BIT: 'DBX 位', WORD: '字', NONE: '无地址', UNPARSED: '地址待核（无法解析）' };
-export const CONFIRM_TEXT: Record<string, string> = { UNCONFIRMED: '待现场确认', CONFIRMED: '已确认', REJECTED: '已否决' };
-export const ISSUE_TEXT: Record<string, string> = {
-  DUPLICATE_PLC_ADDRESS_GROUP: '重复 PLC 地址组', MISSING_BIT_INDEX: '地址缺少位索引', THERMAL_RELAY_HOURS_VS_COUNT: '热继统计口径（次数/小时）不一致',
-  UNIT_CONFLICT_HOURS_VS_TONNES: '吨数单位写为「小时」', CHECK_RAW_BIT_VS_PUBLISHED_METRIC_TYPE: 'DBX 位信号与 INT/FLOAT 发布值需核对',
-  ONE_SIGNAL_MULTIPLE_DERIVED_METERS: '一个信号派生多个指标', SHARED_HOIST_BRAKE_SOURCE: '钢丝绳使用量借用起升抱闸信号（代理量）',
-  ROPE_COUNT_AND_INSTALLATION_UNKNOWN: '钢丝绳根数与安装未知', INSPECTION_REQUIRED_NO_AUTO_DISCARD: '需人工检查，系统不判定报废',
-  DUPLICATE_ADDRESS_DIFFERENT_EQUIPMENT: '同一地址对应不同设备', DUPLICATE_ADDRESS_MAY_BE_SHARED_STATUS: '同一地址可能是共用状态', ADDRESS_SHARED_REVIEW_REQUIRED: '共用地址需复核',
-  NON_PLC_SOURCE_UNKNOWN: '非 PLC 来源未知', LIDAR_2D_OR_3D_UNCONFIRMED: '激光雷达 2D/3D 未确认', SOURCE_NOT_SPECIFIED: '数据来源未注明',
-  ASSET_INSTALLATION_DATES_AND_BASELINES_UNKNOWN: '安装日期与初始累计值未知', MODEL_INTERPRETATION_PENDING_NAMEPLATE: '型号解读待铭牌确认',
-};
-export const PENDING_TEXT: Record<string, string> = {
-  ratedCapacityT: '额定起重量（t）', spanM: '跨度（m）', location: '现场位置', statutoryInspection: '使用登记与法定检验', ropeCount: '钢丝绳根数',
-  lidarDimension: '激光雷达维度', rfidEntity: 'RFID 实体类型', radarType: '雷达类型',
-};
-export const HISTORY_TEXT: Record<string, string> = { LEDGER: '台账', REPLACEMENT: '更换', WORK_ORDER: '工单', WIRE_ROPE: '钢丝绳检查', FAULT: '故障' };
-export const ROPE_CONCLUSION_TEXT: Record<string, string> = {
-  CONTINUE: '继续使用', CONTINUE_MONITOR: '继续使用并加强监测', REPLACE_RECOMMENDED: '建议更换（由责任人决定）', STOP_PENDING_REVIEW: '停用待复核',
-};
+export const METRIC_TEXT = METRIC_ZH;
+export const ADDRESS_KIND_TEXT: Record<string, string> = { BIT: '开关量位地址', WORD: '字地址', NONE: '无 PLC 地址', UNPARSED: '地址待核（无法解析）' };
+export const CONFIRM_TEXT: Record<string, string> = { UNCONFIRMED: '待现场确认', CONFIRMED: '已现场确认', REJECTED: '已否决' };
+export const ISSUE_TEXT = ISSUE_ZH;
+export const PENDING_TEXT = PENDING_ATTR_ZH;
+export const HISTORY_TEXT = HISTORY_CATEGORY_ZH;
+export const ROPE_CONCLUSION_TEXT = CONCLUSION_ZH;
 
 export function formatNumber(v: number | null | undefined, unit = ''): string {
   if (v === null || v === undefined) return '—';
   const n = Math.abs(v) >= 1000 ? v.toLocaleString('zh-CN', { maximumFractionDigits: 0 }) : v.toLocaleString('zh-CN', { maximumFractionDigits: 3 });
-  return unit && unit !== 'none' ? `${n} ${unit === 'count' ? '次' : unit}` : n;
+  const u = unitZh(unit);
+  return u ? `${n} ${u}` : n;
 }
 
 /** Days-left phrase; null means the due date cannot be computed (数据不足). */

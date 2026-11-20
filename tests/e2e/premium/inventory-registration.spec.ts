@@ -4,7 +4,11 @@
 // same Inventory). The real BFF + PostgreSQL proof is inventory_registration_http_test.go and the
 // real Keycloak proof tests/e2e/b4/portfolio-grants.spec.ts (inventory step).
 import { test, expect, type Page } from '@playwright/test';
+import { expectChineseUI } from './zh-guard';
 import { inventorySummary, routeSummary } from '../summary-mock';
+
+// R9-UX: the final screen of every flow keeps business text in Chinese (enum / formula / error leaks fail).
+test.afterEach(async ({ page }, info) => { if (info.status === 'passed') await expectChineseUI(page, info.title); });
 
 const shot = (name: string) => `test-results/q3-inventory/${name}.png`;
 type Grant = { projectId: string; projectName: string; role: string };

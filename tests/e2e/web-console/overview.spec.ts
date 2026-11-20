@@ -127,7 +127,7 @@ for (const fixture of [
     const target = (await read(page)).picks.find((p) => p.kind === 'device')!;
     await page.mouse.click(target.x, target.y);
     await expect(page.getByTestId('device-panel')).toContainText(fixture.name);
-    await expect(page.getByTestId('device-panel')).toContainText('DEMO TELEMETRY');
+    await expect(page.getByTestId('device-panel')).toContainText('演示遥测');
     await settled(page, 'PROJECT_FOCUS');
     await reset(page);
   });
@@ -146,8 +146,8 @@ test('全部十台登记行车的项目到单机模拟', async ({ page }) => {
   ]) {
     await page.locator('.plan-item').filter({ hasText: name }).click();
     const project = page.getByTestId('project-panel');
-    await expect(project).toContainText('REAL PROJECT');
-    await expect(project).toContainText('DEMO TELEMETRY');
+    await expect(project).toContainText('登记项目');
+    await expect(project).toContainText('演示遥测');
     await settled(page, 'PROJECT_FOCUS');
     const ids = await project
       .locator('[data-device-id]')
@@ -168,7 +168,7 @@ test('全部十台登记行车的项目到单机模拟', async ({ page }) => {
       await settled(page, 'PROJECT_FOCUS');
       const panel = page.getByTestId('device-panel');
       await expect(panel).toHaveAttribute('data-device-id', ids[i]!);
-      await expect(panel).toContainText('REAL ASSET · DEMO TELEMETRY');
+      await expect(panel).toContainText('登记资产 · 演示遥测');
       for (const text of [
         '负载',
         '大车 X',

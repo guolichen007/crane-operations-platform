@@ -7,7 +7,7 @@ import {
   getSystemAccess, getPerson, updatePerson, setEnabled, resetPassword, revokeSessions, setSystemRoles, setPortfolioRole,
   archivePerson, purgeCheck, purgePerson, REFERENCE_TEXT,
   listDepartments, listAdminPortfolioScopes, validateProfile, systemRoleNames, portfolioRoleName, personnelErrorMessage, statusLabel, formatTime,
-  SYSTEM_ROLES, SYSTEM_ROLE_TEXT, PORTFOLIO_ROLES, PORTFOLIO_ROLE_LABEL, PROJECT_ROLE_LABEL, ACTION_TEXT,
+  SYSTEM_ROLES, SYSTEM_ROLE_TEXT, PORTFOLIO_ROLES, PORTFOLIO_ROLE_LABEL, PROJECT_ROLE_LABEL, actionText, resultText,
   type Profile, type SystemRole, type PortfolioRole, type AccountResult,
 } from '../cloud/personnel';
 import { allowClose } from '../cloud/draft';
@@ -227,7 +227,6 @@ const changeText = (c: unknown) => {
     <header class="workspace-page-head">
       <div>
         <button class="ghost-action" @click="router.push('/system/people')"><ArrowLeft :size="14" />人员列表</button>
-        <span class="eyebrow">SYSTEM / 人员详情</span>
         <h1 data-testid="person-name">{{ p?.displayName || id }}</h1>
         <p v-if="p">{{ p.username || p.id }} · <span class="status-pill" :data-tone="statusLabel(p).tone" data-testid="person-status">{{ statusLabel(p).text }}</span></p>
       </div>
@@ -353,7 +352,7 @@ const changeText = (c: unknown) => {
           <ol v-if="p.history.length" class="history" data-testid="person-history">
             <li v-for="(h, i) in p.history" :key="i" :data-action="h.action">
               <span class="h-time">{{ formatTime(h.at) }}</span>
-              <span class="h-action">{{ ACTION_TEXT[h.action] ?? h.action }}<small v-if="h.result !== 'success'"> · {{ h.result }}</small></span>
+              <span class="h-action">{{ actionText(h.action) }}<small v-if="h.result !== 'success'"> · {{ resultText(h.result) }}</small></span>
               <span class="h-actor">{{ h.actor }}<small v-if="h.scope"> · {{ h.scope }}</small></span>
               <span v-if="changeText(h.change)" class="h-change">{{ changeText(h.change) }}</span>
             </li>

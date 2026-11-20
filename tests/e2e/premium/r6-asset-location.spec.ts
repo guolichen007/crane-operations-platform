@@ -5,6 +5,10 @@
 // The real Keycloak + PostgreSQL proof is tests/e2e/b4/r6-business-closure.spec.ts.
 // Locators are scoped to the page region (detail actions / dialogs / sections), never the side rail.
 import { test, expect, type Page } from '@playwright/test';
+import { expectChineseUI } from './zh-guard';
+
+// R9-UX: the final screen of every flow keeps business text in Chinese (enum / formula / error leaks fail).
+test.afterEach(async ({ page }, info) => { if (info.status === 'passed') await expectChineseUI(page, info.title); });
 
 const session = { userId: 'u', displayName: 'admin', projects: [{ projectId: 'P001', projectName: 'Project-A', role: 'platform_admin' }], csrfToken: 'x'.repeat(32), expiresAt: '2099-01-01T00:00:00Z', idleExpiresAt: '2099-01-01T00:00:00Z' };
 const baseAsset = { id: 'A1', projectId: 'P001', displayName: '1 号行车', assetCode: 'C1', assetType: 'CRANE', assetStatus: 'ACTIVE', manufacturerId: null, manufacturerSnapshot: '', brandSnapshot: '', modelSnapshot: '', serialNumber: null, manufactureDate: null, installationDate: null, commissioningDate: null, liftingHeightM: null, applicationType: null, controlMode: null, version: 1, specialEquipmentCode: null, useRegistrationNo: null };
@@ -67,13 +71,13 @@ test('F-02 类型目录为空：安装表单显示管理员提示，安装按钮
   await page.goto('/#/assets/A1');
   const detail = page.getByTestId('asset-detail');
   await detail.locator('.tabs').getByRole('button', { name: '设备', exact: true }).click();
-  await detail.getByRole('button', { name: '安装 Equipment', exact: true }).click();
+  await detail.getByRole('button', { name: '安装器件', exact: true }).click();
   const form = page.getByTestId('equipment-create-form');
   await expect(form.getByTestId('equipment-types-empty')).toHaveText('尚未配置可安装的设备类型，请联系管理员初始化类型目录');
   await expect(form.getByLabel('设备类型选择').locator('option')).toHaveCount(1);
-  await form.getByLabel('Equipment 编号').fill('EQ-EMPTY');
+  await form.getByLabel('器件编号').fill('EQ-EMPTY');
   await expect(form.getByTestId('equipment-create-submit')).toBeDisabled();
-  await form.getByLabel('Equipment 编号').press('Enter');
+  await form.getByLabel('器件编号').press('Enter');
   await page.waitForTimeout(300);
   expect(state.equipmentPosts).toBe(0);
   await page.screenshot({ path: `${shots}/f02-empty-types.png` });
@@ -84,10 +88,10 @@ test('F-02 有可用类型时：未选类型不能提交；选中后才可提交
   await page.goto('/#/assets/A1');
   const detail = page.getByTestId('asset-detail');
   await detail.locator('.tabs').getByRole('button', { name: '设备', exact: true }).click();
-  await detail.getByRole('button', { name: '安装 Equipment', exact: true }).click();
+  await detail.getByRole('button', { name: '安装器件', exact: true }).click();
   const form = page.getByTestId('equipment-create-form');
   await expect(form.getByTestId('equipment-types-empty')).toHaveCount(0);
-  await form.getByLabel('Equipment 编号').fill('EQ-1');
+  await form.getByLabel('器件编号').fill('EQ-1');
   await expect(form.getByTestId('equipment-create-submit')).toBeDisabled();
   await form.getByLabel('设备类型选择').selectOption('MOTOR');
   await expect(form.getByTestId('equipment-create-submit')).toBeEnabled();
@@ -107,7 +111,7 @@ test('F-03 当前位置：首次无位置诚实空态 → 移动后刷新为完�
   const actions = page.locator('.detail-actions');
   const moveForm = page.getByTestId('asset-move-form');
   await actions.getByRole('button', { name: '移动', exact: true }).click();
-  await moveForm.getByLabel('目标位置').selectOption({ label: '一车间（WORKSHOP）' });
+  await moveForm.getByLabel('目标位置').selectOption({ label: '一车间（车间）' });
   await moveForm.getByRole('button', { name: '移动', exact: true }).click();
   await expect(moveForm).toBeHidden();
   await expect(section.getByTestId('asset-location-current')).toHaveAttribute('data-location-id', 'W1');
@@ -115,7 +119,7 @@ test('F-03 当前位置：首次无位置诚实空态 → 移动后刷新为完�
   await expect(page.getByTestId('asset-moved-location-link')).toBeVisible();
 
   await actions.getByRole('button', { name: '移动', exact: true }).click();
-  await moveForm.getByLabel('目标位置').selectOption({ label: '二车间（WORKSHOP）' });
+  await moveForm.getByLabel('目标位置').selectOption({ label: '二车间（车间）' });
   await moveForm.getByRole('button', { name: '移动', exact: true }).click();
   await expect(moveForm).toBeHidden();
   await expect(section.getByTestId('asset-location-current')).toHaveAttribute('data-location-id', 'W2');

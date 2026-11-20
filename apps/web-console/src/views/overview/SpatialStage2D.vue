@@ -64,8 +64,8 @@ async function load() {
     store.regionChildren = childEntries(m, code).map((r) => ({ adcode: r.adcode, name: r.name, level: r.level as MapLevel['level'] }));
     store.regionPath = target;
     store.sceneState = target.length ? 'REGION_IDLE' : 'COUNTRY_IDLE';
-  } catch (e) {
-    if (my === seq) error.value = String((e as Error).message ?? e);
+  } catch {
+    if (my === seq) error.value = '地图边界数据读取失败';
   } finally {
     if (my === seq) loading.value = false;
   }

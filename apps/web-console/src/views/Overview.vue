@@ -94,8 +94,8 @@ const asOf = computed(() => {
 });
 const asOfTitle = computed(() =>
   times.value
-    ? `统计取样 sampledAt ${times.value.sampled}（服务端单一快照）\n生成完成 generatedAt ${times.value.generated}（服务端）\n浏览器接收 ${times.value.fetched}\n均为上海时间；不是设备遥测的观测时间`
-    : '服务端运营统计（GET /api/v1/operations/summary）'
+    ? `统计取样 ${times.value.sampled}（服务端单一快照）\n生成完成 ${times.value.generated}（服务端）\n浏览器接收 ${times.value.fetched}\n均为北京时间；不是设备遥测的观测时间`
+    : '服务端运营统计（平台统一统计接口）'
 );
 const loadError = computed(() => (demo ? sceneProvider.error.value : snap!.value.error));
 const showError = computed(() => !!loadError.value && (dataState.value === 'stale' || dataState.value === 'unavailable'));
@@ -226,7 +226,7 @@ watch(drawerOpen, (open) => (store.inspectorInset = open ? 320 : 0), { immediate
       <button type="button" class="ghost-action" @click="reload">重试</button>
     </p>
     <p v-if="mapError" class="home-notice warn" role="status" data-testid="map-load-error">
-      地图设备数据（Inventory / Shadow）加载失败，地图标注可能不完整；指标不受影响：{{ sceneProvider.error.value }}
+      地图设备数据加载失败，地图标注可能不完整；指标不受影响。
       <button type="button" class="ghost-action" @click="reloadMap">重试地图数据</button>
     </p>
     <KpiStrip :kpis="kpis" :active="status" :state="dataState" @apply="onKpi" />

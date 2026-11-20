@@ -12,18 +12,18 @@ const sourceLabel = computed(() => {
   switch (props.device.telemetrySource) {
     case 'cloud':
       return props.device.runtimeSource === 'REAL'
-        ? 'REAL ASSET · CLOUD TELEMETRY'
+        ? '登记资产 · 云端真实遥测'
         : props.device.runtimeSource === 'SIMULATION'
-          ? 'REAL ASSET · SIMULATION TELEMETRY'
+          ? '登记资产 · 模拟遥测'
           : props.device.runtimeSource === 'TEST'
-            ? 'REAL ASSET · TEST TELEMETRY'
-            : 'REAL ASSET · CLOUD TELEMETRY';
+            ? '登记资产 · 测试遥测'
+            : '登记资产 · 云端遥测';
     case 'none':
-      return 'REAL ASSET · NO TELEMETRY';
+      return '登记资产 · 无遥测';
     default:
       return props.device.dataSource === 'real'
-        ? 'REAL ASSET · DEMO TELEMETRY'
-        : 'DEMO ASSET · DEMO TELEMETRY';
+        ? '登记资产 · 演示遥测'
+        : '演示资产 · 演示遥测';
   }
 });
 const disclosureLabel = computed(() => {
@@ -40,8 +40,8 @@ const disclosureCopy = computed(() => {
   switch (props.device.telemetrySource) {
     case 'cloud':
       return props.device.runtimeSource === 'REAL'
-        ? '运行参数来自 Cloud 最近同步遥测，非演示数据。'
-        : '运行参数来自 Cloud 的模拟/测试运行源，非现场真实采集。';
+        ? '运行参数来自云端最近同步的遥测，非演示数据。'
+        : '运行参数来自云端的模拟 / 测试运行身份，非现场真实采集。';
     case 'none':
       return '该资产尚未接入运行数据，无遥测。';
     default:
@@ -74,7 +74,7 @@ const faultText = computed(() => props.device.fault || '暂无数据');
     :data-device-id="device.deviceId"
   >
     <div class="panel-title">
-      <span>单台设备 / DEVICE CONTEXT</span
+      <span>单台设备</span
       ><button class="icon-button" aria-label="关闭详情" @click="emit('close')">
         <X :size="16" />
       </button>
@@ -140,9 +140,9 @@ const faultText = computed(() => props.device.fault || '暂无数据');
       <span>最后心跳 ·
         {{
           device.telemetrySource === 'cloud'
-            ? 'CLOUD'
+            ? '云端'
             : device.telemetrySource === 'demo'
-              ? 'DEMO'
+              ? '演示'
               : '未接入'
         }}</span
       ><time>{{ device.heartbeat || '—' }}</time>

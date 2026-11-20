@@ -15,7 +15,8 @@ describe('位置创建表单（Q4-QA-R1）', () => {
   });
   it('错误提示区分 422/409/403/503/网络，且 503 与网络不声称“未创建”', () => {
     const m = (s: number) => locationErrorText(new ApiError(s, 'X', 'name is required'));
-    expect(m(422)).toMatch(/未创建：name is required/);
+    expect(m(422)).toMatch(/未创建：字段内容不符合要求（name）/);
+    expect(m(422)).not.toMatch(/is required/);
     expect(m(409)).toMatch(/编号.*已存在/);
     expect(m(403)).toMatch(/权限/);
     expect(m(503)).not.toMatch(/未创建/);

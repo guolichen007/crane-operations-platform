@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { zh, errorZh, COORDINATE_SYSTEM_ZH } from '../cloud/zh';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute, useRouter, onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query';
@@ -144,7 +145,7 @@ const loadErrorText = computed(() => {
   if (e instanceof ApiError && e.status === 403) return '没有该项目的位置查看权限。';
   if (e instanceof ApiError && e.status === 404) return '项目不存在或已不在您的授权范围内。';
   if (e instanceof ApiError && e.status === 503) return '服务暂不可用，位置未能加载。';
-  return `位置加载失败：${(e as Error | null)?.message ?? ''}`;
+  return `位置加载失败：${errorZh(e, 'load')}`;
 });
 function onKeydown(e: KeyboardEvent) { if (e.key === 'Escape' && creating.value) closeCreate(); }
 function onBeforeUnload(e: BeforeUnloadEvent) { if (dirty.value || mutation.isPending.value) { e.preventDefault(); e.returnValue = ''; } }
@@ -165,9 +166,8 @@ onBeforeRouteUpdate((to, from) => {
   <section class="workspace-page location-center" data-testid="location-center">
     <header class="workspace-page-head">
       <div>
-        <span class="eyebrow">LOCATION CENTER / 位置中心</span>
         <h1>位置层级</h1>
-        <p>SITE → PLANT → WORKSHOP → BAY → RUNWAY · 完整层级</p>
+        <p>场地 → 厂区 → 车间 → 工位 → 轨道 · 完整层级</p>
       </div>
       <button v-if="canCreate && authorized" class="primary-action" data-testid="location-create" @click="openCreate">
         <Plus :size="14" />新建位置
@@ -222,9 +222,9 @@ onBeforeRouteUpdate((to, from) => {
             <tr v-for="row in flattened" :key="row.node.id" class="data-row" :class="[row.depth ? 'tree-child' : 'tree-root', { 'row-focus': row.node.id === focusLocation }]" :data-location-id="row.node.id" :aria-current="row.node.id === focusLocation ? 'location' : undefined">
               <td :style="{ paddingLeft: 12 + row.depth * 16 + 'px' }">{{ row.depth ? '└ ' : '' }}{{ row.node.name }}</td>
               <td>{{ row.node.code ?? '—' }}</td>
-              <td>{{ KIND_TEXT[row.node.kind] ?? row.node.kind }}</td>
+              <td>{{ zh(KIND_TEXT, row.node.kind, '其他') }}</td>
               <td>{{ row.node.status === 'ACTIVE' ? '在用' : '停用' }}</td>
-              <td>{{ row.node.coordinateSystem === 'UNKNOWN' ? '未知' : row.node.coordinateSystem }}</td>
+              <td>{{ zh(COORDINATE_SYSTEM_ZH, row.node.coordinateSystem, '坐标系未知') }}</td>
               <td>{{ row.node.address || '—' }}</td>
             </tr>
           </tbody>
@@ -249,7 +249,7 @@ onBeforeRouteUpdate((to, from) => {
         <label>上级位置
           <select v-model="form.parentId" aria-label="上级位置">
             <option value="">（无，顶层位置）</option>
-            <option v-for="l in formParents" :key="l.id" :value="l.id">{{ l.name }}（{{ KIND_TEXT[l.kind] ?? l.kind }}）</option>
+            <option v-for="l in formParents" :key="l.id" :value="l.id">{{ l.name }}（{{ zh(KIND_TEXT, l.kind, '其他') }}）</option>
           </select>
         </label>
         <label>地址<input v-model="form.address" aria-label="地址" maxlength="240" /></label>

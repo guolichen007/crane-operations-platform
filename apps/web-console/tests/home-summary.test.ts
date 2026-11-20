@@ -12,7 +12,7 @@ describe('summary KPIs', () => {
     const k = summaryKpis(s);
     expect(k.map((x) => x.id)).toEqual(['registered', 'real-connected', 'alarm-real', 'pending-review', 'no-runtime']);
     expect(k.map((x) => x.value)).toEqual([37, 5, 2, 3, 11]);
-    expect(k.find((x) => x.id === 'real-connected')!.label).toBe('REAL 在线');
+    expect(k.find((x) => x.id === 'real-connected')!.label).toBe('真实在线');
     expect(k.some((x) => x.label.includes('真实运行'))).toBe(false);
   });
   it('REAL 在线 is metrics.real.connected — SIM online / SIM alarm never count', () => {

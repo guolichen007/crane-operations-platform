@@ -9,6 +9,7 @@
 //   - assets can only be registered after an explicit ProjectGrant with asset_master_write.
 import type { PortfolioProject, ProjectGrant, ProjectIntake, ProjectIntakeInput } from '../../../../contracts/typescript/types.gen';
 import { ApiError, NetworkWriteError } from './client';
+import { errorZh, validationZh } from './zh';
 import { ScopeChangedError } from './scope-fence';
 
 export const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const;
@@ -119,9 +120,9 @@ export function intakeErrorMessage(error: unknown, action: IntakeAction): string
         if (action === 'create') return '该项目组合中已存在相同登记编号，请更换编号后再保存。';
         if (action === 'approve') return '状态已变化（可能已被他人批准或推进），列表已刷新。';
         return '状态流转无效或已被他人更新，列表已刷新。';
-      case 422: return `输入不符合要求：${error.message}`;
+      case 422: return `输入不符合要求：${validationZh(error.message)}`;
       case 503: return `服务暂不可用（数据库或授权服务），请稍后重试。${kept}`;
-      default: return `请求失败（${error.status}）：${error.message}`;
+      default: return errorZh(error, action === 'load' ? 'load' : 'save');
     }
   }
   if (error instanceof NetworkWriteError || error instanceof ScopeChangedError) return error.message;

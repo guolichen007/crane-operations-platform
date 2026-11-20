@@ -33,10 +33,9 @@ const projects = computed(
   <main class="premium-workspace">
     <div class="premium-page-heading">
       <div>
-        <p class="premium-eyebrow">PROJECT PORTFOLIO / 项目中心</p>
         <h1>全国项目 <span>从资产规划到运行接入</span></h1>
       </div>
-      <span class="data-origin">{{ data?.length ?? '—' }} PROJECTS / CLOUD API</span>
+      <span class="data-origin">共 {{ data?.length ?? '—' }} 个项目</span>
     </div>
     <PendingInventoryProjects v-if="productionAuth" @registered="onRegistered" />
     <p v-if="justRegistered" class="registered-notice" role="status" data-testid="registered-notice">
@@ -58,7 +57,7 @@ const projects = computed(
     <p v-if="error" role="status">{{ error }}；{{ data ? '保留上次结果' : '尚未读取项目' }}</p>
     <SkeletonPanel v-else-if="loading" label="正在读取项目…" />
     <p v-else-if="!data?.length" class="no-data">
-      尚未导入 Inventory；请由管理员通过私有文件导入。
+      尚无运营登记的项目；已批准的项目可在上方“待登记项目”中完成登记。
     </p>
     <div class="premium-project-grid">
       <section
@@ -69,7 +68,7 @@ const projects = computed(
         :data-project-id="p.id"
       >
         <div class="project-thumbnail">
-          <span>{{ p.id }} / ASSET SITE</span>
+          <span>项目编号 {{ p.id }}</span>
           <div class="site-blueprint"><i></i><i></i><i></i><b></b></div>
           <small>区域示意 · 非现场影像</small>
         </div>

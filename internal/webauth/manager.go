@@ -241,7 +241,10 @@ SELECT $1,$2,$3,$4,$5,$6,$7 WHERE (SELECT count(*) FROM oidc_login_transactions)
 		return
 	}
 	setCookie(w, loginCookie, binding, now.Add(5*time.Minute), 300)
-	http.Redirect(w, r, m.oauth.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier), oidc.Nonce(nonce)), http.StatusFound)
+	// ui_locales=zh-CN (R9-UX): Keycloak prefers the browser Accept-Language over the realm default,
+	// so an English-language browser would otherwise get an English login / first-password page.
+	// The user can still switch language on the page; no other login parameter changes.
+	http.Redirect(w, r, m.oauth.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier), oidc.Nonce(nonce), oauth2.SetAuthURLParam("ui_locales", "zh-CN")), http.StatusFound)
 }
 
 func singleQuery(r *http.Request, name string) (string, bool) {

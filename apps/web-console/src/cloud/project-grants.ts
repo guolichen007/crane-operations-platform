@@ -7,6 +7,7 @@
 //     project's assets/devices. Holding a portfolio role gives no project access.
 import type { ProjectMember, ProjectGrantChange } from '../../../../contracts/typescript/types.gen';
 import { ApiError, NetworkWriteError } from './client';
+import { errorZh, validationZh } from './zh';
 import { ScopeChangedError } from './scope-fence';
 
 export const PROJECT_ROLES = ['viewer', 'operator', 'maintainer', 'platform_admin'] as const;
@@ -47,9 +48,9 @@ export function grantErrorMessage(error: unknown): string {
       case 403: return '无授权管理权限：需要该项目组合的「项目组合经理」角色。';
       case 404: return '项目不存在、未批准，或不属于您管理的项目组合。';
       case 409: return '成员权限已被他人修改或已是该状态，列表已刷新，请确认后再操作。';
-      case 422: return `无法授权：${error.message.includes('identity provider') ? '账号不存在、已停用或不是本平台登录账号' : error.message}`;
+      case 422: return `无法授权：${error.message.includes('identity provider') ? '账号不存在、已停用或不是本平台登录账号' : validationZh(error.message)}`;
       case 503: return '服务暂不可用，请稍后重试。已输入的内容已保留。';
-      default: return `请求失败（${error.status}）：${error.message}`;
+      default: return errorZh(error);
     }
   }
   if (error instanceof NetworkWriteError || error instanceof ScopeChangedError) return error.message;

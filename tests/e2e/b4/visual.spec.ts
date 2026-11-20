@@ -92,7 +92,7 @@ for (const [w, h] of VIEWPORTS) {
 
     // 设备安装
     await page.locator('.tabs').getByRole('button', { name: '设备', exact: true }).click();
-    await page.getByRole('button', { name: '安装 Equipment' }).click();
+    await page.getByRole('button', { name: '安装器件' }).click();
     const eqForm = page.getByTestId('equipment-create-form');
     await expect(eqForm.getByLabel('设备类型选择').locator('option', { hasText: '电机（MOTOR）' })).toHaveCount(1);
     await capture(page, 'equipment-install', eqForm.getByRole('button', { name: '安装' }), '安装');

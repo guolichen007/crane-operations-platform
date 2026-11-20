@@ -1,4 +1,5 @@
 import { api, pageQuery } from './client';
+import { EQUIPMENT_TYPE_TEXT } from './zh';
 import type {
   AssetMasterData,
   AssetLocation,
@@ -133,10 +134,13 @@ export const disableCatalogItem = (id: string, version: number) =>
 // ---- Equipment ----
 /** Code-owned equipment type dictionary (stable code + Chinese name). */
 export const listEquipmentTypes = () => api<EquipmentType[]>('equipment/types');
-/** "中文名（CODE）" from the dictionary; an unknown code is shown as-is, never renamed. */
+/** "中文名（CODE）" from the dictionary (live list first, then the 51-type code dictionary); an unknown
+ * code is never renamed into a guessed name — it reads 「未登记的设备类型（编码 X）」 (R9-UX). */
 export function equipmentTypeLabel(code: string, types: readonly EquipmentType[] | undefined): string {
   const t = types?.find((x) => x.typeCode === code);
-  return t ? `${t.displayName}（${t.typeCode}）` : code;
+  if (t) return `${t.displayName}（${t.typeCode}）`;
+  if (!code) return '—';
+  return EQUIPMENT_TYPE_TEXT[code] ? `${EQUIPMENT_TYPE_TEXT[code]}（${code}）` : `未登记的设备类型（编码 ${code}）`;
 }
 export const listEquipment = (assetId: string, params: AssetListParams = {}) =>
   api<EquipmentInstallation[]>(`assets/${encodeURIComponent(assetId)}/equipment`, {

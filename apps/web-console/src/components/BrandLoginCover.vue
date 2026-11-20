@@ -40,14 +40,14 @@ onUnmounted(() => {
     <div ref="host" class="cover-scene" aria-hidden="true"></div>
     <header class="cover-header">
       <BrandMark /><span>友道智造<span class="brand-divider">/</span>工业智能化</span
-      ><small><i></i> U-DAO INDUSTRIAL INTELLIGENCE</small>
+      ><small><i></i> 工业智能化 · 行车综合管理</small>
     </header>
     <section class="cover-copy">
-      <p class="cover-enter cover-kicker">CONNECTED ASSETS. INTELLIGENT OPERATIONS.</p>
+      <p class="cover-enter cover-kicker">设备互联 · 智能运营</p>
       <h1 class="cover-enter">让每一次起落，<br />尽在<span>掌握。</span></h1>
       <div class="cover-enter cover-product">
-        <b>全国行车设备运营平台</b>
-        <p>U-Dao Crane Operations Platform</p>
+        <b>行车综合管理平台</b>
+        <p>友道智造 · 行车综合管理平台</p>
       </div>
       <p class="cover-enter cover-description">
         连接设备与决策，洞察每一处现场。<br />统一设备运营 · 项目态势 · 安全运维
@@ -66,16 +66,16 @@ onUnmounted(() => {
       </div>
     </section>
     <div class="cover-scene-caption">
-      <span class="tiny-cross">+</span><b>CRANE DIGITAL TWIN</b
-      ><span>程序化工业场景 / 视觉演示</span><i></i><small>01 — CONNECT</small>
+      <span class="tiny-cross">+</span><b>行车数字孪生</b
+      ><span>程序化工业场景 · 视觉演示</span><i></i><small>01 · 连接</small>
     </div>
     <footer class="cover-footer">
       <div
         v-for="[icon, title, english] in [
-          [Layers3, '设备数字化', 'Equipment Digitalization'],
-          [Activity, '运行可视化', 'Visual Operations'],
-          [ShieldCheck, '安全智能化', 'Intelligent Safety'],
-          [RadioTower, '管理精细化', 'Refined Management'],
+          [Layers3, '设备数字化', '台账与点位统一管理'],
+          [Activity, '运行可视化', '计量与状态实时可见'],
+          [ShieldCheck, '安全智能化', '寿命与检验到期提醒'],
+          [RadioTower, '管理精细化', '工单与更换全程留痕'],
         ]"
         :key="String(title)"
       >

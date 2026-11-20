@@ -7,11 +7,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query';
 import {
   getReadiness, listPending, listPoints, listIssues, listRules, listPointChanges, listMeters,
   decidePending, setInstalledAt, confirmPoint, recordBaseline, approveRule, setStatutoryInspection, confirmCounterReset,
-  PENDING_TEXT, ISSUE_TEXT, CONFIRM_TEXT, ADDRESS_KIND_TEXT, APPROVAL_TEXT, RULE_TYPE_TEXT, formatNumber, sourceModeBadge,
+  ISSUE_TEXT, CONFIRM_TEXT, ADDRESS_KIND_TEXT, APPROVAL_TEXT, RULE_TYPE_TEXT, formatNumber, sourceModeBadge,
   type PointView, type PendingView, type RuleView, type MeterView,
 } from '../cloud/maintenance';
 import { formatCloudTime as fmt } from '../cloud/format';
 import { ApiError } from '../cloud/client';
+import {
+  zh, errorZh, unitZh, pendingValueZh, mechanismOfSlot, EQUIPMENT_TYPE_TEXT, RAW_DATA_TYPE_ZH, RAW_DATA_TYPE_OPTION, ACTIVE_LEVEL_ZH, EDGE_ZH, METRIC_ZH,
+  PENDING_STATUS_ZH, PENDING_ATTR_ZH,
+} from '../cloud/zh';
 
 const props = defineProps<{ assetId: string; canAdmin: boolean }>();
 const formatCloudTime = (v: string | null | undefined) => fmt(v ?? undefined);
@@ -28,7 +32,23 @@ const meters = useQuery({ queryKey: computed(() => ['r9-meters', id.value]), que
 const notice = ref('');
 const actionError = ref('');
 const errorText = (e: unknown) =>
-  e instanceof ApiError ? (e.status === 409 ? `数据已被他人修改或状态不允许：${e.message}（已刷新，请核对后重试）` : e.status === 403 ? '无权限（仅平台管理员）' : e.message) : '网络错误，请稍后重试';
+  e instanceof ApiError && e.status === 409 ? `${errorZh(e)}（已刷新，请核对后重试）` : e instanceof ApiError && e.status === 403 ? '没有权限（仅平台管理员可操作）。' : errorZh(e);
+const pointBySlot = computed(() => {
+  const m = new Map<string, PointView>();
+  for (const p of points.data.value ?? []) if (p.equipmentSlot && !m.has(p.equipmentSlot)) m.set(p.equipmentSlot, p);
+  return m;
+});
+const slotName = (slot: string | null | undefined) => {
+  if (!slot) return '整机';
+  const p = pointBySlot.value.get(slot);
+  return p ? `${p.mechanism} · ${p.name}` : `${mechanismOfSlot(slot)} · 器件 ${slot}`;
+};
+const meterTitle = (code: string) => {
+  const point = code.split('.')[0];
+  const p = (points.data.value ?? []).find((x) => x.pointCode === point);
+  return `${p ? p.mechanism + ' · ' + p.name : '点位 ' + point} · ${METRIC_ZH[code.split('.').pop() ?? ''] ?? '指标'}`;
+};
+const typeName = (code: string) => EQUIPMENT_TYPE_TEXT[code] ?? '未登记的设备类型';
 const refresh = () => Promise.all(['r9-readiness', 'r9-pending', 'r9-points', 'r9-issues', 'r9-rules', 'r9-point-changes', 'r9-meters', 'r9-center'].map((k) => queryClient.invalidateQueries({ queryKey: [k] })));
 const done = async (text: string) => {
   notice.value = text;
@@ -74,33 +94,33 @@ const save = useMutation({
           value = d.value.trim() !== '' && Number.isFinite(n) ? n : d.value.trim();
         }
         await decidePending(id.value, d.p.id!, d.p.version!, { status: d.status, value, basis: d.basis.trim() });
-        return `已${d.status === 'CONFIRMED' ? '确认' : '否决'}：${PENDING_TEXT[d.p.attribute] ?? d.p.attribute}`;
+        return `已${d.status === 'CONFIRMED' ? '确认' : '否决'}：${zh(PENDING_ATTR_ZH, d.p.attribute, '待确认属性')}`;
       }
       case 'installed':
         await setInstalledAt(id.value, d.slot, d.version, new Date(d.date + 'T00:00:00+08:00').toISOString(), d.basis.trim());
-        return `已登记 ${d.slot} 实际安装日期`;
+        return `已登记「${slotName(d.slot)}」实际安装日期`;
       case 'point':
         await confirmPoint(id.value, d.p.pointCode, d.p.version, {
           status: d.status, plcAddressRaw: d.address.trim() || null, basis: d.basis.trim(), resolveIssues: d.issues,
           ...(d.activeLevel ? { activeLevel: d.activeLevel as 'HIGH' | 'LOW' } : {}), ...(d.edge ? { edge: d.edge as 'RISING' } : {}),
           ...(d.rawDataType ? { rawDataType: d.rawDataType as 'INT' } : {}), ...(d.unit ? { unit: d.unit as 'count' } : {}),
         });
-        return `点位 ${d.p.pointCode} 已${d.status === 'CONFIRMED' ? '确认' : '否决'}`;
+        return `「${d.p.name}」（点位 ${d.p.pointCode}）已${d.status === 'CONFIRMED' ? '确认' : '否决'}`;
       case 'baseline':
         await recordBaseline(id.value, { equipmentSlot: d.slot, meterCode: d.meterCode, initialUsage: Number(d.initialUsage), note: d.note.trim() });
-        return `已登记 ${d.meterCode} 真实初始计量基准`;
+        return `已登记「${meterTitle(d.meterCode)}」真实初始计量基准`;
       case 'rule':
         await approveRule(id.value, d.r.id, d.r.version, {
           intervalDays: d.days.trim() ? Number(d.days) : null, intervalMeter: d.meter.trim() ? Number(d.meter) : null,
           effectiveFrom: new Date(d.effectiveFrom + 'T00:00:00+08:00').toISOString(), basis: d.basis.trim(),
         });
-        return `规则 ${d.r.ruleCode} 已批准生效`;
+        return `规则「${d.r.name}」已批准生效`;
       case 'inspection':
         await setStatutoryInspection(id.value, readiness.data.value!.assetVersion, { useRegistrationNo: d.reg.trim() || null, latestInspectionDate: d.latest, inspectionValidUntil: d.valid, basis: d.basis.trim() });
         return '已登记法定检验';
       case 'reset':
         await confirmCounterReset(id.value, d.m.id, { sourceMode: d.m.sourceMode!, reason: d.reason.trim() });
-        return `已确认 ${d.m.meterCode} 计数复位`;
+        return `已确认「${meterTitle(d.m.meterCode)}」计数复位`;
     }
   },
   onSuccess: (text) => done(text),
@@ -125,8 +145,12 @@ const startPoint = (p: PointView, status: 'CONFIRMED' | 'REJECTED') => {
   dialog.value = { kind: 'point', p, status, address: p.plcAddressRaw ?? '', activeLevel: p.activeLevel ?? '', edge: p.edge ?? '', rawDataType: '', unit: '', basis: '', issues: openIssuesOf(p.pointCode).map((i) => i.id) };
   actionError.value = '';
 };
-const issueNames = (codes: string[]) => codes.map((c) => ISSUE_TEXT[c] ?? c).join('、');
-const valueText = (v: unknown) => (v === null || v === undefined ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v));
+const baselineUnit = computed(() => {
+  const d = dialog.value;
+  return d && d.kind === 'baseline' ? unitZh(cumulativeMeters.value.find((m) => m.meterCode === d.meterCode)?.unit) : '';
+});
+const issueNames = (codes: string[]) => codes.map((c) => ISSUE_TEXT[c] ?? '其他核查事项').join('、');
+const valueText = (attribute: string, v: unknown) => pendingValueZh(attribute, v);
 </script>
 <template>
   <section class="r9-panel" data-testid="r9-readiness">
@@ -156,12 +180,12 @@ const valueText = (v: unknown) => (v === null || v === undefined ? '—' : typeo
         <h3>铭牌参数、实际位置与其他待确认属性</h3>
         <ul class="r9-pending">
           <li v-for="p in pending.data.value ?? []" :key="p.id ?? p.attribute" :data-attr="p.attribute" :data-status="p.status">
-            <b>{{ p.subject === 'asset' ? '整机' : p.subject }} · {{ PENDING_TEXT[p.attribute] ?? p.attribute }}</b>
-            <span class="r9-tag" :class="p.status === 'PENDING' ? 'warn' : p.status === 'CONFIRMED' ? 'ok' : 'over'">{{ p.status === 'PENDING' ? '待确认' : p.status === 'CONFIRMED' ? '已确认 ' + valueText(p.confirmedValue) : '已否决' }}</span>
-            <small>候选 {{ valueText(p.candidate) }} · {{ p.basis }}</small>
+            <b>{{ p.subject === 'asset' ? '整机' : slotName(p.subject) }} · {{ zh(PENDING_ATTR_ZH, p.attribute, '其他待确认属性') }}</b>
+            <span class="r9-tag" :class="p.status === 'PENDING' ? 'warn' : p.status === 'CONFIRMED' ? 'ok' : 'over'">{{ p.status === 'CONFIRMED' ? '已确认 ' + valueText(p.attribute, p.confirmedValue) : zh(PENDING_STATUS_ZH, p.status) }}</span>
+            <small>候选 {{ valueText(p.attribute, p.candidate) }} · {{ p.basis }}</small>
             <small v-if="p.decidedBy">{{ p.decidedBy }} · {{ formatCloudTime(p.decidedAt) }} · 依据：{{ p.decisionBasis }}</small>
             <template v-if="canAdmin && p.status === 'PENDING' && p.attribute !== 'statutoryInspection'">
-              <button class="ghost-action" data-testid="r9-pending-confirm" @click="dialog = { kind: 'pending', p, status: 'CONFIRMED', value: p.candidate === null || p.candidate === undefined ? '' : String(p.candidate), basis: '' }; actionError = ''">确认</button>
+              <button class="ghost-action" data-testid="r9-pending-confirm" @click="dialog = { kind: 'pending', p, status: 'CONFIRMED', value: typeof p.candidate === 'number' ? String(p.candidate) : '', basis: '' }; actionError = ''">确认</button>
               <button class="ghost-action" @click="dialog = { kind: 'pending', p, status: 'REJECTED', value: '', basis: '' }; actionError = ''">否决</button>
             </template>
           </li>
@@ -182,8 +206,8 @@ const valueText = (v: unknown) => (v === null || v === undefined ? '—' : typeo
             <thead><tr><th>器件</th><th>类型</th><th>实际安装日期</th><th></th></tr></thead>
             <tbody>
               <tr v-for="s in readiness.data.value.slots" :key="s.equipmentSlot" :data-slot="s.equipmentSlot">
-                <td data-label="器件"><b>{{ s.equipmentSlot }}</b><div class="cell-sub">{{ s.equipmentCode }}</div></td>
-                <td data-label="类型">{{ s.typeCode }}</td>
+                <td data-label="器件"><b>{{ slotName(s.equipmentSlot) }}</b><div class="cell-sub">{{ s.equipmentCode }}</div></td>
+                <td data-label="类型">{{ typeName(s.typeCode) }}</td>
                 <td data-label="安装日期">{{ s.installedAt ? formatCloudTime(s.installedAt) : '未登记' }}</td>
                 <td data-label="操作"><button v-if="canAdmin" class="ghost-action" data-testid="r9-installed-open" @click="dialog = { kind: 'installed', slot: s.equipmentSlot, version: s.version, date: '', basis: '' }; actionError = ''">登记</button></td>
               </tr>
@@ -201,10 +225,10 @@ const valueText = (v: unknown) => (v === null || v === undefined ? '—' : typeo
             <thead><tr><th>点位</th><th>地址</th><th>电平 / 边沿</th><th>类型 / 单位</th><th>核查事项</th><th></th></tr></thead>
             <tbody>
               <tr v-for="p in shownPoints" :key="p.id" :data-ready-point="p.pointCode">
-                <td data-label="点位"><b>{{ p.pointCode }}</b> {{ p.name }}<div class="cell-sub">{{ CONFIRM_TEXT[p.confirmationStatus] ?? p.confirmationStatus }} · v{{ p.version }}</div></td>
-                <td data-label="地址"><code>{{ p.plcAddressRaw ?? '—' }}</code><div class="cell-sub">{{ ADDRESS_KIND_TEXT[p.addressKind] }}</div></td>
-                <td data-label="电平 / 边沿">{{ p.activeLevel ?? '未确认' }} / {{ p.edge ?? '未确认' }}</td>
-                <td data-label="类型 / 单位">{{ p.rawDataType }} / {{ p.unit }}</td>
+                <td data-label="器件"><b>{{ p.name }}</b><div class="cell-sub">{{ p.mechanism }} · 点位 {{ p.pointCode }} · {{ zh(CONFIRM_TEXT, p.confirmationStatus) }} · 版本 {{ p.version }}</div></td>
+                <td data-label="地址"><code>{{ p.plcAddressRaw ?? '—' }}</code><div class="cell-sub">{{ zh(ADDRESS_KIND_TEXT, p.addressKind) }}</div></td>
+                <td data-label="电平 / 边沿">{{ p.activeLevel ? zh(ACTIVE_LEVEL_ZH, p.activeLevel) : '未确认' }} / {{ p.edge ? zh(EDGE_ZH, p.edge) : '未确认' }}</td>
+                <td data-label="类型 / 单位">{{ zh(RAW_DATA_TYPE_ZH, p.rawDataType) }} / {{ unitZh(p.unit) || '无单位' }}</td>
                 <td data-label="核查">{{ issueNames(openIssuesOf(p.pointCode).map((iss) => iss.issueCode)) || '—' }}</td>
                 <td data-label="操作"><template v-if="canAdmin && p.confirmationStatus === 'UNCONFIRMED'">
                   <button class="ghost-action" data-testid="r9-point-confirm" @click="startPoint(p, 'CONFIRMED')">确认</button>
@@ -216,7 +240,7 @@ const valueText = (v: unknown) => (v === null || v === undefined ? '—' : typeo
         <details v-if="(changes.data.value ?? []).length" class="r9-changes">
           <summary>点位配置变更记录（{{ changes.data.value!.length }}）</summary>
           <ul class="r9-issues">
-            <li v-for="c in changes.data.value" :key="c.id"><b>{{ c.pointCode }}</b> v{{ c.fromVersion }}→v{{ c.toVersion }} <small>{{ c.actor }} · {{ formatCloudTime(c.changedAt) }} · {{ c.basis }}</small>
+            <li v-for="c in changes.data.value" :key="c.id"><b>{{ (points.data.value ?? []).find((x) => x.pointCode === c.pointCode)?.name ?? '' }}（点位 {{ c.pointCode }}）</b> 版本 {{ c.fromVersion }} → {{ c.toVersion }} <small>{{ c.actor }} · {{ formatCloudTime(c.changedAt) }} · {{ c.basis }}</small>
               <small v-if="c.resolvedIssues?.length">处理核查：{{ issueNames(c.resolvedIssues) }}</small></li>
           </ul>
         </details>
@@ -226,7 +250,7 @@ const valueText = (v: unknown) => (v === null || v === undefined ? '—' : typeo
         <h3>初始计量基准 <small>真实基准需填写现场读数依据；未知则不登记（相应规则显示数据不足，不当作 0）</small></h3>
         <ul class="r9-issues">
           <li v-for="b in readiness.data.value.baselines" :key="b.meterCode + b.sourceMode"><span class="r9-tag" :class="sourceModeBadge(b.sourceMode).tone">{{ sourceModeBadge(b.sourceMode).text }}</span>
-            <b>{{ b.equipmentSlot }} · {{ b.meterCode }}</b> <small>初始使用量 {{ b.initialUsage === null ? '未知' : formatNumber(b.initialUsage) }} · {{ b.recordedBy }} · {{ formatCloudTime(b.recordedAt) }}</small></li>
+            <b>{{ meterTitle(b.meterCode) }}</b> <small>初始使用量 {{ b.initialUsage === null ? '未知' : formatNumber(b.initialUsage) }} · {{ b.recordedBy }} · {{ formatCloudTime(b.recordedAt) }}</small></li>
         </ul>
         <button v-if="canAdmin" class="ghost-action" data-testid="r9-baseline-open" @click="dialog = { kind: 'baseline', slot: cumulativeMeters[0]?.equipmentSlot ?? '', meterCode: cumulativeMeters[0]?.meterCode ?? '', initialUsage: '', note: '' }; actionError = ''">登记真实初始基准</button>
       </section>
@@ -235,7 +259,7 @@ const valueText = (v: unknown) => (v === null || v === undefined ? '—' : typeo
         <h3>计数异常待确认 <small>计数低于可信累计：恢复后自动解除；确属 PLC 计数复位需管理员确认</small></h3>
         <ul class="r9-issues">
           <li v-for="m in pendingMeters" :key="m.id + m.sourceMode"><span class="r9-tag" :class="sourceModeBadge(m.sourceMode).tone">{{ sourceModeBadge(m.sourceMode).text }}</span>
-            <b>{{ m.meterCode }}</b> <small>可信累计 {{ formatNumber(m.accumulated) }} · 当前原始值 {{ formatNumber(m.pendingRawValue ?? null) }} · 自 {{ formatCloudTime(m.pendingSince ?? null) }}</small>
+            <b>{{ meterTitle(m.meterCode) }}</b> <small>可信累计 {{ formatNumber(m.accumulated) }} · 当前原始值 {{ formatNumber(m.pendingRawValue ?? null) }} · 自 {{ formatCloudTime(m.pendingSince ?? null) }}</small>
             <button v-if="canAdmin" class="ghost-action" @click="dialog = { kind: 'reset', m, reason: '' }; actionError = ''">确认计数复位</button></li>
         </ul>
       </section>
@@ -247,9 +271,9 @@ const valueText = (v: unknown) => (v === null || v === undefined ? '—' : typeo
             <thead><tr><th>规则</th><th>类型 / 周期</th><th>依据（原文）</th><th></th></tr></thead>
             <tbody>
               <tr v-for="r in [...approvedRules, ...draftRules]" :key="r.id" :data-ready-rule="r.ruleCode">
-                <td data-label="规则"><b>{{ r.name }}</b><div class="cell-sub">{{ r.ruleCode }} · v{{ r.version }} · <span class="r9-tag" :class="r.approvalStatus === 'APPROVED' ? 'ok' : 'warn'">{{ APPROVAL_TEXT[r.approvalStatus] }}</span></div></td>
-                <td data-label="类型 / 周期">{{ RULE_TYPE_TEXT[r.type] }}<div class="cell-sub">{{ r.intervalDays ? r.intervalDays + ' 天' : '' }}{{ r.intervalMeter ? ' ' + formatNumber(r.intervalMeter) : '' }}{{ !r.intervalDays && !r.intervalMeter ? '待定义' : '' }}</div></td>
-                <td data-label="依据"><small>{{ r.basis }}</small><div v-if="r.approvedBy" class="cell-sub">批准：{{ r.approvedBy }} · 生效 {{ formatCloudTime(r.effectiveFrom) }}</div></td>
+                <td data-label="规则"><b>{{ r.name }}</b><div class="cell-sub">{{ slotName(r.equipmentSlot) }} · 规则编号 {{ r.ruleCode }} · 版本 {{ r.version }} · <span class="r9-tag" :class="r.approvalStatus === 'APPROVED' ? 'ok' : 'warn'">{{ zh(APPROVAL_TEXT, r.approvalStatus) }}</span></div></td>
+                <td data-label="类型 / 周期">{{ zh(RULE_TYPE_TEXT, r.type) }}<div class="cell-sub">{{ r.intervalDays ? r.intervalDays + ' 天' : '' }}{{ r.intervalMeter ? ' ' + formatNumber(r.intervalMeter) : '' }}{{ !r.intervalDays && !r.intervalMeter ? '周期待定义' : '' }}</div></td>
+                <td data-label="依据"><small>{{ r.basis }}</small><div v-if="r.sourceRow" class="cell-sub">原始记录第 {{ r.sourceRow }} 行</div><div v-if="r.approvedBy" class="cell-sub">批准：{{ r.approvedBy }} · 生效 {{ formatCloudTime(r.effectiveFrom) }}</div></td>
                 <td data-label="操作"><button v-if="canAdmin && r.approvalStatus === 'DRAFT_UNAPPROVED'" class="ghost-action" data-testid="r9-rule-approve-open" @click="dialog = { kind: 'rule', r, days: r.intervalDays ? String(r.intervalDays) : '', meter: r.intervalMeter ? String(r.intervalMeter) : '', effectiveFrom: today(), basis: '' }; actionError = ''">审批</button></td>
               </tr>
             </tbody>
@@ -262,36 +286,36 @@ const valueText = (v: unknown) => (v === null || v === undefined ? '—' : typeo
     <div v-if="dialog" class="modal-backdrop" @click.self="!save.isPending.value && (dialog = null)">
       <form class="workspace-modal r9-wo" data-testid="r9-ready-dialog" novalidate @submit.prevent="valid && save.mutate()">
         <template v-if="dialog.kind === 'pending'">
-          <h2>{{ dialog.status === 'CONFIRMED' ? '确认' : '否决' }}：{{ PENDING_TEXT[dialog.p.attribute] ?? dialog.p.attribute }}</h2>
+          <h2>{{ dialog.status === 'CONFIRMED' ? '确认' : '否决' }}：{{ zh(PENDING_ATTR_ZH, dialog.p.attribute, '待确认属性') }}</h2>
           <p class="form-hint">{{ dialog.p.basis }}</p>
           <label v-if="dialog.status === 'CONFIRMED'">确认值 *<input v-model="dialog.value" data-testid="r9-ready-value" maxlength="200" /></label>
         </template>
         <template v-else-if="dialog.kind === 'installed'">
-          <h2>{{ dialog.slot }} 实际安装日期</h2>
+          <h2>{{ slotName(dialog.slot) }} · 实际安装日期</h2>
           <label>安装日期 *<input v-model="dialog.date" type="date" :max="today()" data-testid="r9-ready-date" /></label>
         </template>
         <template v-else-if="dialog.kind === 'point'">
-          <h2>{{ dialog.status === 'CONFIRMED' ? '确认' : '否决' }}点位 {{ dialog.p.pointCode }} {{ dialog.p.name }}</h2>
+          <h2>{{ dialog.status === 'CONFIRMED' ? '确认' : '否决' }}「{{ dialog.p.name }}」<small>（点位 {{ dialog.p.pointCode }}）</small></h2>
           <template v-if="dialog.status === 'CONFIRMED'">
-            <label>现场核实地址（DBn.DBXb.bit 或 DBn.DBWb）<input v-model="dialog.address" data-testid="r9-ready-address" maxlength="40" /></label>
-            <label>有效电平<select v-model="dialog.activeLevel" data-testid="r9-ready-level"><option value="">未填写</option><option value="HIGH">高电平有效</option><option value="LOW">低电平有效</option></select></label>
-            <label>计数边沿<select v-model="dialog.edge" data-testid="r9-ready-edge"><option value="">未填写</option><option value="RISING">上升沿</option><option value="FALLING">下降沿</option><option value="BOTH">双边沿</option></select></label>
-            <label>数据类型（不改留空）<select v-model="dialog.rawDataType"><option value="">{{ dialog.p.rawDataType }}</option><option>INT</option><option>FLOAT</option><option>BOOL</option><option>STRING</option></select></label>
-            <label>单位（不改留空）<select v-model="dialog.unit"><option value="">{{ dialog.p.unit }}</option><option value="count">次</option><option value="h">小时</option><option value="t">吨</option><option value="none">无</option></select></label>
+            <label>现场核实的 PLC 地址（位地址如 DB505.DBX32.0，字地址如 DB505.DBW10）<input v-model="dialog.address" data-testid="r9-ready-address" maxlength="40" /></label>
+            <label>有效电平<select v-model="dialog.activeLevel" data-testid="r9-ready-level"><option value="">未填写</option><option v-for="(t, k) in ACTIVE_LEVEL_ZH" :key="k" :value="k">{{ t }}</option></select></label>
+            <label>计数边沿<select v-model="dialog.edge" data-testid="r9-ready-edge"><option value="">未填写</option><option v-for="(t, k) in EDGE_ZH" :key="k" :value="k">{{ t }}</option></select></label>
+            <label>数据类型<select v-model="dialog.rawDataType" data-testid="r9-ready-type"><option value="">保持「{{ zh(RAW_DATA_TYPE_ZH, dialog.p.rawDataType) }}」</option><option v-for="(t, k) in RAW_DATA_TYPE_OPTION" :key="k" :value="k">{{ t }}</option></select></label>
+            <label>单位<select v-model="dialog.unit"><option value="">保持「{{ unitZh(dialog.p.unit) || '无单位' }}」</option><option value="count">次</option><option value="h">小时</option><option value="t">吨</option><option value="none">无单位</option></select></label>
           </template>
           <fieldset v-if="openIssuesOf(dialog.p.pointCode).length" class="r9-rope"><legend>随本次变更处理的核查事项（确认时须全部处理）</legend>
-            <label v-for="i in openIssuesOf(dialog.p.pointCode)" :key="i.id" class="check-row"><input v-model="dialog.issues" type="checkbox" :value="i.id" />{{ ISSUE_TEXT[i.issueCode] ?? i.issueCode }}</label>
+            <label v-for="i in openIssuesOf(dialog.p.pointCode)" :key="i.id" class="check-row"><input v-model="dialog.issues" type="checkbox" :value="i.id" />{{ ISSUE_TEXT[i.issueCode] ?? '其他核查事项' }}</label>
           </fieldset>
         </template>
         <template v-else-if="dialog.kind === 'baseline'">
           <h2>登记真实初始计量基准</h2>
           <label>计量<select v-model="dialog.meterCode" data-testid="r9-ready-meter" @change="dialog.slot = cumulativeMeters.find((m) => m.meterCode === (dialog as { meterCode: string }).meterCode)?.equipmentSlot ?? ''">
-            <option v-for="m in cumulativeMeters" :key="m.meterCode" :value="m.meterCode">{{ m.equipmentSlot }} · {{ m.meterCode }}</option></select></label>
-          <label>计量开始前已使用量（新件填 0）*<input v-model="dialog.initialUsage" inputmode="decimal" data-testid="r9-ready-initial" /></label>
+            <option v-for="m in cumulativeMeters" :key="m.meterCode" :value="m.meterCode">{{ meterTitle(m.meterCode) }}（{{ m.meterCode }}）</option></select></label>
+          <label>计量开始前已使用量（新件填 0，单位：{{ baselineUnit || '无' }}）*<input v-model="dialog.initialUsage" inputmode="decimal" data-testid="r9-ready-initial" /></label>
         </template>
         <template v-else-if="dialog.kind === 'rule'">
-          <h2>审批 {{ dialog.r.ruleCode }}（v{{ dialog.r.version }}）</h2>
-          <p class="form-hint">{{ dialog.r.name }} · {{ dialog.r.basis }}</p>
+          <h2>审批「{{ dialog.r.name }}」<small>（规则编号 {{ dialog.r.ruleCode }} · 版本 {{ dialog.r.version }}）</small></h2>
+          <p class="form-hint">{{ slotName(dialog.r.equipmentSlot) }} · {{ dialog.r.basis }}</p>
           <label v-if="dialog.r.type !== 'METER_BASED'">周期（天）<input v-model="dialog.days" inputmode="numeric" data-testid="r9-ready-days" /></label>
           <label v-if="dialog.r.type !== 'TIME_BASED'">计量周期<input v-model="dialog.meter" inputmode="decimal" data-testid="r9-ready-interval" /></label>
           <label>生效日期 *<input v-model="dialog.effectiveFrom" type="date" data-testid="r9-ready-effective" /></label>
@@ -303,7 +327,7 @@ const valueText = (v: unknown) => (v === null || v === undefined ? '—' : typeo
           <label>有效期至 *<input v-model="dialog.valid" type="date" data-testid="r9-ready-valid" /></label>
         </template>
         <template v-else-if="dialog.kind === 'reset'">
-          <h2>确认 {{ dialog.m.meterCode }} 计数复位</h2>
+          <h2>确认「{{ meterTitle(dialog.m.meterCode) }}」计数复位</h2>
           <p class="form-hint">仅在确认 PLC 计数确实清零 / 更换模块时操作。确认后：可信累计 {{ formatNumber(dialog.m.accumulated) }} + 复位后读数 {{ formatNumber(dialog.m.pendingRawValue ?? null) }}。进程重启不是复位。</p>
         </template>
         <label v-if="dialog.kind === 'baseline'">依据（现场读数记录）*<input v-model="dialog.note" maxlength="300" data-testid="r9-ready-basis" /></label>

@@ -3,6 +3,10 @@
 // runs in the frontend CI job on every push and can inject slow / failing
 // responses deterministically.
 import { test, expect, type Page } from '@playwright/test';
+import { expectChineseUI } from './zh-guard';
+
+// R9-UX: the final screen of every flow keeps business text in Chinese (enum / formula / error leaks fail).
+test.afterEach(async ({ page }, info) => { if (info.status === 'passed') await expectChineseUI(page, info.title); });
 const session = { userId: 'u', displayName: 'admin', projects: [{ projectId: 'P001', projectName: 'Project-A', role: 'platform_admin' }], csrfToken: 'x', expiresAt: '2099-01-01T00:00:00Z', idleExpiresAt: '2099-01-01T00:00:00Z' };
 const base = { id: 'A1', projectId: 'P001', displayName: '原名', assetCode: 'C1', assetType: 'CRANE', assetStatus: 'DRAFT', manufacturerId: null, manufacturerSnapshot: '', brandSnapshot: '', modelSnapshot: '', serialNumber: null, manufactureDate: null, installationDate: null, commissioningDate: null, liftingHeightM: null, applicationType: null, controlMode: null, version: 1, specialEquipmentCode: null, useRegistrationNo: null };
 type Reply = { status: number; json: unknown };
@@ -70,13 +74,13 @@ test('Equipment 安装：干净关闭不提示、有输入需确认、提交中�
   await page.goto('/#/assets/A1');
   await page.locator('.tabs').getByRole('button', { name: '设备', exact: true }).click();
   const form = page.getByTestId('equipment-create-form');
-  await page.getByRole('button', { name: '安装 Equipment' }).click();
+  await page.getByRole('button', { name: '安装器件' }).click();
   await page.keyboard.press('Escape'); await expect(form).toHaveCount(0);
-  await page.getByRole('button', { name: '安装 Equipment' }).click();
+  await page.getByRole('button', { name: '安装器件' }).click();
   await form.getByRole('button', { name: '取消' }).click(); await expect(form).toHaveCount(0);
   expect(prompts).toBe(0);
-  await page.getByRole('button', { name: '安装 Equipment' }).click();
-  await form.getByLabel('Equipment 编号').fill('EQ-X');
+  await page.getByRole('button', { name: '安装器件' }).click();
+  await form.getByLabel('器件编号').fill('EQ-X');
   await page.keyboard.press('Escape');
   await page.locator('.modal-backdrop').click({ position: { x: 5, y: 5 } });
   await form.getByRole('button', { name: '取消' }).click();
@@ -87,7 +91,7 @@ test('Equipment 安装：干净关闭不提示、有输入需确认、提交中�
   await expect(form.getByRole('button', { name: '安装中…' })).toBeDisabled();
   await page.keyboard.press('Escape'); expect(prompts).toBe(3);
   await expect(page.getByTestId('equipment-create-error')).toContainText('输入不符合要求');
-  await expect(form.getByLabel('Equipment 编号')).toHaveValue('EQ-X');
+  await expect(form.getByLabel('器件编号')).toHaveValue('EQ-X');
   accept = true;
   await form.getByRole('button', { name: '取消' }).click(); expect(prompts).toBe(4); await expect(form).toHaveCount(0);
 });

@@ -3,6 +3,10 @@
 // locations are ACTIVE with UNKNOWN coordinates; move only to an ACTIVE same-project location).
 // The real Keycloak + PostgreSQL proof is tests/e2e/b4/location-closure.spec.ts.
 import { test, expect, type Page } from '@playwright/test';
+import { expectChineseUI } from './zh-guard';
+
+// R9-UX: the final screen of every flow keeps business text in Chinese (enum / formula / error leaks fail).
+test.afterEach(async ({ page }, info) => { if (info.status === 'passed') await expectChineseUI(page, info.title); });
 
 type Loc = { id: string; projectId: string; parentId: string | null; kind: string; code: string | null; name: string; province: string; city: string; county: string; longitude: number | null; latitude: number | null; coordinateSystem: string; coordinateSource: string; status: string; version: number; address: string };
 const asset = { id: 'A1', projectId: 'P001', displayName: '1 号行车', assetCode: 'C1', assetType: 'CRANE', assetStatus: 'ACTIVE', manufacturerId: null, manufacturerSnapshot: '', brandSnapshot: '', modelSnapshot: '', serialNumber: null, manufactureDate: null, installationDate: null, commissioningDate: null, liftingHeightM: null, applicationType: null, controlMode: null, version: 1, specialEquipmentCode: null, useRegistrationNo: null };
@@ -90,7 +94,7 @@ test('项目管理员：资产无可用位置 → 引导去位置中心 → 新�
   // Back to the asset: the new workshop is a move target.
   await page.goto('/#/assets/A1');
   await page.getByRole('button', { name: '移动', exact: true }).click();
-  await move.getByLabel('目标位置').selectOption({ label: '一车间（WORKSHOP）' });
+  await move.getByLabel('目标位置').selectOption({ label: '一车间（车间）' });
   await move.getByRole('button', { name: '移动', exact: true }).click();
   await expect(move).toBeHidden();
   await expect(page.getByTestId('asset-moved')).toContainText('一车间');

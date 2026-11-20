@@ -18,7 +18,7 @@ export function formatCloudTime(value?: string): string {
   return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
 }
 export const silentExplanation =
-  '静默监测：设备保持云端连接，仅上传心跳和状态快照；进入 LIVE 后才开启实时数据流。';
+  '静默监测：设备保持云端连接，仅上传心跳和状态快照；开启实时查看后才上传实时数据流。';
 export function deviceState(device: Shadow): string {
   const connectivity = { MQTT_CONNECTED: '在线', OFFLINE: '离线', UNKNOWN: '连接未知' }[
     device.presence.connectivity

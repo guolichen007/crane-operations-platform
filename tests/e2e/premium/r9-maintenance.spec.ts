@@ -5,6 +5,7 @@
 // against real Keycloak: tests/e2e/b4/lhk-first-asset.spec.ts.
 import { test, expect, type Page } from '@playwright/test';
 import { inventorySummary, routeSummary } from '../summary-mock';
+import { expectChineseUI } from './zh-guard';
 
 const shot = (name: string) => `test-results/r9-maintenance/${name}.png`;
 const now = '2026-11-19T08:00:00Z';
@@ -119,13 +120,16 @@ test('首台资产详情：台账与点位（原文地址/待确认/核查项）
   await page.goto(`/#/assets/${asset.id}`);
   const d = page.getByTestId('asset-detail');
   await d.getByTestId('tab-ledger').click();
-  await expect(d.getByTestId('r9-pending')).toContainText('额定起重量（t）');
-  await expect(d.getByTestId('r9-pending')).toContainText('候选 10 · 待确认');
+  await expect(d.getByTestId('r9-pending')).toContainText('额定起重量（吨）');
+  await expect(d.getByTestId('r9-pending')).toContainText('候选 10 吨 · 待确认');
   await expect(d.locator('[data-point="LHK-P001"]')).toContainText('DB505.DBX32.0');
   await expect(d.locator('[data-point="LHK-P021"]')).toContainText('地址待核（无法解析）');
   await expect(d.locator('[data-point="LHK-P053"]')).toContainText('作业统计（非设备）');
   await expect(d.getByTestId('r9-issues')).toContainText('地址缺少位索引');
   await expect(d.getByTestId('r9-issues')).toContainText('吨数单位写为「小时」');
+  await expectChineseUI(d, '台账与点位');
+  await d.locator('details.r9-more').first().evaluate((e) => ((e as HTMLDetailsElement).open = true));
+  await expectChineseUI(d, '台账与点位（展开来源详情）');
   await page.screenshot({ path: shot('1-ledger'), fullPage: true });
 
   await d.getByTestId('tab-monitor').click();
@@ -136,11 +140,13 @@ test('首台资产详情：台账与点位（原文地址/待确认/核查项）
   await expect(d.locator('[data-meter="LHK-P003.hours"]')).toContainText('无数据');
   await d.locator('[data-meter="LHK-P001.cycles"]').click();
   await expect(d.getByTestId('r9-readings')).toContainText('1,000,000');
+  await expectChineseUI(d, '运行监测');
   await page.screenshot({ path: shot('2-monitor'), fullPage: true });
 
   await d.getByTestId('tab-maintenance').click();
   await expect(d.getByTestId('r9-rules')).toContainText('模拟测试规则');
   await expect(d.locator('[data-rule="T-HYBRID"]')).toContainText('到期');
+  await expectChineseUI(d, '寿命与维护');
   await d.getByLabel('规则筛选').selectOption('DRAFT');
   await expect(d.locator('[data-rule="LIFE-GANTRY-03"]')).toContainText('待审核（未生效）');
   await d.getByLabel('规则筛选').selectOption('ACTIVE');
@@ -157,6 +163,7 @@ test('首台资产详情：台账与点位（原文地址/待确认/核查项）
   await dlg.getByTestId('r9-wo-replace').check();
   await expect(dlg.getByTestId('r9-wo-complete')).toBeDisabled();
   await dlg.getByTestId('r9-wo-reason').fill('达到寿命阈值（模拟）');
+  await expectChineseUI(dlg, '工单处理对话框');
   await page.screenshot({ path: shot('3-work-order') });
   await dlg.getByTestId('r9-wo-complete').click();
   await expect(d.getByTestId('r9-notice')).toContainText('已完成');
@@ -168,6 +175,7 @@ test('首台资产详情：台账与点位（原文地址/待确认/核查项）
   await d.getByTestId('tab-history').click();
   await expect(d.locator('[data-category="REPLACEMENT"]')).toContainText('模拟数据');
   await expect(d.locator('[data-category="LEDGER"]')).toBeVisible();
+  await expectChineseUI(d, '寿命与维护 → 历史');
   await page.screenshot({ path: shot('4-history'), fullPage: true });
 });
 
@@ -199,6 +207,8 @@ test('维护与到期中心：默认仅真实，切换显示模拟；按机构 /
   await c.getByLabel('器件').selectOption('');
   await c.getByLabel('状态').selectOption('INSUFFICIENT_DATA');
   await expect(c.locator('tbody tr')).toHaveCount(1);
+  await c.getByLabel('状态').selectOption('');
+  await expectChineseUI(c, '维护与到期中心（全部数据）');
   await page.screenshot({ path: shot('5-center'), fullPage: true });
   await page.goto('/#/overview?view=2d');
   const att = page.getByTestId('home-attention');
@@ -250,6 +260,7 @@ test('接入准备：阻断项、铭牌确认（平台管理员 + If-Match + 依
   await expect(d.getByTestId('r9-ready-notice')).toContainText('已确认');
   expect(state.decisions).toEqual([{ status: 'CONFIRMED', value: 10, basis: '铭牌照片 IMG-001' }]);
   await expect(d.getByTestId('r9-ready-nameplate').locator('[data-attr="ratedCapacityT"]')).toContainText('已确认 10');
+  await expectChineseUI(d, '接入准备');
   await page.screenshot({ path: shot('8-readiness'), fullPage: true });
   await d.getByTestId('tab-maintenance').click();
   await d.getByLabel('规则筛选').selectOption('ALL');
